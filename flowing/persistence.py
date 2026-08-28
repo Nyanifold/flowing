@@ -128,9 +128,19 @@ append-only 模型下首行天然稳定（sync 原子重写时元数据记录原
   update / move / 邻接调整）的产生者。
 """
 
+import asyncio
+import contextlib
+import json
+import logging
+import os
+from collections import deque
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, Protocol
+
+from flowing.errors import CorruptionError, FormatVersionError
+
+logger = logging.getLogger(__name__)
 
 FORMAT_VERSION: int = 1
 """当前 jsonl 行格式版本（模块 docstring「格式版本与迁移」）。
@@ -339,9 +349,35 @@ class FileRecordStore:
           ``flowing.runtime.Runtime.register_state()``（时机：全局
           命名空间声明时）
         """
-        # 赋值 _path / _merge_last_line / _tombstone_threshold；_poisoned = None；
-        # 建 FIFO 队列并启动唯一 drain 任务（父目录存在性由属主管线保证）
-        ...
+        self._path = Path(path)
+        self._merge_last_line = merge_last_line
+        self._tombstone_threshold = tombstone_threshold
+        self._poisoned: BaseException | None = None
+        # FIFO 内存队列 + 唯一 drain 任务（write-behind；单写入者原则）
+        # 队列项形态：("record", dict) / ("sync", list[dict]) / ("barrier", Event)
+        self._queue: deque[tuple] = deque()
+        # X8 澄清：Agent 创建期不做 await（drain 任务需运行中 loop）——
+        # drain 任务惰性启动于首个 submit / sync / drain 调用；约束「首次
+        # 提交须在运行中的事件循环内」。
+        self._drain_task: asyncio.Task | None = None
+        self._wakeup: asyncio.Event | None = None
+        self._closed = False
+        # 写侧状态（drain 任务私有，单写入者无需锁）
+        self._file = None            # 二进制句柄（r+b / w+b），惰性打开
+        self._write_offset = 0       # 当前文件末尾字节偏移
+        self._last_line: tuple[int, str, str] | None = None  # 末行合并跟踪（offset, op, key）
+        # 末行合并的截尾安全网：仅当本 session 已知文件从空开始、且被截尾的
+        # set 是该 key 在文件中的唯一一行时，delete 才随之省略（否则截尾会
+        # 复活更早的同名 set 行）。X9 澄清：注释当前状态与实际期望——
+        # 当前实现仅对「新建文件上的连续同 key 序列」做截尾省行，跨交错
+        # 序列一律保守补写 delete 行。
+        self._fresh_start = False
+        self._key_line_counts: dict[str, int] = {}
+        self._tombstone_count = 0    # 墓碑计数（append 时 +1；replay 初始化加载时累计）
+        # 打开存储时清扫孤儿 .tmp（原子重写统一规约）
+        tmp = Path(str(self._path) + ".tmp")
+        if tmp.exists():
+            tmp.unlink()
     def submit(self, record: dict) -> None:
         """同步提交一条记录：poison 检查 → FIFO 入队，立即返回。
 
@@ -358,8 +394,13 @@ class FileRecordStore:
           :meth:`StateView.__setitem__` / ``__delitem__``（时机：
           每次状态写透）
         """
-        # poison 检查（_poisoned 非 None -> 同步重抛）-> 队列 put_nowait
-        ...
+        if self._closed:
+            raise RuntimeError(f"record store already closed: {self._path}")
+        if self._poisoned is not None:
+            raise self._poisoned  # 契约③：poison 态同步重抛首次落盘异常
+        self._queue.append(("record", record))
+        self._ensure_drain_task()
+        self._wakeup.set()
     def replay(self) -> Iterator[dict]:
         """按写入序逐条产出记录；撕裂末行截断丢弃，中间行损坏报警。
 
@@ -384,10 +425,32 @@ class FileRecordStore:
           引导重放（时机：``set_persist_dir`` 后、池扫描前重放全局
           命名空间）
         """
-        # 读首行判版本（无 meta 首行 = 版本 0）-> 低于当前：MIGRATIONS
-        # 逐段迁移并借 sync 回写；高于当前：报错 -> 逐行读 -> JSON
-        # 解析产出 dict；尾部不完整行（撕裂）截断丢弃
-        ...
+        records, file_version = self._read_records_with_version()
+        if file_version > FORMAT_VERSION:
+            raise FormatVersionError(self._path, file_version, FORMAT_VERSION)
+        if file_version < FORMAT_VERSION:
+            for v in range(file_version, FORMAT_VERSION):
+                migrate = MIGRATIONS.get(v)
+                if migrate is not None:
+                    records = list(migrate(records))
+                # 缺段 = 恒等（X5 澄清：v0 与 v1 行格式相同，v1 仅新增
+                # meta 首行约定，无待迁移版本，不做特判、不虚构迁移函数）
+            # 迁移后借 sync 通道原子回写为新版本（含新 meta 首行；
+            # 一次性动作）。约束：须在运行中的事件循环内消费完本生成器
+            # （sync 经队列提交，drain 任务惰性启动，X8）；无 loop 时跳过
+            # 回写仅告警——记录照常产出，下次 replay 重试迁移。
+            try:
+                self.sync(records)
+            except RuntimeError:
+                logger.warning(
+                    "migration rewrite of %s deferred: no running event loop",
+                    self._path,
+                )
+        # X16 澄清：墓碑计数在初始化加载（replay）时一并累计
+        self._tombstone_count += sum(
+            1 for r in records if r.get("type") == "tombstone"
+        )
+        yield from records
     async def drain(self) -> None:
         """排空屏障：返回时此前提交的记录已全部落盘。
 
@@ -400,7 +463,19 @@ class FileRecordStore:
         - 被调：:meth:`close`（时机：收尾排空）；墓碑压缩的内部前提
           （时机：drain 任务队列见底、计数超阈值时）
         """
-        ...
+        if self._drain_task is None and not self._queue:
+            # 从未提交（drain 任务惰性未启动）：无在队记录，drain 任务私有
+            # 状态不可能被并发触碰，直接在本调用点做压缩检查——覆盖
+            # 「replay 初始化加载累计墓碑后随即 drain / close」的路径（X16）
+            self._maybe_compact_tombstones()
+            return
+        self._ensure_drain_task()
+        if self._drain_task.done():
+            return  # drain 任务已终结（poison / close），barrier 不会有人消费
+        barrier = asyncio.Event()
+        self._queue.append(("barrier", barrier))
+        self._wakeup.set()
+        await barrier.wait()
     async def close(self) -> None:
         """排空 + 停止 drain 任务；幂等（重复调用安全）。
 
@@ -412,8 +487,15 @@ class FileRecordStore:
           ``flowing.runtime.Runtime.shutdown()``（时机：全局命名空间
           收尾）
         """
-        # drain -> 停 drain 任务；幂等
-        ...
+        if self._closed:
+            return  # 幂等
+        self._closed = True
+        if self._drain_task is None:
+            return  # 从未启动（无提交），无任务可停
+        await self.drain()  # 排空屏障（barrier 处含墓碑压缩检查，X16 收尾时点）
+        self._drain_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await self._drain_task
     def sync(self, records: list[dict]) -> None:
         """契约动词实现：请求将本文件全量原子同步为给定终态记录。
 
@@ -431,9 +513,232 @@ class FileRecordStore:
         - 被调：:meth:`StateView._maybe_compact`（时机：三时点——
           恢复重放后 / 属主 ``destroy`` 收尾 / append 行数超阈值）
         """
-        # poison 检查（同 submit）-> 维护标记（{"type": "sync",
-        # "records": [...]} 形态）入队；drain 见底后执行原子重写
-        ...
+        if self._closed:
+            raise RuntimeError(f"record store already closed: {self._path}")
+        if self._poisoned is not None:
+            raise self._poisoned  # poison 检查同 submit（契约③）
+        # 维护标记入队；FIFO 序保证执行时此前记录均已落盘（排空前提的
+        # 结构性兑现），drain 任务处理到本标记即执行原子重写
+        self._queue.append(("sync", list(records)))
+        self._ensure_drain_task()
+        self._wakeup.set()
+
+    # ------------------------------------------------------------------
+    # 以下为内部实现（单写入者：写侧状态仅由 drain 任务触碰）
+    # ------------------------------------------------------------------
+
+    def _ensure_drain_task(self) -> None:
+        """惰性启动唯一 drain 任务（X8：需在运行中的事件循环内调用）。"""
+        if self._drain_task is None:
+            self._wakeup = asyncio.Event()
+            self._drain_task = asyncio.get_running_loop().create_task(
+                self._drain_loop()
+            )
+
+    async def _drain_loop(self) -> None:
+        """唯一 drain 任务：串行消费队列写文件，见底处做维护（压缩 / barrier）。"""
+        try:
+            while True:
+                if not self._queue:
+                    # 队列见底：墓碑压缩的自主触发点（S-31；X16 只按计数）
+                    self._maybe_compact_tombstones()
+                    assert self._wakeup is not None
+                    self._wakeup.clear()
+                    await self._wakeup.wait()
+                    continue
+                kind, payload = self._queue.popleft()
+                if kind == "record":
+                    self._write_record(payload)
+                elif kind == "sync":
+                    self._atomic_rewrite(payload)
+                else:  # barrier：排空信号，先收尾维护再唤醒等待方
+                    self._maybe_compact_tombstones()
+                    payload.set()
+        except asyncio.CancelledError:
+            raise  # close() 的正常收尾路径
+        except Exception as exc:
+            # poison = fail fast（契约③）：记住首次落盘异常，唤醒全部
+            # 排队 barrier（drain 等待方不挂死），任务终结；此后 submit
+            # 同步重抛。异常不在任务内再抛（避免 unretrieved 任务告警）。
+            self._poisoned = exc
+            logger.error("record store poisoned (%s): %s", self._path, exc)
+            for item in self._queue:
+                if item[0] == "barrier":
+                    item[1].set()
+            self._queue.clear()
+        finally:
+            if self._file is not None:
+                self._file.close()
+                self._file = None
+
+    def _read_records_with_version(self) -> tuple[list[dict], int]:
+        """读文件全部完整行 → (记录列表, 文件版本)；meta 首行不进记录列表。
+
+        撕裂末行（无换行结尾的尾部残行）截断丢弃；中间行 JSON 损坏 →
+        logging.error 报警 + CorruptionError（X7，不容忍）。
+        """
+        if not self._path.exists():
+            return [], FORMAT_VERSION  # 文件不存在 = 新建，视为当前版本
+        raw = self._path.read_bytes()
+        if not raw:
+            return [], FORMAT_VERSION  # 空文件同上
+        segments = raw.split(b"\n")
+        segments.pop()  # 末段：文件以 \n 结尾时为 b""；否则即撕裂末行，丢弃
+        version = 0  # 无 meta 首行的存量文件按版本 0 处理（X5 澄清：无特判）
+        had_meta = False
+        if segments:
+            try:
+                first = json.loads(segments[0])
+            except json.JSONDecodeError:
+                logger.error("corrupted record line at %s:%d", self._path, 1)
+                raise CorruptionError(self._path, 1) from None
+            if isinstance(first, dict) and first.get("type") == "meta":
+                found = first.get("format_version")
+                if not isinstance(found, int):
+                    logger.error("corrupted record line at %s:%d", self._path, 1)
+                    raise CorruptionError(self._path, 1)
+                version = found
+                had_meta = True
+                segments = segments[1:]
+        records: list[dict] = []
+        start_lineno = 2 if had_meta else 1
+        for i, seg in enumerate(segments, start=start_lineno):
+            try:
+                records.append(json.loads(seg))
+            except json.JSONDecodeError:
+                logger.error("corrupted record line at %s:%d", self._path, i)
+                raise CorruptionError(self._path, i) from None
+        return records, version
+
+    def _ensure_file(self):
+        """惰性打开文件句柄；新建 / 空文件先写 meta 首行（格式版本约定）。"""
+        if self._file is None:
+            if self._path.exists():
+                self._file = open(self._path, "r+b")
+                self._file.seek(0, os.SEEK_END)
+                self._write_offset = self._file.tell()
+                if self._write_offset == 0:
+                    self._fresh_start = True
+                    self._write_meta()
+            else:
+                self._file = open(self._path, "w+b")
+                self._write_offset = 0
+                self._fresh_start = True
+                self._write_meta()
+        return self._file
+
+    def _write_meta(self) -> None:
+        """在当前写入位置写 meta 首行（仅新建 / 重写时调用）。"""
+        line = json.dumps(
+            {"type": "meta", "format_version": FORMAT_VERSION},
+            ensure_ascii=False,
+        ).encode("utf-8") + b"\n"
+        self._file.write(line)
+        self._file.flush()
+        self._write_offset += len(line)
+
+    def _write_record(self, record: dict) -> None:
+        """append 一条记录（含末行合并 / 截尾的内部策略，merge_last_line 开时）。"""
+        data = json.dumps(record, ensure_ascii=False).encode("utf-8") + b"\n"
+        f = self._ensure_file()
+        op = record.get("op")
+        key = record.get("key")
+        if self._merge_last_line and self._last_line is not None:
+            loffset, lop, lkey = self._last_line
+            if lop == "set" and lkey == key and op == "set":
+                # 同 key 连续 set → 就地重写末行（X9：seek + truncate 机制，
+                # POSIX 语义。跨平台文件锁 / 偏移语义若出问题，演进方向是
+                # 退化为 sync 式整文件重写——逻辑契约「透明性」不变）
+                f.seek(loffset)
+                f.write(data)
+                f.truncate()
+                f.flush()
+                self._write_offset = loffset + len(data)
+                return  # _last_line 不变（offset/op/key 均同）
+            if lop == "set" and lkey == key and op == "delete":
+                # 末行 set k 紧跟 delete k → 截尾。安全网（见 __init__
+                # 注释）：仅当已知该 set 是 k 在文件中的唯一一行时才省略
+                # delete 行，否则截尾后补写 delete（防复活更早的同名 set）
+                f.seek(loffset)
+                f.truncate()
+                f.flush()
+                self._write_offset = loffset
+                self._last_line = None
+                self._key_line_counts[key] = self._key_line_counts.get(key, 1) - 1
+                if self._fresh_start and self._key_line_counts[key] <= 0:
+                    return  # k 在文件中已无行 → delete 一并省略
+                f.seek(self._write_offset)
+                f.write(data)
+                f.flush()
+                self._write_offset += len(data)
+                return
+        f.seek(self._write_offset)
+        f.write(data)
+        f.flush()
+        if self._merge_last_line and op in ("set", "delete") and key is not None:
+            self._last_line = (self._write_offset, op, key)
+            if op == "set":
+                self._key_line_counts[key] = self._key_line_counts.get(key, 0) + 1
+        else:
+            self._last_line = None
+        self._write_offset += len(data)
+        if record.get("type") == "tombstone":
+            self._tombstone_count += 1  # 墓碑计数：append 时 +1
+
+    def _atomic_rewrite(self, records: list[dict]) -> None:
+        """原子重写统一规约：同目录 .tmp → fsync 临时文件 → os.replace。
+
+        调用方传入的终态记录**不含** meta（X12）；本函数自动写当前版本
+        meta 首行再写 records。重写后旧句柄指向旧 inode——关闭并惰性
+        重开；末行合并跟踪随文件内容变化失效，重置为已知新起点。
+        """
+        tmp = Path(str(self._path) + ".tmp")
+        with open(tmp, "wb") as f:
+            f.write(
+                json.dumps(
+                    {"type": "meta", "format_version": FORMAT_VERSION},
+                    ensure_ascii=False,
+                ).encode("utf-8")
+                + b"\n"
+            )
+            for record in records:
+                f.write(json.dumps(record, ensure_ascii=False).encode("utf-8") + b"\n")
+            f.flush()
+            os.fsync(f.fileno())  # rename 落盘时内容已落盘（否则可留空 inode）
+        os.replace(tmp, self._path)  # POSIX rename 原子：读者只见旧或新
+        if self._file is not None:
+            self._file.close()
+            self._file = None
+        self._write_offset = 0
+        self._last_line = None
+        # 重写产物内容已知：终态记录即文件全部记录
+        self._fresh_start = True
+        self._key_line_counts = {}
+        for record in records:
+            if record.get("op") == "set" and record.get("key") is not None:
+                self._key_line_counts[record["key"]] = (
+                    self._key_line_counts.get(record["key"], 0) + 1
+                )
+
+    def _maybe_compact_tombstones(self) -> None:
+        """墓碑压缩：计数 ≥ 阈值时整文件原子重写（drain 见底 / barrier 处触发）。
+
+        X16 澄清：只按计数触发（初始化加载 replay 累计 / 最终销毁 close
+        收尾的 drain 也会经此）；「Agent 空闲」条件由 L2/L3 的触发时机
+        结构性保证，store 不感知 Agent。
+        """
+        if self._tombstone_count < self._tombstone_threshold:
+            return
+        records, _ = self._read_records_with_version()
+        tombstoned = {r["id"] for r in records if r.get("type") == "tombstone"}
+        kept = [
+            r
+            for r in records
+            if r.get("type") != "tombstone"
+            and not (r.get("type") == "message" and r.get("id") in tombstoned)
+        ]
+        self._atomic_rewrite(kept)  # 物理清除墓碑行与被标记删除的消息行
+        self._tombstone_count = 0
 
 
 class StateView:
