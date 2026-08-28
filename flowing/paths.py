@@ -61,6 +61,7 @@
 
 from __future__ import annotations   # S-43 裁决③：注解延迟求值，配合 TYPE_CHECKING 破注解级循环边
 
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -102,6 +103,15 @@ POSIX 展开为 ``$HOME``，Windows 展开为 ``%USERPROFILE%``；展开结果
 **Windows 分隔符兼容**：前缀判定中 ``\\`` 与 ``/`` 等价——``.\\``
 视同 ``./``、``..\\`` 视同 ``../``（多级同理）、``~\\`` 视同
 ``~/``；实现侧先做分隔符归一再判定前缀。
+"""
+
+_DRIVE_RE = re.compile(r"^[A-Za-z]:/")
+"""Windows 盘符绝对路径判定（分隔符归一后的形态，如 ``C:/x``）。
+
+POSIX 上 ``pathlib`` 不把盘符 / UNC 识别为绝对路径；按 PATH_PREFIXES
+docstring「Windows 盘符 / UNC 均算绝对路径」的跨平台约定，实现侧在
+归一化后用本正则显式判定（UNC 归一后为 ``//`` 前缀，由前导 ``/``
+判定覆盖）。
 """
 
 
@@ -174,11 +184,21 @@ def classify_ref(raw: str) -> Literal["path", "qualified", "bare"]:
 
     .. seealso:: :func:`resolve_path` —— ``"path"`` 形态的实际解析。
     """
-    if raw.startswith(PATH_PREFIXES) or raw.startswith("/"):
+    # X4：docstring 承诺而 spec 骨架缺失的三件事在此落实——
+    # 先做分隔符归一（\ → /），再 ~ 前缀判定，再按固定顺序执行形态判别。
+    s = raw.replace("\\", "/")
+    if s == "~" or s.startswith("~/"):
+        return "path"  # ~ 永远按绝对路径触发（PATH_PREFIXES docstring，P5 裁决）
+    # Windows 盘符 / UNC 在前缀判定中与 POSIX 绝对路径同列（先归一后判定）
+    if s.startswith(PATH_PREFIXES) or s.startswith("/") or _DRIVE_RE.match(s):
         return "path"
-    if "::" in raw:
+    if "::" in s:
+        # 文件::类名 分支（X4）：左段含路径特征（/ 或以 .py 结尾）→ path
+        left = s.split("::", 1)[0]
+        if "/" in left or left.endswith(".py"):
+            return "path"
         return "qualified"
-    if "/" in raw or "\\" in raw:
+    if "/" in s:
         return "path"
     return "bare"
 
@@ -259,14 +279,21 @@ def resolve_path(
 
     .. seealso:: :func:`to_project_path` —— 逆向的对外表示。
     """
-    if path.startswith("@/"):
-        return project_root / path[2:]
-    if path.startswith("/"):
-        return Path(path)
+    # X4：docstring 承诺而 spec 骨架缺失的两件事在此落实——
+    # 实现侧先做分隔符归一（\ → /），再做 ~ 检测与 expanduser。
+    s = path.replace("\\", "/")
+    if s == "~" or s.startswith("~/"):
+        # ~ 永远按绝对路径触发：expanduser 展开结果即绝对路径，按绝对路径规则处理
+        s = os.path.expanduser(s)
+    if s.startswith("@/"):
+        return project_root / s[2:]
+    if s.startswith("/") or _DRIVE_RE.match(s):
+        # POSIX 前导 /（含归一后 // 的 UNC）与 Windows 盘符均按绝对路径原样接受
+        return Path(s)
     if source_dir is None:
         raise ValueError("相对路径需要 source_dir（./ ../ 或含 / 反斜杠字符的普通相对路径）")
     base = source_dir
-    rest = path
+    rest = s
     while rest.startswith("../"):
         base = base.parent
         rest = rest[3:]
