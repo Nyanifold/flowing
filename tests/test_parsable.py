@@ -60,6 +60,7 @@ class _Host:
 
 def test_t24_class_access_returns_self_unbound():
     assert _Host.p._instance is None
+    assert _Host.p is _Host.p  # 类访问返回原对象（身份断言）
 
 
 def test_t25_instance_access_returns_bound_shallow_copy():

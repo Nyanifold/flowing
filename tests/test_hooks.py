@@ -164,7 +164,6 @@ def test_t54_no_active_handler_passthrough():
     assert asyncio.run(hook.dispatch(AGENT, v)) is v  # 全部 disabled
     hook2 = HookList("before_tool_call", by="core")
     hook2["pay-*"](lambda a, v: v)
-    assert asyncio.run(hook2.dispatch(AGENT, _value(name="other"))) is v or True
     v2 = _value(name="other")
     assert asyncio.run(hook2.dispatch(AGENT, v2)) is v2  # 全部被 pattern 过滤
 

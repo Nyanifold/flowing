@@ -124,6 +124,17 @@ def test_t12b_type_expr_via_schema_to_model():
     assert Model.model_validate({"xs": [], "n": 3}).n == 3
 
 
+def test_t12c_nullable_list_members_alias_normalized():
+    # 列表形态成员同样过 TYPE_ALIASES 归一；未知成员 fail-fast
+    Model = schema_to_model("M", {"a": {"type": ["str", "null"], "default": None}})
+    assert Model.model_validate({"a": "x"}).a == "x"
+    assert Model.model_validate({"a": None}).a is None
+    with pytest.raises(ValidationError):
+        Model.model_validate({"a": 1})  # str | None 生效（未静默落 Any）
+    with pytest.raises(FormatError):
+        schema_to_model("M", {"a": {"type": ["strng", "null"]}})
+
+
 # ---------------------------------------------------------------------------
 # apply_param_overrides（T-13 ~ T-16）
 # ---------------------------------------------------------------------------

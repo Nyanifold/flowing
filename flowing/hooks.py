@@ -325,6 +325,13 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeAlias, TypeVar, overload
 
+from flowing.errors import (
+    DuplicateHookPointError,
+    FlowingError,
+    Intercepted,
+    UnknownHookPointError,
+)
+
 if TYPE_CHECKING:
     from flowing.agent import Agent
 
@@ -838,11 +845,6 @@ class HookList(ManagedList[HookEntry]):
             :class:`flowing.errors.Intercepted`、
             :meth:`ManagedList.__iter__`
         """
-        import fnmatch
-        import inspect
-
-        from flowing.errors import FlowingError, Intercepted
-
         for entry in self:  # 经 ManagedList.__iter__：跳过 enabled=False
             if entry.pattern is not None:  # 条件：pattern 条目先过滤
                 if not fnmatch.fnmatch(getattr(value, self.match_on), entry.pattern):
@@ -1082,8 +1084,6 @@ class HookRegistry:
             :class:`HookList`、:meth:`HookList.dispatch`、
             ``flowing.plugins.skills.use_skill``
         """
-        from flowing.errors import DuplicateHookPointError
-
         existing = self._hook_points.get(name)
         if existing is not None:
             if existing.by == by:
@@ -1176,8 +1176,6 @@ class HookRegistry:
 
             :meth:`declare`、:class:`flowing.errors.UnknownHookPointError`
         """
-        from flowing.errors import UnknownHookPointError
-
         try:
             return self._hook_points[name]  # 命中（核心预填点与已 declare 扩展点）
         except KeyError:

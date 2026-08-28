@@ -406,11 +406,17 @@ def schema_to_model(name: str, properties: Mapping[str, dict[str, Any]]) -> type
         if t is None:
             return Any
         if isinstance(t, list):  # [T, "null"] 可空形态 → T | None
-            rest = [x for x in t if x != "null"]
+            # 成员同样过别名表归一（type: ["str", "null"] ≡ ["string", "null"]），
+            # 未知成员 fail-fast（与 _parse_type_expr 口径一致）
+            normalized = [TYPE_ALIASES.get(str(x), x) for x in t]
+            for x in normalized:
+                if x != "null" and x not in type_map:
+                    raise FormatError(f"未知类型名: {x!r}")
+            rest = [x for x in normalized if x != "null"]
             # 多成员非 null 联合（如 [string, integer]）超出 Python 侧
             # 表达精度 → Any（子集只承诺 [T, "null"] 形态）
             base = type_map.get(rest[0], Any) if len(rest) == 1 else Any
-            if len(rest) != len(t) and base is not Any:
+            if len(rest) != len(normalized) and base is not Any:
                 return base | None
             return base
         return type_map.get(t, Any)
