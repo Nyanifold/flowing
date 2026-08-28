@@ -713,6 +713,27 @@ class PromptBlockList(ManagedList[PromptBlock]):
           ``enable_*`` / ``disable_*`` 按**匹配数**计数（对已处目标状态的
           匹配块是状态幂等 no-op，但仍计入返回数）；``remove_*`` 两口径
           天然一致（删除后不再匹配），沿用父类实现。
+
+        .. rubric:: 测试案例
+
+        - 前置：两块带 ``tags=["g"]``，一块不带。操作：
+          ``disable_by_tag("g")``。期望：两块 enabled=False 且位置
+          不变；第三块不受影响；返回 2；再次调用结果相同（返回 2）。
+
+        .. rubric:: 调用关系（审计）
+
+        - 调用：无（直接遍历 ``_items`` 原地翻转 ``enabled``，不走父类
+          的「新置数」实现——见 ``:return:`` 口径注记）
+        - 被调：无（框架内未见调用方；skills 管理面示例
+          ``prompt_blocks.disable_by_tag("skill.catalog")`` 属应用
+          操作，不列）
+
+        .. seealso::
+
+            :meth:`enable_by_tag`
+                逆操作。
+            :class:`flowing.lists.ManagedList`
+                分组语义来源（计数口径不同，见 ``:return:`` 注记）。
         """
         # 匹配数口径（见 docstring 注记）：已 disabled 的匹配块仍计入
         matched = [b for b in self._items if tag in b.tags]
