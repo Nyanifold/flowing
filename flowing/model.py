@@ -108,7 +108,9 @@ from __future__ import annotations   # S-43 裁决③：注解延迟求值，配
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from flowing.parsable import Parsable
+from ruamel.yaml import YAML  # R-10 澄清落实：yaml 需保留注释，选 ruamel.yaml 而非 PyYAML
+
+from flowing.parsable import LITERAL, Parsable
 
 if TYPE_CHECKING:
     from flowing.agent import Agent
@@ -447,16 +449,54 @@ def load_models(path: Path) -> dict[str, ModelConfig]:
     .. rubric:: 调用关系（审计）
 
     - 调用：``ModelConfig`` 构造（每条目；known_model_fields 分流的
-      写入侧）；yaml 读取（库符号未见规约）
+      写入侧）；yaml 读取经 ``ruamel.yaml.YAML(typ="rt")``（R-10 澄清：
+      yaml 需保留注释，选 ruamel 而非 PyYAML；round-trip 模式读出的
+      标量包装类型均为 str/int 子类，对下游透明）
     - 被调：``flowing.runtime.Runtime``（时机：启动期默认加载）
 
     .. seealso:: :class:`ModelConfig` —— ``_extra`` 与分流语义；
       :func:`load_model_tags` —— 标签映射文件的对应解析器。
     """
+    data = YAML(typ="rt").load(Path(path).read_text(encoding="utf-8")) or {}
     models: dict[str, ModelConfig] = {}
-    # 逐条目：config = ModelConfig(...)（known_model_fields 分流：认识
-    # 字段升属性含 Parsable、不认识进 _extra 不参与求值）
+    for name, entry in dict(data).items():
+        # known_model_fields 分流（R-3 本期简化形态）：固定内建字段集
+        # 升属性，其余一律进 _extra；与 adapter 声明的精确分流在阶段 2
+        # 接 providers 时补齐（届时以 providers.py 规约为准重审）
+        fields: dict[str, Any] = {}
+        extra: dict[str, Any] = {}
+        for key, value in dict(entry).items():
+            (fields if key in _KNOWN_MODEL_FIELDS else extra)[key] = value
+        models[name] = ModelConfig(
+            extra=extra,
+            **{key: _maybe_wrap_parsable(value) for key, value in fields.items()},
+        )
     return models
+
+
+# R-3 本期简化：固定内建字段集（替代 adapter 的 Provider.known_model_fields
+# 声明分流，后者属阶段 2）
+_KNOWN_MODEL_FIELDS: frozenset[str] = frozenset({
+    "model", "provider", "thinking_budget", "context_window", "max_output_tokens",
+})
+
+
+def _maybe_wrap_parsable(value: Any) -> Any:
+    """把可解析形态的字段值包装为 Parsable；LITERAL 值保持静态原样。
+
+    口径（就地裁决，spec 未写清 loader 的包装范围）：仅字符串且推断为
+    非 ``LITERAL``（``FILE_REF`` / ``EXPRESSION`` / ``TEMPLATE`` /
+    ``RAW``）的值才包装——纯字面量保持静态原值，使全静态条目同样命中
+    ``ModelConfig.resolve`` 的幂等短路。``.fya`` 解析层的 M-14 全量包装
+    （非字符串值也包 ``LITERAL``）是 parser 层规则，与本 loader 的
+    「路径 → 映射」简化口径不同，阶段 3 接 parser 时复核。
+    """
+    if isinstance(value, str):
+        p = Parsable(value)
+        if p.type is not LITERAL:
+            return p
+    return value
+
 
 def load_model_tags(path: Path) -> dict[str, str]:
     """读 ``model-tags.yaml`` 构建标签 → 模型条目名映射（S-03 裁决具名；
@@ -488,6 +528,7 @@ def load_model_tags(path: Path) -> dict[str, str]:
     .. seealso:: :func:`load_models` —— 模型条目文件的对应解析器
       （``known_model_fields`` 分流的落点）。
     """
-    tags: dict[str, str] = {}
-    # 逐标签：tags[tag] = 模型条目名（单值化；yaml 读取库符号未见规约）
-    return tags
+    data = YAML(typ="rt").load(Path(path).read_text(encoding="utf-8")) or {}
+    # 文件 schema 为顶层 tags: 映射（见模块 docstring「配置文件 schema」）；
+    # 缺 tags 键 → KeyError（fail fast，不静默回退）
+    return {str(tag): str(entry) for tag, entry in dict(data["tags"]).items()}
