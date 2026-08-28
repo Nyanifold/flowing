@@ -876,8 +876,10 @@ class MissingSchemaError(ToolError):
           schema 缺失且无法推断，tool.pyi:866/1034/1113/1331/1348）
         """
         # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
-        super().__init__((f"Missing params schema for tool {name!r}"
-            + (f" (param {param!r})" if param is not None else "")))
+        super().__init__(
+            f"Missing params schema for tool {name!r}"
+            + (f" (param {param!r})" if param is not None else "")
+        )
         self.name = name
         self.param = param
 

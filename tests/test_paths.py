@@ -143,8 +143,10 @@ class TestInferName:
         """P14：去 .py + snake→kebab。"""
         pay_agent = fixtures_dir / "paths" / "proj" / "tools" / "pay_agent.py"
         assert infer_name(pay_agent, naming=AGENT_NAMING) == "pay-agent"
-        # .agent.fya 先于 .fya 剥离
-        assert infer_name("agents/x.agent.fya", naming=AGENT_NAMING) == "x"
+        # .agent.fya 先于 .fya 剥离（单文件形态 fixtures）
+        agents = fixtures_dir / "paths" / "proj" / "agents"
+        assert infer_name(agents / "x.agent.fya", naming=AGENT_NAMING) == "x"
+        assert infer_name(agents / "x.fya", naming=AGENT_NAMING) == "x"
 
     def test_p15_format_errors(self):
         """P15：剥离后空串 / 结果非法 kebab → FormatError。"""

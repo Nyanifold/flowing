@@ -335,7 +335,7 @@ class FileRecordStore:
         merge_last_line: bool = False,
         tombstone_threshold: int = 256,
     ) -> None:
-        """绑定文件并启动 drain 任务（内部 API，不属稳定契约）。
+        """绑定文件（drain 任务惰性启动于首个 submit / sync / drain，X8）。
 
         构造点即后端换装点（模块 docstring「后端演进缝」）：Agent 侧在
         ``Agent.__init__``（经 ``_open_stores``，P3-03），Runtime 侧在
