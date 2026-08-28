@@ -84,12 +84,13 @@ _FACTORIES = {
 
 
 def test_e8_all_names_importable_and_expected():
-    """E8：__all__ 全部名字可导入且为预期类（spec 44 个 + X6/X7 新增 2 个）。
+    """E8：__all__ 全部名字可导入且为预期类（spec 46 个 + X6/X7 新增 2 个）。
 
     注：``EntryNameConflictError`` / ``StateKeyError`` 按 py-spec 原样不在
-    ``__all__`` 中（直挂根的两个跨正交类），仍可显式导入。
+    ``__all__`` 中（直挂根的两个跨正交类），仍可显式导入。简报 E8 原文
+    「44 个」与实际规约计数（46）不符，以 py-spec 为准。
     """
-    assert len(errors.__all__) == 46
+    assert len(errors.__all__) == 48
     excluded = {"EntryNameConflictError", "StateKeyError"}
     assert set(errors.__all__) == set(_FACTORIES) - excluded
     for name in errors.__all__:
