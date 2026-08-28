@@ -164,7 +164,10 @@ SUBAGENT   独立消息，XML 包裹（格式 adapter 定）  user       同左
 
 from __future__ import annotations   # S-43 裁决③：注解延迟求值（message→model 为注解级边）
 
+import asyncio
+import bisect
 import enum
+import itertools
 import json
 import math
 from collections.abc import Callable
@@ -1362,6 +1365,14 @@ class MessageQueue:
        :meth:`flowing.agent.Agent.set_queued_priority`。
     """
 
+    def __init__(self) -> None:
+        # X13：有序 list + (priority 数值, 自增入队序号) 二分插入排序；
+        # remove / set_priority 线性扫描定位（队列规模小，机制从简）；
+        # 阻塞唤醒用 asyncio.Event（enqueue 置位、取空后清位）。
+        self._items: list[tuple[int, int, Message]] = []
+        self._seq = itertools.count()
+        self._not_empty = asyncio.Event()
+
     def enqueue(self, msg: Message) -> None:
         """入队一条消息（无等待、无界）.
 
@@ -1388,7 +1399,10 @@ class MessageQueue:
           时序 dispatch ``before_enqueue`` → ``enqueue`` → dispatch
           ``after_enqueue``）
         """
-        ...
+        # 入队序号单调递增，同优先级 FIFO tie-break；seq 唯一保证
+        # 元组比较不会回落到 Message 本身（Message 不可比较）
+        bisect.insort(self._items, (int(msg.priority), next(self._seq), msg))
+        self._not_empty.set()
 
     async def wait_not_empty(self) -> None:
         """阻塞等待队列变为非空（不取消息）。
@@ -1407,7 +1421,8 @@ class MessageQueue:
 
         .. seealso:: :meth:`dequeue`、:meth:`dequeue_nowait`
         """
-        ...
+        while not self._items:
+            await self._not_empty.wait()
 
     def dequeue_nowait(self) -> Message | None:
         """非阻塞取出优先级最高的一条；队列空返回 ``None``。
@@ -1418,7 +1433,12 @@ class MessageQueue:
         等待并重新派发 ``before_dequeue``（每条真正出队的消息之前恰好
         一次 before 派发）。
         """
-        ...
+        if not self._items:
+            return None
+        _, _, msg = self._items.pop(0)
+        if not self._items:
+            self._not_empty.clear()
+        return msg
 
     async def dequeue(self) -> Message:
         """阻塞取出优先级最高的一条消息（工作循环核心默认路径）.
@@ -1446,7 +1466,11 @@ class MessageQueue:
         .. seealso::
            :meth:`drain_all`、:meth:`take_while`、:meth:`flowing.agent.Agent._dequeue`。
         """
-        ...
+        while True:
+            msg = self.dequeue_nowait()
+            if msg is not None:
+                return msg
+            await self._not_empty.wait()
 
     async def drain_all(self) -> list[Message]:
         """一次性取出当前所有排队消息（drain 覆写原语）.
@@ -1479,7 +1503,11 @@ class MessageQueue:
         .. seealso::
            :meth:`dequeue`、:meth:`flowing.agent.Agent._dequeue`。
         """
-        ...
+        # 只取调用时刻存量（交错的新入队者留给下一次）；有序 list 本身即出队序
+        items = self._items
+        self._items = []
+        self._not_empty.clear()
+        return [msg for _, _, msg in items]
 
     def take_while(self, predicate: Callable[[Message], bool]) -> list[Message]:
         """从队首按出队顺序连续取出满足条件的消息（合并覆写原语）.
@@ -1508,7 +1536,12 @@ class MessageQueue:
         .. seealso::
            :meth:`drain_all`、:meth:`flowing.agent.Agent._dequeue`。
         """
-        ...
+        taken: list[Message] = []
+        while self._items and predicate(self._items[0][2]):
+            taken.append(self._items.pop(0)[2])
+        if not self._items:
+            self._not_empty.clear()
+        return taken
 
     def peek(self, priority: MessagePriority | None = None) -> Message | None:
         """窥看下一条将被出队的消息，**不移除**（观测原语）.
@@ -1556,7 +1589,13 @@ class MessageQueue:
         .. seealso::
            :meth:`dequeue`、:meth:`__len__`、:class:`MessagePriority`。
         """
-        ...
+        if priority is None:
+            return self._items[0][2] if self._items else None
+        # 带内队首：只选该优先级带内 FIFO 第一条，不跨带比较
+        for prio, _, msg in self._items:
+            if prio == int(priority):
+                return msg
+        return None
 
     def remove(self, message_id: str) -> bool:
         """按 id 撤回一条**未出队**的消息（支撑 ``Agent.cancel_queued``）.
@@ -1587,7 +1626,13 @@ class MessageQueue:
         .. seealso::
            :meth:`flowing.agent.Agent.cancel_queued`。
         """
-        ...
+        for i, (_, _, msg) in enumerate(self._items):
+            if msg.id == message_id:
+                del self._items[i]
+                if not self._items:
+                    self._not_empty.clear()
+                return True
+        return False
 
     def set_priority(self, message_id: str, priority: MessagePriority) -> bool:
         """按 id 重设一条**未出队**消息的优先级，队列立即按新值重排.
@@ -1642,7 +1687,14 @@ class MessageQueue:
            :meth:`enqueue`、:meth:`remove`、:class:`MessagePriority`、
            :meth:`flowing.agent.Agent.set_queued_priority`。
         """
-        ...
+        for i, (_, seq, msg) in enumerate(self._items):
+            if msg.id == message_id:
+                del self._items[i]
+                msg.priority = priority
+                # 保留原入队序号（用户裁决）：在新优先级带内按原入队早晚定位
+                bisect.insort(self._items, (int(priority), seq, msg))
+                return True
+        return False
 
     def __len__(self) -> int:
         """当前排队消息数（观测用途，无同步语义）.
@@ -1657,7 +1709,7 @@ class MessageQueue:
         - 调用：无
         - 被调：无（观测用途；框架内未见调用方，时机：未见规约）
         """
-        ...
+        return len(self._items)
 
 
 class MessageChain:
@@ -1775,6 +1827,10 @@ class MessageChain:
     与 ``Agent._persist_tree_record``（变更记录行）同步提交（S-31）。
     内部 API，不属稳定契约。
     """
+
+    def __init__(self, agent: "Agent") -> None:
+        # S-26 构造契约：Agent.__init__ 以 MessageChain(self) 传入属主
+        self._agent = agent
 
     def insert(self, after_id: str, msg: Message) -> str:
         """单条增：在 ``after_id`` 之后插入一条消息，返回新消息 id.
@@ -2080,9 +2136,11 @@ class MessageChain:
         if msg_id not in self._agent._messages:
             raise KeyError(msg_id)
         self._agent._messages[msg_id].content = content  # 仅替换内容，不动链
+        # update 变更行（同步提交，S-31）；压缩期固化。content 序列化为行内
+        # content 项形态（X2 行格式唯一序列化点），保证 JSON 可落盘
         self._agent._persist_tree_record(
             {"type": "update", "id": msg_id,
-             "content": content})   # update 变更行（同步提交，S-31）；压缩期固化
+             "content": [_block_to_record(b) for b in content]})
 
     def reparent(self, msg_id: str, *, to: str) -> None:
         """子树重连：改 ``msg_id`` 的 ``parent_id``，**整个子树随之移动**.
