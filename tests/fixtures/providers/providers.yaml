@@ -1,0 +1,11 @@
+# provider 条目样例（凭证侧）。
+# 注意：本文件本期（阶段 1）不被任何 loader 消费——providers.yaml 的加载
+# （含 {{env.VAR}} 凭证替换）属阶段 2 Runtime 启动期；此处随 W-02 按
+# 「目录即契约」一并建立。
+deepseek-personal:
+  api_format: openai
+  base_url: https://api.deepseek.com
+  api_key: "{{env.DEEPSEEK_API_KEY}}"
+anthropic:
+  api_format: anthropic
+  api_key: "{{env.ANTHROPIC_API_KEY}}"

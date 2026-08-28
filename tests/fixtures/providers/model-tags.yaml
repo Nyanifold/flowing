@@ -1,0 +1,5 @@
+# 标签 → 模型条目名映射（单值化：一个标签只映射一个模型条目名）。
+tags:
+  fast: deepseek-v4
+  high: sonnet
+  default: fast

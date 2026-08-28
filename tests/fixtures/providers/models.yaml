@@ -1,0 +1,10 @@
+# 模型条目样例：一个条目 = 一个具体模型（provider 1:1 单值绑定）。
+sonnet:
+  provider: anthropic
+  model: claude-sonnet-4-6
+  thinking_budget: "{{ config.thinking_budget }}"   # 字段级 Parsable（EXPRESSION）
+deepseek-v4:
+  provider: deepseek-personal
+  model: deepseek-chat
+  context_window: 64000
+  team_note: "x"   # 框架不认识字段 → ModelConfig._extra（不告警、不丢弃）
