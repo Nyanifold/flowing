@@ -486,7 +486,9 @@ class FileRecordStore:
 
         .. rubric:: 调用关系（审计）
 
-        - 调用：:meth:`drain`（时机：收尾排空）
+        - 调用：:meth:`drain`（时机：收尾排空）、
+          :meth:`_maybe_compact_tombstones`（时机：从未启动 drain 任务的
+          快捷分支，压缩 replay 期累计的墓碑）
         - 被调：``flowing.agent.Agent.destroy()``（时机：工作循环取消后）、
           :meth:`StateView._close`（时机：随属主收尾）、
           ``flowing.runtime.Runtime.shutdown()``（时机：全局命名空间
