@@ -77,15 +77,41 @@ async def test_s3_crash_window(tmp_path):
 
 
 async def test_s4_poison_reraise(tmp_path):
-    """S4：drain 落盘异常 → 后续 submit 同步重抛同一异常，store 拒新记录。"""
+    """S4：drain 落盘异常 → 后续 submit/drain 同步重抛同一异常，store 拒新记录。"""
     store = FileRecordStore(tmp_path / "s.jsonl")
     store.submit({"op": "set", "key": "ok", "value": 1})
     store.submit({"op": "set", "key": "bad", "value": object()})  # 不可 JSON 序列化
-    await store.drain()  # drain 任务遇序列化错误 → poison
+    # drain 任务遇序列化错误 → poison；等待中的 drain() 经 barrier 正常返回
+    # （异常在 poison 时刻尚未发生——barrier 先于失败行被消费时不携带异常）
+    await store.drain()
     with pytest.raises(TypeError):
         store.submit({"op": "set", "key": "after", "value": 2})
     assert isinstance(store._poisoned, TypeError)
+    # poison 态下 drain 的「返回即全部落盘」承诺不可静默违反：任务已终结
+    # 时同步重抛首次落盘异常（契约③ 与 submit 同律）
+    with pytest.raises(TypeError):
+        await store.drain()
+    # close 的职责是收尾清理：poison 已暴露，不重复抛出且幂等
     await store.close()
+    await store.close()
+
+
+async def test_close_compacts_tombstones_without_submissions(copy_fixture):
+    """X16 收尾时点：replay 累计墓碑 ≥ 阈值后直接 close（无 submit）→ 压缩发生。
+
+    回归基线：close 的「drain 任务从未启动」快捷分支不得跳过墓碑压缩。
+    """
+    path = copy_fixture("persistence/tree-with-tombstones.jsonl")
+    store = FileRecordStore(path, tombstone_threshold=256)
+    list(store.replay())  # 累计墓碑计数，drain 任务从未启动
+    assert store._drain_task is None
+    await store.close()
+    lines = _read_lines(path)
+    assert len(lines) == 4  # meta + 3 条存活消息
+    assert json.loads(lines[0]) == {"type": "meta", "format_version": FORMAT_VERSION}
+    store2 = FileRecordStore(path)
+    assert [r["id"] for r in store2.replay()] == ["alive-1", "alive-2", "alive-3"]
+    await store2.close()
 
 
 async def test_s5_torn_tail_truncated(copy_fixture):

@@ -471,7 +471,12 @@ class FileRecordStore:
             return
         self._ensure_drain_task()
         if self._drain_task.done():
-            return  # drain 任务已终结（poison / close），barrier 不会有人消费
+            # drain 任务已终结（poison / close），barrier 不会有人消费。
+            # poison 态下「返回时此前记录已全部落盘」的承诺已被违反——
+            # 同步重抛首次落盘异常（契约③ 与 submit 同律，不静默返回）
+            if self._poisoned is not None:
+                raise self._poisoned
+            return
         barrier = asyncio.Event()
         self._queue.append(("barrier", barrier))
         self._wakeup.set()
@@ -491,8 +496,18 @@ class FileRecordStore:
             return  # 幂等
         self._closed = True
         if self._drain_task is None:
-            return  # 从未启动（无提交），无任务可停
-        await self.drain()  # 排空屏障（barrier 处含墓碑压缩检查，X16 收尾时点）
+            # 从未启动（无提交），无任务可停；但 replay 可能已累计墓碑
+            # （X16：最终销毁关闭时执行压缩）——此刻无写入者，直接检查
+            self._maybe_compact_tombstones()
+            return
+        # 排空屏障（barrier 处含墓碑压缩检查，X16 收尾时点）；
+        # poison 态下 drain 重抛首次落盘异常——该异常已在 submit / drain
+        # 暴露过（契约③），close 的职责是收尾清理，不再重复抛出
+        try:
+            await self.drain()
+        except Exception as exc:
+            if exc is not self._poisoned:
+                raise
         self._drain_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await self._drain_task

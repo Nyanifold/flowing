@@ -2928,8 +2928,7 @@ class FormatVersionError(FlowingError):
 
     ``RecordStore.replay`` 判读首行 ``{"type": "meta", "format_version"}``
     时抛出：文件版本高于当前框架支持的 :data:`flowing.persistence.FORMAT_VERSION`
-    （文件比框架新，静默读是数据风险），或版本号在迁移链
-    （:data:`flowing.persistence.MIGRATIONS`）上无通路。无版本首行的存量
+    （文件比框架新，静默读是数据风险）。无版本首行的存量
     文件按版本 0 处理，不抛本异常（v0 与 v1 行格式相同，见 X5 澄清）。
 
     .. rubric:: 设计动机
