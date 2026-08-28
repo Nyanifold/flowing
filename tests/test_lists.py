@@ -69,9 +69,10 @@ def test_l4_append_returns_item_and_no_dedup():
 def test_l5_idempotence_and_none_owner():
     """L5：幂等 + disable_by_owner(None) 命中 by=None 条目。"""
     container, a, b, c = make_container()
-    container.disable_by_tag("t")
+    assert container.disable_by_tag("t") == 2
     assert container.disable_by_tag("t") == 0  # 已 disabled → 幂等
-    assert container.enable_by_owner("x") == 0  # 已 enabled → 幂等
+    assert container.enable_by_owner("y") == 1  # b 恢复
+    assert container.enable_by_owner("y") == 0  # 已 enabled → 幂等
     d = Item("d")  # by=None
     container.append(d)
     assert container.disable_by_owner(None) == 1
