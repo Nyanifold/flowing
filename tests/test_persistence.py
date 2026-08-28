@@ -243,3 +243,236 @@ async def test_s15_close_idempotent(tmp_path):
     await store.close()
     await store.close()  # 不抛
     assert store._drain_task is not None and store._drain_task.done()
+
+
+# ---------------------------------------------------------------------------
+# StateView（S16–S25，stub RecordStore / stub owner 驱动）
+# ---------------------------------------------------------------------------
+
+
+class StubStore:
+    """RecordStore 契约的内存 stub（五动词记录器）。"""
+
+    def __init__(self):
+        self.submitted: list[dict] = []
+        self.synced: list[list[dict]] = []
+        self.closed = 0
+
+    def submit(self, record: dict) -> None:
+        self.submitted.append(record)
+
+    def replay(self):
+        return iter([])
+
+    async def drain(self) -> None:
+        pass
+
+    async def close(self) -> None:
+        self.closed += 1
+
+    def sync(self, records: list[dict]) -> None:
+        self.synced.append(list(records))
+
+
+class StubHooks:
+    """watcher 通道记录器（真 _notify_watch 归 L1 hooks，S24 只验证调用点）。"""
+
+    def __init__(self):
+        self.calls: list[tuple] = []
+
+    def _notify_watch(self, owner, value) -> None:
+        self.calls.append((owner, value))
+
+
+class StubOwner:
+    def __init__(self):
+        self.hooks = StubHooks()
+
+
+def _open_view(store=None, defaults=None, owner=None, **kw) -> StateView:
+    """构造并解锁写闸门（解锁归管线完成点；测试经 object.__setattr__ 模拟）。"""
+    view = StateView(store or StubStore(), defaults=defaults, owner=owner, **kw)
+    object.__setattr__(view, "_write_gate_open", True)
+    return view
+
+
+def test_s16_attr_and_dict_access_equivalent():
+    """S16：属性式与字典式产生相同落盘记录与读出值。"""
+    v1 = _open_view()
+    v1.n = 0
+    v1.n += 1
+    v2 = _open_view()
+    v2["n"] = 0
+    v2["n"] += 1
+    assert v1._store.submitted == v2._store.submitted == [
+        {"op": "set", "key": "n", "value": 0},
+        {"op": "set", "key": "n", "value": 1},
+    ]
+    assert v1.n == v2["n"] == 1
+
+
+def test_s17_defaults_fallback_not_persisted():
+    """S17：defaults 回退——默认值不落盘；写入覆盖；del 后回退。"""
+    view = _open_view()
+    view._register("n", 0)
+    assert view.n == 0  # 读出回退 default
+    assert view._store.submitted == []  # 默认值不落盘
+    view.n = 5
+    assert view.n == 5
+    assert view._store.submitted == [{"op": "set", "key": "n", "value": 5}]
+    del view.n
+    assert view.n == 0  # 删除持久值后回退 default
+
+
+def test_s18_undeclared_key_and_contains():
+    """S18：未声明未写键 → KeyError / get 回退；__contains__ 双命中。"""
+    view = _open_view()
+    view._register("n", 0)
+    with pytest.raises(KeyError):
+        view["typo"]
+    assert view.get("typo", "d") == "d"
+    assert view.get("typo") is None
+    assert "n" in view  # 注册 default 命中
+    view["persisted_key"] = 1
+    assert "persisted_key" in view  # 持久值命中
+    assert "typo" not in view
+
+
+def test_s19_write_gate():
+    """S19：写闸门——未解锁写抛 RuntimeError（X10）、读仅见 defaults；解锁后正常。"""
+    store = StubStore()
+    view = StateView(store, defaults={"n": 0})
+    view._persisted["hidden"] = 1  # 模拟 recover 重放装袋（闸门未开）
+    with pytest.raises(RuntimeError):
+        view["x"] = 1
+    with pytest.raises(RuntimeError):
+        view.n = 1
+    with pytest.raises(KeyError):
+        view["hidden"]  # 读仅见 defaults 不见持久值
+    assert view.n == 0
+    object.__setattr__(view, "_write_gate_open", True)  # 管线完成点解锁
+    view["x"] = 1
+    assert view["x"] == 1
+    assert view["hidden"] == 1  # 解锁后可见持久值
+
+
+def test_s20_non_serializable_fails_fast():
+    """S20：不可 JSON 序列化值写入时立即抛 TypeError（X11），不产生记录。"""
+    view = _open_view()
+    with pytest.raises(TypeError):
+        view["x"] = object()
+    assert view._store.submitted == []
+    assert "x" not in view._persisted
+
+
+def test_s21_register_duplicate_raises():
+    """S21：_register 重复声明同 key → ValueError。"""
+    view = _open_view()
+    view._register("n", 0)
+    with pytest.raises(ValueError):
+        view._register("n", 1)
+
+
+def test_s22_write_through_record_format():
+    """S22：写透行格式 {"op":"set",...} / {"op":"delete",...}。"""
+    view = _open_view()
+    view["n"] = 1
+    del view["n"]
+    assert view._store.submitted == [
+        {"op": "set", "key": "n", "value": 1},
+        {"op": "delete", "key": "n"},
+    ]
+
+
+def test_s23_maybe_compact():
+    """S23：_maybe_compact 三时点决策：阈值触发 / force / 未达不触发。"""
+    store = StubStore()
+    view = _open_view(store, compact_threshold=3)
+    view["a"] = 1
+    view["b"] = 2
+    assert store.synced == []  # 未达阈值
+    view["c"] = 3  # 达阈值 → 触发
+    assert len(store.synced) == 1
+    assert store.synced[0] == [
+        {"op": "set", "key": "a", "value": 1},
+        {"op": "set", "key": "b", "value": 2},
+        {"op": "set", "key": "c", "value": 3},
+    ]  # 负载为 _persisted 逐键 set 行
+    assert view._lines_since_compact == 0  # 计数归零
+    view._maybe_compact()  # 未达阈值且非 force → 不触发
+    assert len(store.synced) == 1
+    view._maybe_compact(force=True)  # force 立即触发
+    assert len(store.synced) == 2
+
+
+async def test_s24_watcher_channel(tmp_path):
+    """S24：watcher 调用点预留——写透后 _notify_watch 一次、old 为写前读值。"""
+    owner = StubOwner()
+    view = _open_view(owner=owner)
+    view._register("n", 0)
+    view.n = 5
+    assert len(owner.hooks.calls) == 1
+    called_owner, fu = owner.hooks.calls[0]
+    assert called_owner is owner
+    assert (fu.name, fu.old, fu.new) == ("n", 0, 5)  # old 为写前读值
+    del view.n  # del 不触发
+    assert len(owner.hooks.calls) == 1
+
+
+def test_s24_watcher_skipped_without_owner_or_loop():
+    """S24：owner 为 None 或无运行中 loop → 静默跳过且写照常。"""
+    view = _open_view()  # owner=None
+    view["n"] = 1
+    assert view["n"] == 1
+    # 有 owner 但无运行中 loop（本测试为同步函数）
+    owner = StubOwner()
+    view2 = _open_view(owner=owner)
+    view2["n"] = 1
+    assert view2["n"] == 1
+    assert owner.hooks.calls == []  # 静默跳过
+
+
+async def test_state_view_close_delegates():
+    """W26：_close 转调内嵌 store 的 close。"""
+    store = StubStore()
+    view = _open_view(store)
+    await view._close()
+    assert store.closed == 1
+
+
+async def test_s25_replay_baselines(copy_fixture):
+    """S25：基线语料 replay 产出与预写内容逐条一致。"""
+    store = FileRecordStore(copy_fixture("persistence/tree-ok.jsonl"))
+    tree_records = list(store.replay())
+    assert [r["id"] for r in tree_records] == ["m1", "m2", "m3"]
+    assert tree_records[1]["turn_end"] is True
+    await store.close()
+    store2 = FileRecordStore(copy_fixture("persistence/state-ok.jsonl"))
+    assert list(store2.replay()) == [
+        {"op": "set", "key": "n", "value": 1},
+        {"op": "set", "key": "s", "value": "x"},
+        {"op": "delete", "key": "s"},
+        {"op": "set", "key": "n", "value": 5},
+    ]
+    await store2.close()
+
+
+async def test_s16_real_store_roundtrip(tmp_path):
+    """S16 补充：StateView 写透经真实 FileRecordStore 落盘并可恢复（合并语义）。"""
+    path = tmp_path / "state.jsonl"
+    store = FileRecordStore(path, merge_last_line=True)
+    view = _open_view(store)
+    view._register("n", 0)
+    view.n = 1
+    view.n += 1
+    await view._close()
+    # 重放恢复（模拟 recover 装袋）
+    store2 = FileRecordStore(path, merge_last_line=True)
+    records = list(store2.replay())
+    assert records == [{"op": "set", "key": "n", "value": 2}]  # 末行合并生效
+    view2 = _open_view(store2)
+    view2._register("n", 0)
+    for r in records:
+        view2._persisted[r["key"]] = r["value"]
+    assert view2.n == 2
+    await view2._close()

@@ -1043,10 +1043,16 @@ class StateView:
           ``flowing.runtime.Runtime`` 引导重放收尾 / ``shutdown()``、
           :meth:`__setitem__` / :meth:`__delitem__`（时机：三时点）
         """
-        # force 或 _lines_since_compact >= _compact_threshold 时：
-        # terminal_records = _persisted 逐键 {"op": "set", ...}
-        # -> _store.compact(terminal_records)；_lines_since_compact = 0
-        ...
+        if not force and self._lines_since_compact < self._compact_threshold:
+            return  # 未达阈值且非 force：热路径开销仅一次计数比较
+        # 终态计算：仅 _persisted 持久值（defaults 不落盘原则不变）
+        terminal_records = [
+            {"op": "set", "key": k, "value": v} for k, v in self._persisted.items()
+        ]
+        # 经 sync 动词提交（spec 注释中的 _store.compact 即 sync——
+        # RecordStore 五动词定稿名）；物理重写归后端 drain 任务
+        self._store.sync(terminal_records)
+        object.__setattr__(self, "_lines_since_compact", 0)
 
     def __getattr__(self, key: str) -> Any:
         """属性式读（key 须为合法标识符；语义同 ``__getitem__``）。
@@ -1090,7 +1096,14 @@ class StateView:
         # 内部字段访问一律走 object.__getattribute__（__getattr__ 拦截
         # 一切缺失属性，直接 self._persisted 在 __init__ 完成前会递归
         # 回本方法——自举死循环护栏）
-        ...
+        persisted = object.__getattribute__(self, "_persisted")
+        defaults = object.__getattribute__(self, "_defaults")
+        # 写闸门未开时读仅见 defaults 不见持久值（重放尚未执行，见写闸门条）
+        if object.__getattribute__(self, "_write_gate_open") and key in persisted:
+            return persisted[key]
+        if key in defaults:
+            return defaults[key]
+        raise KeyError(key)
     def __setitem__(self, key: str, value: Any) -> None:
         """写透落盘（见类 docstring 行为规约）。
 
@@ -1107,16 +1120,35 @@ class StateView:
           fire-and-forget 不 await）
         - 被调：无（运算符协议方法；写闸门约束见类 docstring）
         """
-        # 写闸门检查（_write_gate_open 未开 -> 抛错）-> JSON 可序列化校验
-        # （fail fast）-> _persisted[key] = value -> _store.submit(
-        # {"op": "set", "key", "value"})（同步排队即返；末行合并等物理
-        # 策略在 FileRecordStore 内部）-> _lines_since_compact += 1
-        # -> _maybe_compact()（阈值判定，超阈即提交压缩请求）
-        # -> owner 非空且 owner.hooks 已建立（__dict__.get 护栏）时：
-        #    构造 FieldUpdate(name=key, old=写前读值, new=value)，局部导入
-        #    flowing.agent.FieldUpdate 破环，调用 owner.hooks._notify_watch(
-        #    owner, fu)（无运行中 loop -> 静默跳过，写照常）
-        ...
+        # 写闸门检查（X10：管线时序编程错误，内置 RuntimeError，无 spec 具名类型）
+        if not self._write_gate_open:
+            raise RuntimeError(
+                f"state view write gate is closed (key={key!r}): "
+                "writes are allowed only after the create/recover pipeline unlocks it"
+            )
+        json.dumps(value)  # X11：JSON 可序列化校验 fail fast，原样抛 TypeError
+        old = self.get(key)  # watcher 快照的写前读值（持久值 ?? default ?? None）
+        self._persisted[key] = value
+        # 同步排队即返；末行合并等物理策略在 FileRecordStore 内部
+        self._store.submit({"op": "set", "key": key, "value": value})
+        object.__setattr__(self, "_lines_since_compact", self._lines_since_compact + 1)
+        self._maybe_compact()  # 阈值判定，超阈即提交压缩请求
+        # watcher 通道调用点预留（真 dispatch 归 L1 hooks + L3 agent）：
+        # owner 非空且 owner.hooks 已建立（__dict__.get 护栏）时，
+        # fire-and-forget 通知属主 watcher 通道；无运行中 loop -> 静默跳过
+        owner = self._owner
+        hooks = owner.__dict__.get("hooks") if owner is not None else None
+        if hooks is not None:
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                pass  # 无运行中 loop：静默跳过，写照常
+            else:
+                from flowing.agent import FieldUpdate  # 局部导入破环
+
+                hooks._notify_watch(
+                    owner, FieldUpdate(name=key, old=old, new=value)
+                )
     def __delitem__(self, key: str) -> None:
         """删除持久值；之后读回退到 default（若有）。
 
@@ -1125,11 +1157,19 @@ class StateView:
         - 调用：无
         - 被调：无（运算符协议方法，由 ``del`` 语句隐式触发）
         """
-        # 写闸门检查 -> _persisted.pop(key, None) -> _store.submit(
-        # {"op": "delete", "key"})（末行 set k 紧跟 delete k 时的截尾
-        # 优化在 FileRecordStore 内部）-> _lines_since_compact += 1
-        # -> _maybe_compact()；之后读回退到 _defaults（若有）
-        ...
+        # 写闸门检查（同 __setitem__，X10）
+        if not self._write_gate_open:
+            raise RuntimeError(
+                f"state view write gate is closed (key={key!r}): "
+                "writes are allowed only after the create/recover pipeline unlocks it"
+            )
+        self._persisted.pop(key, None)
+        # 末行 set k 紧跟 delete k 时的截尾优化在 FileRecordStore 内部
+        self._store.submit({"op": "delete", "key": key})
+        object.__setattr__(self, "_lines_since_compact", self._lines_since_compact + 1)
+        self._maybe_compact()
+        # 之后读回退到 _defaults（若有）；del 不触发 watcher（与
+        # Agent.__delattr__ 同律——删除不是赋值事件）
     def __contains__(self, key: str) -> bool:
         """key 有持久值或注册默认值即视为存在。
 
