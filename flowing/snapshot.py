@@ -155,6 +155,7 @@
 
 from __future__ import annotations   # S-43 裁决③：注解延迟求值（snapshot→agent 为注解级边）
 
+from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -162,6 +163,7 @@ if TYPE_CHECKING:
     from flowing.context import ContextUsageEstimate   # 注解级引用（context 不 import snapshot，无环）
 
 
+@dataclass  # R-8 落实：字段注解 + 无构造签名的 spec 类一律 dataclass 化
 class NodeInfo:
     """Runtime 对象图中单个节点（ProvideNode）的只读元信息视图。
 
@@ -213,6 +215,7 @@ class NodeInfo:
     """
 
 
+@dataclass  # R-8 落实：字段注解 + 无构造签名的 spec 类一律 dataclass 化
 class AgentInfo:
     """agent 池注册表单条元数据的只读视图。
 
@@ -277,6 +280,7 @@ class AgentInfo:
     """
 
 
+@dataclass  # R-8 落实：字段注解 + 无构造签名的 spec 类一律 dataclass 化
 class ExecutionInfo:
     """单个活跃执行条目（Execution）的只读视图。
 
@@ -338,6 +342,7 @@ class ExecutionInfo:
     """
 
 
+@dataclass  # R-8 落实：字段注解 + 无构造签名的 spec 类一律 dataclass 化
 class EntryInfo:
     """能力绑定条目（ToolEntry / SubagentEntry）的只读视图。
 
@@ -398,6 +403,7 @@ class EntryInfo:
     """
 
 
+@dataclass  # R-8 落实：字段注解 + 无构造签名的 spec 类一律 dataclass 化
 class ModelInfo:
     """``self.model``（ModelConfig）解析结果的只读视图。
 
@@ -470,6 +476,7 @@ class ModelInfo:
     """
 
 
+@dataclass  # R-8 落实：字段注解 + 无构造签名的 spec 类一律 dataclass 化
 class TurnContextInfo:
     """当前逻辑 turn（TurnContext）的只读视图。
 
@@ -542,6 +549,7 @@ class TurnContextInfo:
     """
 
 
+@dataclass  # R-8 落实：字段注解 + 无构造签名的 spec 类一律 dataclass 化
 class MessageTreeInfo:
     """消息级树的规模与游标只读视图。
 
@@ -595,6 +603,7 @@ class MessageTreeInfo:
     """
 
 
+@dataclass  # R-8 落实：字段注解 + 无构造签名的 spec 类一律 dataclass 化
 class MessageQueueInfo:
     """消息队列规模的只读视图。
 
@@ -646,6 +655,7 @@ class MessageQueueInfo:
     """
 
 
+@dataclass  # R-8 落实：字段注解 + 无构造签名的 spec 类一律 dataclass 化
 class RuntimeSnapshot:
     """Runtime 的一致性只读快照：``runtime.snapshot()`` 的返回类型。
 
@@ -746,6 +756,7 @@ class RuntimeSnapshot:
     """
 
 
+@dataclass  # R-8 落实：字段注解 + 无构造签名的 spec 类一律 dataclass 化
 class AgentSnapshot:
     """单个 Agent 的一致性只读快照：``agent.snapshot()`` 的返回类型。
 
