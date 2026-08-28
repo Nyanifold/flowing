@@ -162,7 +162,8 @@ inject）**不会**在运行期被框架拦截——泛型是给静态检查器�
 """
 
 import copy
-from typing import Any, Generic, Mapping, TypeVar
+import re
+from typing import Any, Generic, Literal, Mapping, TypeVar
 
 from pydantic import BaseModel, Field
 
@@ -210,7 +211,72 @@ def _parse_type_expr(expr: str) -> dict:
     嵌套与联合可组合（``list[str | None]``）。无法解析 →
     :class:`flowing.errors.FormatError`（fail-fast）。
     """
-    ...
+    # 微型递归下降解析器。规约未写清处（就地裁决）：
+    # - 联合成员仅限裸名——JSON Schema 的 type 数组只接受类型名，泛型
+    #   schema（array/object 片段）进不了数组，联合中出现泛型成员属
+    #   超子集 → FormatError；
+    # - 未知裸名同样 fail-fast（typo 必须死在装配期，不静默降级 Any）。
+    text = expr.strip()
+    if not text:
+        raise FormatError("类型表达式为空")
+    members = _split_top_level(text, "|")
+    if len(members) > 1:
+        names: list[str] = []
+        for member in members:
+            frag = _parse_type_expr(member)
+            t = frag.get("type")
+            if not isinstance(t, str):  # 泛型成员不能进 JSON Schema type 数组
+                raise FormatError(f"联合类型成员必须是裸类型名，收到: {member!r}")
+            names.append(t)
+        return {"type": names}
+    m = re.fullmatch(r"([A-Za-z_][A-Za-z0-9_]*)(?:\[(.*)\])?", text, flags=re.S)
+    if not m:
+        raise FormatError(f"无法解析类型表达式: {expr!r}")
+    base, args_src = m.group(1), m.group(2)
+    if base in ("None", "null"):
+        return {"type": "null"}
+    base_norm = TYPE_ALIASES.get(base, base)
+    if args_src is None:
+        if base_norm in ("string", "integer", "number", "boolean", "array", "object"):
+            return {"type": base_norm}
+        raise FormatError(f"未知类型名: {base!r}")
+    args = _split_top_level(args_src, ",")
+    if base_norm == "array":
+        if len(args) != 1:
+            raise FormatError(f"list 泛型需恰好一个参数: {expr!r}")
+        return {"type": "array", "items": _parse_type_expr(args[0])}
+    if base_norm == "object":
+        if len(args) != 2:
+            raise FormatError(f"dict 泛型需恰好两个参数: {expr!r}")
+        _parse_type_expr(args[0])  # 键值类型只校验可解析性，不进入 schema
+        _parse_type_expr(args[1])
+        return {"type": "object"}
+    raise FormatError(f"类型 {base!r} 不支持泛型参数: {expr!r}")
+
+
+def _split_top_level(text: str, sep: str) -> list[str]:
+    """按顶层分隔符切分（``[...]`` 嵌套内的分隔符不切）。内部 API。"""
+    parts: list[str] = []
+    depth = 0
+    current: list[str] = []
+    for ch in text:
+        if ch == "[":
+            depth += 1
+        elif ch == "]":
+            depth -= 1
+            if depth < 0:
+                raise FormatError(f"类型表达式方括号不配对: {text!r}")
+        if ch == sep and depth == 0:
+            parts.append("".join(current))
+            current = []
+        else:
+            current.append(ch)
+    if depth != 0:
+        raise FormatError(f"类型表达式方括号不配对: {text!r}")
+    parts.append("".join(current))
+    if any(not p.strip() for p in parts):
+        raise FormatError(f"类型表达式含空段: {text!r}")
+    return parts
 
 # 桥接子集：本表之外的关键字出现在 property 中 → schema_to_model fail-fast
 SCHEMA_KEYWORDS: frozenset[str] = frozenset({
@@ -319,7 +385,8 @@ def schema_to_model(name: str, properties: Mapping[str, dict[str, Any]]) -> type
     .. rubric:: 调用关系（审计）
 
     - 调用：``pydantic.create_model``（每次调用）；:data:`SCHEMA_KEYWORDS`
-      子集检查
+      子集检查；:func:`_parse_type_expr`（``type`` 为含 ``|`` / ``[ ]``
+      的复合表达式时展开）
     - 被调：``.fya`` 装配层（声明期）、``flowing.tool.ToolDefinition``
       （补丁后最终模型重建）
 
@@ -327,20 +394,57 @@ def schema_to_model(name: str, properties: Mapping[str, dict[str, Any]]) -> type
         :func:`apply_param_overrides`（补丁应用）
     """
     from pydantic import create_model  # 动态建模入口（S-36 库符号具名）
+
     type_map: dict[str, type] = {
         "string": str, "integer": int, "number": float,
         "boolean": bool, "array": list, "object": dict,
+    }
+
+    def _fragment_py_type(fragment: dict) -> Any:
+        """``_parse_type_expr`` 产物（或原生 property 的 type 段）→ Python 类型。"""
+        t = fragment.get("type")
+        if t is None:
+            return Any
+        if isinstance(t, list):  # [T, "null"] 可空形态 → T | None
+            rest = [x for x in t if x != "null"]
+            # 多成员非 null 联合（如 [string, integer]）超出 Python 侧
+            # 表达精度 → Any（子集只承诺 [T, "null"] 形态）
+            base = type_map.get(rest[0], Any) if len(rest) == 1 else Any
+            if len(rest) != len(t) and base is not Any:
+                return base | None
+            return base
+        return type_map.get(t, Any)
+
+    # 约束子集 → pydantic.Field 关键字映射（items/properties 只影响类型
+    # 层面（array/object），不进 Field；enum → Literal 在类型层面处理）
+    _FIELD_KW: dict[str, str] = {
+        "minimum": "ge", "maximum": "le",
+        "minLength": "min_length", "maxLength": "max_length",
+        "pattern": "pattern", "description": "description",
     }
     fields: dict[str, Any] = {}
     for pname, prop in properties.items():
         invalid = set(prop) - set(SCHEMA_KEYWORDS)
         if invalid:   # 超子集 fail-fast（声明块与覆写补丁共用检查点）
             raise FormatError(f"参数 {pname!r} 含超出桥接子集的关键字: {sorted(invalid)}")
-        type_name = TYPE_ALIASES.get(str(prop.get("type")), prop.get("type"))   # 别名归一；含 |/[ ] 的复合形态经 _parse_type_expr 展开
-        py_type: Any = type_map.get(type_name, Any)   # [T,"null"] 可空形态/{} any 的映射细节从简
-        constraints: dict[str, Any] = {k: prop[k] for k in prop if k not in ("type", "default")}
+        raw_type = prop.get("type")
+        if raw_type is None:
+            py_type: Any = Any   # {} 空 property → Any（匹配一切）
+        elif isinstance(raw_type, str) and ("|" in raw_type or "[" in raw_type):
+            py_type = _fragment_py_type(_parse_type_expr(raw_type))   # 复合类型表达式展开
+        else:
+            # 裸名（含 [T, "null"] 可空列表形态）：先别名归一（type: str ≡ type: string）
+            fragment = {"type": raw_type} if isinstance(raw_type, list) else {
+                "type": TYPE_ALIASES.get(str(raw_type), raw_type)
+            }
+            py_type = _fragment_py_type(fragment)
+        if "enum" in prop:
+            py_type = Literal[tuple(prop["enum"])]   # enum → Literal（校验交 Pydantic）
+        constraints: dict[str, Any] = {dst: prop[src] for src, dst in _FIELD_KW.items() if src in prop}
         if "default" in prop:
             fields[pname] = (py_type, Field(default=prop["default"], **constraints))
+        elif constraints:
+            fields[pname] = (py_type, Field(**constraints))   # 必填 + 约束
         else:
             fields[pname] = (py_type, ...)   # 无 default → 必填
     Model: type[BaseModel] = create_model(name, **fields)
