@@ -191,14 +191,20 @@ resolve → Jinja2 拿到 ``self.system_prompt``（一个 Parsable）→
         本模块输出契约的生产方（内部 API，不属稳定契约）。
 """
 
+from __future__ import annotations  # R-1：注解延迟求值，ToolDefinition 仅 TYPE_CHECKING 引用
+
 from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from flowing.lists import ManagedList
 from flowing.message import Message
 from flowing.parsable import Parsable
-from flowing.tool import ToolDefinition
+
+if TYPE_CHECKING:
+    # R-1（S-43 裁决③先例）：tool.py 属 L4（阶段 3），本期只做注解级引用，
+    # 运行期不需要真实类（dataclass 字段注解惰性求值）
+    from flowing.tool import ToolDefinition
 
 
 @dataclass
@@ -701,30 +707,18 @@ class PromptBlockList(ManagedList[PromptBlock]):
 
         非行为：不删除元素、不求值、不触发任何钩子。
 
-        :return: 受影响元素数（C-11 裁决：与 `ManagedList` 父类统一
-          返回 ``int``，便于「回收了多少块」类管理面自省）。
-
-        .. rubric:: 测试案例
-
-        - 前置：两块带 ``tags=["g"]``，一块不带。操作：
-          ``disable_by_tag("g")``。期望：两块 enabled=False 且位置
-          不变；第三块不受影响；返回 2；再次调用结果相同（返回 2）。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：无
-        - 被调：无（框架内未见调用方；skills 管理面示例
-          ``prompt_blocks.disable_by_tag("skill.catalog")`` 属应用
-          操作，不列）
-
-        .. seealso::
-
-            :meth:`enable_by_tag`
-                逆操作。
-            :class:`flowing.lists.ManagedList`
-                分组语义来源。
+        :return: 匹配元素数（int）。计数口径注记：本模块的测试案例要求
+          重复调用返回相同计数（``disable_by_tag("g")`` 两次均返回 2），
+          与 ``lists.ManagedList`` 的「本次新置数」口径不同——本类四个
+          ``enable_*`` / ``disable_*`` 按**匹配数**计数（对已处目标状态的
+          匹配块是状态幂等 no-op，但仍计入返回数）；``remove_*`` 两口径
+          天然一致（删除后不再匹配），沿用父类实现。
         """
-        return super().disable_by_tag(tag)  # 分组语义由 ManagedList.disable_by_tag 承载；返回受影响数
+        # 匹配数口径（见 docstring 注记）：已 disabled 的匹配块仍计入
+        matched = [b for b in self._items if tag in b.tags]
+        for b in matched:
+            b.enabled = False  # 只翻 enabled，元素保留原位、顺序不变
+        return len(matched)
 
     def enable_by_tag(self, tag: str) -> int:
         """按标签重新启用块（恢复原注册顺序位置）。
@@ -772,7 +766,11 @@ class PromptBlockList(ManagedList[PromptBlock]):
             :meth:`disable_by_tag`
                 逆操作。
         """
-        return super().enable_by_tag(tag)  # 分组语义由 ManagedList.enable_by_tag 承载；返回受影响数
+        # 匹配数口径（同 disable_by_tag 的注记）
+        matched = [b for b in self._items if tag in b.tags]
+        for b in matched:
+            b.enabled = True
+        return len(matched)
 
     def enable_by_owner(self, owner: str) -> int:
         """按属主（``by``）重新启用块（恢复原注册顺序位置）。
@@ -791,7 +789,11 @@ class PromptBlockList(ManagedList[PromptBlock]):
             :meth:`disable_by_owner`
                 逆操作。
         """
-        return super().enable_by_owner(owner)  # 分组语义由 ManagedList.enable_by_owner 承载；返回受影响数
+        # 匹配数口径（同 disable_by_tag 的注记）；owner="" 命中省略 by 的块（C-11）
+        matched = [b for b in self._items if b.by == owner]
+        for b in matched:
+            b.enabled = True
+        return len(matched)
 
     def remove_by_tag(self, tag: str) -> int:
         """按标签物理删除块（不可逆）。
@@ -898,7 +900,11 @@ class PromptBlockList(ManagedList[PromptBlock]):
             :attr:`PromptBlock.by`
                 属主字段约定。
         """
-        return super().disable_by_owner(owner)  # 分组语义由 ManagedList.disable_by_owner 承载；返回受影响数
+        # 匹配数口径（同 disable_by_tag 的注记）
+        matched = [b for b in self._items if b.by == owner]
+        for b in matched:
+            b.enabled = False
+        return len(matched)
 
     def remove_by_owner(self, owner: str) -> int:
         """按属主（``by``）物理删除块（不可逆）。
@@ -1325,4 +1331,6 @@ class ContextUsageEstimate:
         - **不 clamp**：``> 1.0`` 是合法的溢出信号（kimi-code SDK 同口径），
           观测方自行决定阈值反应；本属性不做任何判断。
         """
-        ...
+        if self.context_window is None:
+            return None  # 窗口未知 → None
+        return self.tokens / self.context_window
