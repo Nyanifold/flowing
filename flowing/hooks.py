@@ -320,12 +320,17 @@ value 类型与语义与 :class:`flowing.agent.Agent` 各方法的 dispatch 时�
 import asyncio
 import fnmatch
 import inspect
+import logging
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeAlias, TypeVar, overload
 
 if TYPE_CHECKING:
     from flowing.agent import Agent
+
+_logger = logging.getLogger(__name__)
+"""模块级 logger：Intercepted 重抛的 INFO 日志点与 watcher 异常记录点共用
+（规约只要求「记录日志」，未具名 logger 符号）。"""
 
 __all__ = [
     "HookRegistry",
@@ -836,15 +841,22 @@ class HookList(ManagedList[HookEntry]):
         import fnmatch
         import inspect
 
-        from flowing.errors import FlowingError
+        from flowing.errors import FlowingError, Intercepted
 
         for entry in self:  # 经 ManagedList.__iter__：跳过 enabled=False
             if entry.pattern is not None:  # 条件：pattern 条目先过滤
                 if not fnmatch.fnmatch(getattr(value, self.match_on), entry.pattern):
                     continue  # 不匹配 → 跳过，value 原样透传
-            result = entry.handler(agent, value)
-            if inspect.isawaitable(result):  # 条件：sync/async handler 透明混用（M-37）
-                result = await result
+            try:
+                result = entry.handler(agent, value)
+                if inspect.isawaitable(result):  # 条件：sync/async handler 透明混用（M-37）
+                    result = await result
+            except Intercepted as exc:
+                # Intercepted：捕获后立即重抛——链停止、后续 handler 不执行、
+                # 不当错误处理（INFO 级日志，非 ERROR）
+                _logger.info("hook %r intercepted: %s", self.name, exc)
+                raise
+            # 普通异常不经本 except：直接上抛，不捕获、不通知、无兜底钩子
             if value is not None and result is None:
                 # 携带 value 的钩子点：handler 不 return 视为编程错误
                 raise FlowingError(
@@ -853,8 +865,6 @@ class HookList(ManagedList[HookEntry]):
             value = result
             if getattr(value, "shortcut", None) is not None:
                 return value  # 协商短路——链停止，after_ 钩子由调用方保证照常触发
-            # 异常路径：Intercepted 捕获后立即重抛（INFO 级日志点，logger 未具名）；
-            # 普通异常直接上抛，不捕获、不通知、无兜底钩子
         return value
 
 
@@ -1137,7 +1147,8 @@ class HookRegistry:
                     if inspect.isawaitable(result):
                         await result
                 except Exception:
-                    pass   # 观察者异常只记录日志，不影响赋值/写透
+                    # 观察者异常只记录日志，不影响后续 watcher 与赋值/写透
+                    _logger.exception("watcher %r raised for %r", pattern, getattr(value, "name", ""))
         asyncio.ensure_future(_run_watch())
 
     def __getattr__(self, name: str) -> HookList:
