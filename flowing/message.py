@@ -165,10 +165,13 @@ SUBAGENT   独立消息，XML 包裹（格式 adapter 定）  user       同左
 from __future__ import annotations   # S-43 裁决③：注解延迟求值（message→model 为注解级边）
 
 import enum
+import json
+import math
 from collections.abc import Callable
-from dataclasses import dataclass
-from datetime import datetime
+from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Literal
+from uuid import uuid4
 
 if TYPE_CHECKING:
     from flowing.providers import Usage   # 注解级引用（message→providers 为注解级边，无环）
@@ -191,6 +194,8 @@ __all__ = [
     "MessageChain",
     "MEDIA_TOKEN_ESTIMATE",
     "estimate_message_tokens",
+    "to_record",
+    "from_record",
 ]
 
 
@@ -405,7 +410,7 @@ class MessagePriority(enum.IntEnum):
     """
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ContentBlock:
     """消息内容片段基类：``type`` 字段判别「这一段是什么」（八种 type）.
 
@@ -448,14 +453,14 @@ class ContentBlock:
        :class:`flowing.message.Message`、:mod:`flowing.model`（adapter 逐 type 映射）。
     """
 
-    type: str
+    type: str = ""
     """片段类型判别，八值之一：``"text" | "thinking" | "tool_call" | "struct" |
     "image" | "video" | "audio" | "file"``。子类将其收窄为对应的 ``Literal``。
     序列化时作为 ``tree.jsonl`` 行内 content 项的判别字段。
     """
 
 
-@dataclass
+@dataclass(kw_only=True)
 class TextBlock(ContentBlock):
     """纯文本内容块.
 
@@ -495,7 +500,7 @@ class TextBlock(ContentBlock):
        :class:`flowing.message.ContentBlock`、:meth:`flowing.agent.Agent.message`。
     """
 
-    type: Literal["text"]
+    type: Literal["text"] = "text"
     """固定为 ``"text"``。
     """
     text: str
@@ -503,7 +508,7 @@ class TextBlock(ContentBlock):
     """
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ThinkingBlock(ContentBlock):
     """LLM 思考 / 推理过程内容块.
 
@@ -535,7 +540,7 @@ class ThinkingBlock(ContentBlock):
        :class:`flowing.message.ContentBlock`、:class:`flowing.providers.ProviderDelta`。
     """
 
-    type: Literal["thinking"]
+    type: Literal["thinking"] = "thinking"
     """固定为 ``"thinking"``。
     """
     thinking: str
@@ -546,7 +551,7 @@ class ThinkingBlock(ContentBlock):
     """
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ToolCallBlock(ContentBlock):
     """工具调用请求内容块（LLM 侧）.
 
@@ -597,7 +602,7 @@ class ToolCallBlock(ContentBlock):
        :meth:`flowing.agent.Agent.tool_call`。
     """
 
-    type: Literal["tool_call"]
+    type: Literal["tool_call"] = "tool_call"
     """固定为 ``"tool_call"``。
     """
     id: str
@@ -612,7 +617,7 @@ class ToolCallBlock(ContentBlock):
     """
 
 
-@dataclass
+@dataclass(kw_only=True)
 class StructBlock(ContentBlock):
     """结构数据内容块：对程序是结构、对 LLM 是 dumps 文本（D18）.
 
@@ -658,7 +663,7 @@ class StructBlock(ContentBlock):
        :class:`flowing.tool.ToolResult`。
     """
 
-    type: Literal["struct"]
+    type: Literal["struct"] = "struct"
     """固定为 ``"struct"``。
     """
     data: Any
@@ -667,11 +672,15 @@ class StructBlock(ContentBlock):
     """
 
     def __post_init__(self) -> None:
-        # 结构示意：校验 data 为 JSON 兼容（json.dumps 可序列化），违反 → ValueError。
-        ...
+        # 校验 data 为 JSON 兼容（json.dumps 可序列化），违反 → ValueError
+        # （作者 bug 的诚实失败点，见本类行为规约）
+        try:
+            json.dumps(self.data)
+        except TypeError as e:
+            raise ValueError(f"StructBlock.data 必须是 JSON 兼容结构: {e}") from e
 
 
-@dataclass
+@dataclass(kw_only=True)
 class MediaBlock(ContentBlock):
     """媒体内容块基类：``data`` base64 **必填**且为权威表示.
 
@@ -743,7 +752,7 @@ class MediaBlock(ContentBlock):
     """
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ImageBlock(MediaBlock):
     """图像内容块（单帧静态，多模态视觉输入）.
 
@@ -770,12 +779,12 @@ class ImageBlock(MediaBlock):
        :class:`flowing.message.MediaBlock`、:class:`flowing.message.VideoBlock`。
     """
 
-    type: Literal["image"]
+    type: Literal["image"] = "image"
     """固定为 ``"image"``。
     """
 
 
-@dataclass
+@dataclass(kw_only=True)
 class VideoBlock(MediaBlock):
     """视频内容块（时间维度连续帧）.
 
@@ -801,12 +810,12 @@ class VideoBlock(MediaBlock):
        :class:`flowing.message.MediaBlock`、:class:`flowing.message.ImageBlock`。
     """
 
-    type: Literal["video"]
+    type: Literal["video"] = "video"
     """固定为 ``"video"``。
     """
 
 
-@dataclass
+@dataclass(kw_only=True)
 class AudioBlock(MediaBlock):
     """音频内容块（需要语音理解时使用）.
 
@@ -831,12 +840,12 @@ class AudioBlock(MediaBlock):
        :class:`flowing.message.MediaBlock`、:class:`flowing.message.FileBlock`。
     """
 
-    type: Literal["audio"]
+    type: Literal["audio"] = "audio"
     """固定为 ``"audio"``。
     """
 
 
-@dataclass
+@dataclass(kw_only=True)
 class FileBlock(MediaBlock):
     """文件内容块（不直接可读的二进制或大型结构化数据）.
 
@@ -866,7 +875,7 @@ class FileBlock(MediaBlock):
        :class:`flowing.message.MediaBlock`、:class:`flowing.message.StructBlock`。
     """
 
-    type: Literal["file"]
+    type: Literal["file"] = "file"
     """固定为 ``"file"``。
     """
 
@@ -998,56 +1007,58 @@ class Message:
     """内容片段列表（不同 type 交错排列），见 :class:`ContentBlock`。**必填**。
     TOOL 消息中只装纯内容块（text / struct / 媒体），无协议块。
     """
-    tool_call_id: str | None = ...
+    tool_call_id: str | None = None
     """配对锚（默认 ``None``）：**仅 ``kind=TOOL`` 非 None**，值为对应 PROVIDER
     消息 :attr:`ToolCallBlock.id`；由 ``Agent.tool_call`` 管线在
     ``ToolResult.as_message`` 时接线（C-05 裁决）。``__post_init__`` 双向强制。
     """
-    tool_status: Literal["completed", "pending", "blocked", "error"] | None = ...
+    tool_status: Literal["completed", "pending", "blocked", "error"] | None = None
     """工具结果状态四值（默认 ``None``）：**仅 ``kind=TOOL`` 非 None**。
     用内联 ``Literal`` 而非 import ``flowing.tool.ToolStatus``——避免
     message↔tool 循环依赖（「tool 认识 message、message 不认识 tool」单向依赖）。
     ``__post_init__`` 双向强制。
     """
-    id: str = ...
+    id: str = field(default_factory=lambda: uuid4().hex)
     """全局唯一消息 id（默认 UUID），同时是消息级树的节点 id；
     ``enqueue_message`` 的返回值与 ``_pending_turns`` 的绑定键。
     """
-    parent_id: str | None = ...
+    parent_id: str | None = None
     """消息级父链：``None`` = 根标记（森林模型，一棵树允许多个根——新根经
     ``MessageChain.branch(None, msg)`` 开启）；挂树时由 ``_append_message``
     设置（首条链到 ``current_head_id``，后续链到上一条）。
     fork 目标、上下文上溯、恢复重建的唯一依据。
     """
-    turn_end: bool = ...
+    turn_end: bool = False
     """「逻辑 turn 关闭」边界标记（默认 ``False``）；仅 PROVIDER 消息上有语义。
     **agent 层写入**（``_run_turn`` 挂树时：turn 随本条消息关闭——自然
     ``finish`` 或取消/abort——→ ``True``），与 provider 层的
     ``ProviderResponse.finish`` 分层（S-14）。恢复时定位完整 turn 边界
     与 ``current_head_id`` 锚点的依据。
     """
-    partial: bool = ...
+    partial: bool = False
     """流式中断标记（默认 ``False``）；``True`` 表示该消息内容不完整但保留落盘。
     """
-    synthetic: bool = ...
+    synthetic: bool = False
     """合成占位标记（默认 ``False``）；仅恢复流程为孤立 tool_call 合成的
     占位 TOOL 消息（``tool_status="error"`` + ``TextBlock`` 占位说明）为 ``True``。
     """
-    source: str = ...
+    source: str = ""
     """二级分类自由字符串（默认 ``""``；框架不枚举，投递方填写），
     典型值 ``"tool_result"`` / ``"scheduled_task"`` / ``"message_to"``。
     """
-    tags: list[str] = ...
+    tags: list[str] = field(default_factory=list)
     """任意标签列表（默认空），用于分组 / 过滤 / 清洗（如 reminder 清洗）。
     """
-    priority: MessagePriority = ...
+    priority: MessagePriority = MessagePriority.NORMAL
     """队列排序依据（默认 ``MessagePriority.NORMAL``）；仅对入队消息有调度效果。
     """
-    timestamp: datetime = ...
+    timestamp: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None)
+    )
     """产生时间戳（默认构造时的当前 UTC），**时区无关**；附着于消息供查询 /
     日志 / 审计 / 排序，是否进 LLM 上下文由 adapter 决定。
     """
-    usage: Usage | None = ...
+    usage: Usage | None = None
     """本消息对应的 provider 实测用量（默认 ``None``）。**仅 PROVIDER 消息
     携带**：adapter 构造响应消息时附着（见 ``flowing.providers.Provider``
     契约；``ProviderResponse`` **不携带** usage——本字段是唯一权威
@@ -1060,10 +1071,132 @@ class Message:
     """
 
     def __post_init__(self) -> None:
-        # 结构示意：双向强制——kind == MessageKind.TOOL ⟺ tool_call_id 与
+        # 双向强制——kind == MessageKind.TOOL ⟺ tool_call_id 与
         # tool_status 均非 None；违反 → ValueError（孤儿结果消灭在构造点）。
         # 既有 kind 条件字段（turn_end / synthetic / priority）不追溯校验。
-        ...
+        if self.kind is MessageKind.TOOL:
+            if self.tool_call_id is None or self.tool_status is None:
+                raise ValueError(
+                    "kind=TOOL 的消息必须携带 tool_call_id 与 tool_status"
+                )
+        elif self.tool_call_id is not None or self.tool_status is not None:
+            raise ValueError(
+                "tool_call_id / tool_status 仅 kind=TOOL 的消息可携带"
+            )
+
+
+# ---------------------------------------------------------------------------
+# 消息 ↔ 持久化行（X2：行格式 schema 的唯一序列化点，L3 _persist_message 复用）
+# ---------------------------------------------------------------------------
+
+_BLOCK_TYPES: dict[str, type[ContentBlock]] = {
+    "text": TextBlock,
+    "thinking": ThinkingBlock,
+    "tool_call": ToolCallBlock,
+    "struct": StructBlock,
+    "image": ImageBlock,
+    "video": VideoBlock,
+    "audio": AudioBlock,
+    "file": FileBlock,
+}
+"""序列化判别表：行内 content 项的 ``type`` 字段 → 块类。"""
+
+
+def _block_to_record(block: ContentBlock) -> dict:
+    """ContentBlock → 行内 content 项（含 ``type`` 判别字段）。"""
+    return asdict(block)
+
+
+def _block_from_record(data: dict) -> ContentBlock:
+    """行内 content 项 → ContentBlock（按 ``type`` 判别字段分派）。"""
+    try:
+        cls = _BLOCK_TYPES[data["type"]]
+    except KeyError:
+        raise ValueError(f"未知的 content block type: {data.get('type')!r}") from None
+    return cls(**data)
+
+
+def to_record(msg: Message) -> dict:
+    """``Message`` → ``tree.jsonl`` 消息行（JSON 兼容 dict）。
+
+    .. rubric:: 功能介绍
+
+    消息对象 ↔ 行映射的**唯一序列化点**（X2 落实：spec 把行格式的字段级
+    schema 归属持久化规约，本模块只约束映射语义——本期将 schema 冻结在
+    本函数与 :func:`from_record` 一对中，L3 ``Agent._persist_message``
+    以本函数为唯一序列化点）。
+
+    .. rubric:: 行为规约
+
+    - schema：``{"type": "message", "id", "parent_id", "kind": <字符串值>,
+      "content": [{"type", ...}], "tool_call_id", "tool_status", "turn_end",
+      "partial", "synthetic", "source", "tags", "priority": <int>,
+      "timestamp": <ISO 8601>, "usage": None}``。
+    - ``kind`` 落盘为枚举字符串值；``priority`` 落盘为枚举数值；
+      ``timestamp`` 落盘为 ISO 格式（naive UTC）。
+    - ``usage`` 本期恒序列化为 ``None``——``providers.Usage`` 类型 L3
+      才接通，恢复端容忍缺省（X2）；接通后只需改本函数与
+      :func:`from_record` 两处。
+
+    .. rubric:: 调用关系（审计）
+
+    - 调用：``_block_to_record``（逐 content 块）
+    - 被调：L3 ``flowing.agent.Agent._persist_message``（时机：每次
+      挂树落盘）；本期由测试直接驱动
+    """
+    return {
+        "type": "message",
+        "id": msg.id,
+        "parent_id": msg.parent_id,
+        "kind": msg.kind.value,
+        "content": [_block_to_record(b) for b in msg.content],
+        "tool_call_id": msg.tool_call_id,
+        "tool_status": msg.tool_status,
+        "turn_end": msg.turn_end,
+        "partial": msg.partial,
+        "synthetic": msg.synthetic,
+        "source": msg.source,
+        "tags": list(msg.tags),
+        "priority": int(msg.priority),
+        "timestamp": msg.timestamp.isoformat(),
+        "usage": None,  # Usage 接通归 L3（X2），恢复端容忍缺省
+    }
+
+
+def from_record(record: dict) -> Message:
+    """``tree.jsonl`` 消息行 → ``Message``（:func:`to_record` 的逆映射）。
+
+    .. rubric:: 行为规约
+
+    - 要求 ``record["type"] == "message"``，否则 ``ValueError``。
+    - 逐字段还原（``kind`` / ``priority`` 重建为枚举，``timestamp``
+      经 ``datetime.fromisoformat`` 还原）；``usage`` 恒还原为 ``None``
+      （L3 接通前，见 :func:`to_record`）。
+
+    .. rubric:: 调用关系（审计）
+
+    - 调用：``_block_from_record``（逐 content 块）
+    - 被调：L3 ``flowing.agent.Agent._restore`` 的重放驱动（时机：
+      恢复管线重放 tree.jsonl）；本期由测试直接驱动
+    """
+    if record.get("type") != "message":
+        raise ValueError(f"不是消息行: type={record.get('type')!r}")
+    return Message(
+        id=record["id"],
+        parent_id=record["parent_id"],
+        kind=MessageKind(record["kind"]),
+        content=[_block_from_record(b) for b in record["content"]],
+        tool_call_id=record["tool_call_id"],
+        tool_status=record["tool_status"],
+        turn_end=record["turn_end"],
+        partial=record["partial"],
+        synthetic=record["synthetic"],
+        source=record["source"],
+        tags=list(record["tags"]),
+        priority=MessagePriority(record["priority"]),
+        timestamp=datetime.fromisoformat(record["timestamp"]),
+        usage=None,  # Usage 接通归 L3（X2）
+    )
 
 
 MEDIA_TOKEN_ESTIMATE: int = 2000
@@ -1131,7 +1264,28 @@ def estimate_message_tokens(msg: Message) -> int:
        :data:`MEDIA_TOKEN_ESTIMATE`、:class:`Message`（``usage`` 字段——
        实测锚点载体）、:meth:`flowing.agent.Agent.estimate_context_tokens`。
     """
-    ...
+    total = 0
+    for block in msg.content:
+        if isinstance(block, MediaBlock):
+            # 媒体固定估算，不读 base64 data（token 成本由 provider 按规格定档）
+            total += MEDIA_TOKEN_ESTIMATE
+        elif isinstance(block, TextBlock):
+            total += _text_tokens(block.text)
+        elif isinstance(block, ThinkingBlock):
+            total += _text_tokens(block.thinking)
+        elif isinstance(block, ToolCallBlock):
+            total += _text_tokens(block.name)
+            total += _text_tokens(json.dumps(block.args, ensure_ascii=False))
+        elif isinstance(block, StructBlock):
+            total += _text_tokens(json.dumps(block.data, ensure_ascii=False))
+        # 未知块类型按「无文本内容」计 0
+    return total
+
+
+def _text_tokens(text: str) -> int:
+    """字符启发式：ASCII ≈ 4 字符/token，非 ASCII（CJK 等）≈ 1 字符/token，向上取整。"""
+    non_ascii = sum(1 for ch in text if ord(ch) > 127)
+    return non_ascii + math.ceil((len(text) - non_ascii) / 4)
 
 
 class MessageQueue:
