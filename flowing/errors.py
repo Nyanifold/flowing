@@ -59,6 +59,8 @@
         │   └── SignalTimeoutError
         ├── EntryNameConflictError       # Agent 绑定层同 alias 冲突（直接挂根）
         ├── StateKeyError                # 已注册状态键的裸属性写/删防遮蔽（直接挂根，P3-03 配套）
+        ├── FormatVersionError           # jsonl 持久化文件格式版本不受支持（直接挂根，X6 澄清新增）
+        ├── CorruptionError              # jsonl 持久化文件中间行损坏（直接挂根，X7 澄清新增）
         ├── FormatError                  # 声明式文件格式 / Parsable 求值 / 保留属性
         │   ├── MissingFieldError
         │   ├── MissingContextError
@@ -214,6 +216,7 @@ Turn 是逻辑执行阶段（载体为 ``flowing.agent.TurnContext`` 执行期�
         可选的 ``use_retry()`` Composable——重试策略的唯一内置（非默认）提供方。
 """
 
+from pathlib import Path
 from typing import Any
 
 __all__ = [
@@ -262,8 +265,12 @@ __all__ = [
     "NameMismatchError",
     "CompileError",
     "ArtifactModifiedError",
+    "FormatVersionError",
+    "CorruptionError",
     "Intercepted",
 ]
+# 注：EntryNameConflictError 与 StateKeyError 刻意不在 __all__（py-spec 原样，
+# 44 个名字）；二者仍可经 flowing.errors.StateKeyError 显式导入。
 
 
 class FlowingError(Exception):
@@ -400,6 +407,13 @@ class ConfigNotReadyError(ConfigError):
         :class:`flowing.errors.ConfigError`
     """
 
+    def __init__(self) -> None:
+        # 无字段叶子：固定英文提示消息（X14 澄清）
+        super().__init__(
+            "Configuration is not ready: read config only in setup() "
+            "or hook callbacks, not at module top level"
+        )
+
 
 class ConfigNamespaceConflictError(ConfigError):
     """多个扩展注册同一配置命名空间。
@@ -457,7 +471,8 @@ class ConfigNamespaceConflictError(ConfigError):
         - 被调：``flowing.runtime.Runtime.register_config_namespace`` 的
           raise（时机：命名空间重复注册时，runtime.pyi:1328）
         """
-        # 异常消息字符串由框架格式化（模块行为规约），具体调用未见规约，不猜
+        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        super().__init__(f"Config namespace conflict: {namespace!r} is already registered")
         self.namespace = namespace
 
 
@@ -573,7 +588,8 @@ class MissingProvideError(ProvideError):
           ``flowing.agent.Agent.inject`` 等路径的 raise（时机：链上溯
           未命中且无 default，runtime.pyi:526、agent.pyi:2460）
         """
-        # 异常消息字符串由框架格式化（模块行为规约），具体调用未见规约，不猜
+        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        super().__init__(f"Missing provide value for key: {key!r}")
         self.key = key
 
 
@@ -674,7 +690,8 @@ class UnknownHookPointError(HookError):
         - 被调：``flowing.hooks.HookRegistry.__getattr__`` 的 raise
           （时机：访问未声明钩子点，hooks.pyi:1005）
         """
-        # 异常消息字符串由框架格式化（模块行为规约），具体调用未见规约，不猜
+        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        super().__init__(f"Unknown hook point: {name!r} (not declared)")
         self.name = name
 
 
@@ -746,7 +763,8 @@ class DuplicateHookPointError(HookError):
         - 被调：``flowing.hooks.HookRegistry.declare`` 的 raise（时机：
           同名钩子点声明冲突，hooks.pyi:978）
         """
-        # 异常消息字符串由框架格式化（模块行为规约），具体调用未见规约，不猜
+        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        super().__init__(f"Duplicate hook point declaration: {name!r} (existing by={existing_by!r}, new by={new_by!r})")
         self.name = name
         self.existing_by = existing_by
         self.new_by = new_by
@@ -857,7 +875,9 @@ class MissingSchemaError(ToolError):
         - 被调：``flowing.tool`` 工具定义加载 / 注册路径的 raise（时机：
           schema 缺失且无法推断，tool.pyi:866/1034/1113/1331/1348）
         """
-        # 异常消息字符串由框架格式化（模块行为规约），具体调用未见规约，不猜
+        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        super().__init__((f"Missing params schema for tool {name!r}"
+            + (f" (param {param!r})" if param is not None else "")))
         self.name = name
         self.param = param
 
@@ -917,7 +937,8 @@ class ToolNotFoundError(ToolError):
         - 被调：``flowing.tool.ToolRegistry.get`` 的 raise（时机：规范名
           未注册，tool.pyi:1289）
         """
-        # 异常消息字符串由框架格式化（模块行为规约），具体调用未见规约，不猜
+        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        super().__init__(f"Tool not found in registry: {name!r}")
         self.name = name
 
 
@@ -980,7 +1001,8 @@ class ToolNameConflictError(ToolError):
         - 被调：``flowing.tool.ToolRegistry.register`` 的 raise（时机：
           规范名重名注册，tool.pyi:1276）
         """
-        # 异常消息字符串由框架格式化（模块行为规约），具体调用未见规约，不猜
+        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        super().__init__(f"Tool name conflict: {name!r} is already registered")
         self.name = name
 
 
@@ -1065,7 +1087,8 @@ class EntryNameConflictError(FlowingError):
         - 调用：``无``（仅平行字段赋值）
         - 被调：``Agent.add_tool`` 与 ``.fya`` 三列表解析路径的 raise
         """
-        # 异常消息字符串由框架格式化（模块行为规约），具体调用未见规约，不猜
+        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        super().__init__(f"Entry alias conflict: {alias!r} (kind={kind!r})")
         self.alias = alias
         self.kind = kind
 
@@ -1132,7 +1155,8 @@ class UnknownToolError(ToolError):
         - 被调：``flowing.agent.Agent.tool_call`` 的 raise（时机：别名
           在 ``_tool_entries`` 未命中，agent.pyi:2340）
         """
-        # 异常消息字符串由框架格式化（模块行为规约），具体调用未见规约，不猜
+        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        super().__init__(f"Unknown tool alias: {name!r}")
         self.name = name
 
 
@@ -1199,7 +1223,8 @@ class AmbiguousToolError(ToolError):
         - 被调：``flowing.tool`` script 工具定向查找路径的 raise（时机：
           同一 ``.py`` 同时含同名裸函数与 Tool 子类，tool.pyi:868/1349）
         """
-        # 异常消息字符串由框架格式化（模块行为规约），具体调用未见规约，不猜
+        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        super().__init__(f"Ambiguous tool definitions in file: {path}")
         self.path = path
 
 
@@ -1259,7 +1284,8 @@ class AmbiguousMcpSourceError(ToolError):
         - 被调：``flowing.tool`` MCP 工具定义加载路径的 raise（时机：
           ``command`` 与 ``url`` 同时声明，tool.pyi:986）
         """
-        # 异常消息字符串由框架格式化（模块行为规约），具体调用未见规约，不猜
+        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        super().__init__(f"MCP tool {name!r} declares both command and url")
         self.name = name
 
 
@@ -1308,7 +1334,8 @@ class MissingMcpSourceError(ToolError):
         - 被调：``flowing.tool`` MCP 工具定义加载路径的 raise（时机：
           ``command`` 与 ``url`` 均未声明，tool.pyi:987）
         """
-        # 异常消息字符串由框架格式化（模块行为规约），具体调用未见规约，不猜
+        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        super().__init__(f"MCP tool {name!r} declares neither command nor url")
         self.name = name
 
 
@@ -1408,7 +1435,8 @@ class ResourceNameConflictError(ResourceError):
         - 被调：``flowing.runtime.Runtime.register_resource`` 的 raise
           （时机：同名 Resource 再注册，runtime.pyi:1345）
         """
-        # 异常消息字符串由框架格式化（模块行为规约），具体调用未见规约，不猜
+        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        super().__init__(f"Resource name conflict: {name!r} is already registered")
         self.name = name
 
 
@@ -1469,7 +1497,8 @@ class ResourceNotFoundError(ResourceError):
           ``flowing.agent.Agent.get_resource`` 委托）的 raise（时机：
           name 未注册，runtime.pyi:1256、agent.pyi:2500）
         """
-        # 异常消息字符串由框架格式化（模块行为规约），具体调用未见规约，不猜
+        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        super().__init__(f"Resource not found: {name!r}")
         self.name = name
 
 
@@ -2089,7 +2118,8 @@ class MissingEnvironmentVariableError(ProviderError):
           （:func:`flowing.providers.provider.load_provider_candidates`）
           的 raise（时机：``{{env.VAR}}`` 替换时变量缺失）
         """
-        # 异常消息字符串由框架格式化（模块行为规约），具体调用未见规约，不猜
+        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        super().__init__(f"Missing environment variable {var_name!r} referenced by provider entry {entry!r}")
         self.var_name = var_name
         self.entry = entry
 
@@ -2156,6 +2186,11 @@ class ProviderNameConflictError(ProviderError):
         - 被调：``register_provider`` 的内部 ``_register``（时机：同名
           冲突且未 override）
         """
+        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        super().__init__(
+            f"Provider adapter name conflict: {name!r} "
+            "(use override=True to replace)"
+        )
         self.name = name
 
 
@@ -2233,7 +2268,8 @@ class DependencyError(FlowingError):
           raise（时机：``mount()`` 开头校验发现依赖缺失或成环，
           runtime.pyi:1732-1739）
         """
-        # 异常消息字符串由框架格式化（模块行为规约），具体调用未见规约，不猜
+        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        super().__init__(f"Plugin {plugin!r} has unresolved dependencies: {missing}")
         self.plugin = plugin
         self.missing = missing
 
@@ -2335,7 +2371,8 @@ class DuplicateEndpointError(CommError):
           / ``CommHandle`` 构造的 raise（时机：端点 ID 已存在，
           plugins/comm.pyi:366/442）
         """
-        # 异常消息字符串由框架格式化（模块行为规约），具体调用未见规约，不猜
+        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        super().__init__(f"Duplicate endpoint id: {endpoint_id!r}")
         self.endpoint_id = endpoint_id
 
 
@@ -2397,7 +2434,8 @@ class SignalDeliveryError(CommError):
           与 ``CommHandle.send`` / ``request`` 的 raise（时机：target
           端点不存在，plugins/comm.pyi:485/553/823/873）
         """
-        # 异常消息字符串由框架格式化（模块行为规约），具体调用未见规约，不猜
+        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        super().__init__(f"Signal delivery failed: target endpoint {target!r} not found (type={signal_type!r})")
         self.target = target
         self.signal_type = signal_type
 
@@ -2473,7 +2511,8 @@ class SignalTimeoutError(CommError):
           ``CommHandle.request`` 的 raise（时机：等待回复超过
           ``timeout``，plugins/comm.pyi:554/874）
         """
-        # 异常消息字符串由框架格式化（模块行为规约），具体调用未见规约，不猜
+        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        super().__init__(f"Signal request to {target!r} timed out after {timeout}s")
         self.target = target
         self.timeout = timeout
 
@@ -2628,7 +2667,8 @@ class MissingFieldError(FormatError):
           结束后、``after_create`` 前仍有 ``PENDING`` 字段，
           agent.pyi:1514/1520、parsable.pyi:452）
         """
-        # 异常消息字符串由框架格式化（模块行为规约），具体调用未见规约，不猜
+        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        super().__init__(f"Required field {field!r} of agent type {agent_type!r} is still PENDING")
         self.field = field
         self.agent_type = agent_type
 
@@ -2683,6 +2723,13 @@ class MissingContextError(FormatError):
         :class:`flowing.errors.FormatError`
     """
 
+    def __init__(self) -> None:
+        # 无字段叶子：固定英文提示消息（X14 澄清）
+        super().__init__(
+            "Parsable is not bound to an instance: call resolve(context) "
+            "with an explicit context instead"
+        )
+
 
 class ReservedAttributeError(FormatError):
     """Agent 实例属性命名为框架保留名（``env`` / ``config`` / ``agent`` / ``self``）。
@@ -2735,7 +2782,8 @@ class ReservedAttributeError(FormatError):
           （时机：实例属性占用 ``env`` / ``config`` 保留名，
           parsable.pyi:743/766/922）
         """
-        # 异常消息字符串由框架格式化（模块行为规约），具体调用未见规约，不猜
+        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        super().__init__(f"Reserved attribute name occupied: {name!r}")
         self.name = name
 
 
@@ -2800,7 +2848,8 @@ class NameMismatchError(FormatError):
         - 调用：``无``（仅平行字段赋值）
         - 被调：``.fya`` 解析层 / 手写子类定义期校验路径的 raise
         """
-        # 异常消息字符串由框架格式化（模块行为规约），具体调用未见规约，不猜
+        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        super().__init__(f"Declared name {declared!r} does not match inferred name {inferred!r} (source: {source})")
         self.declared = declared
         self.inferred = inferred
         self.source = source
@@ -2863,6 +2912,112 @@ class ArtifactModifiedError(CompileError):
         """
         self.path = path
         super().__init__(f"编译产物被外部修改，拒绝覆盖：{path}")
+
+
+# ---------------------------------------------------------------------------
+# 持久化类（X6 / X7 澄清新增；persistence 为内部模块，不专设中间层，直挂根）
+# ---------------------------------------------------------------------------
+
+
+class FormatVersionError(FlowingError):
+    """jsonl 持久化文件的格式版本不受支持（X6 澄清新增的具名类型）。
+
+    .. rubric:: 功能介绍
+
+    ``RecordStore.replay`` 判读首行 ``{"type": "meta", "format_version"}``
+    时抛出：文件版本高于当前框架支持的 :data:`flowing.persistence.FORMAT_VERSION`
+    （文件比框架新，静默读是数据风险），或版本号在迁移链
+    （:data:`flowing.persistence.MIGRATIONS`）上无通路。无版本首行的存量
+    文件按版本 0 处理，不抛本异常（v0 与 v1 行格式相同，见 X5 澄清）。
+
+    .. rubric:: 设计动机
+
+    版本冲突是部署/降级事故（用旧框架读新文件），必须 fail fast 且类型可
+    精确 ``except``；与 ``FormatError``（声明式 ``.fya`` 格式）分层——
+    jsonl 持久化文件不属声明式资源，故直挂根。
+
+    .. rubric:: 行为规约
+
+    - 五要素：字段 ``path`` / ``found``（文件声明的版本）/ ``supported``
+      （框架当前支持版本）；抛出时机为 ``replay`` 开头版本判读；调用方不
+      catch（部署错误）；不可重试；属机制。
+
+    .. rubric:: 调用关系（审计）
+
+    - 被调：``无``（框架内无捕获点，fail fast）
+    - 实例化方：``flowing.persistence.FileRecordStore.replay``（时机：
+      首行版本判读发现不受支持版本）
+    """
+
+    path: Path
+    """版本不受支持的持久化文件路径。"""
+    found: int
+    """文件首行声明的格式版本号。"""
+    supported: int
+    """框架当前支持的格式版本号（``FORMAT_VERSION``）。"""
+
+    def __init__(self, path: Path, found: int, supported: int) -> None:
+        """
+        .. rubric:: 调用关系（审计）
+
+        - 调用：``Exception.__init__``（传递面向人读的消息）
+        - 被调：``FileRecordStore.replay`` 版本判读的 raise
+        """
+        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        super().__init__(
+            f"Unsupported format version {found} in {path} "
+            f"(this framework supports up to {supported})"
+        )
+        self.path = path
+        self.found = found
+        self.supported = supported
+
+
+class CorruptionError(FlowingError):
+    """jsonl 持久化文件中间行损坏——报警不容忍（X7 澄清新增的具名类型）。
+
+    .. rubric:: 功能介绍
+
+    ``RecordStore.replay`` 按行解析时发现**中间行**（非撕裂末行）JSON 损坏
+    即抛出。撕裂末行（崩溃半截写产物，无换行结尾）是合法容忍路径，截断
+    丢弃不抛本异常；中间行损坏意味着已提交数据受损，属事故而非正常窗口。
+
+    .. rubric:: 设计动机
+
+    「中间行损坏报警不容忍」是持久化层一贯约定（见
+    :mod:`flowing.persistence` 模块 docstring）；具名类型使调用方 /
+    工具层能精确区分「版本问题」（:class:`FormatVersionError`）与
+    「数据损坏」（本类）。
+
+    .. rubric:: 行为规约
+
+    - 五要素：字段 ``path`` / ``lineno``（1 基行号）；抛出时机为
+      ``replay`` 逐行解析；调用方不 catch（数据事故，需人工介入）；
+      不可重试；属机制。
+
+    .. rubric:: 调用关系（审计）
+
+    - 被调：``无``（框架内无捕获点，fail fast）
+    - 实例化方：``flowing.persistence.FileRecordStore.replay``（时机：
+      中间行 JSON 解析失败，抛出前 ``logging.error`` 记录 path:lineno）
+    """
+
+    path: Path
+    """损坏行所在的持久化文件路径。"""
+    lineno: int
+    """损坏行的 1 基行号。"""
+
+    def __init__(self, path: Path, lineno: int) -> None:
+        """
+        .. rubric:: 调用关系（审计）
+
+        - 调用：``Exception.__init__``（传递面向人读的消息）
+        - 被调：``FileRecordStore.replay`` 逐行解析的 raise
+        """
+        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        super().__init__(f"Corrupted record line at {path}:{lineno}")
+        self.path = path
+        self.lineno = lineno
 
 
 # ---------------------------------------------------------------------------
