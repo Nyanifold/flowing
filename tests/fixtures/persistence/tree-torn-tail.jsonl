@@ -1,0 +1,4 @@
+{"type": "meta", "format_version": 1}
+{"type": "message", "id": "m1", "parent_id": null, "kind": "user", "content": [{"type": "text", "text": "查订单"}], "tool_call_id": null, "tool_status": null, "turn_end": false, "partial": false, "synthetic": false, "source": "", "tags": [], "priority": 3, "timestamp": "2026-08-29T00:00:00", "usage": null}
+{"type": "message", "id": "m2", "parent_id": "m1", "kind": "provider", "content": [{"type": "text", "text": "好的"}], "tool_call_id": null, "tool_status": null, "turn_end": true, "partial": false, "synthetic": false, "source": "", "tags": [], "priority": 3, "timestamp": "2026-08-29T00:00:00", "usage": null}
+{"type": "message", "id": "m3", "parent_

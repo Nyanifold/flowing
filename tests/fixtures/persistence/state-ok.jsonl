@@ -1,0 +1,5 @@
+{"type": "meta", "format_version": 1}
+{"op": "set", "key": "n", "value": 1}
+{"op": "set", "key": "s", "value": "x"}
+{"op": "delete", "key": "s"}
+{"op": "set", "key": "n", "value": 5}

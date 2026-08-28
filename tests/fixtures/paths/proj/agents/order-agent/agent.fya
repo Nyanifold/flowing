@@ -1,0 +1,2 @@
+# 目录形态 Agent 样例（通用文件名 agent.fya → 身份名取目录名 order-agent）
+system_prompt: 你是订单助手。

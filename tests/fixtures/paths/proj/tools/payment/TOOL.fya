@@ -1,0 +1,3 @@
+# 目录形态 Tool 样例（通用文件名 TOOL.fya → 身份名取目录名 payment）
+type: script
+callable: ./ops.py::run
