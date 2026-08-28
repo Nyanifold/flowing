@@ -163,6 +163,9 @@ class ManagedList(Generic[Tg]):
     访问。
     """
 
+    def __init__(self) -> None:
+        self._items = []
+
     def append(self, item: Tg) -> Tg:
         """追加一个元素到容器末尾。
 
@@ -194,7 +197,7 @@ class ManagedList(Generic[Tg]):
             :meth:`HookList.__call__`、:meth:`PatternRegistrar.__call__`
         """
         self._items.append(item)
-        # -> item（后置条件：``_items[-1] is item``，见行为规约）
+        return item  # 后置条件：``_items[-1] is item``，见行为规约
 
     def disable_by_tag(self, tag: str) -> int:
         """将 tags 含 ``tag`` 的全部元素置为 disabled（留位，可恢复）。
