@@ -1,8 +1,13 @@
 """通信信封与数据对象：``SignalEnvelope`` / ``EventEnvelope``。"""
 
-from dataclasses import dataclass
-from datetime import datetime
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any
+
+
+def _utcnow() -> datetime:
+    """naive UTC 当前时刻（与 ``flowing.message`` 的时间约定同口径）。"""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 @dataclass
@@ -77,16 +82,17 @@ class SignalEnvelope:
     payload: dict[str, Any]
     """业务负载。总线对其内容完全透明（不校验、不修改、不序列化）。
     """
-    correlation_id: str | None = ...
+    correlation_id: str | None = None
     """request-reply 关联 ID（UUID 字符串）。仅 ``request()`` 路径填充；
     回复信封原样携带，接收侧据此匹配 pending future。
     """
-    reply_to: str | None = ...
+    reply_to: str | None = None
     """回复目标端点 ID（通常等于 ``sender``）。仅 ``request()`` 路径填充；
     ``CommHandle.reply()`` 据此路由回复。
     """
-    created_at: datetime = ...
-    """创建时间，构造时由总线填充，时区无关 UTC（naive ``datetime``）。
+    created_at: datetime = field(default_factory=_utcnow)
+    """创建时间，构造时填充（总线显式传值；缺省由 ``default_factory``
+    落当前时刻），时区无关 UTC（naive ``datetime``）。
     用途：审计/日志、排序、延迟测量（接收时间 − ``created_at``）。
     """
 
@@ -146,13 +152,15 @@ class EventEnvelope:
     """
     event: dict[str, Any]
     """事件内容。总线对其透明；``CommHandle.publish()`` 在调用总线前把
-    ``{'publisher': self.endpoint_id, **event}`` 合并进该字典的语义
-    由句柄层保证（见 :meth:`CommHandle.publish`）。
+    ``{**event, "publisher": self.endpoint_id}`` 合并进该字典（句柄
+    身份恒覆盖调用方自填的 ``publisher`` 键），语义由句柄层保证
+    （见 :meth:`CommHandle.publish`）。
     """
-    publisher: str | None = ...
+    publisher: str | None = None
     """发布方端点 ID。经 ``CommHandle.publish()`` 发布时自动填充；
     直接操作总线时可为 ``None``（高级用法，自行负责身份正确性）。
     """
-    created_at: datetime = ...
-    """创建时间，构造时由总线填充，时区无关 UTC（naive ``datetime``）。
+    created_at: datetime = field(default_factory=_utcnow)
+    """创建时间，构造时填充（总线显式传值；缺省由 ``default_factory``
+    落当前时刻），时区无关 UTC（naive ``datetime``）。
     """

@@ -103,15 +103,27 @@ fire-and-forget 在该规模下足够。框架不做分布式假设——无跨�
 from __future__ import annotations   # S-43 裁决③：注解延迟求值（Communication→CommHandle 前向引用）
 
 import asyncio
+import inspect
+import logging
+import warnings
 from collections.abc import Callable
 from typing import Any, ClassVar
+from uuid import uuid4
 
 from flowing.agent import Agent
+from flowing.errors import (
+    DuplicateEndpointError,
+    Intercepted,
+    SignalDeliveryError,
+    SignalTimeoutError,
+)
 from flowing.params import InjectionKey
 from flowing.plugins import Plugin
 from flowing.runtime import Runtime
 
 from .models import EventEnvelope, SignalEnvelope
+
+_logger = logging.getLogger(__name__)
 
 communication_key: InjectionKey["Communication"] = InjectionKey("communication")
 """功能/动机：全局 ``Communication`` 总线实例在 provide 链上的注入键。
@@ -213,6 +225,53 @@ class Communication:
     _subscriptions: dict[str, dict[str, Callable[[EventEnvelope], Any]]]
     """内部存储：topic → subscriber_id → 回调。内部 API，不属稳定契约。
     """
+    _tasks: set[asyncio.Task]
+    """内部存储：fire-and-forget 后台任务的强引用集（防 GC 提前回收；
+    任务完成即弃）。内部 API，不属稳定契约。
+    """
+
+    def __init__(self) -> None:
+        """构造空总线（端点表 / 订阅表 / 后台任务集均空）。
+
+        实例只能经 ``CommPlugin.install()`` 创建并进入 provide 链；
+        应用层不应自行实例化（类 docstring 前置条件）。
+
+        .. rubric:: 调用关系（审计）
+
+        - 调用：无
+        - 被调：``flowing.plugins.comm.CommPlugin.install``（每次安装）
+        """
+        self._endpoints = {}
+        self._subscriptions = {}
+        self._tasks = set()
+
+    def _spawn(self, awaitable: Any) -> None:
+        """awaitable 转后台任务（fire-and-forget）：强引用持有、完成即弃、
+        异常记日志不逃逸进事件循环。内部 API，不属稳定契约。"""
+        task = asyncio.ensure_future(awaitable)
+        self._tasks.add(task)
+
+        def _finalize(done: asyncio.Task) -> None:
+            self._tasks.discard(done)
+            if done.cancelled():
+                return
+            exc = done.exception()
+            if exc is not None:
+                _logger.error("comm 后台回调任务异常", exc_info=exc)
+
+        task.add_done_callback(_finalize)
+
+    def _deliver(self, target: str, handler: Callable[[SignalEnvelope], Any],
+                 envelope: SignalEnvelope) -> None:
+        """向端点回调投递信封：同步直接调用，返回 awaitable 转后台任务；
+        回调同步异常捕获记日志、不传播给发送方。内部 API，不属稳定契约。"""
+        try:
+            result = handler(envelope)
+        except Exception:
+            _logger.exception("comm 端点 %r 的接收回调异常", target)
+            return
+        if inspect.isawaitable(result):
+            self._spawn(result)
 
     def register_endpoint(
         self, endpoint_id: str, handler: Callable[[SignalEnvelope], Any]
@@ -264,7 +323,9 @@ class Communication:
 
         .. seealso:: :meth:`unregister_endpoint`、:meth:`create_handle`
         """
-        self._endpoints[endpoint_id] = handler  # 重复注册 → DuplicateEndpointError 且原映射不变（分支略）
+        if endpoint_id in self._endpoints:
+            raise DuplicateEndpointError(endpoint_id)  # 原映射不变（写入前先查）
+        self._endpoints[endpoint_id] = handler
 
     def unregister_endpoint(self, endpoint_id: str) -> None:
         """注销端点。
@@ -332,8 +393,9 @@ class Communication:
 
         .. rubric:: 行为规约
 
-        - 期待行为：等价于 ``register_endpoint(endpoint_id, on_signal)``
-          + 构造句柄；端点 ID 冲突同样抛 ``DuplicateEndpointError``。
+        - 期待行为：等价于「构造句柄 + 把句柄的接收入口
+          （``CommHandle._receive``——保留类型 ``'_reply'`` 在此分流）注册进
+          端点表」；端点 ID 冲突同样抛 ``DuplicateEndpointError``。
         - 边缘情况：``on_signal=None`` 时端点仍注册，收到的信号被
           ``_default_noop`` 忽略（不产生任何副作用）。
 
@@ -349,8 +411,11 @@ class Communication:
 
         .. seealso:: :class:`CommHandle`、:func:`use_comm`
         """
-        self.register_endpoint(endpoint_id, on_signal)  # None 时句柄侧 _default_noop 兜底（docstring 规约）
         handle = CommHandle(endpoint_id, self, on_signal=on_signal, on_event=on_event)
+        # 注册进路由表的是句柄的 _receive（保留类型 '_reply' 匹配 pending
+        # future、其余转 _on_signal 见 _receive docstring）——注册失败
+        # （DuplicateEndpointError）时句柄对象直接废弃，无副作用
+        self.register_endpoint(endpoint_id, handle._receive)
         return handle
 
     def send(self, sender: str, target: str, type: str, payload: dict[str, Any]) -> None:
@@ -409,9 +474,11 @@ class Communication:
 
         .. seealso:: :meth:`request`、:meth:`CommHandle.send`
         """
-        envelope = SignalEnvelope(sender=sender, type=type, payload=payload, created_at=...)  # created_at：naive UTC，总线填充
-        handler = self._endpoints[target]  # target 不存在 → SignalDeliveryError（查表分支略）
-        handler(envelope)  # 返回 awaitable 时转 asyncio.create_task（分支略）
+        envelope = SignalEnvelope(sender=sender, type=type, payload=payload)
+        handler = self._endpoints.get(target)
+        if handler is None:
+            raise SignalDeliveryError(target, type)  # 发送方同步可感知的唯一失败
+        self._deliver(target, handler, envelope)  # 接收回调异常静默（记日志），awaitable 转后台任务
 
     async def request(
         self,
@@ -493,22 +560,27 @@ class Communication:
 
         .. seealso:: :meth:`CommHandle.request`、:meth:`CommHandle.reply`
         """
-        correlation_id = "..."  # 实际为 UUID 字符串（uuid 未具名导入，占位）
+        correlation_id = str(uuid4())
         future: asyncio.Future = asyncio.get_running_loop().create_future()
         reply_handler._pending_replies[correlation_id] = future  # 登记 pending future
-        envelope = SignalEnvelope(
-            sender=sender, type=type, payload=payload,
-            correlation_id=correlation_id, reply_to=sender,
-            created_at=...,  # created_at：naive UTC，总线填充
-        )
-        handler = self._endpoints[target]  # target 不存在 → SignalDeliveryError（查表分支略）
-        handler(envelope)  # 返回 awaitable 时转 asyncio.create_task（分支略，同 send）
-        if timeout is None:
-            result: dict[str, Any] = await future  # destroy 取消 → CancelledError 自然传播
-        else:
-            result = await asyncio.wait_for(future, timeout)  # 超时 → SignalTimeoutError（TimeoutError 转换分支略）
-        # 超时/取消路径：future 从 _pending_replies 移除，迟到回复静默丢弃（finally 略）
-        return result
+        try:
+            envelope = SignalEnvelope(
+                sender=sender, type=type, payload=payload,
+                correlation_id=correlation_id, reply_to=sender,
+            )
+            handler = self._endpoints.get(target)
+            if handler is None:
+                raise SignalDeliveryError(target, type)  # 发送阶段即抛，不进入等待
+            self._deliver(target, handler, envelope)
+            if timeout is None:
+                return await future  # destroy 取消 → CancelledError 自然传播
+            try:
+                return await asyncio.wait_for(future, timeout)
+            except TimeoutError:
+                raise SignalTimeoutError(target, timeout) from None
+        finally:
+            # 超时/取消/异常路径统一摘除登记，迟到回复由接收侧静默丢弃
+            reply_handler._pending_replies.pop(correlation_id, None)
 
     def reply(self, sender: str, target: str, correlation_id: str, payload: dict[str, Any]) -> None:
         """以保留类型 ``'_reply'`` 定向投递回复信封（低层入口）。
@@ -545,10 +617,19 @@ class Communication:
         """
         envelope = SignalEnvelope(
             sender=sender, type="_reply", payload=payload,
-            correlation_id=correlation_id, created_at=...,  # created_at：naive UTC，总线填充
+            correlation_id=correlation_id,
         )
-        handler = self._endpoints[target]  # 端点已注销 → 静默丢弃并 warnings.warn（分支略）
-        handler(envelope)  # 接收侧按 correlation_id 匹配 pending future，不 dispatch 钩子
+        handler = self._endpoints.get(target)
+        if handler is None:
+            # 端点已注销 → 静默丢弃（回复路径不抛 SignalDeliveryError——
+            # 发送方可能已不在，报错无人接收），但 warnings.warn 保持可观测
+            warnings.warn(
+                f"comm: reply 目标端点 {target!r} 不存在，回复已丢弃"
+                f"（correlation_id={correlation_id}）",
+                stacklevel=2,
+            )
+            return
+        self._deliver(target, handler, envelope)  # 接收侧按 correlation_id 匹配 pending future，不 dispatch 钩子
 
     def publish(self, topic: str, event: dict[str, Any]) -> None:
         """向 topic 的全部订阅者广播事件（容错 + fire-and-forget）。
@@ -605,12 +686,20 @@ class Communication:
         """
         envelope = EventEnvelope(
             topic=topic, event=event,
-            publisher=event.get("publisher"),  # publisher 取 event 中已有值（docstring 规约）
-            created_at=...,  # naive UTC，总线填充
+            publisher=event.get("publisher"),  # publisher 取 event 中已有值（句柄路径已注入）
         )
-        callbacks = self._subscriptions[topic]  # 无订阅者 → 空操作（分支略）
-        # 遍历 callbacks 逐个派发：同步直接执行、awaitable 经 asyncio.create_task、
-        # 异常静默忽略（for/try 属控制流，略；语义见 docstring）
+        callbacks = self._subscriptions.get(topic)
+        if not callbacks:
+            return  # 无订阅者 → 空操作
+        for callback in list(callbacks.values()):  # 快照遍历：回调内增删订阅不影响本轮派发
+            try:
+                result = callback(envelope)
+            except Exception:
+                # 容错：单订阅者异常静默（记日志），不影响其余订阅者与发布者
+                _logger.exception("comm topic %r 的订阅回调异常", topic)
+                continue
+            if inspect.isawaitable(result):
+                self._spawn(result)  # fire-and-forget：发布者不等待
 
     def subscribe(
         self,
@@ -643,7 +732,7 @@ class Communication:
 
         .. seealso:: :meth:`unsubscribe`、:meth:`publish`
         """
-        self._subscriptions[topic][subscriber_id] = callback  # topic 键缺省创建；重复订阅覆盖旧回调（细节略）
+        self._subscriptions.setdefault(topic, {})[subscriber_id] = callback  # 重复订阅覆盖旧回调
 
     def unsubscribe(self, subscriber_id: str, topic: str) -> None:
         """取消单个订阅。
@@ -663,7 +752,11 @@ class Communication:
 
         .. seealso:: :meth:`subscribe`、:meth:`unsubscribe_all`
         """
-        del self._subscriptions[topic][subscriber_id]  # 订阅不存在时幂等空操作（分支略，docstring 规约）
+        subscribers = self._subscriptions.get(topic)
+        if subscribers is not None:
+            subscribers.pop(subscriber_id, None)  # 订阅不存在 → 幂等空操作
+            if not subscribers:
+                del self._subscriptions[topic]  # 空 topic 键顺手摘除，不留空壳
 
     def unsubscribe_all(self, subscriber_id: str) -> None:
         """取消某订阅者的全部订阅（清理路径用）。
@@ -680,8 +773,12 @@ class Communication:
 
         .. seealso:: :meth:`unsubscribe`、:meth:`CommHandle.destroy`
         """
-        # 遍历 _subscriptions 移除该 subscriber_id 的全部条目（for 属控制流，略；
-        # 该订阅者无订阅时幂等空操作，docstring 规约）
+        # 该订阅者无订阅时幂等空操作；空 topic 键顺手摘除
+        for topic in [t for t, subs in self._subscriptions.items()
+                      if subscriber_id in subs]:
+            del self._subscriptions[topic][subscriber_id]
+            if not self._subscriptions[topic]:
+                del self._subscriptions[topic]
 
     def _close(self) -> None:
         """总线关闭：清空端点表、订阅表。
@@ -834,6 +931,40 @@ class CommHandle:
         """
         pass  # 空操作即全部语义（docstring：收到的信号/事件被忽略）
 
+    def _receive(self, envelope: SignalEnvelope) -> Any:
+        """端点接收入口——注册进总线路由表的回调本体（内部 API，不属稳定契约）。
+
+        保留类型 ``'_reply'`` 在此分流：按 ``correlation_id`` 匹配
+        ``_pending_replies`` 完成对应 future（以其 ``payload`` 为结果），
+        **不**转 ``_on_signal``——回复信封永远不进业务 dispatch 链；
+        无匹配 pending future（已超时/已销毁）→ 静默丢弃并发
+        ``warnings.warn``（回复丢失通常意味着请求方异常退出或超时配置
+        不当，应可观测而非无声）。其余信封转构造时注入的 ``_on_signal``
+        （缺省 ``_default_noop``）。
+
+        .. rubric:: 调用关系（审计）
+
+        - 调用：``flowing.plugins.comm.CommHandle._default_noop`` /
+          注入的 ``_on_signal``（每次非 ``'_reply'`` 投递）
+        - 被调：``flowing.plugins.comm.Communication.send`` /
+          ``request`` / ``reply`` 的投递路径（每次有信封路由到本端点；
+          经 ``Communication._deliver``）
+
+        .. seealso:: :meth:`Communication.create_handle`、:meth:`reply`
+        """
+        if envelope.type == "_reply":
+            future = self._pending_replies.pop(envelope.correlation_id, None)
+            if future is None or future.done():
+                warnings.warn(
+                    f"comm: 收到无匹配 pending future 的回复"
+                    f"（correlation_id={envelope.correlation_id}），已丢弃",
+                    stacklevel=2,
+                )
+                return None
+            future.set_result(envelope.payload)
+            return None
+        return self._on_signal(envelope)
+
     def send(self, target: str, type: str, payload: dict[str, Any]) -> None:
         """发送点对点信号（自动填 ``sender=self.endpoint_id``）。
 
@@ -973,7 +1104,7 @@ class CommHandle:
 
         .. rubric:: 功能介绍
 
-        以 ``{'publisher': self.endpoint_id, **event}`` 合并后的字典调用
+        以 ``{**event, "publisher": self.endpoint_id}`` 合并后的字典调用
         ``Communication.publish()``——调用方传入的 ``event`` 中已有的
         ``publisher`` 键**会被句柄身份覆盖**（句柄路径不允许伪造发布者）。
         容错与 fire-and-forget 语义与总线方法一致。
@@ -986,13 +1117,13 @@ class CommHandle:
         .. rubric:: 调用关系（审计）
 
         - 调用：``flowing.plugins.comm.Communication.publish``（每次
-          发布，调用前以 ``{'publisher': self.endpoint_id, **event}``
-          合并）
+          发布，调用前以 ``{**event, "publisher": self.endpoint_id}``
+          合并——句柄身份后置，恒覆盖调用方自填值）
         - 被调：无（框架内无调用方；应用代码调用）
 
         .. seealso:: :meth:`Communication.publish`、:meth:`subscribe`
         """
-        merged = {"publisher": self.endpoint_id, **event}
+        merged = {**event, "publisher": self.endpoint_id}  # 身份键后置：覆盖调用方自填的 publisher
         self._comm.publish(topic, merged)
 
     def subscribe(
@@ -1345,10 +1476,41 @@ def use_comm(agent: Agent, *, name: str | None = None) -> None:
        :meth:`flowing.hooks.HookRegistry.declare`、
        :meth:`flowing.agent.Agent.enqueue_message`
     """
-    comm = agent.inject(communication_key)  # -> Communication（未装 CommPlugin → MissingProvideError）
+    comm: Communication = agent.inject(communication_key)  # 未装 CommPlugin → MissingProvideError
     endpoint_id = name or agent.node_id
-    handle = comm.create_handle(endpoint_id)  # 接收回调为闭包 dispatch 到 agent.hooks.on_signal / on_event（def 闭包略）
-    agent.comm_handler = handle
+    if hasattr(agent, "comm_handler") and agent.comm_handler.endpoint_id == endpoint_id:
+        handle = agent.comm_handler  # 幂等防御条款：同实例同端点复用已注册句柄（不重复注册、不重复挂清理）
+    else:
+        async def _on_signal(envelope: SignalEnvelope) -> SignalEnvelope:
+            # 闭包捕获 agent，dispatch 到实例钩子点；句柄自身不持 agent
+            try:
+                return await agent.hooks.on_signal.dispatch(agent, envelope)
+            except Intercepted:
+                return envelope  # 硬阻断信号：链已停，通信侧无后续动作（dispatch 已记日志）
+            except Exception:
+                _logger.exception(  # 记日志不逃逸进事件循环（后台任务路径）
+                    "on_signal dispatch 异常（endpoint=%r, type=%r）",
+                    endpoint_id, envelope.type)
+                return envelope
+
+        async def _on_event(envelope: EventEnvelope) -> EventEnvelope:
+            try:
+                return await agent.hooks.on_event.dispatch(agent, envelope)
+            except Intercepted:
+                return envelope
+            except Exception:
+                _logger.exception(
+                    "on_event dispatch 异常（endpoint=%r, topic=%r）",
+                    endpoint_id, envelope.topic)
+                return envelope
+
+        handle = comm.create_handle(
+            endpoint_id, on_signal=_on_signal, on_event=_on_event)
+        agent.comm_handler = handle
+
+        def _cleanup(_a: Agent, _value: Any = None) -> None:
+            handle.destroy()  # 闭包直接引用句柄，不反查属性名（dispatch 恒两参调用）
+
+        agent.hooks.before_destroy(_cleanup, by="comm")
     agent.hooks.declare("on_signal", by="comm", match_on="type")
     agent.hooks.declare("on_event", by="comm", match_on="topic")
-    agent.hooks.before_destroy(agent.comm_handler.destroy, by="comm")  # 清理 handler 注册（docstring 第 4 步）
