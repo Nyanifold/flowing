@@ -93,8 +93,8 @@ max_retries=10)``）、整组移除后注册自己的 handler、或完全不调�
 - 非行为：本模块不定义新的钩子点、不注册工具、不 provide 值、不修改
   ``agent.model``、不持久化任何状态、不感知消息级树（重试发生在逻辑
   Turn 内部，不产生任何消息）。
-- 边缘情况：同参数重复调用幂等去重（不叠加 handler，见 ``use_retry``
-  条目）；
+- 边缘情况：重复调用不做幂等去重——每次调用按注册语义各自独立叠加
+  一组 handler（允许以不同参数多次启用，见 ``use_retry`` 条目）；
   重试计数器是 handler 闭包内部状态，不落盘、不进 ``ProviderErrorContext``、
   崩溃后不恢复（崩溃恢复以消息级树的 ``turn_end`` 边界为准，与重试无关）。
 - 不变量：``use_retry`` 注册的 handler 遵守统一 handler 契约——签名为
@@ -113,6 +113,9 @@ max_retries=10)``）、整组移除后注册自己的 handler、或完全不调�
 
 from typing import Literal
 
+import asyncio
+import logging
+
 from flowing.agent import Agent
 from flowing.errors import (
     AuthenticationError,
@@ -128,6 +131,8 @@ from flowing.errors import (
 from flowing.agent import ProviderErrorContext
 
 __all__ = ["use_retry", "MAX_RETRY_DELAY", "RETRYABLE_ERRORS", "NON_RETRYABLE_ERRORS"]
+
+_logger = logging.getLogger(__name__)
 
 MAX_RETRY_DELAY: float = 60.0
 """单次重试等待的硬上限（秒）。
@@ -354,10 +359,10 @@ def use_retry(
 
     **边缘情况**：
 
-    - **重复调用**：**幂等**。同参数重复调用去重（不重复注册 handler）——
-      recover 管线重跑 ``setup()`` 时 ``use_retry(self, ...)`` 必然二次
-      调用，幂等保证行为与单次执行一致。参数**不同**的重复调用属用法
-      错误，后者报错（不做静默覆盖）。
+    - **重复调用**：不做幂等去重记号——每次调用按注册语义各自叠加一组
+      独立的 handler（各自持有独立的 attempt 计数闭包；允许以不同参数
+      多次启用同一 Composable）。recover 管线在新实例上重跑
+      ``setup()``，钩子注册表随实例重建，天然不叠加。
     - **max_retries=0**：合法。计数器加 1 后 ``1 > 0`` 立即放弃，等价于
       不重试（与不调用的差别仅在于多了一次空分发）。
     - **max_retries 为负 / base_delay 为负 / backoff 非法**：调用时立即
@@ -368,8 +373,8 @@ def use_retry(
       协作式检查点机制，sleep 本身不可中断；本次 sleep 结束后
       ``can_continue=True`` 放行，回合层面在下一个 ``provider_gen()`` 前的
       abort 检查点正常中止。即取消的生效粒度是「当前这次退避等待结束」。
-    - **恢复后的 Agent**：恢复管线重跑 ``setup()``，因此按
-      ``setup()`` 中的 ``use_retry(self)`` 重新注册（幂等去重），
+    - **恢复后的 Agent**：恢复管线在新实例上重跑 ``setup()``，钩子
+      注册表随实例重建，``use_retry(self)`` 重新注册天然不叠加；
       计数器从 0 开始——崩溃前消耗的重试次数不继承（逻辑 Turn 本就随
       崩溃终结）。
 
@@ -378,8 +383,8 @@ def use_retry(
 
     **后置条件**：``agent.hooks.on_provider_error`` 与
     ``agent.hooks.before_turn`` 链尾各追加一个 ``by="retry"`` 的
-    :class:`flowing.hooks.HookEntry`（同参数重复调用幂等去重，不重复
-    追加）；此后该实例的 LLM 错误路径按上述规则决策。
+    :class:`flowing.hooks.HookEntry`；此后该实例的 LLM 错误路径按上述
+    规则决策。
 
     .. rubric:: 测试案例
 
@@ -465,86 +470,71 @@ def use_retry(
         raise ValueError("base_delay 必须 >= 0")
     if backoff not in ("exponential", "fixed"):
         raise ValueError("backoff 仅接受 'exponential' / 'fixed'")
-    # 幂等去重：同参数重复调用不重复追加 handler（recover 管线会重跑
-    # setup()）；去重的具体机制规约未具名符号，按契约不虚构函数名
 
     # 注册形态第 0 步：声明本 Agent 实例的重试观测钩子点（同名同 by 幂等）
     agent.hooks.declare("on_retry", by="retry")
 
+    # attempt 计数器为本次调用闭包的内部状态（规约：非 ProviderErrorContext /
+    # TurnContext 字段），由配套的 before_turn 归零 handler 重置；计数从 1
+    # 起：首次失败为第 1 次尝试，attempt <= max_retries 时才放行重试
+    state = {"attempt": 0}
+    # on_retry 观测信号是 fire-and-forget：强引用集防 GC 早收，done 回调
+    # 吃掉订阅者异常（观测通道不逃逸进事件循环，与插件层后台任务同惯例）
+    pending: set[asyncio.Task] = set()
+
     def _reset(agent: Agent, turn: TurnContext) -> TurnContext:
         # 归零 handler：每个逻辑 Turn 开始把闭包 attempt 计数器重置为 0；
         # value 原样透传，纯观察不干预
+        state["attempt"] = 0
         return turn
+
+    async def _retry_handler(agent: Agent, ctx: ProviderErrorContext) -> ProviderErrorContext:
+        """默认重试决策 handler（内部 API，经 ``by="retry"`` 定位与移除）。
+
+        - 签名遵守统一 handler 契约 ``(agent, value) -> value``；为 async
+          handler（退避 sleep 有真实 await 需求，M-91），dispatch 经
+          ``inspect.isawaitable`` 透明 await。
+        - 必须 ``return ctx``；不 ``raise Intercepted``（错误钩子无阻断
+          语义，决策只经 ``can_continue`` 表达）；自身若抛出普通异常，
+          按钩子系统规则直接上抛（无兜底）。
+        - 分类决策（保守原则：只对明确已知的可重试类型放行）：
+          NON_RETRYABLE 直接返回；RateLimited 按退避模型（exponential 时
+          ``min(base_delay * 2 ** (attempt - 1), MAX_RETRY_DELAY)``）；
+          其余三类基础设施错误恒 ``base_delay``；``attempt > max_retries``
+          放弃（放弃路径不发 ``on_retry`` 信号）；未知异常一律不重试。
+        - ``on_retry`` 观测信号（M-87）：置 ``can_continue=True`` 之后、
+          sleep 之前，fire-and-forget 派发 ``{"attempt", "max_retries",
+          "delay", "error"}`` 自洽快照；订阅者返回值被忽略。
+        """
+        if isinstance(ctx.error, NON_RETRYABLE_ERRORS):
+            return ctx  # 不 sleep、不计数，can_continue 保持 False
+        if isinstance(ctx.error, RETRYABLE_ERRORS):
+            state["attempt"] += 1
+            attempt = state["attempt"]
+            if attempt > max_retries:
+                return ctx  # 达到上限，放弃重试（放弃路径不发 on_retry 信号）
+            # 延迟计算：三类基础设施错误恒为 base_delay；限流错误按退避模型
+            delay = base_delay
+            if isinstance(ctx.error, RateLimitedError) and backoff == "exponential":
+                delay = min(base_delay * 2 ** (attempt - 1), MAX_RETRY_DELAY)
+            ctx.can_continue = True
+            task = asyncio.ensure_future(agent.hooks.on_retry.dispatch(
+                agent, {"attempt": attempt, "max_retries": max_retries,
+                        "delay": delay, "error": ctx.error}))
+            pending.add(task)
+
+            def _observe(done: asyncio.Task) -> None:
+                pending.discard(done)
+                if not done.cancelled() and done.exception() is not None:
+                    _logger.warning("on_retry 订阅者异常（观测通道，不影响重试决策）",
+                                    exc_info=done.exception())
+
+            task.add_done_callback(_observe)
+            await asyncio.sleep(delay)
+        # 其它一切异常类型（含未知异常）：原样返回不重试
+        return ctx
 
     # 注册形态第 1、2 步：共用 by="retry"，remove_by_owner("retry") 整组移除
     agent.hooks.before_turn(_reset, by="retry")
     agent.hooks.on_provider_error(_retry_handler, by="retry")
 
-
-async def _retry_handler(agent: Agent, ctx: ProviderErrorContext) -> ProviderErrorContext:
-    """``use_retry`` 注册的默认重试决策 handler。
-
-    .. rubric:: 功能介绍
-
-    内部 API，不属稳定契约。``use_retry()`` 的行为本体：按错误类型分类
-    决策（见 :func:`use_retry` 的行为规约），内部 ``await asyncio.sleep``
-    后写 ``ctx.can_continue = True``。此处列出仅因它是「注册形态」契约的
-    承载者——应用层可通过 ``by="retry"`` 定位并移除它。
-
-    .. rubric:: 行为规约
-
-    - 签名遵守统一 handler 契约 ``(agent, value) -> value``；为 async
-      handler（S-08 裁决：退避 sleep 有真实 await 需求，符合 M-91
-      「内部确需 await 才用 async def」），dispatch 经
-      ``inspect.isawaitable`` 透明 await。
-    - attempt 计数器为本 handler 所在闭包的内部变量，由配套的
-      ``before_turn`` 归零 handler 重置；**不是** ``ProviderErrorContext``
-      或 ``TurnContext`` 的字段。
-    - 必须 ``return ctx``；不得 ``raise Intercepted``；自身若抛出普通异常，
-      按钩子系统规则直接上抛（无兜底）。
-    - 实现可按本文件行为规约自由演进（变量名、闭包结构等），对外可见的
-      契约是：注册元信息 ``by="retry"``、``on_retry``
-      观测信号（重试前 fire-and-forget dispatch），以及 :func:`use_retry`
-      文档中的分类决策与延迟公式。
-
-    .. rubric:: 调用关系（审计）
-
-    - 调用：``asyncio.sleep()``（时机：决策放行时的退避等待，时长按
-      :func:`use_retry` 的延迟公式）；``on_retry`` 钩子点 dispatch
-      （时机：置 ``can_continue=True`` 之后、sleep 之前，
-      fire-and-forget）
-    - 被调：``flowing.hooks.HookList.dispatch()``（时机：每次
-      ``on_provider_error`` 钩子触发，即 ``provider_gen()`` 内 LLM 调用抛错
-      的错误路径；由 :func:`use_retry` 注册到钩子链）
-
-    .. seealso:: :func:`flowing.composables.retry.use_retry`
-    """
-    import asyncio
-
-    # attempt 计数器与 max_retries / base_delay / backoff 均属 use_retry
-    # 注册闭包的内部状态（规约：非 ProviderErrorContext / TurnContext 字段，
-    # 实现结构可自由演进）；骨架中以具名占位表示。计数从 1 起：首次失败
-    # 为第 1 次尝试，闭包在每次失败时递增
-    attempt = 1
-    max_retries = 3      # 占位：实参来自 use_retry 调用点
-    base_delay = 1.0     # 占位：同上
-    backoff = "exponential"  # 占位：同上
-
-    # 分类决策（保守原则：只对明确已知的可重试类型放行）
-    if isinstance(ctx.error, NON_RETRYABLE_ERRORS):
-        return ctx  # 不 sleep、不计数，can_continue 保持 False
-    if isinstance(ctx.error, RETRYABLE_ERRORS):
-        if attempt > max_retries:
-            return ctx  # 达到上限，放弃重试（放弃路径不发 on_retry 信号）
-        # 延迟计算：三类基础设施错误恒为 base_delay；限流错误按退避模型
-        delay = base_delay
-        if isinstance(ctx.error, RateLimitedError) and backoff == "exponential":
-            delay = min(base_delay * 2 ** (attempt - 1), MAX_RETRY_DELAY)
-        # on_retry 观测信号（M-87）：置 can_continue=True 之后、sleep 之前，
-        # fire-and-forget 派发（不等待结果——async 上下文中以
-        # asyncio.create_task 式派发表达，handler 返回值被忽略）
-        ctx.can_continue = True
-        asyncio.ensure_future(agent.hooks.on_retry.dispatch(agent, {"attempt": attempt, "max_retries": max_retries, "delay": delay, "error": ctx.error}))  # fire-and-forget，不 await
-        await asyncio.sleep(delay)   # S-08：恢复真实退避等待
-    # 其它一切异常类型（含未知异常）：原样返回不重试
-    return ctx
