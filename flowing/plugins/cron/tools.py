@@ -5,7 +5,7 @@
 from typing import Any, Literal
 
 from flowing.agent import Agent
-from flowing.tool import Tool
+from flowing.tool import Tool, ToolDefinition
 
 from .models import CronAction
 from .scheduler import cron_scheduler_key
@@ -55,18 +55,31 @@ class ScheduleCronTool(Tool):
        :meth:`CronScheduler.schedule`
     """
 
-    name: str
-    """注册名 ``"schedule-cron"``。
-    """
-    description: str
-    """LLM 可见描述。
-    """
-    parameters: dict[str, Any]
-    """参数 schema：``cron``（必填，五字段表达式）；``prompt`` 与
-    ``tool``/``tool_args`` 二选一——传 ``prompt`` 为 ``kind="message"``
-    动作，传 ``tool``（可选带 ``tool_args`` dict）为
-    ``kind="tool_call"`` 动作；``source``（可选，语义化来源名）；
-    ``recurring``（可选 bool，默认 ``True``；``False`` = 一次性任务）。
+    definition: ToolDefinition = ToolDefinition(
+        name="schedule-cron",
+        description=(
+            "为自己注册一条 cron 定时任务（五字段表达式：分 时 日 月 周）。"
+            "prompt 与 tool 二选一：传 prompt 到点给自己发一条提示词；"
+            "传 tool（可带 tool_args）到点发起一次工具调用。"
+        ),
+        params_schema={
+            "cron": {"type": "string",
+                     "description": "五字段 cron 表达式（分 时 日 月 周）"},
+            "prompt": {"type": "string",
+                       "description": "message 动作的提示词（与 tool 二选一）"},
+            "tool": {"type": "string",
+                     "description": "tool_call 动作的工具注册名（与 prompt 二选一）"},
+            "tool_args": {"type": "object",
+                          "description": "tool_call 动作的参数（仅在给出 tool 时有效）"},
+            "source": {"type": "string",
+                       "description": "语义化来源名（on_cron_trigger 过滤与 EVENT source）"},
+            "recurring": {"type": "boolean", "default": True,
+                          "description": "False 为一次性任务（首次成功交付后自删）"},
+        },
+    )
+    """类级默认声明：``name="schedule-cron"``；``prompt`` 与
+    ``tool``/``tool_args`` 二选一（互斥校验在 ``execute`` 内，违约包装为
+    error 结果）；``caller`` 由框架注入，不出现在 LLM 可见声明中。
     """
 
     async def execute(
@@ -111,7 +124,12 @@ class ScheduleCronTool(Tool):
            :meth:`CronScheduler.schedule`
         """
         # prompt 与 tool 同时给出或同时缺失、tool_args 在缺 tool 时给出
-        # → status="error" 的 ToolResult（校验与错误包装细节未见具名规约）
+        # → 抛 ValueError，经 Tool.__call__ 包装为 status="error" 的
+        # ToolResult（LLM 可见，不触发错误钩子）
+        if (prompt is None) == (tool is None):
+            raise ValueError("prompt 与 tool 必须二选一（同时给出或同时缺失均非法）")
+        if tool is None and tool_args is not None:
+            raise ValueError("tool_args 仅在给出 tool 时有效")
         if tool is not None:
             action = CronAction(kind="tool_call", tool=tool,
                                 args=tool_args or {})
@@ -152,15 +170,21 @@ class ScheduleCronMessageTool(Tool):
     .. seealso:: :class:`ScheduleCronTool`、:class:`ScheduleCronToolCallTool`
     """
 
-    name: str
-    """注册名 ``"schedule-cron-message"``。
-    """
-    description: str
-    """LLM 可见描述。
-    """
-    parameters: dict[str, Any]
-    """参数 schema：``cron``（必填）、``prompt``（必填）、``source``
-    （可选）、``recurring``（可选 bool，默认 ``True``）。
+    definition: ToolDefinition = ToolDefinition(
+        name="schedule-cron-message",
+        description="为自己注册一条 cron 定时消息任务（五字段表达式），到点给自己发一条提示词。",
+        params_schema={
+            "cron": {"type": "string",
+                     "description": "五字段 cron 表达式（分 时 日 月 周）"},
+            "prompt": {"type": "string", "description": "到点发送的提示词"},
+            "source": {"type": "string",
+                       "description": "语义化来源名（on_cron_trigger 过滤与 EVENT source）"},
+            "recurring": {"type": "boolean", "default": True,
+                          "description": "False 为一次性任务（首次成功交付后自删）"},
+        },
+    )
+    """类级默认声明：``name="schedule-cron-message"``；参数面只接受
+    ``prompt``（仅消息动作的受限变体）。
     """
 
     async def execute(
@@ -225,16 +249,25 @@ class ScheduleCronToolCallTool(Tool):
        :class:`ScheduleCronMessageTool`、:func:`default_tool_executor`
     """
 
-    name: str
-    """注册名 ``"schedule-cron-tool-call"``。
-    """
-    description: str
-    """LLM 可见描述。
-    """
-    parameters: dict[str, Any]
-    """参数 schema：``cron``（必填）、``tool``（必填，工具注册名）、
-    ``tool_args``（可选 dict）、``source``（可选）、``recurring``
-    （可选 bool，默认 ``True``）。
+    definition: ToolDefinition = ToolDefinition(
+        name="schedule-cron-tool-call",
+        description=(
+            "为自己注册一条 cron 定时工具调用任务（五字段表达式），"
+            "到点以给定参数调用指定工具。"
+        ),
+        params_schema={
+            "cron": {"type": "string",
+                     "description": "五字段 cron 表达式（分 时 日 月 周）"},
+            "tool": {"type": "string", "description": "工具注册名"},
+            "tool_args": {"type": "object", "description": "工具参数"},
+            "source": {"type": "string",
+                       "description": "语义化来源名（on_cron_trigger 过滤与 EVENT source）"},
+            "recurring": {"type": "boolean", "default": True,
+                          "description": "False 为一次性任务（首次成功交付后自删）"},
+        },
+    )
+    """类级默认声明：``name="schedule-cron-tool-call"``；参数面只接受
+    ``tool``/``tool_args``（仅工具动作的受限变体）。
     """
 
     async def execute(
@@ -296,15 +329,19 @@ class ManageCronTool(Tool):
        :meth:`CronScheduler.unschedule`
     """
 
-    name: str
-    """注册名 ``"manage-cron"``。
-    """
-    description: str
-    """LLM 可见描述。
-    """
-    parameters: dict[str, Any]
-    """参数 schema：``action``（必填，``"list" | "cancel"``）、
-    ``job_id``（``cancel`` 时必填）。
+    definition: ToolDefinition = ToolDefinition(
+        name="manage-cron",
+        description="查询或取消自己的 cron 定时任务（action=\"list\" 列出，action=\"cancel\" 按 job_id 取消）。",
+        params_schema={
+            "action": {"type": "string", "enum": ["list", "cancel"],
+                       "description": "管理动作：list 列出任务，cancel 取消任务"},
+            "job_id": {"type": "string",
+                       "description": "要取消的任务 ID（action=\"cancel\" 时必填）"},
+        },
+    )
+    """类级默认声明：``name="manage-cron"``；``action`` 枚举
+    ``list | cancel``，``job_id`` 在 ``cancel`` 时必填（缺失由
+    ``execute`` 抛 ValueError → error 结果）。
     """
 
     async def execute(
@@ -328,6 +365,8 @@ class ManageCronTool(Tool):
         scheduler = caller.inject(cron_scheduler_key)
         if action == "list":
             return {"jobs": [job.to_dict() for job in scheduler.jobs(caller.node_id)]}  # P3-12①：唯一序列化通道
-        # action == "cancel"：缺 job_id → status="error" 的 ToolResult
-        # （错误包装细节未见具名规约）
-        return {"cancelled": scheduler.unschedule(job_id or "")}
+        # action == "cancel"：缺 job_id → 抛 ValueError，经 Tool.__call__
+        # 包装为 status="error" 的 ToolResult（LLM 可见）
+        if not job_id:
+            raise ValueError("action='cancel' 需提供 job_id")
+        return {"cancelled": scheduler.unschedule(job_id)}
