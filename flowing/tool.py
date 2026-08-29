@@ -128,8 +128,10 @@ import binascii
 import hashlib
 import inspect
 import json
+import logging
 import mimetypes
 import os
+import warnings
 from collections.abc import Callable, Iterator
 from dataclasses import asdict, dataclass, field, is_dataclass
 from pathlib import Path
@@ -138,8 +140,10 @@ from typing import TYPE_CHECKING, Any, Literal
 from flowing.errors import (
     AmbiguousMcpSourceError,
     AmbiguousToolError,
+    FormatError,
     MissingMcpSourceError,
     MissingSchemaError,
+    NameMismatchError,
     ToolNameConflictError,
     ToolNotFoundError,
 )
@@ -158,15 +162,27 @@ from flowing.message import (
     ToolCallBlock,
     VideoBlock,
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
-from flowing.params import _coerce, apply_param_overrides, schema_to_model
+from flowing.params import _coerce, apply_param_overrides, expand_args_schema, schema_to_model
 from flowing.parsable import Parsable
-from flowing.paths import NamingRules, classify_ref
+from flowing.paths import (
+    NamingRules,
+    classify_ref,
+    infer_name,
+    kebab_to_pascal,
+    kebab_to_snake,
+    pascal_to_kebab,
+    probe_candidates,
+    resolve_path,
+    to_project_path,
+)
 
 if TYPE_CHECKING:
     from flowing.agent import Agent, Execution
     from flowing.runtime import Runtime
+
+_logger = logging.getLogger(__name__)
 
 __all__ = [
     "Tool",
@@ -1225,6 +1241,43 @@ class ToolDefinition:
         )
 
 
+def _apply_param_aliases(
+    definition: ToolDefinition,
+    param_aliases: dict[str, str],
+) -> ToolDefinition:
+    """把 LLM 可见 schema 的参数名从规范名改为别名（`ToolEntry.llm_definition`
+    第 4 步的唯一可调用物）。内部 API，不属稳定契约。
+
+    .. rubric:: 行为规约
+
+    - ``param_aliases`` 方向为 ``LLM 别名 → 规范名``；本函数对
+      ``params_schema`` 键做反向改名——**仅改名**，property 内容原样，
+      其余字段（name/description/output_schema/strict）透传。
+    - 撞名（改名结果与既有键撞车，含两个规范名经别名映射到同一名称）→
+      :class:`flowing.errors.FormatError`（绑定声明笔误，fail-fast）；
+      不反向查重（``param_aliases`` 自身的别名重复不在此校验）。
+    - 映射到 schema 中不存在的规范名 → 静默跳过；``param_aliases`` 为空
+      时原样返回入参（不复制）。
+    """
+    if not param_aliases:
+        return definition
+    reverse = {canonical: alias for alias, canonical in param_aliases.items()}
+    renamed: dict[str, dict[str, Any]] = {}
+    for key, prop in definition.params_schema.items():
+        new_key = reverse.get(key, key)
+        if new_key in renamed:
+            raise FormatError(
+                f"参数别名应用撞名：{new_key!r}（param_aliases 与既有参数冲突）")
+        renamed[new_key] = prop
+    return ToolDefinition(
+        name=definition.name,
+        description=definition.description,
+        params_schema=renamed,
+        output_schema=definition.output_schema,
+        strict=definition.strict,
+    )
+
+
 @dataclass
 class ToolEntry:
     """Agent 对工具的一次「用法声明」——三正交中的 Agent 级绑定层。
@@ -1422,20 +1475,9 @@ class ToolEntry:
         definition = tool.definition.clone_with_overrides(
             self.name_alias, self.override_params, description,
             specified_params=hidden)
-        # 第 4 步参数别名应用（规范名 → param_aliases 别名）：规约未命名
-        # 具体可调用物（R-02 占位落实：就地重建 params_schema——param_aliases
-        # 是 LLM 别名 → 规范名，反向映射；未被别名化的参数保持规范名）
-        if self.param_aliases:
-            reverse = {canonical: alias for alias, canonical in self.param_aliases.items()}
-            definition = ToolDefinition(
-                name=definition.name,
-                description=definition.description,
-                params_schema={reverse.get(k, k): v
-                               for k, v in definition.params_schema.items()},
-                output_schema=definition.output_schema,
-                strict=definition.strict,
-            )
-        return definition
+        # 第 4 步参数别名应用（规范名 → param_aliases 别名）：唯一可调用物
+        # _apply_param_aliases（仅改名不改内容；撞名 → FormatError）
+        return _apply_param_aliases(definition, self.param_aliases)
 
     def resolve(
         self,
