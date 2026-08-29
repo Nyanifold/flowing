@@ -3992,7 +3992,10 @@ class Agent:
         init_kwargs = entry.resolve(self, kwargs)   # LLM args -> 完整 kwargs
         invocation = SubagentInvocation(
             alias=agent_type,
-            agent_type=agent_type if resume is None else None,   # resume 与 agent_type 互斥
+            # spec 未写清处落实：骨架把别名直接当 agent_type 透传，与
+            # SubagentInvocation.agent_type「取自 SubagentEntry.name_ori」的
+            # 字段契约矛盾——按字段契约落实（别名是 LLM 面，类型名是创建面）
+            agent_type=entry.name_ori if resume is None else None,   # resume 与 agent_type 互斥
             name=name,
             resume=resume, prompt=prompt, args=init_kwargs)
         invocation = await self.hooks.before_subagent_invoke.dispatch(
@@ -4014,7 +4017,7 @@ class Agent:
                 self._children[child.node_id] = child   # 重新进入生命周期子树（父级联销毁恢复生效）
             else:
                 child = await self.create_subagent(
-                    agent_type, name=invocation.name, **invocation.args)   # 新建路径（name 登记 _child_ids）
+                    entry.name_ori, name=invocation.name, **invocation.args)   # 新建路径：规范类型名（别名只存在绑定层；name 登记 _child_ids）
         except BaseException:
             self._executions.pop(execution.id, None)   # 创建/续接失败：回收注册，不留半登记状态
             raise
