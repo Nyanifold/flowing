@@ -2,9 +2,15 @@
 ``_next_ideal_fire``。
 """
 
-from datetime import datetime
+import asyncio
+import warnings
+from datetime import datetime, timedelta, timezone
 from typing import Any
+from uuid import uuid4
 
+from croniter import croniter
+
+from flowing.errors import Intercepted
 from flowing.params import InjectionKey
 from flowing.runtime import Runtime
 
@@ -46,6 +52,121 @@ def _next_ideal_fire(cron: str, after: datetime) -> datetime:
       ``CronScheduler.next_fire``（时机：收据/查询）、``_fire`` /
       ``_sweep``（时机：合并计数，区间内逐理想点迭代）
     """
+    fields = cron.split()
+    if len(fields) != 5:
+        # 五字段约束（分 时 日 月 周）：croniter 兼容 6/7 字段（秒/年）与
+        # @daily 等别名，本框架契约只收五字段分精度，多/少字段在此 fail-fast
+        raise ValueError(f"cron 表达式须为五字段（分 时 日 月 周）: {cron!r}")
+    # 解析引擎：croniter（CroniterError 家族均为 ValueError 子类，
+    # 非法表达式天然以 ValueError 暴露，无需包装）
+    return croniter(cron, after).get_next(datetime)
+
+
+_COALESCE_GUARD = 100_000
+"""合并计数的逐点迭代防护上限：区间理想点超过该值时换解析式计数
+（每分钟任务停机约 70 天即触线；见 :func:`_count_ideal_fires`）。
+内部 API，不属稳定契约。
+"""
+
+
+def _count_ideal_fires(
+    cron: str, start: datetime, end: datetime
+) -> tuple[int, datetime | None]:
+    """``(start, end]`` 区间内 cron 理想触发次数与最后一个理想点。
+
+    内部 API，不属稳定契约。``_fire`` / ``_sweep`` 的合并计数唯一计算
+    通道（经 :func:`_next_ideal_fire` 同款 croniter 引擎逐理想点迭代，
+    P3-12④）；区间理想点超过 :data:`_COALESCE_GUARD` 时换
+    :func:`_count_ideal_fires_analytical` 解析式计数（同一解析引擎的
+    ``expand`` 展开结果，口径一致）。
+
+    :return: ``(count, last)``；``count == 0`` 时 ``last`` 为 ``None``。
+    """
+    if end <= start:
+        return 0, None
+    it = croniter(cron, start)
+    count = 0
+    last: datetime | None = None
+    point = it.get_next(datetime)
+    while point <= end:
+        count += 1
+        last = point
+        if count > _COALESCE_GUARD:
+            return _count_ideal_fires_analytical(cron, start, end)
+        point = it.get_next(datetime)
+    return count, last
+
+
+def _count_ideal_fires_analytical(
+    cron: str, start: datetime, end: datetime
+) -> tuple[int, datetime | None]:
+    """大区间合并计数的解析式实现（:func:`_count_ideal_fires` 的防护回退）。
+
+    内部 API，不属稳定契约。以 ``croniter.expand`` 的展开集合（分/时/日/
+    月/周）按**天**迭代：日匹配遵循 Vixie cron 语义（``日`` 与 ``周``
+    同时受限时取或，单受限取该字段，均不受限恒匹配），日内计数为
+    ``时 × 分`` 的笛卡尔规模（起止边界两天按精确时刻过滤）。
+    ``expand`` 产出含非整数项（如 ``L`` 等特殊语法）时回退为无防护
+    逐点迭代（正确性优先，代价是慢）。
+    """
+    (minutes, hours, dom, months, dow), _ = croniter.expand(cron)
+    fields = (minutes, hours, dom, months, dow)
+    if any(any(not isinstance(v, int) and v != "*" for v in f) for f in fields):
+        # 特殊语法（L/W/# 等）展开含非整数非 '*' 项：回退无防护逐点迭代
+        # （正确性优先，代价是慢；'*' 是全集标记，在下方展开为完整值域）
+        it = croniter(cron, start)
+        count = 0
+        last = None
+        point = it.get_next(datetime)
+        while point <= end:
+            count += 1
+            last = point
+            point = it.get_next(datetime)
+        return count, last
+    all_days = list(range(1, 32))
+    minutes = list(range(60)) if minutes == ["*"] else minutes
+    hours = list(range(24)) if hours == ["*"] else hours
+    dom = all_days if dom == ["*"] else dom
+    months = list(range(1, 13)) if months == ["*"] else months
+    dow = list(range(7)) if dow == ["*"] else dow
+    dom_restricted = dom != all_days
+    dow_restricted = dow != list(range(7))
+    per_day = len(hours) * len(minutes)
+
+    count = 0
+    last: datetime | None = None
+    day = start.date()
+    end_date = end.date()
+    while day <= end_date:
+        # cron 周字段 0=周日（croniter expand 已把 7 归一为 0）；
+        # Python weekday() 周一=0，换算：cron_dow = (weekday + 1) % 7
+        cron_dow = (day.weekday() + 1) % 7
+        dom_match = day.day in dom
+        dow_match = cron_dow in dow
+        if dom_restricted and dow_restricted:
+            day_match = dom_match or dow_match   # Vixie cron：双受限取或
+        elif dom_restricted:
+            day_match = dom_match
+        elif dow_restricted:
+            day_match = dow_match
+        else:
+            day_match = True
+        if day_match and day.month in months:
+            if start.date() < day < end_date:
+                # 区间内部整天：全部 时×分 组合都在 (start, end] 内
+                count += per_day
+                last = datetime(day.year, day.month, day.day,
+                                max(hours), max(minutes))
+            else:
+                # 起止边界两天：按精确时刻过滤（(start, end] 左开右闭）
+                for h in hours:
+                    for m in minutes:
+                        point = datetime(day.year, day.month, day.day, h, m)
+                        if start < point <= end:
+                            count += 1
+                            last = point
+        day += timedelta(days=1)
+    return count, last
 
 class CronScheduler:
     """定时调度器——任务注册表 + 分钟级触发循环（Runtime 级服务）。
@@ -127,6 +248,12 @@ class CronScheduler:
     ``CronPlugin(templates=...)`` 传入的条目覆盖/扩充。默认执行器
     路径查表使用；自定义执行器可绕开。内部 API，不属稳定契约。
     """
+    _timers: dict[str, asyncio.TimerHandle]
+    """定时器容器（job_id → 一次性 ``TimerHandle``）。每任务用
+    ``loop.call_later`` 武装到下一理想点，回调内 ``create_task(_fire)``
+    后重新武装；``_stop`` / ``unschedule`` 遍历 cancel。内部 API，
+    不属稳定契约。
+    """
 
     def __init__(self, runtime: Runtime,
                  executors: dict[str, CronExecutor] | None = None,
@@ -163,6 +290,8 @@ class CronScheduler:
         """
         self.runtime = runtime
         self._jobs = {}
+        self._timers = {}        # 定时器容器（job_id -> 一次性 TimerHandle）
+        self._fire_tasks: set[asyncio.Task] = set()   # fire-and-forget 触发任务的强引用集（防 GC 提前回收，完成即弃）
         self._templates = {"message": DEFAULT_MESSAGE_TEMPLATE,
                            "tool_call": DEFAULT_TOOL_NOTICE_TEMPLATE,
                            **(templates or {})}   # 同上
@@ -173,11 +302,60 @@ class CronScheduler:
                                            template=self._templates["message"])
 
         async def _default_tool_exec(agent, job, action, ctx):
-            await default_tool_executor(agent, job, action, ctx,
-                                        template=self._templates["tool_call"])
+            await default_tool_executor(
+                agent, job, action, ctx,
+                template=self._templates["tool_call"],
+                # 标注块模板的「_templates 表」一档（D15 覆写链中间档；
+                # 键 "tool_result"，未扩充时落模块级默认常量）
+                result_template=self._templates.get("tool_result"))
         self._executors = {"message": _default_message_exec,
                            "tool_call": _default_tool_exec,
                            **(executors or {})}    # 传入条目覆盖/扩充（S-24）
+
+    def _now(self) -> datetime:
+        """当前时刻（naive UTC）——调度器全部时间读取的唯一通道。
+
+        内部 API，不属稳定契约。naive UTC 约定与
+        ``flowing.message`` 的时间字段一致（aware UTC 去 tzinfo）；
+        定时链路测试经替换本方法注入测试时钟（不依赖真实等待）。
+        """
+        return datetime.now(timezone.utc).replace(tzinfo=None)
+
+    def _arm(self, job: CronJob) -> None:
+        """按下一理想点武装一次性定时器（写序约定的最后一步）。
+
+        内部 API，不属稳定契约。``loop.call_later`` 武装一次性定时器，
+        回调 :meth:`_on_timer`；重复武装同 job 先 cancel 旧句柄。
+        """
+        self._disarm(job.id)
+        now = self._now()
+        delay = max(0.0, (_next_ideal_fire(job.cron, now) - now).total_seconds())
+        loop = asyncio.get_running_loop()
+        self._timers[job.id] = loop.call_later(delay, self._on_timer, job.id)
+
+    def _disarm(self, job_id: str) -> None:
+        """取消某任务的定时器（无该定时器为空操作）。内部 API。"""
+        handle = self._timers.pop(job_id, None)
+        if handle is not None:
+            handle.cancel()
+
+    def _on_timer(self, job_id: str) -> None:
+        """定时器回调：fire-and-forget 触发后按下一理想点重新武装。
+
+        内部 API，不属稳定契约。``create_task(_fire)`` 为
+        fire-and-forget 惯例（任务句柄入 ``_fire_tasks`` 持强引用，
+        完成即弃）；重新武装与 ``_fire`` 的执行解耦——一次性任务在
+        ``_fire`` 第 7 步自删（连带 ``_disarm`` 本次重武装的句柄），
+        休眠门控 / shortcut 跳过不影响下一理想点的武装。
+        """
+        self._timers.pop(job_id, None)
+        job = self._jobs.get(job_id)
+        if job is None:
+            return  # 任务已被移除（unschedule 与回调竞速）：不重武装
+        task = asyncio.create_task(self._fire(job_id))
+        self._fire_tasks.add(task)
+        task.add_done_callback(self._fire_tasks.discard)
+        self._arm(job)   # 按下一理想点重新武装（一次性任务的句柄随后由 unschedule 取消）
 
     def schedule(
         self,
@@ -258,26 +436,26 @@ class CronScheduler:
            :class:`CronAction`
         """
         if job_id is None:
-            job_id = "..."  # 缺省时由调度器生成 UUID 字符串（生成器未见具名符号）
+            job_id = str(uuid4())  # 缺省时由调度器生成 UUID 字符串
         if job_id in self._jobs:
             raise ValueError(f"job_id 冲突: {job_id}")
         # cron 表达式合法性校验（P3-12④：唯一具名解析符号；非法 → ValueError）
-        _next_ideal_fire(cron, datetime.utcnow())
+        _next_ideal_fire(cron, self._now())
         if action.kind not in self._executors:
             raise ValueError(f"action.kind 无注册执行器: {action.kind}")
         if source is None:
             source = f"cron:{job_id}"
         job = CronJob(
             id=job_id, node_id=node_id, cron=cron, action=action,
-            source=source, created_at=datetime.utcnow(), recurring=recurring,
+            source=source, created_at=self._now(), recurring=recurring,
         )
         agent = self.runtime.get_node(node_id)   # S-38：目标休眠 → KeyError 直接上抛（不做半持久化注册）
-        # 先落盘：经目标 Agent 的 cron_jobs 状态键写透（set 即写透）
-        jobs_data = agent.state.get("cron_jobs", [])
-        jobs_data.append(job.to_dict())  # P3-12①：state 恒存 list[dict]，对象本体只在调度器内存表
+        # 先落盘：经目标 Agent 的 cron_jobs 状态键写透（set 即写透）；
+        # 拷贝既有列表再追加——不原地改 default 表里的共享 list 对象
+        jobs_data = [*agent.state.get("cron_jobs", []), job.to_dict()]  # P3-12①：state 恒存 list[dict]，对象本体只在调度器内存表
         agent.state.cron_jobs = jobs_data
         self._jobs[job_id] = job          # 再登记内存表
-        # 最后武装定时器（避免幽灵触发）：定时器容器未见具名符号
+        self._arm(job)                    # 最后武装定时器（避免幽灵触发）
         return job_id
 
     def next_fire(self, job_id: str) -> str:
@@ -303,7 +481,7 @@ class CronScheduler:
           包装收据）；应用层观测（公共 API）
         """
         job = self._jobs[job_id]
-        return _next_ideal_fire(job.cron, datetime.utcnow()).isoformat()
+        return _next_ideal_fire(job.cron, self._now()).isoformat()
 
     def unschedule(self, job_id: str) -> bool:
         """移除任务并持久化。
@@ -327,7 +505,7 @@ class CronScheduler:
         job = self._jobs.pop(job_id, None)
         if job is None:
             return False  # 不存在 → 幂等友好
-        # 取消定时器：定时器容器未见具名符号
+        self._disarm(job_id)   # 取消定时器
         try:
             agent = self.runtime.get_node(job.node_id)   # 公共查表口；目标休眠 → KeyError
         except KeyError:
@@ -352,16 +530,16 @@ class CronScheduler:
 
         .. rubric:: 调用关系（审计）
 
-        - 调用：无（时机：未见规约——逐条移除是否复用 ``unschedule``
-          未写明）
+        - 调用：``CronScheduler.unschedule``（时机：逐条移除——移除 +
+          取消定时器 + 写透落盘的语义与 ``unschedule`` 完全一致，复用
+          单一实现）
         - 被调：无（框架内无调用方；应用层显式清理入口，docstring
           明示不被框架自动调用）
 
         .. seealso:: :meth:`unschedule`、:func:`use_cron`
         """
         for job in self.jobs(node_id):
-            pass  # 逐条移除：是否复用 unschedule() 未见规约，不猜
-            # （设计意图同 unschedule 语义：移除 + 取消定时器 + 写透落盘）
+            self.unschedule(job.id)   # 逐条复用 unschedule（移除 + 取消定时器 + 写透落盘）
 
     def jobs(self, node_id: str | None = None) -> list[CronJob]:
         """查询任务（只读快照）。
@@ -444,34 +622,42 @@ class CronScheduler:
             agent = self.runtime.get_node(job.node_id)   # 公共查表口
         except KeyError:
             return  # 第 2 步 休眠门控：不交付、不推进 last_fired_at
-        now = datetime.utcnow()
+        now = self._now()
         # 第 3 步：coalesced_count = cron 表达式在 (job.last_fired_at ??
-        # job.created_at, now] 内的理想触发次数（经 _next_ideal_fire 逐
-        # 理想点迭代计数——唯一具名解析符号，P3-12④）；scheduled_at 取
-        # 区间最后一个理想点
-        coalesced_count = 1  # 占位（真实值由 _next_ideal_fire 迭代算出）
+        # job.created_at, now] 内的理想触发次数（_count_ideal_fires 经
+        # _next_ideal_fire 同款引擎迭代——唯一具名解析符号，P3-12④）；
+        # scheduled_at 取区间最后一个理想点
+        coalesced_count, last_ideal = _count_ideal_fires(
+            job.cron, job.last_fired_at or job.created_at, now)
         ctx = CronFireContext(
-            scheduled_at=now, fired_at=now,
+            scheduled_at=last_ideal if last_ideal is not None else now,
+            fired_at=now,
             coalesced_count=coalesced_count, last_fired_at=job.last_fired_at,
         )
-        # 第 4 步：构造 CronTrigger（action 为 job.action 的拷贝——拷贝
-        # 方式未见具名符号）并 dispatch；目标 Agent 未 use_cron（无
-        # on_cron_trigger 钩子点）时跳过 dispatch
-        trigger = CronTrigger(job=job, source=job.source, action=job.action, fire=ctx)
+        # 第 4 步：构造 CronTrigger（action 为 job.action 的拷贝——
+        # from_dict(to_dict()) 深拷贝且顺手过形状校验，进出通道唯一）
+        # 并 dispatch；目标 Agent 未 use_cron（无 on_cron_trigger 钩子点）
+        # 时跳过 dispatch
+        trigger = CronTrigger(
+            job=job, source=job.source,
+            action=CronAction.from_dict(job.action.to_dict()), fire=ctx)
         # shortcut 初值 None（C-14 裁决后构造体不再显式传 shortcut=False）
-        # trigger = await agent.hooks.on_cron_trigger.dispatch(agent, trigger)
-        # （C-15 后本方法为 async def，dispatch 可正常 await）
+        if "on_cron_trigger" in agent.hooks._hook_points:
+            try:
+                trigger = await agent.hooks.on_cron_trigger.dispatch(agent, trigger)
+            except Intercepted:
+                # handler 硬阻断：同样跳过本次触发并中止后续 handler
+                # （CronTrigger 契约；不推进游标，语义同 shortcut）
+                return
         if trigger.shortcut:
             return  # 第 5 步：跳过本次触发，不推进游标
         executor = self._executors.get(trigger.action.kind)
         if executor is None:
             # 第 6 步：恢复出的旧任务撞上未注册对应执行器的插件配置
-            import warnings
             warnings.warn(f"cron job {job_id}: kind "
                           f"{trigger.action.kind!r} 无注册执行器，跳过本次触发")
             return
-        # await executor(agent, job, trigger.action, ctx)
-        # （C-15 后本方法为 async def，执行器可正常 await）
+        await executor(agent, job, trigger.action, ctx)
         job.last_fired_at = ctx.fired_at  # 第 7 步：执行成功 → 推进游标
         jobs_data = [job.to_dict() if j.get("id") == job_id else j
                      for j in agent.state.get("cron_jobs", [])]
@@ -510,15 +696,17 @@ class CronScheduler:
 
         .. seealso:: :func:`use_cron`、:meth:`_fire`
         """
+        now = self._now()
         for job in self.jobs(node_id):
             # 第 1 步：count = cron 表达式在 (job.last_fired_at ??
-            # job.created_at, now] 内的理想触发次数（经 _next_ideal_fire
-            # 逐理想点迭代计数——唯一具名解析符号，P3-12④）
-            count = 0  # 占位（真实值由 _next_ideal_fire 迭代算出）
+            # job.created_at, now] 内的理想触发次数（_count_ideal_fires
+            # 经 _next_ideal_fire 同款引擎——唯一具名解析符号，P3-12④）
+            count, _ = _count_ideal_fires(
+                job.cron, job.last_fired_at or job.created_at, now)
             if count >= 1:
-                # 第 2 步：走与 _fire 第 3–7 步完全相同的交付链路
-                # （是否复用 _fire 未见规约，此处按复用写；C-15 后
-                # _fire 为 async def，正常 await）
+                # 第 2 步：走与 _fire 第 3–7 步完全相同的交付链路——
+                # 逐条复用 _fire（其内部按同一口径重算合并计数，构造
+                # CronFireContext / dispatch / 执行 / 推进游标 / 自删）
                 await self._fire(job.id)
 
     def _load_jobs(self, node_id: str, jobs: list[dict[str, Any]]) -> None:
@@ -545,7 +733,7 @@ class CronScheduler:
             # → ValueError fail-fast 自 CronAction.from_dict）
             job = CronJob.from_dict(data)
             self._jobs[job.id] = job  # 按 job_id 覆盖进表，重复恢复幂等
-            # 重新武装定时器：定时器容器未见具名符号
+            self._arm(job)   # 重新武装定时器（覆盖旧句柄：_arm 内先 _disarm）
         # 本方法不直接交付——错过合并由随后的 after_recover → _sweep 完成
 
     def _stop(self) -> None:
@@ -556,10 +744,11 @@ class CronScheduler:
 
         .. rubric:: 调用关系（审计）
 
-        - 调用：无（停止全部定时器，不删任务定义）
+        - 调用：``TimerHandle.cancel``（时机：停止全部定时器，不删任务定义）
         - 被调：``CronPlugin.shutdown()``（时机：每次优雅关闭，
           ``Runtime.shutdown()`` 插件收尾阶段按 install 顺序逐个 await）
 
         .. seealso:: :meth:`flowing.runtime.Runtime.shutdown`
         """
-        ...
+        for job_id in list(self._timers):
+            self._disarm(job_id)   # 停全部定时器；任务定义不删（随 state.jsonl 存续）
