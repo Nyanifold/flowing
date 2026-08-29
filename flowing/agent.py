@@ -170,21 +170,31 @@ pending（cancelled）、取消工作循环、从 ``_nodes`` 摘除；但 **dest
 from __future__ import annotations   # S-43 裁决③：注解延迟求值，配合 TYPE_CHECKING 破注解级循环边
 
 import asyncio
+import contextlib
 import inspect
+import json
+import logging
+import sys
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, TypeVar, overload
+from uuid import uuid4
 
-from flowing.context import Context, ContextUsageEstimate, PromptBlockList
+from pydantic import ValidationError
+
+from flowing.context import Context, ContextUsageEstimate, PromptBlockList, PromptSegment
 from flowing.errors import (
+    ContextLengthError,
     EntryNameConflictError,
+    FlowingError,
     FormatError,
     Intercepted,
     StateKeyError,
     ToolNotFoundError,
+    UnknownToolError,
 )
 from flowing.hooks import HookRegistry
 from flowing.message import (
@@ -195,17 +205,30 @@ from flowing.message import (
     MessagePriority,
     MessageQueue,
     TextBlock,
+    ThinkingBlock,
     ToolCallBlock,
     estimate_message_tokens,
+    from_record,
+    to_record,
+    _block_from_record,
+    _text_tokens,
 )
-from flowing.model import ModelConfig
-from flowing.params import InjectionKey
-from flowing.parsable import _UNSET, Parsable
+from flowing.model import ModelConfig, load_model_tags, load_models
+from flowing.params import InjectionKey, schema_to_model
+from flowing.parsable import _UNSET, PENDING, Parsable
 from flowing.parser import EntryRef, normalize_entries, split_as
 from flowing.persistence import FileRecordStore, RecordStore, StateView
 from flowing.provide import inject_from
-from flowing.providers import Provider, ProviderResponse, Usage
-from flowing.snapshot import AgentSnapshot
+from flowing.providers import Provider, ProviderDelta, ProviderResponse, Usage
+from flowing.snapshot import (
+    AgentSnapshot,
+    EntryInfo,
+    ExecutionInfo,
+    MessageQueueInfo,
+    MessageTreeInfo,
+    ModelInfo,
+    TurnContextInfo,
+)
 from flowing.subagents import (
     DEFAULT_SUBAGENT_CATALOG_TEMPLATE,
     SubagentEntry,
@@ -214,6 +237,7 @@ from flowing.subagents import (
 )
 from flowing.tool import (
     TOOL_NAMING,
+    Tool,
     ToolCall,
     ToolDefinition,
     ToolEntry,
@@ -225,6 +249,82 @@ if TYPE_CHECKING:
     from flowing.runtime import Runtime
 
 T = TypeVar("T")
+
+_logger = logging.getLogger(__name__)
+"""模块级 logger：工作循环回合异常等的记录点（规约只要求「记日志」，未具名
+logger 符号）。"""
+
+# R-12 落实：核心保留状态键清单——以 _open_stores 实际登记的键（child_ids）
+# 加「由框架写透语义承载的核心裸名」（current_head_id，见 register_state 的
+# 测试案例）为准；插件声明撞之报错。
+_CORE_STATE_KEYS = frozenset({"child_ids", "current_head_id"})
+
+
+class _LlmViewValidationError(FlowingError):
+    """LLM 视角校验失败的内部信号（**内部 API，不属稳定契约**）。
+
+    spec 未写清处落实：``schema_to_model`` 的桥接模型默认忽略未定义键
+    （Pydantic 默认 extra 行为），而「幻觉参数按未定义参数校验错误处理」
+    要求显式拒绝——未知键检查在 ``Agent._normalize`` 内以本异常报出，
+    键名即 LLM 自己提供的别名（回指不构成泄漏）；``Agent.tool_call``
+    捕获后包装为 ``ToolResult(status="error")`` 正常产物。
+    """
+
+
+def _estimate_tool_schema_tokens(definition: ToolDefinition) -> int:
+    """工具 schema 的 token 补估（``llm_definition()`` JSON 序列化 ÷ 4）。
+
+    **内部 API，不属稳定契约。** ``estimate_context_tokens`` 的「锚点后新增
+    工具补估 schema」与「无锚点全估」共用；与消息估算的字符启发式（4 字符
+    /token）同口径。
+    """
+    from dataclasses import asdict
+
+    return len(json.dumps(asdict(definition), ensure_ascii=False)) // 4
+
+
+def _as_parsable_patch(value: Any) -> Parsable | None:
+    """覆写体的文本类补丁值归一（**内部 API**）：``_``（PENDING）→ 空补丁
+    （``None``）；``Parsable`` 原样透传；其余包装为 ``Parsable`` 常量。
+
+    ``add_tool`` 的 ``description`` 与 ``add_agent`` 的 ``system_prompt`` /
+    ``description`` 共用（求值面内字段的手动包装点）。
+    """
+    if value is PENDING:
+        return None   # 空补丁语义：声明了覆写位、内容为空（从基底回填）
+    if isinstance(value, Parsable):
+        return value
+    return Parsable(value)
+
+
+def _classify_override_args(
+    args_body: Mapping[str, Any],
+    override_params: dict[str, dict[str, Any]],
+    specified: dict[str, Parsable],
+    param_aliases: dict[str, str],
+) -> None:
+    """覆写体 ``args:`` 映射的逐参数判别（**内部 API**）。
+
+    ``add_tool`` / ``add_agent`` 共用（SubagentEntry 行为规约：同一套代码
+    路径）。规则（ToolEntry 行为规约本体）：
+
+    - 值是 dict → ``override_params`` 稀疏补丁（JSON Schema 关键字，零糖）；
+    - 键含 ``<name> as <alias>`` → ``param_aliases``，值部分照常判别；
+    - 值是 ``_``（PENDING）→ **空补丁**（``override_params[name] = {}``，
+      深层块可逐字段填充，未填充则合成时全量回填，不报错）；
+    - 其它值 → ``specified``（包装 ``Parsable``；``"{{ self.inject('key') }}"``
+      注入表达式在此落入，R-4）。
+    """
+    for raw_key, value in args_body.items():
+        pname, palias = split_as(raw_key)
+        if palias is not None:
+            param_aliases[palias] = pname
+        if value is PENDING:
+            override_params[pname] = {}   # 空补丁
+        elif isinstance(value, Mapping):
+            override_params[pname] = dict(value)   # 稀疏补丁（零糖）
+        else:
+            specified[pname] = value if isinstance(value, Parsable) else Parsable(value)
 
 WatchHandler = Callable[[Any, Any], None]
 """``watch`` 的回调类型：``(new_value, old_value) -> None``，返回值忽略。
@@ -778,7 +878,8 @@ class CancelContext:
 
 def build_turn_result(turn: TurnContext, agent: "Agent", *,
                       intercepted: bool = False,
-                      error: BaseException | None = None) -> TurnResult:
+                      error: BaseException | None = None,
+                      finish_reason: str = "") -> TurnResult:
     """回合收尾组装 :class:`TurnResult`（模块级函数）。
 
     .. rubric:: 功能介绍
@@ -820,6 +921,10 @@ def build_turn_result(turn: TurnContext, agent: "Agent", *,
     :param intercepted: 本回合是否被钩子 ``Intercepted`` 硬阻断
         （``_run_turn`` 的 except 帧捕获后传入）。
     :param error: 本回合未捕获的异常对象（同上；无为 ``None``）。
+    :param finish_reason: 自然完成时末次 ``provider_gen`` 响应的原始停止原因
+        （``provider_data.get("stop_reason", "")``，由 ``_run_turn`` 显式
+        传入；R-09 落实——取消 / 拦截 / 异常结局由本函数按 ``status`` 填
+        对应字面量，本参数仅 ``completed`` 结局采用）。
 
     .. rubric:: 测试案例
 
@@ -875,7 +980,15 @@ def build_turn_result(turn: TurnContext, agent: "Agent", *,
             total_tokens=sum(u.total_tokens for u in turn.usages),
             raw={},
         )
-    finish_reason: str = ""   # 信息字段（原始停止原因，如 "end_turn" / "cancelled"）
+    # finish_reason（R-09 落实）：取消 / 拦截 / 异常结局填对应字面量；
+    # 自然完成填末次 provider_gen 响应的 stop_reason（调用点显式传入）；
+    # 空 turn 填 ""。信息字段，不参与控制流。
+    if status == "cancelled":
+        finish_reason = "cancelled"
+    elif status == "blocked":
+        finish_reason = "intercepted"
+    elif status == "error":
+        finish_reason = "error"
     return TurnResult(turn=turn, final_text=final_text, status=status,
                       token_usage=token_usage, finish_reason=finish_reason)
 
@@ -1365,6 +1478,8 @@ class Agent:
         self._subagent_entries = {}
         self.current_turn = None
         self.current_head_id = None
+        self.last_result = None   # 未产生过结果为 None（_run_turn 统一收尾段覆写）
+        self._measured_tool_names = set()   # 估算锚点记账（provider_gen 并入；纯内存不持久化）
         self._pause_gate = asyncio.Event()
         self._pause_gate.set()   # 初始放行
         self._turn_abort = asyncio.Event()
@@ -1395,6 +1510,28 @@ class Agent:
         # source_file is _UNSET -> 从 __module__.__file__ 推算为 "@/" 格式
         # （失败 -> None）；非 _UNSET -> 尊重显式值（.fya 注入优先）
         # （_UNSET 哨兵见 flowing.parsable；"@/" 推算经 runtime.resolve_path）
+        if getattr(cls, "source_file", _UNSET) is not _UNSET:
+            return   # 显式值（含 None；.fya 装配层注入优先）
+        module_file = getattr(sys.modules.get(cls.__module__), "__file__", None)
+        if module_file is None:
+            cls.source_file = None   # 推算失败 -> None
+            return
+        # 经 launch 上下文的当前项目根换算 "@/" 格式；无 launch 上下文（裸
+        # Runtime 不存在 / 测试直接定义子类）时推算失败 -> None（R-03 相邻
+        # 占位：runtime 批次的 _current_project_root 就绪后本路径自动生效）
+        try:
+            from flowing.runtime import _current_project_root
+            root = _current_project_root()
+        except Exception:
+            root = None
+        if root is None:
+            cls.source_file = None
+            return
+        try:
+            cls.source_file = "@/" + str(
+                Path(module_file).resolve().relative_to(Path(root).resolve()))
+        except ValueError:
+            cls.source_file = None   # 项目根之外的源文件：无 "@/" 表达 -> None
 
     def __getattr__(self, name: str) -> Any:
         """回退查找链：``_extra``（内部 API，不属稳定契约）。
@@ -1599,7 +1736,16 @@ class Agent:
         # 冲突检测：撞类属性/方法、_extra 键、已注册状态键、核心保留键 -> 报错
         # （撞类属性/方法与核心键清单的判定在本方法；已注册状态键查
         #   _state_bag._defaults）
-        self._state_bag._register(key, default)   # 声明落进单袋 defaults 表
+        # R-12 落实：类属性/方法用 hasattr(type(self), key) 探测；核心保留键
+        # 清单为模块级 _CORE_STATE_KEYS（与 _open_stores 实际登记对照）
+        if hasattr(type(self), key):
+            raise ValueError(f"状态键与类属性/方法同名: {key!r}")
+        if key in _CORE_STATE_KEYS:
+            raise ValueError(f"状态键撞框架核心保留键: {key!r}")
+        extra = self.__dict__.get("_extra")
+        if extra is not None and key in extra:
+            raise ValueError(f"状态键撞 _extra 键: {key!r}")
+        self._state_bag._register(key, default)   # 声明落进单袋 defaults 表（重复声明报错）
         return self._state_bag
 
     @property
@@ -1647,6 +1793,21 @@ class Agent:
             :meth:`delete`、:class:`StateView`
         """
         return self._state_bag   # 单袋视图（_open_stores 建立，无副作用）
+
+    @property
+    def _state(self) -> dict[str, Any]:
+        """已注册状态键 → 现场值的字典视图（**内部 API，不属稳定契约**）。
+
+        R-6 承接：``flowing.parsable.Parsable._do_resolve`` 摊平渲染上下文时
+        经 ``getattr(agent, "_state", None)`` 读取状态键袋——本 property 是真
+        Agent 侧的对齐落点（骨架期袋未建立时返回空表）。键集 = 已声明键 ∪
+        已持久键；写闸门未开时读仅见 defaults（StateView 读语义）。
+        """
+        bag = self.__dict__.get("_state_bag")
+        if bag is None:
+            return {}
+        keys = set(bag._defaults) | set(bag._persisted)
+        return {k: bag[k] for k in keys}
 
     def get(self, key: str, default: Any = None) -> Any:
         """动态键统一读——状态键 / 实例与类属性 / ``_extra`` 三域兼容。
@@ -1910,8 +2071,13 @@ class Agent:
                     final_text="", status="cancelled", token_usage=None,
                     finish_reason="cancelled"))
         self._pending_turns.clear()
-        # 2. 取消工作循环 Task（具名句柄 _loop_task，由管线第 10 步赋值）
-        self._loop_task.cancel()   # cancel 注入点 = 工作循环当前悬停的 await
+        # 2. 取消工作循环 Task（具名句柄 _loop_task，由管线第 10 步赋值）；
+        # 幂等与骨架期护栏：loop 未启动（__dict__ 无句柄）时跳过
+        loop_task = self.__dict__.get("_loop_task")
+        if loop_task is not None:
+            loop_task.cancel()   # cancel 注入点 = 工作循环当前悬停的 await
+            with contextlib.suppress(asyncio.CancelledError):
+                await loop_task   # 等循环 finally 落地后再关后端（防关库后提交）
         await self._tree_store.close()   # 2b. 排空屏障 + 停写任务（契约②钉死点）
         self._state_bag._maybe_compact(force=True)   # 2c. 压缩三时点②：destroy 收尾（请求随 _close 排空一并执行）
         await self._state_bag._close()
@@ -1961,7 +2127,37 @@ class Agent:
         """
         # ① self._tree_store.replay() 逐行重建消息级树（Message.id +
         #    parent_id 链；消息行建树、tombstone/update/move 变更行按序
-        #    做手术；撕裂末行由 replay 截断丢弃）
+        #    做手术；撕裂末行由 replay 截断丢弃；悬空变更行（墓碑压缩后
+        #    目标可缺失）跳过容忍——不当作 corruption）
+        if not self._session_dir.exists():
+            # 池元数据与目录不一致：按空 session 处理 + 可诊断告警
+            _logger.warning("agent %s: session 目录不存在，按空 session 恢复: %s",
+                            self.node_id, self._session_dir)
+        order: list[str] = []   # 消息行序（head 推导：最后一条存活的已挂树消息）
+        for record in list(self._tree_store.replay()):   # replay 是惰性生成器——显式消费
+            rtype = record.get("type")
+            if rtype == "message":
+                msg = from_record(record)
+                self._messages[msg.id] = msg
+                order.append(msg.id)
+            elif rtype == "tombstone":
+                rid = record.get("id")
+                self._messages.pop(rid, None)   # 悬空墓碑容忍（目标缺失跳过）
+                if rid in order:
+                    order.remove(rid)
+            elif rtype == "update":
+                target = self._messages.get(record.get("id"))
+                if target is not None:   # 悬空 update 容忍
+                    target.content = [_block_from_record(b)
+                                      for b in record.get("content", [])]
+            elif rtype == "move":
+                target = self._messages.get(record.get("id"))
+                if target is not None:   # 悬空 move 容忍
+                    target.parent_id = record.get("parent_id")
+        # 框架核心键最小集：current_head_id 指向最后持久化消息（由树重放
+        # 行序推导；state.jsonl 无对应存储键——推导规则见 spec 措辞，
+        # 「队列待消费消息」无持久化记录源，恢复后为空队）
+        self.current_head_id = order[-1] if order else None
         # ①b 孤立 tool_call 合成占位（M-25 恢复扫描，配对锚为消息字段）：
         #    逐分支扫描 PROVIDER 消息的 ToolCallBlock.id，同分支后续无
         #    tool_call_id 匹配的 TOOL 消息者，合成占位消息挂树封闭配对：
@@ -1969,19 +2165,57 @@ class Agent:
         #            tool_status="error", synthetic=True,
         #            content=[TextBlock(占位说明)])
         #    （不再是合成 ToolResultBlock；content 为纯内容块）
-        # ② 读 state.jsonl（_state_bag._store.replay()）恢复框架核心键
-        #    最小集（current_head_id 指向最后持久化消息 + 队列待消费消息
-        #    + 池元数据）
-        # ③ 全部持久化行重放进单袋状态（逐键覆盖 register_state 的 default；
-        #    无 schema：持久化键无论声明与否一律装袋，P3-04 裁决）
-        replayed: dict[str, Any] = {}   # 占位：单袋重放产物（replay 行序应用）
-        _ = replayed
+        answered = {m.tool_call_id for m in self._messages.values()
+                    if m.kind is MessageKind.TOOL}
+        orphans: list[tuple[str, str]] = []   # (provider 消息 id, 孤立调用 id)，按行序确定序
+        for mid in order:
+            m = self._messages.get(mid)
+            if m is None or m.kind is not MessageKind.PROVIDER:
+                continue
+            for block in m.content:
+                if isinstance(block, ToolCallBlock) and block.id not in answered:
+                    orphans.append((mid, block.id))
+        for provider_id, call_id in orphans:
+            placeholder = Message(
+                kind=MessageKind.TOOL, tool_call_id=call_id,
+                tool_status="error", synthetic=True,
+                content=[TextBlock(
+                    text=f"工具调用 {call_id} 的结果缺失（工具执行中崩溃），"
+                         "恢复时合成的占位消息。")])
+            placeholder.parent_id = provider_id
+            # insert 式挂树（纯内存，不落盘——下次恢复会重新合成，语义幂等）：
+            # provider 消息的既有直接子消息重挂到占位消息之下，保证配对
+            # 占位出现在「调用之后、既有后续之前」的链上位置
+            for child in list(self._messages.values()):
+                if child.parent_id == provider_id and child.id != placeholder.id:
+                    child.parent_id = placeholder.id
+            self._messages[placeholder.id] = placeholder
+            if self.current_head_id == provider_id:
+                # provider 消息本是分支尾：占位消息成为新尾，head 随之上移
+                self.current_head_id = placeholder.id
+        # ②③ 读 state.jsonl（_state_bag._store.replay()）逐键重放进单袋
+        #    （写闸门未开，直写 _persisted 绕过写通道；无 schema：持久化键
+        #    无论声明与否一律装袋，P3-04 裁决——逐键覆盖 register_state 的
+        #    default 是读出回退序的天然结果）
+        persisted = self._state_bag._persisted
+        for record in list(self._state_bag._store.replay()):
+            op = record.get("op")
+            if op == "set":
+                persisted[record["key"]] = record["value"]
+            elif op == "delete":
+                persisted.pop(record["key"], None)
+            # 未知行形态（meta 已被 replay 吸收）静默跳过
         # ③b S-34：重放出的 child_ids 直接装入 _child_ids 内存镜像
         #    （S-34 追加裁决：闸门未开不支持创建子代 -> setup 阶段镜像
         #    必为空，装入无合并冲突）
+        replayed_child_ids = persisted.get("child_ids")
+        if isinstance(replayed_child_ids, dict):
+            self._child_ids.update(replayed_child_ids)
         # ④ 完成后解开 StateView 写闸门（_state_bag._write_gate_open = True）
+        object.__setattr__(self._state_bag, "_write_gate_open", True)
         # ④b 压缩三时点①：恢复重放后请求 state.jsonl 全量压缩
         #    （_state_bag._maybe_compact(force=True)；物理重写在 drain 任务）
+        self._state_bag._maybe_compact(force=True)
         # ⑤ 派生运行时结构（cron 定时器等）由随后的 after_recover 钩子重建
 
     # ────────────────────────── 消息进入与等待 ────────────────────────────
@@ -2468,7 +2702,17 @@ class Agent:
             :func:`flowing.message.estimate_message_tokens`、
             :class:`flowing.providers.Usage`、``Agent.snapshot``。
         """
-        path = [...]   # 沿 current_head_id 上溯收集（与 _assemble_context 同口径）
+        # 沿 current_head_id 上溯收集（与 _assemble_context 同口径；
+        # 孤儿链断点容忍——上溯到断点即终止，同 MessageChain.remove 的语义）
+        path: list[Message] = []
+        cursor = self.current_head_id
+        while cursor is not None:
+            msg = self._messages.get(cursor)
+            if msg is None:
+                break
+            path.append(msg)
+            cursor = msg.parent_id
+        path.reverse()
         anchor = None
         for m in reversed(path):
             if m.kind is MessageKind.PROVIDER and m.usage is not None and m.usage.total_tokens > 0:
@@ -2480,13 +2724,24 @@ class Agent:
             measured = anchor.usage.total_tokens   # 恒等式：含 cache_read（缓存也占窗口）
             for m in path[path.index(anchor) + 1:]:
                 estimated += estimate_message_tokens(m)
-            for d in []:   # 当前启用工具中不在 _measured_tool_names 者：llm_definition() JSON ÷ 4
-                ...
+            # 锚点后新增工具补估：当前启用工具中不在 _measured_tool_names 者
+            for entry in self._tool_entries.values():
+                if entry.enabled and entry.name_alias not in self._measured_tool_names:
+                    estimated += _estimate_tool_schema_tokens(
+                        entry.llm_definition(self.runtime, self))
         else:
+            # 无锚点全估：system prompt 各 segment 文本 + 全部启用工具
+            # schema + 路径全部消息
+            for block in self.prompt_blocks:
+                estimated += _text_tokens(str(block.content.resolve(self)))
+            for entry in self._tool_entries.values():
+                if entry.enabled:
+                    estimated += _estimate_tool_schema_tokens(
+                        entry.llm_definition(self.runtime, self))
             for m in path:
                 estimated += estimate_message_tokens(m)
-            # 追加：system prompt 各 segment 文本估算 + 当前全部启用工具 schema 估算
-        window = self.model.resolve(self).context_window   # 现场求值；未声明为 None
+        model = self.__dict__.get("model")   # 模型尚未解析（创建管线中）-> 窗口为 None
+        window = model.resolve(self).context_window if model is not None else None   # 现场求值；未声明为 None
         return ContextUsageEstimate(
             tokens=(measured or 0) + estimated, measured=measured,
             estimated=estimated,
@@ -2494,6 +2749,42 @@ class Agent:
             context_window=window)
 
     # ────────────────────────── 模型调用与副线 ────────────────────────────
+
+    def _resolve_model_tag(self, tag: str) -> ModelConfig:
+        """模型标签 → ``ModelConfig`` 的现场解析（**内部 API，不属稳定契约**）。
+
+        R-08 落实（解析器未见具名符号）：``model_tag`` →
+        :func:`flowing.model.load_model_tags` 标签映射 → 模型条目名 →
+        :func:`flowing.model.load_models` 条目表 → ``ModelConfig``，两跳
+        现场求值无缓存。来源路径读 ``runtime._model_tags_path`` /
+        ``runtime._models_path``（Runtime 的登记字段，见
+        ``Runtime.set_model_tags`` / ``set_models``）；未设定按 Runtime 侧
+        默认路径语义属 runtime 批次职责——本方法在两者缺失时报错（fail
+        fast，不静默回退）。标签未定义回退 ``default``；``default`` 也未
+        定义 → 报错（与 ``model_tag`` 类属性规约一致）。
+
+        本方法是 ``self.model`` 初始解析与 ``side_query(model_tag=...)`` 的
+        同一代码路径（R-08 推测方案）；调用方负责把产物落到
+        ``self.model``（创建管线 / ``model_tag`` 赋值）或仅作一次性使用
+        （副线）。
+        """
+        tags_path = getattr(self.runtime, "_model_tags_path", None)
+        models_path = getattr(self.runtime, "_models_path", None)
+        if tags_path is None or models_path is None:
+            raise FlowingError(
+                f"模型标签 {tag!r} 无法解析：Runtime 未登记 model-tags/models "
+                "来源路径（_model_tags_path / _models_path）")
+        tags = load_model_tags(Path(tags_path))
+        entry_name = tags.get(tag) or tags.get("default")
+        if entry_name is None:
+            raise FlowingError(
+                f"模型标签 {tag!r} 未定义且 model-tags 缺 default 兜底")
+        models = load_models(Path(models_path))
+        config = models.get(entry_name)
+        if config is None:
+            raise FlowingError(
+                f"模型标签 {tag!r} 指向的模型条目 {entry_name!r} 不在 models 表中")
+        return config
 
     async def provider_gen(
         self, context: Context, *, stream: bool = True, by: str | None = None
@@ -2597,21 +2888,71 @@ class Agent:
         model: ModelConfig = self.model.resolve(self)   # 每次调用前字段级惰性求值
         provider: Provider = self.runtime.provider_registry.get(model.provider)   # 懒获取（C-04 裁决：ProviderRegistry，未知条目 KeyError）
         context = await self.hooks.before_provider_gen.dispatch(self, context)   # 可改写完整 Context
-        execution = Execution(id="", kind="request", tags=[],   # id 为 UUID 占位
+        execution = Execution(id=uuid4().hex, kind="request", tags=[],
                               started_at=datetime.now(),
                               cancel=asyncio.Event(), pause=asyncio.Event())
         self._executions[execution.id] = execution   # 注册，finally 清理
         try:
-            # stream=True（默认）：流式（逐 delta 累积 + on_provider_delta
-            # dispatch 转发；中断保留 partial=True 消息随响应返回，
-            # cancelled=True）；stream=False：非流式一次性请求，拿到完整
-            # 响应后合成一条全量 delta dispatch（格式与流式一致）。
-            # 每条 delta 与最终 response 盖写 by（adapter 不填）。
-            # 非流式：await provider.generate(context, model)；流式：
-            # provider.generate_stream(...)（Provider 契约见 flowing.providers）
-            response: ProviderResponse = ...   # 占位：Provider 调用产物
+            if not stream:
+                # 非流式：一次性请求；拿到完整响应后合成一条全量 delta 同样
+                # dispatch（两种路径 delta 数据格式一致，订阅者永远能依赖
+                # 「每次 provider_gen 至少一条 delta」）
+                response = await provider.generate(context, model)
+                if response.message is not None:
+                    full_text = "".join(
+                        b.text for b in response.message.content
+                        if isinstance(b, TextBlock))
+                    await self.hooks.on_provider_delta.dispatch(
+                        self, ProviderDelta(kind="text", text=full_text,
+                                            content_index=0, by=by))
+            else:
+                # 流式（R-11 落实）：list[ContentBlock] 累积器按
+                # content_index 归位——text/thinking delta 逐段拼接进对应块；
+                # 结构化内容（工具调用等）由 adapter 在末段以完整块
+                # （delta.block）交付，直接归位；usage 由末帧附着进组装消息。
+                accumulated: dict[int, ContentBlock] = {}
+                final_usage: Usage | None = None
+                interrupted = False
+                async for delta in provider.generate_stream(context, model):
+                    # 取消点起不再 dispatch delta（abort/cancel 均为协作式信号）
+                    if self._turn_abort.is_set() or execution.cancel.is_set():
+                        interrupted = True
+                        break
+                    delta.by = by   # 来源标记盖写（adapter 不填、无法伪造）
+                    if delta.block is not None:
+                        accumulated[delta.content_index] = delta.block
+                    elif delta.kind == "thinking":
+                        existing = accumulated.get(delta.content_index)
+                        thinking = ((existing.thinking if isinstance(existing, ThinkingBlock) else "")
+                                    + delta.text)
+                        accumulated[delta.content_index] = ThinkingBlock(
+                            thinking=thinking)
+                    elif delta.text or delta.content_index in accumulated:
+                        existing = accumulated.get(delta.content_index)
+                        text = ((existing.text if isinstance(existing, TextBlock) else "")
+                                + delta.text)
+                        accumulated[delta.content_index] = TextBlock(text=text)
+                    if delta.usage is not None:
+                        final_usage = delta.usage   # 仅末帧携带
+                    await self.hooks.on_provider_delta.dispatch(self, delta)   # 纯观察，返回值丢弃不回写
+                message = Message(
+                    kind=MessageKind.PROVIDER,
+                    content=[accumulated[i] for i in sorted(accumulated)],
+                    partial=interrupted,   # 流式中断：已累积内容定型为 partial=True 消息（保留落盘）
+                    usage=final_usage,
+                )
+                response = ProviderResponse(
+                    message=message,
+                    # 默认准则：有 tool_call block -> False；中断的流式没有 finish
+                    finish=(not interrupted) and not any(
+                        isinstance(b, ToolCallBlock)
+                        for b in message.content),
+                    cancelled=interrupted,
+                    model=model.model if isinstance(model.model, str) else "",
+                )
         finally:
             self._executions.pop(execution.id, None)   # finally 清理（不变量：不捕获异常）
+        response.by = by   # 响应来源标记盖写（adapter 不填）
         response = await self.hooks.after_provider_gen.dispatch(self, response)   # 可改写 ProviderResponse
         if response.message is not None and response.message.usage is not None:
             # 估算锚点记账：本次实测覆盖了当时 context.tools 的 schema，
@@ -2717,13 +3058,18 @@ class Agent:
             - :meth:`query` —— 主线入口（副线请直接调本方法）。
             - :meth:`provider_gen` —— 底层调用。
         """
-        execution = Execution(id="", kind="side_query", tags=[],   # id 为 UUID 占位
+        execution = Execution(id=uuid4().hex, kind="side_query", tags=[],
                               started_at=datetime.now(),
                               cancel=asyncio.Event(), pause=asyncio.Event())
         self._executions[execution.id] = execution   # 可被 cancel_by_tag / 级联取消命中
+        original_model: ModelConfig | None = None
+        if model_tag is not None:
+            # R-08 落实：请求前当场解析临时 ModelConfig（_resolve_model_tag），
+            # 不改写 self.model——经 object.__setattr__ 临时换绑再还原，
+            # 不触发 watcher、不影响并发回合的观测面
+            original_model = self.model
+            object.__setattr__(self, "model", self._resolve_model_tag(model_tag))
         try:
-            # model_tag 非 None 时请求前当场解析（解析器未见具名符号），不改写
-            # self.model；None 时复用 self.model
             context: Context = self._assemble_context()   # 与主路径同一机制；本次请求/响应不挂树
             # 散装参数打包（与 query() 同一规则）；副线消息不挂树，但必须作为
             # 本次提问进入模型：追加到本次临时 Context.messages 末尾
@@ -2745,6 +3091,8 @@ class Agent:
                         text += block.text   # 仅拼 TextBlock；ThinkingBlock / ToolCallBlock 丢弃
             return text   # finish 字段不读（副线不是 Turn）
         finally:
+            if original_model is not None:
+                object.__setattr__(self, "model", original_model)   # 还原临时换绑
             self._executions.pop(execution.id, None)
 
     # ────────────────────────── 消息树手术便捷方法 ─────────────────────────
@@ -3646,7 +3994,7 @@ class Agent:
             resume=resume, prompt=prompt, args=init_kwargs)
         invocation = await self.hooks.before_subagent_invoke.dispatch(
             self, invocation)   # 可改写 args/prompt；Intercepted 硬阻断唤起（上抛，未创建实例）
-        execution = Execution(id="", kind="agent", tags=["subagent"],   # id 为 UUID 占位
+        execution = Execution(id=uuid4().hex, kind="agent", tags=["subagent"],
                               started_at=datetime.now(),
                               cancel=asyncio.Event(), pause=asyncio.Event())
         self._executions[execution.id] = execution   # cancel()/级联取消可命中
@@ -3726,7 +4074,13 @@ class Agent:
                 # 注入：②.5 吸收、当轮可见、不打断；消息路径与代码路径同源）。
                 # content 塑形与 output_to_blocks 同口径：
                 # str → [TextBlock]；dict → [StructBlock]；None → []。
-                ...   # await self.enqueue_message(Message(kind=SUBAGENT, priority=MessagePriority.STEER, ...))
+                from flowing.tool import output_to_blocks   # 局部 import 破环（agent ↔ tool 共享塑形出口，D22）
+
+                await self.enqueue_message(Message(
+                    kind=MessageKind.SUBAGENT,
+                    source=f"subagent:{result.subagent_id}",
+                    content=output_to_blocks(result.result),
+                    priority=MessagePriority.STEER))
         finally:
             self._executions.pop(execution.id, None)
         return result
@@ -3825,23 +4179,30 @@ class Agent:
             except Intercepted as exc:
                 result = ToolResult.blocked(reason=str(exc))   # after_tool_call 拦截 → 伪造 blocked result 返回（不传播终结工作循环）
         else:
-            entry = self._tool_entries[tool_call.name]   # 仅按别名查找；未命中 -> UnknownToolError
+            if tool_call.name not in self._tool_entries:
+                raise UnknownToolError(tool_call.name)   # 仅按别名查找；无规范名回退（回退会绕开 Agent 级绑定）
+            entry = self._tool_entries[tool_call.name]
             tool = self.runtime.tool_registry.get(entry.name_ori)   # 按规范名取可执行对象（提前：_normalize 的校验与默认值填充需其 definition.params_schema）
-            resolved_args: dict[str, Any] = self._normalize(entry, tool_call, tool)
-            # （_normalize 的 LLM 视角校验失败 -> ToolResult(status="error") 正常产物，
+            # _normalize 的 LLM 视角校验失败 -> ToolResult(status="error")
+            # 正常产物（错误文本以 LLM 命名空间/别名，LLM 自我修正反馈），
             # after_tool_call 照常触发；内部校验已迁入 Tool.__call__（S-33），
-            # 失败 -> 上抛框架错误通道 + 日志）
-            execution = Execution(id="", kind="tool", tags=[],   # id 为 UUID 占位
-                                  started_at=datetime.now(),
-                                  cancel=asyncio.Event(), pause=asyncio.Event())
-            self._executions[execution.id] = execution
+            # 失败 -> 上抛框架错误通道 + 日志
             try:
-                result = await tool(resolved_args, caller=self,
-                                    execution=execution)   # Tool.__call__ 调度
-                # abort 于工具调用循环中：工具检测信号返回部分结果（协作式），
-                # 剩余工具由 _run_turn 检查点 ③ 跳过
-            finally:
-                self._executions.pop(execution.id, None)
+                resolved_args: dict[str, Any] = self._normalize(entry, tool_call, tool)
+            except (ValidationError, _LlmViewValidationError) as exc:
+                result = ToolResult(status="error", error=str(exc))
+            else:
+                execution = Execution(id=uuid4().hex, kind="tool", tags=[],
+                                      started_at=datetime.now(),
+                                      cancel=asyncio.Event(), pause=asyncio.Event())
+                self._executions[execution.id] = execution
+                try:
+                    result = await tool(resolved_args, caller=self,
+                                        execution=execution)   # Tool.__call__ 调度
+                    # abort 于工具调用循环中：工具检测信号返回部分结果（协作式），
+                    # 剩余工具由 _run_turn 检查点 ③ 跳过
+                finally:
+                    self._executions.pop(execution.id, None)
             try:
                 result = await self.hooks.after_tool_call.dispatch(self, result)   # 可改写结果；改写产物为原料时归一责任在下方收尾（D19）
             except Intercepted as exc:
@@ -3921,11 +4282,25 @@ class Agent:
         #    entry.llm_definition(self.runtime, self).params_schema 经
         #    params.schema_to_model 桥接（C-09：推导归属 ToolEntry）；失败 ->
         #    错误文本以 LLM 命名空间进 ToolResult.error（由 tool_call 包装为正常产物）
-        resolved = entry.resolve(self, tool_call.args, tool.definition.params_schema)
-        # 2. ^ 别名映射 -> specified 求值覆盖（固定值/注入表达式；注入表达式
+        #    ——校验模型按 LLM 视图（别名化 + 隐藏参数排除后的 schema）建模，
+        #    错误消息的字段名因此天然落在 LLM 命名空间
+        llm_schema = entry.llm_definition(self.runtime, self).params_schema
+        llm_model = schema_to_model(f"{entry.name_alias}-llm-args", llm_schema)
+        llm_model.model_validate(tool_call.args)   # 类型/必填错误 -> ValidationError 上抛给 tool_call 包装
+        unknown = sorted(set(tool_call.args) - set(llm_schema))
+        if unknown:
+            # 幻觉参数（LLM 传出 schema 未定义的参数）按「未定义参数」校验
+            # 错误处理——桥接模型默认忽略多余键，未知键在此显式拒绝
+            raise _LlmViewValidationError(
+                f"工具 {entry.name_alias!r} 收到未定义参数: {unknown}")
+        # 2. 别名映射 -> specified 求值覆盖（固定值/注入表达式；注入表达式
         #    求值时经 self.inject 沿 provide 链上溯）
+        resolved = entry.resolve(self, tool_call.args, tool.definition.params_schema)
         # 3. schema 默认值填充：按 tool.definition.params_schema 各 property 的
         #    default 补齐前两步均未给的参数
+        for key, prop in tool.definition.params_schema.items():
+            if key not in resolved and isinstance(prop, dict) and "default" in prop:
+                resolved[key] = prop["default"]
         return resolved
 
     def source_dir(self) -> Path | None:
@@ -4192,14 +4567,44 @@ class Agent:
         #   output -> 独立分支：逐字段以 {"schema": 定义} 并入 override_params
         #   inject -> 原样（PENDING->[]）；enabled -> 原样
         override_description, override_params, specified = None, {}, {}
-        param_aliases, inject, enabled = {}, [], True
-        # ...（按行为规约的键集表逐键分派到上述局部量）
+        param_aliases, enabled = {}, True
+        # body 判别（键集校验 + 逐键去向，规则见行为规约；未知键 -> FormatError）
+        #   description -> override_description（PENDING->None；str->Parsable 包装；Parsable 透传）
+        #   args -> 逐参数 split_as 判别：dict->override_params / as->param_aliases /
+        #           PENDING->空补丁 / 其它->specified（Parsable 包装）
+        #   output -> 独立分支：逐字段并入 override_params（不经 args 关键字校验）
+        #   inject -> 原样（PENDING->[]）；enabled -> 原样
+        for body_key, body_val in ref.body.items():
+            if body_key == "description":
+                override_description = _as_parsable_patch(body_val)
+            elif body_key == "args":
+                if not isinstance(body_val, Mapping):
+                    raise FormatError(f"工具覆写 args 必须是映射: {body_val!r}")
+                _classify_override_args(body_val, override_params, specified, param_aliases)
+            elif body_key == "output":
+                # 独立判别分支（B 方案）：「字段名 -> JSON Schema 定义」映射
+                # 逐字段并入 override_params（type 等键在此合法，不经 args 的
+                # 关键字校验）——「省略字段 = 移除」语义见 FinishTool 规约。
+                # spec 未写清处落实：骨架注释的 {"schema": 定义} 包装与
+                # apply_param_overrides 的 property->patch 形态不一致，按行为
+                # 规约正文「逐字段并入 override_params」落实（不套 schema 键）
+                if not isinstance(body_val, Mapping):
+                    raise FormatError(f"工具覆写 output 必须是映射: {body_val!r}")
+                for field_name, field_def in body_val.items():
+                    override_params[field_name] = dict(field_def)
+            elif body_key == "enabled":
+                enabled = bool(body_val)
+            elif body_key == "inject":
+                # R-4 已删除：注入写 args 里的 "{{ self.inject('key') }}" 表达式
+                raise FormatError("工具覆写体的 inject 键已删除（R-4）：注入请写 "
+                                  "args 里的 {{ self.inject('key') }} 表达式")
+            else:
+                raise FormatError(f"工具覆写体含未知键: {body_key!r}")
         entry = ToolEntry(
             name_alias=key,
             name_ori=name_ori,
             override_description=override_description,
             override_params=override_params,
-            inject=inject,
             specified=specified,
             param_aliases=param_aliases,
             enabled=enabled,
@@ -4355,7 +4760,22 @@ class Agent:
         override_system_prompt, override_description = None, None
         override_params, specified, param_aliases = {}, {}, {}
         enabled = True
-        # ...（按行为规约的键集表逐键分派到上述局部量）
+        for body_key, body_val in ref.body.items():
+            if body_key == "system_prompt":
+                override_system_prompt = _as_parsable_patch(body_val)
+            elif body_key == "description":
+                override_description = _as_parsable_patch(body_val)
+            elif body_key == "args":
+                if not isinstance(body_val, Mapping):
+                    raise FormatError(f"子 Agent 覆写 args 必须是映射: {body_val!r}")
+                _classify_override_args(body_val, override_params, specified, param_aliases)
+            elif body_key == "enabled":
+                enabled = bool(body_val)
+            elif body_key == "inject":
+                raise FormatError("子 Agent 覆写体的 inject 键已删除（R-4）：注入请写 "
+                                  "args 里的 {{ self.inject('key') }} 表达式")
+            else:
+                raise FormatError(f"子 Agent 覆写体含未知键: {body_key!r}")   # 含 Tool 面 output 键
         entry = SubagentEntry(
             name_alias=key,
             name_ori=name_ori,
@@ -4604,6 +5024,14 @@ class Agent:
             if bag is not None and name in bag:
                 raise StateKeyError(name)
         object.__setattr__(self, name, value)   # 赋值语义不受 handler 影响
+        if name == "model_tag" and not name.startswith("_"):
+            # model_tag 可变路径一（类属性 docstring 规约）：赋值即重新解析
+            # 覆盖 self.model，只能指向配置已定义模型；骨架期护栏——袋未建立
+            # 或 runtime 未绑定时跳过（落普通实例属性）
+            if self.__dict__.get("_state_bag") is not None and self.__dict__.get("runtime") is not None:
+                # object.__setattr__ 直写 model：改标签触发的换模型不再
+                # 二次触发 model 字段的 watcher（一次语义事件 = 改标签）
+                object.__setattr__(self, "model", self._resolve_model_tag(value))
 
     def __delattr__(self, name: str) -> None:
         """删除拦截——状态键防遮蔽护栏的删除侧（P3-03 配套裁决）。
@@ -4711,21 +5139,57 @@ class Agent:
         .. seealso:: :meth:`flowing.runtime.Runtime.snapshot`、
             :class:`flowing.snapshot.AgentSnapshot`
         """
+        def _want(key: str) -> bool:
+            return keys is None or key in keys   # S3：None 收集全部切面；指定时其余为 None
+
+        model = self.__dict__.get("model")
+        model_info: ModelInfo | None = None
+        if _want("model") and model is not None:
+            # 现场求值投影（ModelConfig.resolve 语义字段级求值）；任何字段
+            # 求值失败 -> 该字段以 None 投影，快照整体不因此抛异常
+            def _field(value: Any) -> Any:
+                try:
+                    return value.resolve(self) if isinstance(value, Parsable) else value
+                except Exception:
+                    return None
+            model_info = ModelInfo(
+                model=_field(model.model), provider=_field(model.provider),
+                model_tag=_field(getattr(self, "model_tag", None)),
+                context_window=_field(model.context_window),
+                max_output_tokens=_field(model.max_output_tokens),
+                thinking_budget=_field(model.thinking_budget))
+        turn = self.current_turn
         return AgentSnapshot(
             node_id=self.node_id,
             parent_id=self._parent_id,
             agent_type=self.runtime._agent_pool[self.node_id]["agent_type"],   # 池元数据中的类型名字符串（恢复依据；Agent 已无 name 机制字段，契约见 flowing.snapshot）
             paused=self.paused,
-            messages=...,           # MessageTreeInfo(count=len(self._messages), head_id=self.current_head_id)
+            messages=(MessageTreeInfo(count=len(self._messages), head_id=self.current_head_id)
+                      if _want("messages") else None),
             current_head_id=self.current_head_id,
-            current_turn=...,       # TurnContextInfo | None（self.current_turn 投影；message_count=len(turn.message_ids)）
-            executions=...,         # dict[str, ExecutionInfo]（kind/tags/started_at，不含 cancel/pause Event）
-            message_queue=...,      # MessageQueueInfo(size=len(self._message_queue))
-            model=...,              # ModelInfo | None（self.model 只读视图；未解析为 None）
-            tool_entries=...,       # list[EntryInfo]（_tool_entries 按别名投影）
-            subagent_entries=...,   # list[EntryInfo]（_subagent_entries，agent_type 字段有值）
-            context_usage=self.estimate_context_tokens(),   # 上下文占用估计投影（锚点实测+尾部估算，纯观测）
-        )   # Info 视图类未在本模块具名引入（见 v2 存疑 S2-02）；单次调用内各字段取同一时刻读值
+            current_turn=(TurnContextInfo(
+                started_at=turn.started_at, finished_at=turn.finished_at,
+                message_count=len(turn.message_ids), aborted=turn.aborted)
+                if _want("current_turn") and turn is not None else None),
+            executions=({eid: ExecutionInfo(kind=e.kind, tags=list(e.tags),
+                                           started_at=e.started_at)
+                         for eid, e in self._executions.items()}
+                        if _want("executions") else None),   # 不含 cancel/pause Event
+            message_queue=(MessageQueueInfo(size=len(self._message_queue),
+                                            pending=len(self._pending_turns))
+                           if _want("message_queue") else None),
+            model=model_info,
+            tool_entries=([EntryInfo(alias=e.name_alias, enabled=e.enabled,
+                                     agent_type=None)
+                           for e in self._tool_entries.values()]
+                          if _want("tool_entries") else None),
+            subagent_entries=([EntryInfo(alias=e.name_alias, enabled=e.enabled,
+                                        agent_type=e.name_ori)
+                               for e in self._subagent_entries.values()]
+                              if _want("subagent_entries") else None),
+            context_usage=(self.estimate_context_tokens()
+                           if _want("context_usage") and model is not None else None),   # 上下文占用估计投影（锚点实测+尾部估算，纯观测）；模型未解析为 None
+        )   # 单次调用内各字段取同一时刻读值
 
     # ────────────────────────── 工作循环与逻辑 Turn（内部） ─────────────────
 
@@ -4763,7 +5227,14 @@ class Agent:
             await self._pause_gate.wait()      # 检查点 ①：dequeue 前（仅 pause）
             msgs = await self._dequeue()       # list[Message]（可覆写 drain/合并策略）
             waiters = [self._pending_turns.pop(m.id, None) for m in msgs]
-            await self._run_turn(msgs, waiters)
+            try:
+                await self._run_turn(msgs, waiters)
+            except Exception:
+                # 回合级异常的兜底闸（「钩子抛异常不再楔死 agent」的收口点）：
+                # _run_turn 的 except 帧保留异常上抛以保逐层审计，工作循环在
+                # 此记录后继续消费——waiters 已由 _run_turn 的 finally 喂饱
+                # （destroy 的第 1 步另有兜底），此处只保证循环存活
+                _logger.exception("agent %s: turn crashed", self.node_id)
 
     async def _dequeue(self) -> list[Message]:
         """出队扩展点：核心默认**一条**，可覆写实现 drain / 合并策略。
@@ -4933,6 +5404,7 @@ class Agent:
         turn.pending_messages = msgs   # 出队批次暂存（未挂树）
         intercepted = False                    # S-28：结局信号由 except 帧显式
         error: BaseException | None = None     # 传入 build_turn_result，不落 TurnContext
+        last_stop_reason = ""   # R-09：末次 provider_gen 响应的原始停止原因（completed 结局的 finish_reason 来源）
         try:
             # 2. before_turn（附加式注入 / Intercepted 阻断）；
             # 异常路径：Intercepted -> pending_messages 全部丢弃不落盘（显式
@@ -4968,14 +5440,15 @@ class Agent:
                 context = self._assemble_context()
                 try:
                     response = await self.provider_gen(context, by="_turn")   # 主 Turn 来源标记
+                except ContextLengthError:
+                    raise   # 不可重试例外：不经过 on_provider_error，直接上抛
                 except Exception as exc:
-                    # ContextLengthError 例外：不经过 on_provider_error，直接上抛
-                    # （未在本模块具名引入，见 v2 存疑 S2-02）
                     qctx = ProviderErrorContext(error=exc, provider=self.model.provider,
                                              model=self.model)
                     qctx = await self.hooks.on_provider_error.dispatch(self, qctx)
                     if not qctx.can_continue:
-                        break   # 回合中断（Agent 存活）
+                        error = exc   # 回合中断（Agent 存活）——中断原因即本异常，结局 "error"
+                        break
                     continue    # handler 已完成退避/换模型/abort_turn()
                 if response.message is not None:
                     if response.message.usage is not None:
@@ -4991,6 +5464,7 @@ class Agent:
                     #（已挂树落盘）
                     response.message.turn_end = response.finish or response.cancelled
                     await self._append_message(response.message, turn)
+                last_stop_reason = response.provider_data.get("stop_reason", "")   # R-09：completed 结局的 finish_reason 来源
                 if response.cancelled or self._turn_abort.is_set():
                     turn.aborted = True   # cancelled 也走 abort 路径
                     await self.hooks.before_turn_abort.dispatch(self, turn)
@@ -5058,7 +5532,8 @@ class Agent:
             # 5c. 交付
             turn.finished_at = datetime.now()
             result = build_turn_result(turn, self, intercepted=intercepted,
-                                       error=error)   # S-28：信号显式传参
+                                       error=error,
+                                       finish_reason=last_stop_reason)   # S-28：信号显式传参（R-09：completed 结局的 stop_reason 同通道）
             # last_result 统一写入（在 resolve waiters 之前）：finish 置位 →
             # finish_output dict；否则 final_text（无产出 → None）。abort /
             # cancel / error 同样覆写——载荷已置位照返；有完整 PROVIDER
@@ -5143,7 +5618,8 @@ class Agent:
         """
         # 序列化 msg 为消息行 dict -> self._tree_store.submit(行)
         # （同步排队即返；poison 态时 submit 重抛首次落盘异常）
-        self._tree_store.submit(...)   # 行序列化格式属持久化规约内部
+        # X2 冻结点：to_record 是消息 ↔ 行的唯一序列化点（flowing.message）
+        self._tree_store.submit(to_record(msg))
 
     def _persist_tree_record(self, record: dict) -> None:
         """提交一条**变更记录行**落盘（tombstone / update / move /
@@ -5297,14 +5773,20 @@ class Agent:
               注入的载体（M-29 裁决）。
         """
         # 1. 遍历 prompt_blocks（__iter__ 跳过 enabled=False）逐块现场求值
-        segments: list[Any] = []   # -> list[PromptSegment]（分段装配未见具名符号）
+        # 分段装配（「未见具名符号」落实）：PromptSegment(content=求值文本,
+        # cache/name 从来源块原样透传)
+        segments: list[PromptSegment] = []
         for block in self.prompt_blocks:
-            segments.append(block.content.resolve(self))   # prompt_blocks[0] 的 {{ self.system_prompt }} 惰性引用在此触发
+            segments.append(PromptSegment(
+                content=str(block.content.resolve(self)),   # prompt_blocks[0] 的 {{ self.system_prompt }} 惰性引用在此触发
+                cache=block.cache, name=block.name))
         # 2. 消息路径：从 current_head_id 沿 parent_id 上溯到根，反转得根 -> head
         messages: list[Message] = []
         cursor = self.current_head_id
         while cursor is not None:
-            msg = self._messages[cursor]
+            msg = self._messages.get(cursor)
+            if msg is None:
+                break   # 孤儿链断点（中间消息被 chain.remove 且子树未先 reparent）：上溯到断点即终止
             messages.append(msg)
             cursor = msg.parent_id
         messages.reverse()
@@ -5317,7 +5799,12 @@ class Agent:
         # <available_subagents> 块经 _render_subagent_catalog() 现场渲染，
         # 并入 system_prompt 段（cache="dynamic" 语义，无本地缓存）
         subagent_catalog = self._render_subagent_catalog()
-        return Context(system_prompt=..., tools=tools, messages=messages)   # system_prompt 段装配为 PromptSegment 未见具名符号
+        if subagent_catalog:
+            # 并入 system_prompt 段（段名「subagent-catalog」为落实命名，
+            # 规约未具名）；cache="dynamic"（enabled 状态与覆写运行时可变）
+            segments.append(PromptSegment(
+                content=subagent_catalog, cache="dynamic", name="subagent-catalog"))
+        return Context(system_prompt=segments, tools=tools, messages=messages)
 
     def _visible_tools(self) -> list[ToolDefinition]:
         """当前 ``enabled=True`` 工具条目经 ``llm_definition()`` 的定义列表。
