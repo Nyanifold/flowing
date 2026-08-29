@@ -1,0 +1,35 @@
+# 测试 49（RequestTool 四规则）的 request 形态目录工具——打向自研 demo
+# HTTP server（tests/fixtures/http/，本地回环）；端口与凭证经 {{ env.X }}
+# 模板装配期注入（推测点 9）
+name: recommend
+type: request
+description: 调用推荐服务。在需要商品推荐时调用。
+url: "http://127.0.0.1:{{ env.DEMO_HTTP_PORT }}/recommend/{{ category }}"
+method: POST
+headers:
+  X-Client: flowing-test
+  Authorization: "Bearer {{ env.DEMO_HTTP_TOKEN_WRONG }}"   # 与 auth 冲突 → auth 优先
+auth:
+  type: bearer
+  value: "{{ env.DEMO_HTTP_TOKEN }}"
+args:
+  category:
+    type: string
+    description: 商品类目（URL 路径参数，自动从 body/query 排除）
+  limit:
+    type: integer
+    default: 5
+    description: 返回条数上限
+output:
+  type: object
+  properties:
+    category:
+      type: string
+    body:
+      type: object
+    query:
+      type: object
+    authorization:
+      type: string
+timeout: 5
+expected_status: [200]

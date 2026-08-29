@@ -131,11 +131,17 @@ import json
 import logging
 import mimetypes
 import os
+import shlex
 import warnings
 from collections.abc import Callable, Iterator
+from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, field, is_dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Literal
+
+import jinja2
+import jinja2.meta
 
 from flowing.errors import (
     AmbiguousMcpSourceError,
@@ -2055,6 +2061,121 @@ class ScriptTool(Tool):
         self._args_model = getattr(self, "args_model", None) or _infer_from_execute(self.execute)
 
 
+# ──────────────────────────────────────────────────────────────────
+# 三个具体工具类（cli / request / mcp）共用的模板与渲染助手
+# ──────────────────────────────────────────────────────────────────
+
+_ENV_JINJA = jinja2.Environment(autoescape=False, undefined=jinja2.StrictUndefined)
+"""``{{ env.X }}`` 凭证模板的一次性渲染环境（推测点 9 落点）。
+
+顶层 ``env`` 绑定 ``os.environ`` 只读视图；``StrictUndefined`` 使缺失变量
+fail fast（渲染方就地包成 ``FormatError``），不静默降级为空串。渲染产物
+不进消息、不落盘（凭证口径）。
+"""
+
+
+def _render_env_templates(values: "dict[str, str] | None") -> "dict[str, str] | None":
+    """把映射的每个字符串值按 ``{{ env.X }}`` 模板一次性渲染。内部 API。
+
+    求值时点：装配期（工具实例构造，连接/请求之前一次完成）。缺失变量 →
+    :class:`flowing.errors.FormatError`（fail fast，与 providers 条目加载
+    的 ``MissingEnvironmentVariableError`` 同立场，不共用异常类——该类的
+    构造契约绑定 providers.yaml 语境）。
+    """
+    if values is None:
+        return None
+    rendered: dict[str, str] = {}
+    for key, value in values.items():
+        try:
+            rendered[key] = _ENV_JINJA.from_string(str(value)).render(
+                env=MappingProxyType(os.environ))
+        except jinja2.UndefinedError as exc:
+            raise FormatError(f"模板 {value!r} 引用的环境变量缺失: {exc}") from exc
+    return rendered
+
+
+def _auth_headers(auth: dict[str, Any]) -> dict[str, str]:
+    """``auth`` 语法糖 → 请求头 dict（``basic`` / ``bearer`` / ``api_key``）。
+
+    内部 API。未知类型 → ``FormatError``（声明期 fail fast）。
+    """
+    auth_type = auth.get("type")
+    if auth_type == "basic":
+        cred = base64.b64encode(
+            f"{auth.get('username', '')}:{auth.get('password', '')}".encode()
+        ).decode()
+        return {"Authorization": f"Basic {cred}"}
+    if auth_type == "bearer":
+        return {"Authorization": f"Bearer {auth.get('value', '')}"}
+    if auth_type == "api_key":
+        return {str(auth["header"]): str(auth.get("value", ""))}
+    raise FormatError(f"未知 auth 类型: {auth_type!r}（须为 basic / bearer / api_key）")
+
+
+class _ShellRaw(str):
+    """``| raw`` 旁路标记类型（finalize 识别后不再转义）。内部 API。"""
+
+
+def _shell_raw_filter(value: Any) -> _ShellRaw:
+    """``{{ arg | raw }}`` 旁路自动转义；每次渲染命中即告警。内部 API。"""
+    _logger.warning("CliTool 命令模板使用了 | raw 旁路自动转义——"
+                    "原始拼接需确保值可信（命令注入风险自担）")
+    return _ShellRaw(str(value))
+
+
+def _shell_finalize(value: Any) -> str:
+    """CliTool 命令模板的 finalize：插入值一律 ``shlex.quote`` 转义；
+    ``_ShellRaw`` 原样放行。内部 API。"""
+    if isinstance(value, _ShellRaw):
+        return str(value)
+    return shlex.quote(str(value))
+
+
+_CLI_JINJA = jinja2.Environment(
+    autoescape=False, finalize=_shell_finalize,
+    undefined=jinja2.StrictUndefined)   # 模板变量缺失 = 声明笔误，渲染期暴露
+_CLI_JINJA.filters["raw"] = _shell_raw_filter
+
+_ENV_URL_JINJA = jinja2.Environment(autoescape=False, undefined=jinja2.DebugUndefined)
+"""RequestTool URL 的装配期 env 渲染环境（spec 未写清处落实）。
+
+URL 是**两阶段模板**：装配期先渲染 ``{{ env.X }}``（DebugUndefined 把
+非 env 的占位原样保留为 ``{{ name }}`` 文本），执行期再以 args 渲染路径
+参数（StrictUndefined）。env 引用缺失时在执行期暴露为渲染错误（error
+结果）——headers/auth 的 env 引用才是装配期 fail fast（`_ENV_JINJA`）。
+"""
+
+_SHELL_EXECUTABLES: dict[str, "str | None"] = {
+    "sh": None,          # create_subprocess_shell 默认 /bin/sh
+    "bash": "bash",
+    "ps": "pwsh",
+    "powershell": "powershell",
+    "cmd": "cmd",
+}
+"""CliTool ``shell`` 声明 → 子进程 executable 映射（``None`` = 默认 sh）。
+
+spec 未写清处落实：spec 只列可选值未给可执行文件名映射；``ps`` 取
+PowerShell 7 的 ``pwsh``。可执行文件不存在 → 子进程启动失败，由
+``__call__`` 包装为 ``status="error"`` 结果（框架级失败语义）。
+"""
+
+
+def _mcp_input_schema_to_params(input_schema: "dict[str, Any] | None") -> dict[str, dict[str, Any]]:
+    """MCP ``inputSchema``（完整 JSON Schema object）→ 框架 properties 映射。
+
+    内部 API。required 口径对齐（框架以 ``default`` 有无派生）：
+    ``required`` 列表之外的 property 若无 ``default`` 补
+    ``default=None``——否则可选参数会被 ``schema_to_model`` 建成必填字段。
+    """
+    schema = input_schema or {}
+    props = {k: dict(v) for k, v in schema.get("properties", {}).items()}
+    required = set(schema.get("required") or ())
+    for key, prop in props.items():
+        if key not in required and "default" not in prop:
+            prop["default"] = None
+    return props
+
+
 class McpTool(Tool):
     
     """MCP 工具实例——连接 MCP 服务器并代理其暴露的工具 schema。
@@ -2173,15 +2294,158 @@ class McpTool(Tool):
         self.definition = definition
         self.command = command
         self.args = args
-        self.env = env
-        self.url = url
-        self.headers = headers
+        # {{ env.X }} 模板装配期一次性渲染（推测点 9）：缺失变量 FormatError
+        # fail fast；渲染产物只进连接配置，不进消息、不落盘
+        self.env = _render_env_templates(env)
+        # url 无路径参数阶段（区别于 RequestTool 的两阶段），装配期一次渲染；
+        # 缺失 env 变量 FormatError fail fast
+        self.url = (_ENV_JINJA.from_string(url).render(env=MappingProxyType(os.environ))
+                    if url is not None else None)
+        self.headers = _render_env_templates(headers)
         self.tools = tools
         self.overrides = overrides
         self._execution = None
+        # 声明实例（组代理）为 None，不可执行；list_tools() 展开产物置为
+        # 服务端工具名。内部 API。
+        self._server_tool_name: str | None = None
         # S-33：创建时定内部校验模型（B1：fya 声明经 params.schema_to_model
         # 桥接——definition.params_schema 即桥接产物 schema，再建最终模型）
         self._args_model = schema_to_model("Args", self.definition.params_schema)
+
+    @asynccontextmanager
+    async def _connect(self) -> "Any":
+        """建立一次 MCP 会话（惰性连接：``list_tools`` / ``execute`` 各连
+        一次，用后关闭；无连接池、无重试策略——spec 明示非行为）。
+
+        **内部 API，不属稳定契约。** 连接失败异常上抛（``execute`` 内由
+        ``__call__`` 包装为 ``status="error"`` 结果）。
+
+        url 形态的传输判别（spec 未写清处落实）：URL 路径以 ``/sse`` 结尾
+        → SSE；其余 → streamable HTTP。stdio 的 ``env`` 直传
+        ``StdioServerParameters``（SDK 内与默认环境合并）。
+        """
+        from mcp import ClientSession, StdioServerParameters   # 函数内 import：mcp SDK 重，非 MCP 用户不付 import 成本
+
+        if self.command is not None:
+            from mcp.client.stdio import stdio_client
+
+            params = StdioServerParameters(
+                command=self.command, args=self.args or [], env=self.env)
+            async with stdio_client(params) as (read, write):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    yield session
+        elif (self.url or "").rstrip("/").endswith("/sse"):
+            from mcp.client.sse import sse_client
+
+            async with sse_client(self.url, headers=self.headers) as (read, write):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    yield session
+        else:
+            from mcp.client.streamable_http import streamablehttp_client
+
+            async with streamablehttp_client(
+                    self.url, headers=self.headers) as (read, write, _get_sid):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    yield session
+
+    async def list_tools(self) -> "list[McpTool]":
+        """连接服务器拉取 ``list_tools()`` schema，产出逐工具代理实例列表。
+
+        .. rubric:: 功能介绍
+
+        装配期 schema 拉取的唯一入口（推测点 4 落点）：``ToolRegistry.get``
+        命中 mcp 型 TOOL.fya 只产**声明实例**（骨架 definition）；装配层在
+        get 解析完成后调用本方法一次——每个服务端工具产一个独立 `McpTool`
+        代理实例，规范名 = ``<fya 声明名>-<server 暴露工具名>``，由装配层
+        经 ``ToolRegistry.register`` 按合成名注册（撞名 →
+        ``ToolNameConflictError``，注册表层承载）。``execute`` 不依赖本
+        方法（惰性连接），但 LLM 可见声明必须由本方法的产物承载。
+
+        .. rubric:: 行为规约
+
+        - ``tools`` 子集过滤：声明了 ``tools`` 时仅展开子集内的服务端
+          工具；``None`` 全量展开。
+        - ``overrides`` 应用：``{工具名: {description/args: ...}}``——
+          ``description`` 整体替换；``args`` 经
+          :func:`flowing.params.apply_param_overrides` 对 inputSchema 派生
+          的 properties 稀疏覆写（非法关键字 fail-fast）。
+        - 服务端 ``outputSchema`` 自动填入
+          :attr:`ToolDefinition.output_schema`——仅作运行时校验（D16），
+          不喂模型。
+        - MCP ``inputSchema`` → 框架 properties 映射的 required 口径对齐
+          （spec 未写清处落实）：框架以 ``default`` 有无派生 requiredness，
+          服务端 schema 的 ``required`` 列表之外的 property 若无
+          ``default`` 补 ``default=None``——否则可选参数会被
+          ``schema_to_model`` 建成必填字段。
+
+        .. rubric:: 调用关系（审计）
+
+        - 调用：``_connect()``（一次性会话）；``apply_param_overrides``
+        - 被调：``.fya`` 装配层（时机：``ToolRegistry.get`` 命中 mcp 型
+          之后、Agent 装配 ``tools:`` 条目之前）
+        """
+        async with self._connect() as session:
+            result = await session.list_tools()
+        produced: list[McpTool] = []
+        for server_tool in result.tools:
+            if self.tools is not None and server_tool.name not in self.tools:
+                continue   # tools 子集之外的工具不暴露
+            override = (self.overrides or {}).get(server_tool.name) or {}
+            params = _mcp_input_schema_to_params(server_tool.inputSchema)
+            if "args" in override:
+                params = apply_param_overrides(params, override["args"])
+            definition = ToolDefinition(
+                name=f"{self.definition.name}-{server_tool.name}",   # 合成名 <声明名>-<server 名>
+                description=override.get("description",
+                                         server_tool.description or ""),
+                params_schema=params,
+                output_schema=server_tool.outputSchema)   # 自动填入，仅运行时校验（D16）
+            tool = McpTool(
+                definition=definition, command=self.command, args=self.args,
+                env=self.env, url=self.url, headers=self.headers)
+            tool._server_tool_name = server_tool.name
+            produced.append(tool)
+        return produced
+
+    async def execute(self, **kwargs: Any) -> Any:
+        """代理调用服务端工具：惰性连接 → ``call_tool`` → 取回产物。
+
+        .. rubric:: 行为规约
+
+        - 本方法只存在于 ``list_tools()`` 展开产物（``_server_tool_name``
+          已置位）上；声明实例（组代理）直接执行 → ``RuntimeError``
+          （按合成名 ``<声明名>-<server 名>`` 引用，属声明笔误）。
+        - 连接失败 / 服务端 ``isError`` 返回 → 抛异常，由 ``__call__``
+          包装为 ``status="error"`` 结果（无连接重试，spec 明示非行为）。
+        - 返回形态：服务端 ``structuredContent`` 优先；否则文本块拼合
+          （单块 → str，多块 → list[str]，无 → ``None``）。
+
+        .. rubric:: 调用关系（审计）
+
+        - 调用：``_connect()``（每次执行一次会话）
+        - 被调：``Tool.__call__`` 调度链
+        """
+        if self._server_tool_name is None:
+            raise RuntimeError(
+                f"MCP 声明 {self.definition.name!r} 是工具组代理，不可直接执行"
+                "——按合成名 <声明名>-<server 工具名> 引用展开产物")
+        async with self._connect() as session:
+            result = await session.call_tool(self._server_tool_name,
+                                             arguments=kwargs)
+        if result.isError:
+            text = "".join(getattr(block, "text", "") for block in result.content)
+            raise RuntimeError(
+                f"MCP 工具 {self._server_tool_name} 服务端返回错误: {text}")
+        if result.structuredContent is not None:
+            return result.structuredContent
+        texts = [block.text for block in result.content
+                 if getattr(block, "text", None) is not None]
+        if not texts:
+            return None
+        return texts[0] if len(texts) == 1 else texts
 
 
 class CliTool(Tool):
@@ -2278,9 +2542,44 @@ class CliTool(Tool):
         self.command = command
         self.shell = shell
         self._execution = None
+        # 创建时编译一次模板（S-33 同立场：不在每次调用时编译）；
+        # 模板语法错误（声明笔误）在构造期暴露
+        self._template = _CLI_JINJA.from_string(command)
         # S-33：创建时定内部校验模型（B1：fya 声明经 params.schema_to_model
         # 桥接——definition.params_schema 即桥接产物 schema，再建最终模型）
         self._args_model = schema_to_model("Args", self.definition.params_schema)
+
+    async def execute(self, **kwargs: Any) -> dict[str, Any]:
+        """渲染命令模板 → shell 执行 → ``{exit_code, stdout, stderr}``。
+
+        .. rubric:: 行为规约
+
+        - 插入值自动经 ``shlex.quote`` 转义（finalize 单点）；显式
+          ``{{ arg | raw }}`` 旁路并输出告警日志（每次渲染命中）。
+        - 非零退出码**不是** error——exit_code 是正常输出数据；仅子进程
+          无法启动等框架级失败抛异常（由 ``__call__`` 包装为
+          ``status="error"`` 结果）。
+        - stdout / stderr 按 UTF-8 解码（``errors="replace"`` 容错）。
+
+        .. rubric:: 调用关系（审计）
+
+        - 调用：``asyncio.create_subprocess_shell``（每次执行）
+        - 被调：``Tool.__call__`` 调度链
+        """
+        command = self._template.render(**kwargs)   # 渲染上下文 = LLM args
+        executable = _SHELL_EXECUTABLES[self.shell]
+        popen_kwargs: dict[str, Any] = {}
+        if executable is not None:
+            popen_kwargs["executable"] = executable
+        proc = await asyncio.create_subprocess_shell(
+            command, stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE, **popen_kwargs)
+        stdout, stderr = await proc.communicate()
+        return {
+            "exit_code": proc.returncode,
+            "stdout": stdout.decode("utf-8", errors="replace"),
+            "stderr": stderr.decode("utf-8", errors="replace"),
+        }
 
 
 class RequestTool(Tool):
@@ -2396,18 +2695,95 @@ class RequestTool(Tool):
         if not definition.params_schema:
             raise MissingSchemaError("request 工具必须声明 args")
         self.definition = definition
-        self.url = url
+        # URL 两阶段渲染（推测点 9 落实）：装配期先渲染 {{ env.X }}（非 env
+        # 占位原样保留），执行期再渲染路径参数（见 execute）
+        self.url = _ENV_URL_JINJA.from_string(url).render(
+            env=MappingProxyType(os.environ))
         self.method = method
-        self.headers = headers
-        self.auth = auth
+        # {{ env.X }} 模板装配期一次性渲染（推测点 9）：凭证只经模板进
+        # 请求头，不进消息、不落盘；缺失变量 FormatError fail fast
+        self.headers = _render_env_templates(headers)
+        self.auth = _render_env_templates(auth)
+        # auth 语法糖在构造期展开为请求头（未知类型 FormatError fail fast）；
+        # 执行期与 headers 冲突时本表优先（类级行为规约）
+        self._auth_headers: dict[str, str] = (
+            _auth_headers(self.auth) if self.auth else {})
         self.query = query
         self.body = body
         self.expected_status = [200, 201] if expected_status is None else expected_status
         self.timeout = timeout
         self._execution = None
+        # URL 模板的路径参数名在创建期提取（jinja2 AST 静态分析）——执行期
+        # 这些参数从 body/query 排除（类级行为规约第 1 条）
+        self._path_params: frozenset[str] = frozenset(
+            jinja2.meta.find_undeclared_variables(_ENV_JINJA.parse(self.url)))
         # S-33：创建时定内部校验模型（B1：fya 声明经 params.schema_to_model
         # 桥接——definition.params_schema 即桥接产物 schema，再建最终模型）
         self._args_model = schema_to_model("Args", self.definition.params_schema)
+
+    async def execute(self, **kwargs: Any) -> Any:
+        """按 args 构造 HTTP 请求并取回响应（args→请求映射四规则的执行体）。
+
+        .. rubric:: 行为规约
+
+        - URL 模板以 args 渲染（路径参数**不转义**——URL 结构由声明方
+          负责），路径参数自动从 body/query 排除；
+        - 其余参数去向：``query``/``body`` 声明显式覆盖优先；否则按
+          ``method``——``POST``/``PUT``/``PATCH`` → JSON body，
+          ``GET``/``DELETE`` → query string；
+        - ``auth`` 展开的请求头与 ``headers`` 冲突时 auth 优先；
+        - 响应状态码不在 ``expected_status`` 内 → 抛异常（含状态码与响应
+          摘要），由 ``__call__`` 包装为 ``status="error"`` 结果，
+          不向调用方抛；
+        - 响应默认按 JSON 解析；声明了 ``output``（``definition.
+          output_schema``）时按 schema 的 properties 提取字段，无关字段
+          忽略；非 JSON 响应回退为文本（spec 未写清处落实）。
+
+        .. rubric:: 调用关系（审计）
+
+        - 调用：``httpx.AsyncClient.request``（每次执行；httpx 为项目
+          既有依赖，函数内 import 不付非 request 用户的 import 成本）
+        - 被调：``Tool.__call__`` 调度链
+        """
+        import httpx
+
+        url = _ENV_JINJA.from_string(self.url).render(**kwargs)   # 路径参数渲染（不转义）
+        headers = dict(self.headers or {})
+        headers.update(self._auth_headers)   # auth 与 headers 冲突时 auth 优先
+        query_names = set(self.query or ())
+        body_names = set(self.body or ())
+        body_methods = self.method in ("POST", "PUT", "PATCH")
+        query_params: dict[str, Any] = {}
+        json_body: dict[str, Any] = {}
+        for key, value in kwargs.items():
+            if key in self._path_params:
+                continue   # URL 路径参数自动从 body/query 排除
+            if key in query_names:   # query/body 显式覆盖优先
+                query_params[key] = value
+            elif key in body_names:
+                json_body[key] = value
+            elif body_methods:   # 未显式指定：按 method 默认去向
+                json_body[key] = value
+            else:
+                query_params[key] = value   # GET/DELETE → query string
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            resp = await client.request(
+                self.method, url, headers=headers,
+                params=query_params or None, json=json_body or None)
+        if resp.status_code not in self.expected_status:
+            raise RuntimeError(
+                f"请求 {url} 返回非预期状态码 {resp.status_code}"
+                f"（期望 {self.expected_status}）: {resp.text[:500]}")
+        try:
+            data = resp.json()
+        except json.JSONDecodeError:
+            return resp.text   # 非 JSON 响应回退为文本
+        output_schema = self.definition.output_schema
+        if output_schema and isinstance(data, dict):
+            fields = output_schema.get("properties")
+            if fields:   # 声明 output 时按 schema 提取字段，无关字段忽略
+                data = {k: data[k] for k in fields if k in data}
+        return data
 
 
 TOOL_NAMING = NamingRules(
