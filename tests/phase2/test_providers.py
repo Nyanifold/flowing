@@ -135,7 +135,6 @@ async def test_t03_usage_mapping():
 
 # ── T04/T12/T13：ProviderRegistry 懒实例化 ──────────────────────────────────
 
-@pytest.mark.xfail(strict=True, reason="依赖 Runtime（W29/W30），runtime 批次落地后移除 xfail")
 async def test_t04_lazy_instantiation(fixtures_dir, monkeypatch, tmp_path):
     """T04：Runtime 构造只建候选清单不实例化；get("x") 后仅 "x" 一个实例。"""
     import flowing
