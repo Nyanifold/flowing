@@ -254,7 +254,7 @@ class Skill:
         - 调用：无（``_extra_fields`` dict 查找，命中返回 / 未命中抛
           ``AttributeError``）
         - 被调：无框架内显式调用方（Python 属性查找协议隐式触发；
-          时机：未见规约）
+          时机：每次访问 ``Skill`` 的未定义属性时）
 
         .. seealso:: :attr:`_extra_fields`
         """

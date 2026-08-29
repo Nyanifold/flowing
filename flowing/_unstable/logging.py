@@ -350,7 +350,7 @@ def use_logging(agent: Agent) -> None:
                 rendered = (repr(value)[: plugin.max_value_repr]
                             if level == "DEBUG" else _summarize(value))
                 line = json.dumps(
-                    {"ts": _utc_ts(), "agent_id": agent.node_id,
+                    {"ts": _utc_ts(), "agent_id": host.node_id,
                      "level": level, "hook": hook_name,
                      "value": rendered, "handler_tag": None},
                     ensure_ascii=False, default=repr)
@@ -361,13 +361,13 @@ def use_logging(agent: Agent) -> None:
                     # 写盘失败（磁盘满 / 目录被删）静默降级：一次性
                     # stderr 警告后该 Agent 后续不再尝试写盘
                     state["write_failed"] = True
-                    print(f"[flowing._unstable.logging] agent {agent.node_id} "
+                    print(f"[flowing._unstable.logging] agent {host.node_id} "
                           f"写盘失败，后续不再尝试 {log_path}：{exc!r}",
                           file=sys.stderr)
             except Exception as exc:
                 # handler 自身异常：stderr 警告，不传播（日志插件绝不能
                 # 打断业务管线）
-                print(f"[flowing._unstable.logging] agent {agent.node_id} "
+                print(f"[flowing._unstable.logging] agent {host.node_id} "
                       f"观察 handler 异常（hook={hook_name}，已吞掉）：{exc!r}",
                       file=sys.stderr)
             return value

@@ -301,8 +301,8 @@ class Workflow(ABC):
 
         .. rubric:: 调用关系（审计）
 
-        - 调用：注册进 ``runtime._nodes``（时机：构造时同步；节点注册的
-          具体调用目标未见规约）
+        - 调用：注册进 ``runtime._nodes``（时机：构造时同步，直接写
+          节点表）
         - 被调：``flowing.plugins.workflow.RunWorkflowTool.execute()``
           实例化（时机：每次 LLM 经 ``run-workflow`` 工具调用）；
           ``flowing.runtime.Runtime.mount()`` Workflow 根形态（时机：
@@ -553,13 +553,13 @@ class Workflow(ABC):
 
         .. rubric:: 调用关系（审计）
 
-        - 调用：无（写入 ``_provided``；``InjectionKey`` 按 ``name``
-          退化的归一化调用未见规约）
+        - 调用：无（写入 ``_provided``；``InjectionKey`` 按键名归一：
+          ``str`` 原样、否则取 ``.name``）
         - 被调：无框架内调用方（编排代码即用户代码）
 
         .. seealso:: :meth:`inject`、:class:`flowing.runtime.ProvideNode`
         """
-        key_name = key if isinstance(key, str) else key.name  # InjectionKey 按 name 退化（归一化调用未见规约）
+        key_name = key if isinstance(key, str) else key.name  # InjectionKey 按键名归一（str 原样 / 否则取 .name）
         self._provided[key_name] = value  # 同 key 重复 provide 后者覆盖前者；对已创建子 Agent 同样生效
 
     def inject(self, key: str | InjectionKey[Any]) -> Any:

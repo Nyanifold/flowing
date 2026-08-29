@@ -405,6 +405,11 @@ class CronScheduler:
           误传 ``node_id``；此时无 ``state.jsonl`` 写通道（休眠时
           defaults/load 不可用），与其静默半持久化（重启即丢）不如
           直接报错。沿用 ``Runtime.get_node`` 默认语义，不特判）。
+        - 前置条件：需在有运行中事件循环的上下文调用——武装定时器经
+          ``asyncio.get_running_loop()`` 取当前 loop（无运行中 loop
+          时抛 ``RuntimeError``）；框架内部生产者（LLM 工具组 /
+          ``after_create`` 声明式注册 / ``_load_jobs`` 恢复重建）天然
+          满足此前提。
         - 后置条件：任务在下一个匹配分钟触发；状态已落盘。
 
         :raises ValueError: —— cron 表达式非法、``job_id`` 冲突或

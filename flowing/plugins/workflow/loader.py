@@ -154,8 +154,8 @@ def resolve_workflow(path: str) -> type[Workflow]:
 
     - 调用：按 ``flowing.runtime.Runtime.resolve_path`` 语义解析路径
       （时机：每次调用现场解析，无启动期扫描、无缓存）；函数形态经
-      字符串处理 + ``compile`` 编译为生成的 ``Workflow`` 子类（具体
-      调用目标未见规约）
+      ``_compile_function_form`` ast 改写 + ``compile`` / ``exec``
+      编译为生成的 ``Workflow`` 子类
     - 被调：``flowing.plugins.workflow.RunWorkflowTool.execute()``
       （时机：每次 LLM 经 ``run-workflow`` 工具调用）；
       ``flowing.runtime.Runtime.mount()`` 的 Workflow 根形态（时机：
