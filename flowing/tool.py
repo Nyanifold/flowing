@@ -1241,6 +1241,15 @@ class ToolDefinition:
         )
 
 
+def _first_paragraph(doc: str | None) -> str | None:
+    """docstring 首段提取（T6 三级回退链的「首段」口径）：cleandoc 后按
+    空行切首段，段内换行折叠为空格；无内容 → ``None``。内部 API。"""
+    if not doc:
+        return None
+    paragraph = inspect.cleandoc(doc).split("\n\n", 1)[0].strip()
+    return " ".join(paragraph.splitlines()) or None
+
+
 def _apply_param_aliases(
     definition: ToolDefinition,
     param_aliases: dict[str, str],
@@ -1775,14 +1784,29 @@ class Tool:
             - :class:`flowing.agent.Execution` —— cancel/pause 信号契约。
         """
         self._execution = execution  # cancel 注入落点；仅调度期间非 None
-        # R-02 占位（L4 真身阶段 3 替换）：_has_caller 的「注册时 inspect
-        # 检测」本期改为调用时现场检测并实例级缓存；职责 4 的内部校验
-        # （_args_model）本期不做——LLM 视角校验已在 Agent._normalize 完成，
-        # 内部校验随 ScriptTool 编译链在阶段 3 落地。
         if not hasattr(self, "_has_caller"):
+            # 逃生舱写法（直接子类化 Tool + 类属性 definition、无 __init__，
+            # 见类 docstring 的 FinishTool 示例）没有创建期检测点——就地检测
+            # 并实例级缓存；正常路径（ScriptTool 等四个子类）在 __init__ 已落定
             self._has_caller = "caller" in inspect.signature(self.execute).parameters
         if self._has_caller:
             resolved_args["caller"] = caller  # caller 自动传入（execute 声明了该参数时）
+        if not hasattr(self, "_args_model"):
+            # 同上逃生舱：创建期未定模型的直接子类，就地按 execute 签名构建
+            # 并缓存（与 ScriptTool.__init__ 同一建模入口，编译一次终身复用）
+            self._args_model = _infer_from_execute(self.execute)
+        # 职责 4（S-33）：内部校验——caller 注入之后、try 之外。
+        # specified/inject/默认值的配置错误 -> 上抛框架错误通道 + 日志，
+        # 不被下方 except Exception 吞成 ToolResult(error)、不进 LLM 可见文本
+        # （不泄漏隐藏参数的存在）；日志只记工具名，不记参数值（防敏感值泄露）
+        try:
+            self._args_model.model_validate(resolved_args)
+        except ValidationError:
+            _logger.exception(
+                "工具 %s 内部校验失败（specified/inject/默认值配置错误）",
+                getattr(self, "definition", None) and self.definition.name
+                or type(self).__name__)
+            raise
         try:
             result = self.execute(**resolved_args)  # -> Any（同步）或 awaitable（异步）
             if inspect.isawaitable(result):
@@ -1816,7 +1840,7 @@ class Tool:
         → 标注块 + 结果块的 EVENT 消息（``source="tool_result"``、STEER
         优先级）入调用方队列；任务异常 → 标注块 + 错误文本块（LLM 可见）。
 
-        **内部 API，不属稳定契约。** R-02 占位实现（L4 真身阶段 3 复核）。
+        **内部 API，不属稳定契约。**
         """
         marker = TextBlock(text=f"异步工具 {self.definition.name} 的最终结果：")
         if task.cancelled():
@@ -1987,19 +2011,37 @@ class ScriptTool(Tool):
         - 被调：script 工具实例化路径（用户子类构造 /
           ``flowing.tool._auto_generate_tool()``）
         """
-        import inspect
-
         cls = type(self)
         if "definition" in cls.__dict__:
-            # 与 name/description/args_model 同时声明时发告警、以显式 definition
-            # 为准（互斥规则；告警通道规约未具名符号，不猜）
+            if any(key in cls.__dict__ for key in ("name", "description", "args_model")):
+                # 互斥规则：与 name/description/args_model 同时声明 -> 告警日志，
+                # 以显式 definition 为准
+                _logger.warning(
+                    "ScriptTool 子类 %s 同时声明了 definition 与 "
+                    "name/description/args_model——互斥规则：以显式 definition 为准",
+                    cls.__name__)
             self.definition = cls.__dict__["definition"]
         else:
+            # name 缺省由类名 kebab 化推断（pascal_to_kebab）；类体显式
+            # 声明仅作一致性断言（不符 -> NameMismatchError）。只看本类
+            # __dict__——继承来的 name 不参与断言（与 agent 侧
+            # _load_agent_from_py 的口径一致）
+            inferred_name = pascal_to_kebab(cls.__name__)
+            explicit_name = cls.__dict__.get("name")
+            if explicit_name is not None and explicit_name != inferred_name:
+                raise NameMismatchError(explicit_name, inferred_name, cls.__name__)
             args_model = getattr(self, "args_model", None)
             if args_model is None:
                 args_model = _infer_from_execute(self.execute)  # 从 execute 签名构建模型（B1）
+            # description 三级回退链（T6）：显式声明 > 类 docstring 首段 >
+            # execute() docstring 首段；皆无 -> 空串。注意用 cls.__doc__
+            # 而非 inspect.getdoc(cls)——后者会继承基类 docstring
+            description = getattr(cls, "description", None)
+            if description is None:
+                description = (_first_paragraph(cls.__doc__)
+                               or _first_paragraph(self.execute.__doc__) or "")
             self.definition = ToolDefinition(
-                name=self.name, description=self.description,
+                name=inferred_name, description=description,
                 params_schema=args_model.model_json_schema()["properties"])  # 声明即模型：schema 从模型派生
         self._has_caller = "caller" in inspect.signature(self.execute).parameters
         self._execution = None
