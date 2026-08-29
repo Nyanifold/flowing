@@ -1994,8 +1994,13 @@ class ScriptTool(Tool):
 
         .. rubric:: 行为规约
 
-        - 顺序：显式 ``definition`` 类属性存在（且未同时声明
-          ``name``/``description``/``args_model``）→ 直接使用；否则按
+        - 顺序：显式 ``definition`` 类属性存在 → 直接使用（同时声明
+          ``name``/``description``/``args_model`` 时发**告警日志**，仍以
+          显式 ``definition`` 为准——互斥规则）；否则 ``name`` 缺省由类名
+          kebab 化推断（显式声明仅作一致性断言，不符 →
+          ``NameMismatchError``），``description`` 按三级回退链取（显式
+          声明 > 类 docstring 首段 > ``execute()`` docstring 首段，皆无
+          → 空串），并按
           ``args_model = self.args_model or _infer_from_execute(self.execute)``
           （未声明时从 ``execute`` 签名构建模型）→
           ``ToolDefinition(name=..., description=...,
