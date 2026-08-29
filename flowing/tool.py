@@ -2745,6 +2745,15 @@ class ToolRegistry:
         return iter(self._tools.values())
 
 
+_FLOWING_TOOL_MARKS: set[Callable[..., Any]] = set()
+"""进程级打标表（``@flowing_tool`` 登记处）。
+
+发现机制是函数对象上的 ``__flowing_tool_name__`` 标记属性（``.py`` 命中后
+模块扫描逐对象检查）；本表仅作打标行为的登记——import 期不需要 Runtime
+存在，多 Runtime 安全。内部 API，不属稳定契约。
+"""
+
+
 def flowing_tool(fn: Callable[..., Any] | None = None, *,
                  name: str | None = None) -> Any:
     """``@flowing_tool`` 打标装饰器——裸函数 → 工具类的自动提升标记。
@@ -2800,9 +2809,19 @@ def flowing_tool(fn: Callable[..., Any] | None = None, *,
         - :meth:`flowing.tool.ToolRegistry.get` —— 消费点。
         - :class:`flowing.errors.NameMismatchError` —— 断言失败。
     """
-    # 打标：fn.__flowing_tool_name__ = name（None = 纯推断）；登记进程级打标表
-    # 返回原函数；实例化/注册推迟到 get（import 期无 Runtime 依赖）
-    return fn
+    # 打标：fn.__flowing_tool_name__ = name（None = 纯推断）；登记进程级
+    # 打标表；返回原函数；实例化/注册推迟到 get（import 期无 Runtime 依赖）
+    if isinstance(fn, str):
+        # @flowing_tool("make-payment") 位置形态（spec 使用示例）：字符串
+        # 实参即一致性断言名（关键字形态 name=... 等价）
+        name, fn = fn, None
+
+    def _mark(f: Callable[..., Any]) -> Callable[..., Any]:
+        f.__flowing_tool_name__ = name  # type: ignore[attr-defined]
+        _FLOWING_TOOL_MARKS.add(f)
+        return f
+
+    return _mark(fn) if fn is not None else _mark
 
 
 def _infer_from_execute(execute: Callable[..., Any]) -> "type[BaseModel]":
@@ -2876,9 +2895,16 @@ def _auto_generate_tool(fn: Callable[..., Any]) -> Tool:
         - :func:`flowing_tool` —— 打标入口。
     """
     args_model = _infer_from_execute(fn)  # 元信息提取：签名构建模型（B1）
-    name: str = ...  # -> str（文件名去 .py，snake → kebab 规范化；TOOL.py/tool.py 取目录名）
-    description: str = ...  # -> str（三级回退链：显式声明 > 类 docstring 首段 > execute() docstring 首段，T6）
-    cls = type(name, (ScriptTool,), {
+    # name ← 文件名去 .py 并 snake → kebab 规范化（TOOL.py/tool.py 通用名
+    # 取目录名）；装饰器参数若给出仅作一致性断言（不符 -> NameMismatchError）
+    name = infer_name(fn.__code__.co_filename, naming=TOOL_NAMING)
+    declared = getattr(fn, "__flowing_tool_name__", None)
+    if declared is not None and declared != name:
+        raise NameMismatchError(declared, name, fn.__code__.co_filename)
+    # description 三级回退链（T6）在打标函数形态下的落点：显式声明无通道
+    # （装饰器无 description 形参）、无类 docstring —— 取函数 docstring 首段
+    description = _first_paragraph(fn.__doc__) or ""
+    cls = type(kebab_to_pascal(name), (ScriptTool,), {
         "execute": staticmethod(fn),
         "name": name,
         "description": description,
