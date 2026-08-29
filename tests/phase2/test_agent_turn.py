@@ -1,0 +1,1052 @@
+"""阶段 2：消息族、控制族与 Turn 引擎测试（T44–T84）。
+
+覆盖：query/消息入队与撤回（T44–T48）、provider_gen 双模式与 delta（T49–T54）、
+side_query 边界（T55–T57）、fork（T58–T60）、pause/resume/cancel 族
+（T61–T66）、②.5 urgent 吸收（T67–T69）、工具循环（T70–T72、T74–T79）、
+空 turn 边缘（T73）、上下文估算（T80–T82）、树手术 head 语义（T83）、
+钩子异常不楔死（T84）。
+"""
+
+from __future__ import annotations
+
+import asyncio
+from pathlib import Path
+
+import pytest
+
+from flowing.errors import Intercepted, InvalidRequestError
+from flowing.agent import Execution
+from flowing.message import (
+    Message,
+    MessageKind,
+    MessagePriority,
+    TextBlock,
+    ThinkingBlock,
+    ToolCallBlock,
+)
+from flowing.providers import ProviderDelta, Usage
+from flowing.tool import Tool, ToolCall, ToolDefinition, ToolResult
+
+from conftest import (
+    SimpleAgent,
+    script_provider,
+    text_response,
+    tool_call_response,
+)
+
+
+# ---------------------------------------------------------------------------
+# 测试工具（占位 Tool 子类，R-02 占位 __call__ 驱动）
+# ---------------------------------------------------------------------------
+
+
+class EchoTool(Tool):
+    definition = ToolDefinition(
+        name="echo", description="回显参数",
+        params_schema={"text": {"type": "string"}})
+
+    async def execute(self, *, text: str) -> str:
+        return text
+
+
+class WaitTool(Tool):
+    """门控工具：等到共享 Event 置位才返回；记录调用次数。"""
+
+    def __init__(self, gate: asyncio.Event) -> None:
+        self.gate = gate
+        self.calls = 0
+
+    definition = ToolDefinition(
+        name="wait", description="等待门控", params_schema={})
+
+    async def execute(self) -> str:
+        self.calls += 1
+        await self.gate.wait()
+        return f"done-{self.calls}"
+
+
+class AsyncResultTool(Tool):
+    """异步工具：execute 返回 asyncio.Task（结果经完成回调 EVENT 入队）。"""
+
+    definition = ToolDefinition(
+        name="async-echo", description="异步回显",
+        params_schema={"text": {"type": "string"}})
+
+    def __init__(self, gate: asyncio.Event) -> None:
+        self.gate = gate   # 外部控制完成时点（测试时序闸门）
+        self.task: asyncio.Task | None = None
+
+    async def execute(self, *, text: str) -> asyncio.Task:
+        async def _bg() -> str:
+            await self.gate.wait()
+            return text.upper()
+
+        self.task = asyncio.create_task(_bg())
+        return self.task
+
+
+class AsyncFailTool(Tool):
+    definition = ToolDefinition(
+        name="async-fail", description="异步失败", params_schema={})
+
+    def __init__(self, gate: asyncio.Event) -> None:
+        self.gate = gate
+        self.task: asyncio.Task | None = None
+
+    async def execute(self) -> asyncio.Task:
+        async def _bg() -> str:
+            await self.gate.wait()
+            raise RuntimeError("后台炸了")
+
+        self.task = asyncio.create_task(_bg())
+        return self.task
+
+
+async def _yield(n: int = 3) -> None:
+    for _ in range(n):
+        await asyncio.sleep(0)
+
+
+# ---------------------------------------------------------------------------
+# T44 / T45：query 的等待语义
+# ---------------------------------------------------------------------------
+
+
+async def test_t44_pending_turns_cleaned(agent, provider):
+    script_provider(provider, text_response("ok"))
+    result = await agent.query("hi")
+    assert result.status == "completed"
+    assert agent._pending_turns == {}   # finally 清理
+
+
+async def test_t45_concurrent_queries_separate_turns(agent, provider):
+    first_started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def _gated(context, model):
+        if not first_started.is_set():
+            first_started.set()
+            await release.wait()
+            return text_response("第一回合")
+        return text_response("第二回合")
+
+    provider.generate_fn = _gated
+    t1 = asyncio.create_task(agent.query("一"))
+    await first_started.wait()
+    t2 = asyncio.create_task(agent.query("二"))   # 活跃回合中排队
+    await _yield()
+    release.set()
+    r1 = await asyncio.wait_for(t1, 2)
+    r2 = await asyncio.wait_for(t2, 2)
+    assert r1 is not r2   # 各自 resolve 到各自回合
+    assert r1.final_text == "第一回合"
+    assert r2.final_text == "第二回合"
+
+
+# ---------------------------------------------------------------------------
+# T46–T48：入队钩子与队列管理
+# ---------------------------------------------------------------------------
+
+
+async def test_t46_before_enqueue_intercepted(agent):
+    after_calls: list = []
+
+    async def _guard(a, msg):
+        if "违规" in "".join(getattr(b, "text", "") for b in msg.content):
+            raise Intercepted("拒绝")
+        return msg
+
+    agent.hooks.before_enqueue(_guard)
+    agent.hooks.after_enqueue(lambda a, m: after_calls.append(m.id) or m)
+    with pytest.raises(Intercepted):
+        await agent.enqueue_message(Message(
+            kind=MessageKind.USER, content=[TextBlock(text="违规内容")]))
+    assert len(agent._message_queue) == 0   # 队列长度不变
+    assert after_calls == []   # after_enqueue 不触发
+
+
+async def test_t47_cancel_queued(agent, provider):
+    first_started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def _gated(context, model):
+        if not first_started.is_set():
+            first_started.set()
+            await release.wait()
+        return text_response("ok")
+
+    provider.generate_fn = _gated
+    t1 = asyncio.create_task(agent.query("一"))
+    await first_started.wait()
+
+    t2 = asyncio.create_task(agent.query("二"))   # 活跃回合中排队 + 有等待者
+    await _yield()
+    queued_id = next(iter(agent._pending_turns))   # t1 已出队弹出，只剩 t2
+    assert agent.cancel_queued(queued_id) is True
+    r2 = await asyncio.wait_for(t2, 2)
+    assert r2.status == "cancelled"   # 等待者联动 resolve cancelled
+    assert len(agent._message_queue) == 0
+
+    # 已出队的消息 -> False
+    in_flight_id = agent.current_turn.message_ids[0]
+    assert agent.cancel_queued(in_flight_id) is False
+    release.set()
+    r1 = await asyncio.wait_for(t1, 2)
+    assert r1.status == "completed"   # 等待者由回合正常 resolve
+
+
+async def test_t48_set_queued_priority(agent, provider):
+    seen_texts: list[str] = []
+
+    async def _rec(context, model):
+        # 记录每回合触发消息文本（context 根消息即触发者）
+        seen_texts.append(context.messages[-1].content[0].text)
+        return text_response("ok")
+
+    provider.generate_fn = _rec
+    agent.pause()   # 挂起工作循环，先排队
+    m1 = await agent.message("普通-先入")
+    m2 = await agent.message("普通-后入")
+    assert agent.set_queued_priority(m2, MessagePriority.HIGH) is True
+    agent.resume()
+    await _yield(6)   # 等两回合跑完
+    assert seen_texts[:2] == ["普通-后入", "普通-先入"]   # 提升后先消费
+    assert agent.set_queued_priority(m1, MessagePriority.LOW) is False   # 已出队
+
+
+# ---------------------------------------------------------------------------
+# T49–T54：provider_gen 双模式与流式 delta
+# ---------------------------------------------------------------------------
+
+
+async def test_t49_stream_default_without_subscribers(agent, provider):
+    async def _stream(context, model):
+        yield ProviderDelta(kind="text", text="流式", content_index=0)
+        yield ProviderDelta(kind="text", text="输出", content_index=1,
+                            usage=Usage(input=1, fresh_input=1, output=2,
+                                        cache_read=0, cache_write=0,
+                                        reasoning=0, total_tokens=3))
+
+    provider.stream_fn = _stream
+    result = await agent.query("hi")   # 无 on_provider_delta 订阅者，dispatch 空转
+    assert result.status == "completed"
+    assert result.final_text == "流式输出"
+    assert len(provider.received) == 1
+
+
+async def test_t50_nonstream_single_full_delta(agent, provider):
+    deltas: list[ProviderDelta] = []
+    agent.hooks.on_provider_delta(lambda a, d: deltas.append(d) or d)
+    script_provider(provider, text_response("整段文本", usage=Usage(
+        input=1, fresh_input=1, output=1, cache_read=0, cache_write=0,
+        reasoning=0, total_tokens=2)))
+    context = agent._assemble_context()
+    response = await agent.provider_gen(context, stream=False, by="probe")
+    assert len(provider.received) == 1   # 非流式请求（generate 被调）
+    assert len(deltas) == 1   # 恰好一条全量 delta
+    assert deltas[0].text == "整段文本"
+    assert deltas[0].kind == "text" and deltas[0].by == "probe"   # 格式与流式一致
+    assert response.by == "probe"   # by 盖写响应
+
+
+async def test_t51_stream_two_deltas_concat(agent, provider):
+    deltas: list[str] = []
+    agent.hooks.on_provider_delta(lambda a, d: deltas.append(d.text) or d)
+
+    async def _stream(context, model):
+        yield ProviderDelta(kind="text", text="hello ", content_index=0)
+        yield ProviderDelta(kind="text", text="world", content_index=0)
+
+    provider.stream_fn = _stream
+    result = await agent.query("hi")
+    assert deltas == ["hello ", "world"]   # 钩子收两条
+    msg = agent._messages[result.turn.message_ids[-1]]
+    assert "".join(b.text for b in msg.content) == "hello world"   # 完整拼接
+
+
+async def test_t52_abort_preflight(agent, provider):
+    agent.abort_turn()   # _turn_abort 已置位
+    context = agent._assemble_context()
+    response = await agent.provider_gen(context)
+    assert response.message is None
+    assert response.finish is False and response.cancelled is True
+    assert len(provider.received) == 0   # 未发起 Provider 调用
+
+
+async def test_t53_side_pattern_filter(agent, provider):
+    side_deltas: list[str] = []
+    agent.hooks.on_provider_delta["_side"](lambda a, d: side_deltas.append(d.text) or d)
+    script_provider(provider, text_response("主线"), text_response("副线"))
+    await agent.query("主线问题")
+    assert side_deltas == []   # 主 Turn delta 不触发 _side pattern handler
+    text = await agent.side_query("副线问题")
+    assert text == "副线"
+    assert len(side_deltas) == 1   # side_query 时触发
+
+
+async def test_t54_stream_abort_partial_kept(agent, provider):
+    dispatched: list[str] = []
+
+    async def _watch(a, delta):
+        dispatched.append(delta.text)
+        a.abort_turn()   # 首条 delta 后中断流式
+        return delta
+
+    agent.hooks.on_provider_delta(_watch)
+
+    async def _stream(context, model):
+        yield ProviderDelta(kind="text", text="已累积", content_index=0)
+        yield ProviderDelta(kind="text", text="不应到达", content_index=0)
+
+    provider.stream_fn = _stream
+    result = await agent.query("hi")
+    assert result.status == "cancelled"
+    assert dispatched == ["已累积"]   # 取消点起不再 dispatch
+    msg = agent._messages[result.turn.message_ids[-1]]
+    assert msg.kind is MessageKind.PROVIDER and msg.partial is True
+    assert "".join(b.text for b in msg.content) == "已累积"   # 已累积内容定型保留
+    assert msg.turn_end is True   # 取消关闭（S-14）
+    await agent._tree_store.drain()
+    assert '"partial": true' in (agent._session_dir / "tree.jsonl").read_text()   # 落盘保留
+
+
+# ---------------------------------------------------------------------------
+# T55–T57：side_query 边界
+# ---------------------------------------------------------------------------
+
+
+async def test_t55_side_query_no_commit(agent, provider):
+    script_provider(provider, text_response("历史答复"))
+    await agent.query("先有历史")
+    await agent._tree_store.drain()
+    before = (set(agent._messages), agent.current_head_id, agent.last_result,
+              (agent._session_dir / "tree.jsonl").read_text())
+
+    script_provider(provider, text_response("副线答复"))
+    text = await agent.side_query("总结以上对话")
+    assert text == "副线答复"
+    await agent._tree_store.drain()
+    assert set(agent._messages) == before[0]   # 不挂树
+    assert agent.current_head_id == before[1]
+    assert agent.last_result == before[2]   # 不写 last_result
+    assert (agent._session_dir / "tree.jsonl").read_text() == before[3]   # 不落盘
+
+
+async def test_t56_side_query_model_tag(runtime, provider, fixtures_dir):
+    # 标签解析链：fixtures 的 fast -> deepseek-v4（provider deepseek-personal）
+    runtime._model_tags_path = fixtures_dir / "providers" / "model-tags.yaml"
+    runtime._models_path = fixtures_dir / "providers" / "models.yaml"
+    runtime.add_provider("deepseek-personal", provider)   # fast 解析目标的 provider
+    agent = await runtime.create_agent(SimpleAgent)
+    seen_models: list[str] = []
+
+    async def _gen(context, model):
+        seen_models.append(model.model)
+        return text_response("ok")
+
+    provider.generate_fn = _gen
+    original_model = agent.model
+    text = await agent.side_query("副线", model_tag="fast")
+    assert text == "ok"
+    assert seen_models == ["deepseek-chat"]   # 本次用 fast 解析的模型
+    assert agent.model is original_model   # self.model 不被改写
+
+
+async def test_t57_side_query_response_consumption(agent, provider):
+    from flowing.message import ThinkingBlock
+
+    # [ThinkingBlock, TextBlock("ok")] -> "ok"（thinking 不参与返回值）
+    script_provider(provider, text_response("ok"))
+    assert await agent.side_query("q1") == "ok"
+
+    # 响应含 ToolCallBlock -> 不执行不续轮
+    resp, _ = tool_call_response(("echo", {"text": "x"}), text="带工具")
+    script_provider(provider, resp)
+    assert await agent.side_query("q2") == "带工具"   # 只拼 TextBlock
+
+    # 仅 ThinkingBlock -> "" 不抛
+    thinking_only = text_response("").__class__(
+        message=Message(kind=MessageKind.PROVIDER,
+                        content=[ThinkingBlock(thinking="想")]),
+        finish=True)
+    script_provider(provider, thinking_only)
+    assert await agent.side_query("q3") == ""
+
+
+# ---------------------------------------------------------------------------
+# T58–T60：fork
+# ---------------------------------------------------------------------------
+
+
+async def test_t58_fork_switches_branch(agent, provider):
+    m6 = Message(id="m6", kind=MessageKind.USER, content=[TextBlock(text="根")])
+    agent.push(m6)
+    m7 = Message(id="m7", kind=MessageKind.PROVIDER, content=[TextBlock(text="支7")])
+    m8 = Message(id="m8", kind=MessageKind.PROVIDER, content=[TextBlock(text="支8")])
+    agent.chain.branch("m6", m7)
+    agent.chain.branch("m6", m8)   # m6 有子消息 m7/m8 两分支
+
+    await agent.fork("m8")
+    assert agent.current_head_id == "m8"
+    path_ids = [m.id for m in agent._assemble_context().messages]
+    assert "m8" in path_ids and "m7" not in path_ids   # 组装路径含 m8 不含 m7
+
+
+async def test_t59_in_turn_fork_seek(runtime, provider):
+    # 先完成第一回合：u1 -> p1
+    script_provider(provider, text_response("第一轮"))
+    agent = await runtime.create_agent(SimpleAgent)
+    r1 = await agent.query("一")
+    u1 = r1.turn.message_ids[0]
+
+    # 第二回合：before_provider_gen 钩子里 fork 到 u1（回合内 seek）
+    async def _seek(a, context):
+        if a.current_turn is not None and len(a.current_turn.message_ids) == 1:
+            await a.fork(u1)   # 后续 append 挂 u1 链
+        return context
+
+    script_provider(provider, text_response("第二轮"))
+    agent.hooks.before_provider_gen(_seek)
+    r2 = await agent.query("二")
+    msgs = [agent._messages[mid] for mid in r2.turn.message_ids]
+    trigger, reply = msgs[0], msgs[-1]
+    assert trigger.parent_id == r1.turn.message_ids[-1]   # 批次挂树在旧链
+    assert reply.parent_id == u1   # fork 后 append 挂在新基址（跨链）
+    assert agent.current_head_id == reply.id
+    # 下一轮 context 从 u1 上溯：含 u1/reply，不含第一轮的 p1
+    path_ids = [m.id for m in agent._assemble_context().messages]
+    assert u1 in path_ids and r1.turn.message_ids[-1] not in path_ids
+
+
+async def test_t60_fork_dangling_tool_call(agent, provider):
+    # 构造「tool_call 已挂树、结果未 append」的 fork 落点
+    user = Message(id="u", kind=MessageKind.USER, content=[TextBlock(text="问")])
+    agent.push(user)
+    call_msg = Message(id="p-call", kind=MessageKind.PROVIDER,
+                       content=[ToolCallBlock(id="c-x", name="echo",
+                                              args={"text": "x"})])
+    agent.push(call_msg)   # head 停在工具执行相位（结果未 append）
+
+    async def _strict(context, model):
+        # 模拟 provider 的配对校验：context 中有 tool_call 但无配对结果 -> 显式报错
+        answered = {m.tool_call_id for m in context.messages
+                    if m.kind is MessageKind.TOOL}
+        for m in context.messages:
+            for b in m.content:
+                if isinstance(b, ToolCallBlock) and b.id not in answered:
+                    raise InvalidRequestError("配对断裂：有 tool_call 无结果")
+        return text_response("ok")
+
+    provider.generate_fn = _strict
+    result = await agent.query("继续")
+    assert result.status == "error"   # provider 显式报错走 on_provider_error（无 handler -> error）
+    # 旧链数据完好（append-only）
+    assert agent._messages["p-call"].content[0].id == "c-x"
+    assert agent._messages["u"].content[0].text == "问"
+
+
+# ---------------------------------------------------------------------------
+# T61 / T62：pause / resume
+# ---------------------------------------------------------------------------
+
+
+async def test_t61_pause_in_tool_loop(runtime, provider):
+    agent = await runtime.create_agent(SimpleAgent)
+    agent.runtime.register_tool(EchoTool())
+    agent.add_tool("echo")
+
+    step1, _ = tool_call_response(("echo", {"text": "一"}))
+    step2, _ = tool_call_response(("echo", {"text": "二"}))
+    script_provider(provider, step1, step2, text_response("完成"))
+
+    paused_once = False
+
+    async def _pause_after_first(a, result):
+        nonlocal paused_once
+        if not paused_once:   # 只在首个工具结果后挂起一次（否则 resume 后再触发）
+            paused_once = True
+            a.pause()   # 工具段执行后挂起：下一个 provider_gen / tool_call 前检查点生效
+        return result
+
+    agent.hooks.after_tool_call(_pause_after_first)
+    task = asyncio.create_task(agent.query("开始"))
+    await _yield(8)
+    assert agent.paused
+    assert len(provider.received) == 1   # 挂在检查点 ②：provider 调用计数冻结
+    agent.resume()
+    result = await asyncio.wait_for(task, 2)
+    assert result.status == "completed"
+    tool_msgs = [agent._messages[mid] for mid in result.turn.message_ids
+                 if agent._messages[mid].kind is MessageKind.TOOL]
+    assert len(tool_msgs) == 2   # 恢复后从该 tool_call 继续，已执行结果不丢
+    assert result.final_text == "完成"
+
+
+async def test_t62_pause_resume_recursive(runtime, provider):
+    parent = await runtime.create_agent(SimpleAgent)
+    child = await runtime.create_agent(SimpleAgent, parent_id=parent.node_id)
+    parent._children[child.node_id] = child
+    e = Execution(id="ex", kind="tool", tags=[], started_at=__import__("datetime").datetime.now(),
+                  cancel=asyncio.Event(), pause=asyncio.Event())
+    child._executions["ex"] = e
+
+    parent.pause_recursive()
+    assert parent.paused and child.paused
+    assert not e.pause.is_set()   # 不动任何 Execution
+    parent.resume_recursive()
+    assert not parent.paused and not child.paused
+
+
+# ---------------------------------------------------------------------------
+# T63–T66：cancel 族
+# ---------------------------------------------------------------------------
+
+
+async def test_t63_abort_inside_on_provider_error(agent, provider):
+    from flowing.errors import RateLimitedError
+
+    script_provider(provider, RateLimitedError("限流"))
+    abort_calls: list = []
+
+    async def _give_up(a, ctx):
+        a.abort_turn()   # handler 内决定放弃本回合
+        ctx.can_continue = True
+        return ctx
+
+    agent.hooks.on_provider_error(_give_up)
+    agent.hooks.before_turn_abort(lambda a, t: abort_calls.append(1) or t)
+    result = await agent.query("hi")
+    # continue 后下一次 provider_gen 开头检测信号返回 cancelled，abort 收口
+    assert result.status == "cancelled"
+    assert abort_calls == [1]   # before_turn_abort 恰好一次
+
+
+async def test_t64_cancel_sets_all_signals(agent):
+    e_tool = Execution(id="t", kind="tool", tags=[], started_at=__import__("datetime").datetime.now(),
+                       cancel=asyncio.Event(), pause=asyncio.Event())
+    e_agent = Execution(id="a", kind="agent", tags=[], started_at=__import__("datetime").datetime.now(),
+                        cancel=asyncio.Event(), pause=asyncio.Event())
+    agent._executions.update({"t": e_tool, "a": e_agent})
+    await agent.cancel()
+    assert e_tool.cancel.is_set() and e_agent.cancel.is_set()
+    assert agent._turn_abort.is_set()
+
+
+async def test_t65_before_cancel_intercepted(agent):
+    async def _veto(a, ctx):
+        raise Intercepted("关键事务进行中")
+
+    agent.hooks.before_cancel(_veto)
+    e = Execution(id="t", kind="tool", tags=[], started_at=__import__("datetime").datetime.now(),
+                  cancel=asyncio.Event(), pause=asyncio.Event())
+    agent._executions["t"] = e
+    with pytest.raises(Intercepted):
+        await agent.cancel()
+    assert not e.cancel.is_set()
+    assert not agent._turn_abort.is_set()   # 所有信号未置位
+
+
+async def test_t66_cancel_idle_fires_after_cancel(agent):
+    calls: list = []
+    agent.hooks.after_cancel(lambda a, ctx: calls.append(1) or ctx)
+    await agent.cancel()   # 空闲 Agent：信号置位是事实，after_cancel 照常
+    assert calls == [1]
+    assert agent._turn_abort.is_set()
+    agent._turn_abort.clear()   # 复原，避免影响 fixture 收尾
+
+
+# ---------------------------------------------------------------------------
+# T67–T69：检查点 ②.5 urgent 吸收
+# ---------------------------------------------------------------------------
+
+
+async def test_t67_steer_absorbed_same_turn(agent, provider):
+    gate = asyncio.Event()
+    wait_tool = WaitTool(gate)
+    agent.runtime.register_tool(wait_tool)
+    agent.add_tool("wait")
+    step1, _ = tool_call_response(("wait", {}))
+
+    async def _check_context(context, model):
+        return text_response("完成")
+
+    script_provider(provider, step1, _check_context)
+    task = asyncio.create_task(agent.query("开始"))
+    await _yield(6)   # 第一轮回合进入工具执行（挂在 gate 上）
+    await agent.steer("预算上限改为 500")   # 回合进行中注入
+    await _yield(2)
+    gate.set()
+    result = await asyncio.wait_for(task, 2)
+    assert result.status == "completed"
+    assert not result.turn.aborted   # STEER 吸收不 abort
+    # 当轮 context 可见：第二轮 provider_gen 收到的消息含该 steer
+    second_ctx = provider.received[1]
+    assert any("预算上限" in getattr(b, "text", "")
+               for m in second_ctx.messages for b in m.content)
+    # steer 消息已挂树
+    assert any("预算上限" in getattr(b, "text", "")
+               for m in agent._messages.values() for b in m.content)
+
+
+async def test_t68_interrupt_absorbed_and_aborted(agent, provider):
+    gate = asyncio.Event()
+    wait_tool = WaitTool(gate)
+    agent.runtime.register_tool(wait_tool)
+    agent.add_tool("wait")
+    step1, _ = tool_call_response(("wait", {}))
+    script_provider(provider, step1, text_response("不应到达"))
+    abort_calls: list = []
+    agent.hooks.before_turn_abort(lambda a, t: abort_calls.append(1) or t)
+
+    t1 = asyncio.create_task(agent.query("开始"))
+    await _yield(6)   # 回合进入工具执行
+    t2 = asyncio.create_task(agent.query("打断", priority=MessagePriority.INTERRUPT))
+    await _yield(2)
+    gate.set()
+    r1, r2 = await asyncio.wait_for(asyncio.gather(t1, t2), 2)
+    assert r1 is r2   # 吸收消息的等待者并入本回合，共享同一 TurnResult
+    assert r1.status == "cancelled"   # abort 收口
+    assert abort_calls == [1]   # before_turn_abort 恰好一次
+    # INTERRUPT 消息已挂树
+    kinds = [agent._messages[mid].kind for mid in r1.turn.message_ids]
+    assert kinds.count(MessageKind.USER) == 2
+
+
+async def test_t69_gates_division(agent, provider):
+    before_turn_batches: list[int] = []
+
+    async def _record(a, turn):
+        before_turn_batches.append(len(turn.pending_messages))
+        return turn
+
+    async def _reject(a, msg):
+        if "违规" in getattr(msg.content[0], "text", ""):
+            raise Intercepted("入队拦截")
+        return msg
+
+    agent.hooks.before_turn(_record)
+    agent.hooks.before_enqueue(_reject)
+
+    # ②.5 吸收的消息不经过 before_turn；before_enqueue 在入队时已拦截
+    with pytest.raises(Intercepted):
+        await agent.steer("违规 steer")   # 入队闸门拦截，永远到不了 ②.5
+    assert len(agent._message_queue) == 0
+
+    gate = asyncio.Event()
+    wait_tool = WaitTool(gate)
+    agent.runtime.register_tool(wait_tool)
+    agent.add_tool("wait")
+    step1, _ = tool_call_response(("wait", {}))
+    script_provider(provider, step1, text_response("完成"))
+    task = asyncio.create_task(agent.query("开始"))
+    await _yield(6)
+    await agent.steer("合法 steer")
+    gate.set()
+    result = await asyncio.wait_for(task, 2)
+    assert result.status == "completed"
+    # before_turn 只见出队批次（触发消息一条）；steer 经 ②.5 吸收不进 before_turn
+    assert before_turn_batches == [1]
+    # 挂树：触发 user + provider(工具调用) + tool 结果 + steer + provider(收尾)
+    assert len(result.turn.message_ids) == 5
+
+
+# ---------------------------------------------------------------------------
+# T70–T72：并行工具批 / finish 置位转移 / turn_end 写入
+# ---------------------------------------------------------------------------
+
+
+async def test_t70_parallel_tool_batch(runtime, provider):
+    events: list[str] = []
+
+    class SlowTool(Tool):
+        definition = ToolDefinition(
+            name="slow", description="慢工具",
+            params_schema={"n": {"type": "integer"}})
+
+        async def execute(self, *, n: int) -> str:
+            events.append(f"start-{n}")
+            await asyncio.sleep(0.05)
+            events.append(f"end-{n}")
+            return f"r{n}"
+
+    runtime.register_tool(SlowTool())
+    agent = await runtime.create_agent(SimpleAgent)
+    agent.add_tool("slow")
+    step1, calls = tool_call_response(("slow", {"n": 1}), ("slow", {"n": 2}))
+    script_provider(provider, step1, text_response("完成"))
+    result = await agent.query("开始")
+    assert result.status == "completed"
+    # asyncio.gather 并行：两个 start 都在任一 end 之前
+    assert events[:2] == ["start-1", "start-2"]
+    # 结果按响应原始顺序挂树
+    tool_msgs = [agent._messages[mid] for mid in result.turn.message_ids
+                 if agent._messages[mid].kind is MessageKind.TOOL]
+    assert [m.tool_call_id for m in tool_msgs] == [c.id for c in calls]
+
+
+async def test_t71_finish_output_shift(runtime, provider):
+    agent = await runtime.create_agent(SimpleAgent)
+    agent.add_tool("finish")   # builtin::finish（register_builtins 占位注册）
+    step1, calls = tool_call_response(("finish", {"summary": "做完了"}))
+    script_provider(provider, step1)   # 工具置位后视同 finish，不再调 provider
+    result = await agent.query("交卷")
+    assert result.status == "completed"
+    assert agent.last_result == {"summary": "做完了"}   # finish_output dict
+    # 首个触发置位的 TOOL 消息标 turn_end=True
+    tool_msg = next(agent._messages[mid] for mid in result.turn.message_ids
+                    if agent._messages[mid].kind is MessageKind.TOOL)
+    assert tool_msg.tool_call_id == calls[0].id
+    assert tool_msg.turn_end is True
+    provider_msg = agent._messages[result.turn.message_ids[1]]
+    assert provider_msg.turn_end is False   # PROVIDER 消息不追溯改写
+    assert len(provider.received) == 1   # 工具段执行完即收尾，无第二轮 provider_gen
+
+
+async def test_t72_turn_end_written_by_agent_layer(runtime, provider):
+    runtime.register_tool(EchoTool())
+    agent = await runtime.create_agent(SimpleAgent)
+    agent.add_tool("echo")
+    step1, _ = tool_call_response(("echo", {"text": "x"}))
+    script_provider(provider, step1, text_response("完成"))
+    result = await agent.query("开始")
+    kinds = [agent._messages[mid] for mid in result.turn.message_ids]
+    provider_msgs = [m for m in kinds if m.kind is MessageKind.PROVIDER]
+    # turn_end == (finish or cancelled)：工具调用响应 False，收尾响应 True
+    assert provider_msgs[0].turn_end is False
+    assert provider_msgs[1].turn_end is True
+
+
+# ---------------------------------------------------------------------------
+# T73：空 turn 边缘（abort 于首次 provider_gen 前）
+# ---------------------------------------------------------------------------
+
+
+async def test_t73_empty_turn(runtime, provider):
+    agent = await runtime.create_agent(SimpleAgent)
+
+    async def _clear_and_abort(a, turn):
+        turn.pending_messages.clear()   # 清空 = 空 turn（不显式挂树）
+        a.abort_turn()
+        return turn
+
+    agent.hooks.before_turn(_clear_and_abort)
+    result = await agent.query("hi")
+    assert result.status == "cancelled"
+    assert result.final_text == "" and result.token_usage is None
+    assert len(agent._messages) == 0   # 不产生新树节点
+    assert agent.current_head_id is None   # head 不变
+    assert len(provider.received) == 0
+
+
+# ---------------------------------------------------------------------------
+# T74–T77：tool_call 钩子链与 _normalize
+# ---------------------------------------------------------------------------
+
+
+async def test_t74_before_tool_call_rewrite(runtime, provider):
+    runtime.register_tool(EchoTool())
+    agent = await runtime.create_agent(SimpleAgent)
+    agent.add_tool("echo")
+
+    async def _rewrite(a, tc):
+        tc.args["text"] = "改写后"
+        return tc
+
+    agent.hooks.before_tool_call(_rewrite)
+    result = await agent.tool_call(ToolCall(id="c1", name="echo",
+                                            args={"text": "原始"}))
+    assert result.status == "completed"
+    assert result.output == "改写后"   # execute 收到改写后参数
+
+
+async def test_t75_before_tool_call_intercepted(runtime, provider):
+    executed: list = []
+
+    class SpyTool(Tool):
+        definition = ToolDefinition(name="spy", description="", params_schema={})
+
+        async def execute(self):
+            executed.append(1)
+            return "x"
+
+    runtime.register_tool(SpyTool())
+    agent = await runtime.create_agent(SimpleAgent)
+    agent.add_tool("spy")
+    after_calls: list = []
+    agent.hooks.after_tool_call(lambda a, r: after_calls.append(1) or r)
+
+    async def _veto(a, tc):
+        raise Intercepted("审批拒绝")
+
+    agent.hooks.before_tool_call(_veto)
+    result = await agent.tool_call(ToolCall(id="c1", name="spy", args={}))
+    assert result.status == "blocked"
+    assert executed == []   # 工具本体不执行
+    assert after_calls == []   # after_tool_call 不触发
+    # as_message 塑形为 [TextBlock(reason)]
+    msg = result.as_message("c1")
+    assert msg.kind is MessageKind.TOOL and msg.tool_status == "blocked"
+    assert isinstance(msg.content[0], TextBlock)
+    assert "审批拒绝" in msg.content[0].text
+
+
+async def test_t76_shortcut_and_after_intercepted(runtime, provider):
+    runtime.register_tool(EchoTool())
+    agent = await runtime.create_agent(SimpleAgent)
+    agent.add_tool("echo")
+    executed_after: list = []
+    agent.hooks.after_tool_call(lambda a, r: executed_after.append(r.status) or r)
+
+    async def _cache(a, tc):
+        tc.shortcut = ToolResult(status="completed", output="缓存命中")
+        return tc
+
+    agent.hooks.before_tool_call(_cache)
+    result = await agent.tool_call(ToolCall(id="c1", name="echo",
+                                            args={"text": "不执行"}))
+    assert result.status == "completed" and result.output == "缓存命中"
+    assert executed_after == ["completed"]   # after_tool_call 照常触发
+
+    # after_tool_call 内 Intercepted -> 伪造 blocked 返回不传播
+    async def _veto_after(a, r):
+        raise Intercepted("结果违规")
+
+    agent2 = await runtime.create_agent(SimpleAgent)
+    agent2.add_tool("echo")
+    agent2.hooks.after_tool_call(_veto_after)
+    result2 = await agent2.tool_call(ToolCall(id="c2", name="echo",
+                                              args={"text": "x"}))
+    assert result2.status == "blocked"
+    assert "结果违规" in (result2.output or "")
+
+
+async def test_t77_hallucinated_param(runtime, provider):
+    runtime.register_tool(EchoTool())
+    agent = await runtime.create_agent(SimpleAgent)
+    agent.add_tool("echo")
+    after_seen: list = []
+    agent.hooks.after_tool_call(lambda a, r: after_seen.append(r.status) or r)
+
+    step1, _ = tool_call_response(("echo", {"text": "x", "ghost": 1}))
+    script_provider(provider, step1, text_response("知错就改"))
+    result = await agent.query("开始")
+    tool_msg = next(agent._messages[mid] for mid in result.turn.message_ids
+                    if agent._messages[mid].kind is MessageKind.TOOL)
+    assert tool_msg.tool_status == "error"   # LLM 视角校验失败是正常产物、进消息树
+    err_text = "".join(getattr(b, "text", "") for b in tool_msg.content)
+    assert "ghost" in err_text   # 错误文本以 LLM 命名空间（幻觉参数名）
+    assert after_seen == ["error"]   # after_tool_call 照常触发
+    assert result.status == "completed"   # 回合不因此异常终止
+
+
+# ---------------------------------------------------------------------------
+# T78 / T79：异步工具透明化与 abort 于工具循环
+# ---------------------------------------------------------------------------
+
+
+async def test_t78_async_tool_pending_and_event(runtime, provider):
+    gate = asyncio.Event()
+    async_tool = AsyncResultTool(gate)
+    fail_tool = AsyncFailTool(gate)
+    runtime.register_tool(async_tool)
+    runtime.register_tool(fail_tool)
+    agent = await runtime.create_agent(SimpleAgent)
+    agent.add_tool("async-echo")
+    agent.add_tool("async-fail")
+
+    step1, calls = tool_call_response(("async-echo", {"text": "ab"}),
+                                      ("async-fail", {}))
+    # 两条 EVENT 各触发一个后续回合（queue 消费），兜底响应防脚本耗尽
+    script_provider(provider, step1, text_response("收尾"),
+                    text_response("事件回合一"), text_response("事件回合二"))
+    result = await agent.query("开始")
+    assert result.status == "completed"
+    tool_msgs = [agent._messages[mid] for mid in result.turn.message_ids
+                 if agent._messages[mid].kind is MessageKind.TOOL]
+    assert [m.tool_status for m in tool_msgs] == ["pending", "pending"]   # 收据配对封闭
+    assert [m.content for m in tool_msgs] == [[], []]
+
+    # Task 完成后 EVENT 消息入队（标注块 + 结果块 / 标注块 + 错误文本块），
+    # 由工作循环消费挂树——轮询等待两条 EVENT 出现（消费通道即时发生）
+    gate.set()
+    await asyncio.wait_for(asyncio.shield(async_tool.task), 2)
+    try:
+        await asyncio.wait_for(asyncio.shield(fail_tool.task), 2)
+    except RuntimeError:
+        pass   # 后台任务按设计失败
+    deadline = asyncio.get_running_loop().time() + 2
+    while True:
+        events = sorted(
+            (m for m in agent._messages.values() if m.kind is MessageKind.EVENT),
+            key=lambda m: m.timestamp)
+        if len(events) >= 2:
+            break
+        assert asyncio.get_running_loop().time() < deadline, "EVENT 消息未按时挂树"
+        await asyncio.sleep(0.01)
+    ok_evt, fail_evt = events
+    assert ok_evt.source == "tool_result"
+    assert ok_evt.priority == MessagePriority.STEER
+    assert isinstance(ok_evt.content[0], TextBlock)   # 标注块
+    assert len(ok_evt.content) == 2   # 标注块 + 结果块
+    assert "AB" in ok_evt.content[1].text   # 结果块（"ab" 大写）
+    assert "后台炸了" in fail_evt.content[1].text   # 错误文本块（与同步 error 同语义）
+
+
+async def test_t79_abort_skips_remaining_tools(runtime, provider):
+    executed: list[str] = []
+
+    class AbortingTool(Tool):
+        definition = ToolDefinition(name="aborter", description="", params_schema={})
+
+        async def execute(self, *, caller=None) -> str:
+            executed.append("aborter")
+            caller.abort_turn()   # 执行中置位退出信号
+            return "部分结果"   # 协作式：返回部分结果
+
+    class NeverTool(Tool):
+        definition = ToolDefinition(name="never", description="", params_schema={})
+
+        async def execute(self) -> str:
+            executed.append("never")
+            return "x"
+
+    runtime.register_tool(AbortingTool())
+    runtime.register_tool(NeverTool())
+    agent = await runtime.create_agent(SimpleAgent)
+    agent.add_tool("aborter")
+    agent.add_tool("never")
+    step1, _ = tool_call_response(("aborter", {}))
+    # 下一轮的 never 工具调用永远不会发生：abort 在 ② 检查点收口
+    step2, _ = tool_call_response(("never", {}))
+    script_provider(provider, step1, step2, text_response("不应到达"))
+    result = await agent.query("开始")
+    assert result.status == "cancelled"
+    assert executed == ["aborter"]   # 剩余工具被跳过不 execute
+    tool_msg = next(agent._messages[mid] for mid in result.turn.message_ids
+                    if agent._messages[mid].kind is MessageKind.TOOL)
+    assert tool_msg.content[0].text == "部分结果"   # 部分结果正常挂树
+
+
+# ---------------------------------------------------------------------------
+# T80–T82：estimate_context_tokens
+# ---------------------------------------------------------------------------
+
+
+def _mk_usage(total: int) -> Usage:
+    return Usage(input=total, fresh_input=total, output=0, cache_read=0,
+                 cache_write=0, reasoning=0, total_tokens=total)
+
+
+async def test_t80_anchor_measured_plus_tail(agent):
+    from flowing.message import estimate_message_tokens
+
+    agent.push(Message(kind=MessageKind.USER, content=[TextBlock(text="问")]))
+    anchor = Message(kind=MessageKind.PROVIDER,
+                     content=[TextBlock(text="答")], usage=_mk_usage(5000))
+    agent.push(anchor)
+    t1 = Message(kind=MessageKind.TOOL, tool_call_id="c1", tool_status="completed",
+                 content=[TextBlock(text="结果一")])
+    t2 = Message(kind=MessageKind.TOOL, tool_call_id="c2", tool_status="completed",
+                 content=[TextBlock(text="结果二")])
+    agent.push(t1)
+    agent.push(t2)
+    est = agent.estimate_context_tokens()
+    assert est.measured == 5000
+    assert est.anchor_message_id == anchor.id
+    assert est.tokens == 5000 + estimate_message_tokens(t1) + estimate_message_tokens(t2)
+    assert est.estimated == estimate_message_tokens(t1) + estimate_message_tokens(t2)
+    assert est.context_window == 100000   # harness 模型声明
+
+
+async def test_t81_fresh_session_all_estimated(runtime, provider):
+    agent = await runtime.create_agent(SimpleAgent)
+    est = agent.estimate_context_tokens()
+    assert est.measured is None and est.anchor_message_id is None
+    plain = est.estimated
+    assert plain > 0   # 含 system prompt（prompt_blocks[0] 惰性引用块）
+
+    agent.add_tool("finish")
+    with_tool = agent.estimate_context_tokens()
+    assert with_tool.estimated > plain   # 新增启用工具的 schema 计入估算
+
+
+async def test_t82_anchor_migration_on_remove(agent):
+    agent.push(Message(kind=MessageKind.USER, content=[TextBlock(text="问")]))
+    p1 = Message(kind=MessageKind.PROVIDER, content=[TextBlock(text="答1")],
+                 usage=_mk_usage(5000))
+    agent.push(p1)
+    p2 = Message(kind=MessageKind.PROVIDER, content=[TextBlock(text="答2")],
+                 usage=_mk_usage(3000))
+    agent.push(p2)
+    p3 = Message(kind=MessageKind.PROVIDER, content=[TextBlock(text="答3")],
+                 usage=_mk_usage(0))   # total_tokens==0 不算有效锚点
+    agent.push(p3)
+    assert agent.estimate_context_tokens().anchor_message_id == p2.id
+
+    agent.remove(p3.id)   # 删 head：回退到 p2
+    assert agent.estimate_context_tokens().anchor_message_id == p2.id
+    agent.remove(p2.id)   # 锚点被 chain.remove -> 落到次近有效 PROVIDER
+    est = agent.estimate_context_tokens()
+    assert est.anchor_message_id == p1.id
+    assert est.measured == 5000   # 无陈旧值
+
+
+# ---------------------------------------------------------------------------
+# T83：树手术的 head 语义
+# ---------------------------------------------------------------------------
+
+
+async def test_t83_head_maintenance(runtime, provider):
+    agent = await runtime.create_agent(SimpleAgent)
+    m1 = Message(id="m1", kind=MessageKind.USER, content=[TextBlock(text="1")])
+    m2 = Message(id="m2", kind=MessageKind.USER, content=[TextBlock(text="2")])
+    m3 = Message(id="m3", kind=MessageKind.USER, content=[TextBlock(text="3")],
+                 tags=["tmp"])
+    agent.push(m1)
+    agent.push(m2)
+    agent.push(m3)
+
+    agent.remove("m2")   # 删非 head：head 不动
+    assert agent.current_head_id == "m3"
+    agent.remove("m3")   # 删 head：head 回退到其删除前的 parent_id 原值
+    assert agent.current_head_id == "m2"   # 孤儿语义（remove 不级联；m2 已删——调用方责任）
+
+    # 连续 pop() 删到根后 head 为 None（干净链上逐条删）
+    agent2 = await runtime.create_agent(SimpleAgent)
+    for i in ("a", "b", "c"):
+        agent2.push(Message(id=i, kind=MessageKind.USER,
+                            content=[TextBlock(text=i)]))
+    while agent2.current_head_id is not None:
+        agent2.pop()
+    assert agent2.current_head_id is None
+    assert len(agent2._messages) == 0
+
+    # remove_by_tags 删到 head：head 回退其删除前父节点
+    a = Message(id="a", kind=MessageKind.USER, content=[TextBlock(text="a")])
+    b = Message(id="b", kind=MessageKind.USER, content=[TextBlock(text="b")],
+                tags=["reminder"])
+    agent2.push(a)
+    agent2.push(b)
+    removed = agent2.remove_by_tags({"reminder"})
+    assert removed == 1
+    assert agent2.current_head_id == "a"
+
+
+# ---------------------------------------------------------------------------
+# T84：钩子抛异常不楔死 agent
+# ---------------------------------------------------------------------------
+
+
+async def test_t84_hook_exception_not_wedged(agent, provider, caplog):
+    async def _bad_after_turn(a, turn):
+        raise ValueError("收尾钩子炸了")
+
+    agent.hooks.after_turn(_bad_after_turn, by="bad")
+    script_provider(provider, text_response("一"), text_response("二"))
+    await agent.message("第一条")   # fire-and-forget：after_turn 抛错由工作循环兜底记日志
+    await _yield(8)
+    assert agent.current_turn is None   # 释放回合身份牌先于一切钩子
+    agent.hooks.after_turn.remove_by_owner("bad")   # 移除坏钩子（异常处理属应用层）
+    result = await agent.query("第二条")   # 队列后续消息照常消费
+    assert result.status == "completed"
+    assert result.final_text == "二"
