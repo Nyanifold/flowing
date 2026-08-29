@@ -586,7 +586,9 @@ class CronScheduler:
         4. 构造 ``CronTrigger``（``action`` 为 ``job.action`` 的拷贝，
            ``fire`` 为该 ctx）并
            ``agent.hooks.on_cron_trigger.dispatch(agent, trigger)``；
-           目标 Agent 未启用 ``use_cron``（无该钩子点）时跳过 dispatch。
+           目标 Agent 未启用 ``use_cron``（无该钩子点）时跳过 dispatch；
+           handler ``raise Intercepted`` 硬阻断 → 同样跳过本次触发
+           （不推进游标，语义同 shortcut——见 :class:`CronTrigger`）。
         5. ``trigger.shortcut`` 为真则结束（跳过本次触发，**不推进
            游标**——跳过不算成功交付，次数继续累积）。
         6. 按 ``trigger.action.kind`` 查 ``_executors`` 并
@@ -721,8 +723,9 @@ class CronScheduler:
 
         .. rubric:: 调用关系（审计）
 
-        - 调用：无（重建定义与重新武装定时器；逐条是否复用
-          ``schedule`` 未见规约）
+        - 调用：``CronJob.from_dict``（时机：逐条重建）；``_arm``
+          （时机：逐条重新武装定时器）——不复用 ``schedule``（恢复重建
+          不做冲突/kind/存活校验，也不重写 state：盘即数据源）
         - 被调：``use_cron`` 注册的 ``after_recover`` handler（时机：
           ``Agent._restore()`` 重放完成后、``_sweep`` 之前）
 

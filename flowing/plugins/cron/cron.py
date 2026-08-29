@@ -366,11 +366,10 @@ class CronPlugin(Plugin):
         scheduler = CronScheduler(runtime, executors=self._executors,
                                   templates=self._templates)  # S-24：构造注入
         self._scheduler = scheduler   # 自留引用：shutdown() 收尾用（S-05）
-        # 上游缺口（阶段 2，已上报）：``Runtime.provide`` 以 ``str(key)``
-        # 归一，而 ``InjectionKey`` 未定义 ``__str__``（落 ``__repr__``），
-        # 传 InjectionKey 会写进错误槽位；按契约「``_provided`` 的 key 恒为
-        # 键名字符串」显式传 ``.name``（inject 侧按 name 匹配，不受影响；
-        # FakeRuntime 替身直存对象键，同槽位语义不变）
+        # ``Runtime.provide`` 以 ``str(key)`` 归一，而 ``InjectionKey``
+        # 未定义 ``__str__``（落 ``__repr__``），直接传 InjectionKey 会写进
+        # 错误槽位；按契约「``_provided`` 的 key 恒为键名字符串」显式传
+        # ``.name``（inject 侧按 name 匹配，两侧同槽位）
         runtime.provide(cron_scheduler_key.name, scheduler)
         runtime.register_tool(ScheduleCronTool())
         runtime.register_tool(ScheduleCronMessageTool())
