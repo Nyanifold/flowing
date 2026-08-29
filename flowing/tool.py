@@ -123,8 +123,12 @@ LLM 在一次逻辑 Turn 中发出工具调用后，框架按以下**固定顺�
 from __future__ import annotations   # S-43 裁决③：注解延迟求值，配合 TYPE_CHECKING 破注解级循环边
 
 import asyncio
+import base64
+import binascii
+import hashlib
 import inspect
 import json
+import mimetypes
 import os
 from collections.abc import Callable, Iterator
 from dataclasses import asdict, dataclass, field, is_dataclass
@@ -219,6 +223,19 @@ script 是单例因为其业务逻辑是用户代码，不应实例化多次；�
 # ──────────────────────────────────────────────────────────────────
 
 
+def _validate_carrier(carrier: "Image | File | Audio | Video") -> None:
+    """载体四类共用构造校验（作者 bug → 框架错误通道 ValueError）。
+
+    - ``data`` / ``path`` 至少其一；
+    - ``path`` 须为绝对路径。
+    """
+    if carrier.data is None and carrier.path is None:
+        raise ValueError(f"{type(carrier).__name__} 的 data 与 path 至少其一")
+    if carrier.path is not None and not Path(carrier.path).is_absolute():
+        raise ValueError(
+            f"{type(carrier).__name__}.path 须为绝对路径: {carrier.path!r}")
+
+
 @dataclass
 class Image:
     """执行层媒体载体（图片）——工具作者侧词汇，Block 对作者彻底透明（D6）。
@@ -261,6 +278,9 @@ class Image:
     name: str | None = None
     """文件名；缺省 = path 文件名 > hash.ext 合成（D8）。"""
 
+    def __post_init__(self) -> None:
+        _validate_carrier(self)
+
 
 @dataclass
 class File:
@@ -275,6 +295,9 @@ class File:
     mime_type: str | None = None
     name: str | None = None
 
+    def __post_init__(self) -> None:
+        _validate_carrier(self)
+
 
 @dataclass
 class Audio:
@@ -285,6 +308,9 @@ class Audio:
     mime_type: str | None = None
     name: str | None = None
 
+    def __post_init__(self) -> None:
+        _validate_carrier(self)
+
 
 @dataclass
 class Video:
@@ -294,6 +320,9 @@ class Video:
     path: str | os.PathLike | None = None
     mime_type: str | None = None
     name: str | None = None
+
+    def __post_init__(self) -> None:
+        _validate_carrier(self)
 
 
 @dataclass
@@ -319,10 +348,23 @@ class MediaConverter:
     """第三方对象 → 执行层载体四类之一的转换函数。"""
 
 
+def _pil_image_convert(img: Any) -> "Image":
+    """内置 Pillow 转换器（D10）：``PIL.Image.Image`` → PNG bytes 的 `Image` 载体。
+
+    PIL 未安装不影响本定义的存在——匹配走 MRO 全名字符串，不 import PIL；
+    convert 被调用时 ``PIL.Image.Image`` 实例已存在，PIL 必然已装入。
+    """
+    import io
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return Image(data=buf.getvalue(), mime_type="image/png")
+
+
 _MEDIA_CONVERTERS: list[MediaConverter] = [
     # 内置条目（D10）：Pillow——PIL.Image.Image 实例（含子类）经 MRO 全名
     # 匹配命中，convert 取 PNG bytes 包 Image 载体（mime_type="image/png"）
-    MediaConverter("PIL.Image", "Image", convert=...),
+    MediaConverter("PIL.Image", "Image", convert=_pil_image_convert),
 ]
 """媒体转换注册表（模块级）。匹配算法与语义见 `MediaConverter`（D10）。"""
 
@@ -355,7 +397,117 @@ def register_media_converter(
     """
     # 归一为 (module, qualname, convert) 三元组存 _MEDIA_CONVERTERS；
     # 同 (module, qualname) 重复注册 → ValueError
-    ...
+    if isinstance(tp_or_module, type):
+        # 直传 type 降级存名字（全库只有 MRO 全名一种匹配机制）
+        if qualname is not None:
+            raise ValueError("tp_or_module 为 type 时 qualname 应省略")
+        module, qname = tp_or_module.__module__, tp_or_module.__qualname__
+    else:
+        module, qname = tp_or_module, qualname
+    # 三要素缺失属调用方笔误（spec 未具名异常类型，按编程错误通道 ValueError）
+    if not module or not qname or convert is None:
+        raise ValueError(
+            "register_media_converter 需要 module / qualname / convert 三要素")
+    if any(c.module == module and c.qualname == qname for c in _MEDIA_CONVERTERS):
+        raise ValueError(f"媒体转换器重复注册: {module}.{qname}")
+    _MEDIA_CONVERTERS.append(
+        MediaConverter(module=module, qualname=qname, convert=convert))
+
+
+def _sniff_mime(data: bytes) -> str | None:
+    """bytes 魔数嗅探（推测点 8 定稿）：只内置常见魔数，推不出返回 ``None``
+    （调用方按「宁文件勿图」落 ``FileBlock``）。"""
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    if data[:4] == b"RIFF" and data[8:12] == b"WAVE":
+        return "audio/wav"
+    if data.startswith(b"ID3") or data[:2] == b"\xff\xfb":
+        return "audio/mpeg"
+    if data[4:8] == b"ftyp":
+        return "video/mp4"
+    if data.startswith(b"%PDF-"):
+        return "application/pdf"
+    return None
+
+
+def _route_block(mime: str | None) -> "type[MediaBlock]":
+    """D7 MIME 路由：``image/*`` / ``audio/*`` / ``video/*`` → 对应块；
+    其余 / 推不出 → ``FileBlock``（宁文件勿图）。"""
+    if mime is not None:
+        category = mime.split("/", 1)[0]
+        if category == "image":
+            return ImageBlock
+        if category == "audio":
+            return AudioBlock
+        if category == "video":
+            return VideoBlock
+    return FileBlock
+
+
+def _synth_name(data: bytes, mime: str | None) -> str:
+    """D8 文件名合成：``<sha256(data)[:12]>.<ext>``（ext 由 MIME 反推，未知 → ``.bin``）。"""
+    ext = mimetypes.guess_extension(mime) if mime else None
+    return f"{hashlib.sha256(data).hexdigest()[:12]}{ext or '.bin'}"
+
+
+async def _media_to_block(
+    *,
+    data: bytes | str | None,
+    path: str | os.PathLike | None,
+    mime_type: str | None,
+    name: str | None,
+    forced: "type[MediaBlock] | None",
+) -> MediaBlock:
+    """载体 / 裸 bytes / 裸 Path → 媒体块（I/O 唯一发生点，async）。
+
+    - MIME 推断链（D7）：显式 ``mime_type`` > path 后缀（``mimetypes``）>
+      bytes 魔数；``forced`` 非 None（显式载体声明）时块类别不再经路由。
+    - 文件名填充链（D8）：显式 ``name`` > path 文件名 > hash.ext 合成。
+    """
+    if isinstance(data, str):
+        # data str = base64 形态（见 Image.data 字段注释）；解码为 raw 统一处理
+        try:
+            raw = base64.b64decode(data, validate=True)
+        except binascii.Error as exc:
+            raise ValueError(f"载体 data 字符串须为合法 base64: {exc}") from exc
+    elif data is None:
+        raw = await asyncio.to_thread(Path(path).read_bytes)  # type: ignore[arg-type]
+    else:
+        raw = data
+    p = Path(path) if path is not None else None
+    mime = mime_type
+    if mime is None and p is not None:
+        mime = mimetypes.guess_type(str(p))[0]
+    if mime is None:
+        mime = _sniff_mime(raw)
+    block_cls = forced if forced is not None else _route_block(mime)
+    block_name = name or (p.name if p is not None else None) or _synth_name(raw, mime)
+    return block_cls(
+        data=base64.b64encode(raw).decode("ascii"), name=block_name, mime_type=mime)
+
+
+_CARRIER_BLOCK: "dict[type, type[MediaBlock]]" = {
+    Image: ImageBlock,
+    File: FileBlock,
+    Audio: AudioBlock,
+    Video: VideoBlock,
+}
+"""显式载体四类 → 强制块类别（显式声明永远压过推断，D7）。"""
+
+
+def _find_media_converter(obj: Any) -> MediaConverter | None:
+    """D10 注册表匹配：沿 ``type(obj).__mro__`` 查 ``module.qualname`` 全名，子类命中。"""
+    mro_names = {f"{c.__module__}.{c.__qualname__}" for c in type(obj).__mro__}
+    for converter in _MEDIA_CONVERTERS:
+        if f"{converter.module}.{converter.qualname}" in mro_names:
+            return converter
+    return None
 
 
 async def normalize_output(value: Any) -> Any:
@@ -401,26 +553,27 @@ async def normalize_output(value: Any) -> Any:
         - :func:`flowing.tool.output_to_blocks` —— 下游塑形统一出口（D22）。
         - :class:`flowing.tool.ToolResult` —— 五形态的承载字段 ``output``。
     """
-    # R-02 占位（L4 真身阶段 3 替换）：基础类型 / 合法块 / 序列浅层判别 /
-    # 违禁块检查为最终语义；媒体载体四类 / 裸 bytes / Path / 注册表命中对象
-    # 的「载体 → 块」I/O 转换本期不实现（按 D11 同通道 ValueError 报出，
-    # 注释标注，阶段 3 补齐）。
     def _is_basic(v: Any) -> bool:
         # 「基础类型」：None/bool/int/float/str/dict/list/tuple/dataclass
-        # 实例/pydantic BaseModel 实例（JSON 兼容及其常见载体）
+        # 实例/pydantic BaseModel 实例（JSON 兼容及其常见载体）。
+        # 注意：媒体载体四类与全部 ContentBlock 都是 dataclass 实例，必须
+        # 显式排除（否则永远走不到载体转换与违禁块检查）。
         return (
             v is None
             or isinstance(v, (bool, int, float, str, dict, list, tuple))
-            or (is_dataclass(v) and not isinstance(v, type))
+            or (is_dataclass(v)
+                and not isinstance(v, (type, ContentBlock, Image, File, Audio, Video)))
             or isinstance(v, BaseModel)
         )
 
-    def _convert_one(v: Any) -> Any:
-        """单成员归一：基础原样 / 合法块原样 / 违禁块 ValueError / 其余占位。"""
+    async def _convert_one(v: Any) -> Any:
+        """单成员归一：基础原样 / 合法块原样 / 违禁块 ValueError /
+        载体·bytes·Path·注册表命中转块 / 其余 ValueError（框架错误通道）。"""
         if _is_basic(v):
             return v
         if isinstance(v, (ToolCallBlock, ThinkingBlock)):
-            # 违禁块（D12）：任何层级出现 -> 框架错误通道（作者 bug）
+            # 违禁块（D12）：浅层出现 -> 框架错误通道（作者 bug）；深层埋藏
+            # 的块由塑形期 StructBlock 构造校验同通道兜住（D5 诚实失败点）
             raise ValueError(f"工具结果中出现违禁块类型: {type(v).__name__}")
         if isinstance(v, ContentBlock):
             # 合法块（TextBlock/StructBlock/MediaBlock）原样放行；其余块类型
@@ -428,11 +581,30 @@ async def normalize_output(value: Any) -> Any:
             if isinstance(v, (TextBlock, StructBlock, MediaBlock)):
                 return v
             raise ValueError(f"工具结果中出现违禁块类型: {type(v).__name__}")
-        # R-02 占位：媒体载体（Image/File/Audio/Video）、裸 bytes / Path、
-        # 注册表命中对象的转换在阶段 3 接入；本期按不可转换处理
+        if isinstance(v, (Image, File, Audio, Video)):
+            # 载体四类：显式声明压过推断（D7），块类别由载体类型强制
+            return await _media_to_block(
+                data=v.data, path=v.path, mime_type=v.mime_type, name=v.name,
+                forced=_CARRIER_BLOCK[type(v)])
+        if isinstance(v, bytes):
+            return await _media_to_block(
+                data=v, path=None, mime_type=None, name=None, forced=None)
+        if isinstance(v, Path):
+            # 裸 Path 与载体同口径：相对路径 → ValueError（spec 未单列裸
+            # Path 的相对路径处置，按载体规则同口径落实——见报告对照表）
+            if not v.is_absolute():
+                raise ValueError(f"裸 Path 结果须为绝对路径: {v!r}")
+            return await _media_to_block(
+                data=None, path=v, mime_type=None, name=None, forced=None)
+        converter = _find_media_converter(v)
+        if converter is not None:
+            # 注册表命中（D10）：先转载体四类之一，再走载体通道
+            carrier = converter.convert(v)
+            return await _media_to_block(
+                data=carrier.data, path=carrier.path, mime_type=carrier.mime_type,
+                name=carrier.name, forced=_CARRIER_BLOCK[type(carrier)])
         raise ValueError(
-            f"工具结果类型不可转换（媒体载体转换属阶段 3）: {type(v).__name__}"
-        )
+            f"工具结果类型不可转换: {type(v).__name__}")   # D11：作者 bug
 
     if isinstance(value, (list, tuple)):
         # 顶层序列：浅层判别（不递归）——全基础原样（tuple 归一为 list）；
@@ -440,8 +612,8 @@ async def normalize_output(value: Any) -> Any:
         items = list(value)
         if all(_is_basic(v) for v in items):
             return items
-        return [_convert_one(v) for v in items]
-    return _convert_one(value)
+        return [await _convert_one(v) for v in items]
+    return await _convert_one(value)
 
 
 def output_to_blocks(output: Any, *, error: str | None = None) -> list[ContentBlock]:
