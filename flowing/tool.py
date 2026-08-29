@@ -2423,6 +2423,176 @@ name 断言的推断侧（`ToolRegistry.get` 行为规约）。
 """
 
 
+def _launch_project_root() -> "Path | None":
+    """读 launch 上下文的项目根（``runtime._current_project_root``
+    ContextVar）；无 launch 上下文（测试 / 裸用注册表）→ ``None``。
+    内部 API，不属稳定契约。"""
+    try:
+        from flowing.runtime import _current_project_root   # 局部 import：破 tool → runtime 模块级循环边
+        return _current_project_root.get()
+    except Exception:
+        return None
+
+
+def _dir_candidates(name: str) -> list[str]:
+    """``<name>/`` 目录内的定向查找链（首个存在者生效）：
+    ``TOOL.fya > <name>.tool.fya > <name>.fya > TOOL.py > tool.py >
+    <name_snake>.py``。内部 API。"""
+    snake = kebab_to_snake(name)
+    return ["TOOL.fya", f"{name}.tool.fya", f"{name}.fya",
+            "TOOL.py", "tool.py", f"{snake}.py"]
+
+
+_TOOL_FYA_RESERVED = frozenset({
+    "type", "name", "description", "args", "output", "callable", "command",
+    "shell", "url", "method", "headers", "auth", "query", "body",
+    "expected_status", "timeout", "env", "tools", "overrides",
+})
+"""TOOL.fya 保留字段集——其余字段原样落为 tool 实例的普通属性（如
+``requires_approval``，见 `Tool` 行为规约「实例属性开放」；框架不解析、
+不据此做任何自动行为）。"""
+
+
+def _tool_from_fya(path: Path, identity: str) -> Tool:
+    """``.fya`` 命中的实例化分派：按 ``type:`` 构造四型工具实例。内部 API。
+
+    .. rubric:: 行为规约
+
+    - ``name:`` 显式声明仅作一致性断言（不符 → ``NameMismatchError``）；
+    - ``args:`` 经 :func:`flowing.params.expand_args_schema` 归一为
+      properties（**``mcp`` 例外**：其 ``args`` 是启动命令参数列表而非
+      参数 schema——MCP 的参数 schema 由 ``list_tools()`` 拉取填充，属
+      `McpTool` 装配链，本层只落声明字段）；
+    - ``output:`` → ``ToolDefinition.output_schema``；
+    - ``type`` 缺失或非法 → ``FormatError``；各类型必填字段缺失 →
+      ``FormatError``（``cli`` 缺 ``args`` / ``request`` 缺 ``args`` 由
+      构造器的 ``MissingSchemaError`` 承载）。
+
+    .. rubric:: 调用关系（审计）
+
+    - 调用：:func:`flowing.parser.load_fya_yaml`（字面解析）；
+      :func:`_script_tool_from_fya`（``type: script``）
+    - 被调：``ToolRegistry._resolve_hit``（.fya 命中时）
+    """
+    from flowing.parser import load_fya_yaml   # 模块头依赖图保持单向（parser 不 import tool）
+
+    fields = load_fya_yaml(path.read_text(encoding="utf-8"))
+    tool_type = fields.get("type")
+    if tool_type not in ("script", "cli", "request", "mcp"):
+        raise FormatError(
+            f"{path} 的 type 缺失或非法: {tool_type!r}（须为 script / cli / request / mcp）")
+    explicit_name = fields.get("name")
+    if explicit_name is not None and explicit_name != identity:
+        raise NameMismatchError(explicit_name, identity, str(path))
+    description = fields.get("description")
+    output_schema = fields.get("output")
+    params = ({} if tool_type == "mcp"   # mcp 的 args 是命令参数，非参数 schema
+              else expand_args_schema(fields.get("args") or {}))
+    definition = ToolDefinition(
+        name=identity, description=description or "",
+        params_schema=params, output_schema=output_schema)
+    if tool_type == "script":
+        tool = _script_tool_from_fya(path, identity, fields, params)
+    elif tool_type == "cli":
+        command = fields.get("command")
+        if command is None:
+            raise FormatError(f"{path} 缺少 cli 工具的 command 字段")
+        tool = CliTool(definition=definition, command=command,
+                       shell=fields.get("shell", "sh"))
+    elif tool_type == "request":
+        url = fields.get("url")
+        if url is None:
+            raise FormatError(f"{path} 缺少 request 工具的 url 字段")
+        tool = RequestTool(
+            definition=definition, url=url,
+            method=fields.get("method", "POST"), headers=fields.get("headers"),
+            auth=fields.get("auth"), query=fields.get("query"),
+            body=fields.get("body"),
+            expected_status=fields.get("expected_status"),
+            timeout=fields.get("timeout", 30.0))
+    else:  # mcp
+        tool = McpTool(
+            definition=definition, command=fields.get("command"),
+            args=fields.get("args"), env=fields.get("env"),
+            url=fields.get("url"), headers=fields.get("headers"),
+            tools=fields.get("tools"), overrides=fields.get("overrides"))
+    # 非保留字段原样落为实例普通属性（框架不解析、不做任何自动行为）
+    for key, value in fields.items():
+        if key not in _TOOL_FYA_RESERVED:
+            setattr(tool, key, value)
+    return tool
+
+
+def _script_tool_from_fya(
+    path: Path, identity: str, fields: dict[str, Any],
+    params: dict[str, dict[str, Any]],
+) -> Tool:
+    """``type: script`` 的 TOOL.fya 装配：``callable: {路径}::{函数名或类名}``
+    指针加载 → `ScriptTool` 子类实例化 / 裸函数提升。内部 API。
+
+    .. rubric:: 行为规约
+
+    - ``callable:`` 指向**已打标**函数 → ``FormatError``（通道互斥：
+      显式指针通道与自动提升通道二选一）；
+    - fya ``args`` 声明存在时经 :func:`flowing.params.schema_to_model`
+      桥接为校验模型（声明即模型，B1）；缺省从 callable 签名构建
+      （``_infer_from_execute``）；
+    - fya 的显式 ``description`` / ``output`` 声明压过一切兜底来源
+      （callable docstring 首段是函数路径的最后回退）。
+    """
+    import importlib.util
+
+    callable_ref = fields.get("callable")
+    if not callable_ref or "::" not in str(callable_ref):
+        raise FormatError(
+            f"{path} 的 script 工具须声明 callable: <路径>::<函数名或类名>")
+    path_part, _, symbol = str(callable_ref).partition("::")
+    root = _launch_project_root()
+    impl_path = resolve_path(
+        path_part, project_root=root if root is not None else Path.cwd(),
+        source_dir=path.parent)   # callable 路径相对 TOOL.fya 所在目录
+    spec = importlib.util.spec_from_file_location(
+        f"flowing_tool_file_{abs(hash(str(impl_path)))}", impl_path)
+    module = importlib.util.module_from_spec(spec)   # type: ignore[union-attr]
+    spec.loader.exec_module(module)   # type: ignore[union-attr]
+    if not hasattr(module, symbol):
+        raise FormatError(f"{impl_path} 内不存在 {symbol}（callable: 指针落空）")
+    target = getattr(module, symbol)
+    description = fields.get("description")
+    output_schema = fields.get("output")
+    if isinstance(target, type) and issubclass(target, ScriptTool):
+        explicit_name = target.__dict__.get("name")   # 写了仅作一致性断言
+        if explicit_name is not None and explicit_name != identity:
+            raise NameMismatchError(explicit_name, identity, str(path))
+        tool = target()
+    elif callable(target):
+        if hasattr(target, "__flowing_tool_name__"):
+            raise FormatError(
+                f"callable: 指向已打标函数 {symbol}——"
+                "显式指针通道与自动提升通道二选一（声明通道互斥）")
+        args_model = (schema_to_model(f"{kebab_to_pascal(identity)}Args", params)
+                      if params else _infer_from_execute(target))
+        cls = type(kebab_to_pascal(identity), (ScriptTool,), {
+            "execute": staticmethod(target),
+            "name": identity,
+            "description": description or _first_paragraph(target.__doc__) or "",
+            "args_model": args_model,
+        })
+        tool = cls()
+    else:
+        raise FormatError(f"{impl_path} 的 {symbol} 不是函数或 ScriptTool 子类")
+    # fya 显式声明（description / output）压过一切兜底来源（优先级链头部）
+    if description is not None or output_schema is not None:
+        d = tool.definition
+        tool.definition = ToolDefinition(
+            name=d.name,
+            description=description if description is not None else d.description,
+            params_schema=d.params_schema,
+            output_schema=output_schema if output_schema is not None else d.output_schema,
+            strict=d.strict)
+    return tool
+
+
 class ToolRegistry:
     """Runtime 全局工具注册表——``ns::name`` 全限定键 → Tool 实例。
 
@@ -2481,7 +2651,7 @@ class ToolRegistry:
     """
 
     def __init__(self) -> None:
-        # R-02 占位补齐（spec 骨架无显式构造段）：空注册表。
+        # spec 骨架无显式构造段：空注册表（无启动扫描——「无默认扫描目录」基调）
         self._tools = {}
 
     def register(self, tool: Tool, *, name: str | None = None,
@@ -2645,18 +2815,183 @@ class ToolRegistry:
             - :meth:`flowing.runtime.Runtime.get_agent_class` ——
               同构的 Agent 解析管线。
         """
-        if classify_ref(name_or_path) != "path":
-            # 快路径:限定名精确键 / 裸名 default:: > builtin:: 裸名视图
-            keys = ([name_or_path] if "::" in name_or_path
-                    else [f"default::{name_or_path}", f"builtin::{name_or_path}"])
-            # R-02 占位：裸名 + source_dir 的定向文件查找链属阶段 3（文件
-            # 编译链），本期跳过文件链、只查注册表快路径。
-            for key in keys:
+        form = classify_ref(name_or_path)
+        if form == "qualified":
+            # 限定名（ns::name）：只查注册表精确键，不走文件查找链
+            # （命名空间无法反向映射到文件）
+            if name_or_path in self._tools:
+                return self._tools[name_or_path]
+            raise ToolNotFoundError(f"工具未注册: {name_or_path}")
+        if form == "bare":
+            if source_dir is not None:
+                # 裸名 + source_dir：先走定向文件查找链（相对 source_dir——
+                # 文件覆盖注册表）；命中后按所在目录派生键短路复用/实例化注册
+                probed = self._probe_name_chain(name_or_path, source_dir)
+                if probed is not None:
+                    return self._resolve_hit(*probed, ref=name_or_path)
+            # 注册表裸名视图：default:: 优先于 builtin::（插件覆盖原生行为
+            # 的通道）；source_dir 缺省时跳过文件链、不命中即报错，不做文件探测
+            for key in (f"default::{name_or_path}", f"builtin::{name_or_path}"):
                 if key in self._tools:
                     return self._tools[key]
-        # R-02 占位：慢路径（路径形态定位 + 候选链探测 + 实例化注册）属
-        # 阶段 3 文件编译链，本期不实现——不命中统一报 ToolNotFoundError。
-        raise ToolNotFoundError(f"工具未注册且查找链不命中:{name_or_path}")
+            raise ToolNotFoundError(f"工具未注册且查找链不命中: {name_or_path}")
+        # 路径形态（慢路径，声明期行为）：@/ 锚 launch 上下文项目根（无需
+        # source_dir）；./ ../ 需 source_dir（缺省 -> ValueError，resolve_path
+        # 现有口径）。无 launch 上下文时 @/ 无法锚定 -> ValueError（编程错误）
+        root = _launch_project_root()
+        if root is None and name_or_path.replace("\\", "/").startswith("@/"):
+            raise ValueError("@/ 路径解析需要 launch 上下文（_current_project_root 未登记）")
+        resolved = resolve_path(
+            name_or_path,
+            project_root=root if root is not None else Path.cwd(),   # 哑根：@/ 已在上方拒绝
+            source_dir=source_dir)
+        if resolved.is_dir():
+            dir_name = infer_name(resolved, naming=TOOL_NAMING)   # 目录：basename 即目录名
+            candidates = _dir_candidates(dir_name)
+            hit = probe_candidates(resolved, candidates)
+            if hit is None:
+                # 显式路径语境：目录无候选 -> 直接报错（定点引用的目录为空
+                # 几乎必为笔误），不继续向下
+                raise FormatError(f"显式路径目录无合法工具入口: {resolved}")
+            return self._resolve_hit(hit, True, resolved, candidates,
+                                     ref=name_or_path)
+        if not resolved.exists() or not (
+                resolved.name.endswith(".fya") or resolved.suffix == ".py"):
+            raise ToolNotFoundError(f"工具未注册且查找链不命中: {name_or_path}")
+        # 直指文件的显式路径：候选列表仅服务于 .fya/.py 并存告警
+        identity = infer_name(resolved, naming=TOOL_NAMING)
+        candidates = [resolved.name, f"{kebab_to_snake(identity)}.py"]
+        return self._resolve_hit(resolved, False, resolved.parent, candidates,
+                                 ref=name_or_path)
+
+    def _probe_name_chain(
+        self, name: str, source_dir: Path
+    ) -> "tuple[Path, bool, Path, list[str]] | None":
+        """裸名的定向文件查找链（**内部 API**）：返回 ``(命中路径,
+        是否文件夹式命中, 探测基准目录, 候选名列表)``，全部未命中 → ``None``
+        （调用方继续查注册表裸名视图）。
+
+        目录内（``<name>/`` 存在时）：``TOOL.fya > <name>.tool.fya >
+        <name>.fya > TOOL.py > tool.py > <name_snake>.py``；目录存在但无
+        合法入口 → 继续链上下一项（「继续向下」仅裸名语境）。目录外：
+        ``<name>.tool.fya > <name>.fya > <name_snake>.py``。
+
+        .. rubric:: 调用关系（审计）
+
+        - 调用：:func:`flowing.paths.probe_candidates`（候选链探测）
+        - 被调：:meth:`get`（裸名且 ``source_dir`` 提供时）
+        """
+        directory = source_dir / name
+        if directory.is_dir():
+            candidates = _dir_candidates(name)
+            hit = probe_candidates(directory, candidates)
+            if hit is not None:
+                return hit, True, directory, candidates
+            # 裸名语境：目录存在但无合法入口 -> 继续链上下一项
+        snake = kebab_to_snake(name)
+        candidates = [f"{name}.tool.fya", f"{name}.fya", f"{snake}.py"]
+        hit = probe_candidates(source_dir, candidates)
+        if hit is not None:
+            return hit, False, source_dir, candidates
+        return None
+
+    def _resolve_hit(self, hit: Path, folder_form: bool, base_dir: Path,
+                     candidates: list[str], *, ref: str) -> Tool:
+        """候选命中 → 派生键短路 / 实例化注册（**内部 API**）。
+
+        派生键 = ``<所在目录派生命名空间>::<身份名>``（文件夹式资源取上层
+        目录；``@/`` 下根相对、根外绝对，仅作内部身份标识，§7a）——已注册
+        则**短路复用**（不重复实例化）；未注册则按后缀分派实例化（``.fya``
+        → :func:`_tool_from_fya`；``.py`` → :meth:`_tool_from_py`）并落账、
+        回写 ``tool.registry_key``。
+
+        .. rubric:: 调用关系（审计）
+
+        - 调用：:func:`flowing.paths.infer_name`（身份名推断）；
+          :func:`_tool_from_fya` / :meth:`_tool_from_py`（实例化分派）
+        - 被调：:meth:`get`（文件链/路径形态命中后）
+        """
+        identity = infer_name(hit, naming=TOOL_NAMING)
+        if hit.name.endswith(".fya"):
+            # .fya 与同名 .py 并存 -> 告警 + .fya 优先（链上顺序已保证优先，
+            # 此处只补告警）
+            coexisting = [c for c in candidates
+                          if c.endswith(".py") and (base_dir / c).exists()]
+            if coexisting:
+                warnings.warn(
+                    f"同名 .fya 与 .py 并存，.fya 优先: {hit}"
+                    f"（并存: {', '.join(coexisting)}）")
+        ns_dir = hit.parent.parent if folder_form else hit.parent
+        derived_key = f"{self._derived_namespace(ns_dir)}::{identity}"
+        if derived_key in self._tools:
+            return self._tools[derived_key]   # 派生键短路复用（文件解析是声明期行为）
+        tool = (_tool_from_fya(hit, identity)
+                if hit.name.endswith(".fya") else self._tool_from_py(hit, identity))
+        self._tools[derived_key] = tool
+        tool.registry_key = derived_key   # 回写全键（Entry 装配落账 name_ori 的依据）
+        return tool
+
+    @staticmethod
+    def _derived_namespace(ns_dir: Path) -> str:
+        """所在目录 → 派生命名空间字符串（``@/`` 下根相对、根外绝对——
+        :func:`flowing.paths.to_project_path` 口径；无 launch 上下文时退化
+        为绝对路径，与「根外绝对」一致）。**内部 API**。"""
+        root = _launch_project_root()
+        if root is not None:
+            return to_project_path(ns_dir, project_root=root)
+        return str(ns_dir)
+
+    def _tool_from_py(self, path: Path, identity: str) -> Tool:
+        """``.py`` 命中的实例化分派（**内部 API**）。
+
+        恰好一个 ``@flowing_tool`` 打标函数 → :func:`_auto_generate_tool`
+        提升；恰好一个 `ScriptTool` 子类 → 实例化；两者并存 / 多个打标
+        函数 / 多个子类 → ``AmbiguousToolError``；皆无 → ``FormatError``。
+        子类的显式 ``name`` 声明仅作一致性断言（不符 →
+        ``NameMismatchError``；打标函数的装饰器参数断言在
+        :func:`_auto_generate_tool` 内）。
+
+        .. rubric:: 调用关系（审计）
+
+        - 调用：``importlib.util`` 文件加载；:func:`_auto_generate_tool`
+          （打标函数提升）
+        - 被调：:meth:`_resolve_hit`（.py 命中时）
+        """
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            f"flowing_tool_file_{abs(hash(str(path)))}", path)
+        module = importlib.util.module_from_spec(spec)   # type: ignore[union-attr]
+        spec.loader.exec_module(module)   # type: ignore[union-attr]
+        # 只认本文件定义的符号（__module__ 过滤掉 import 进来的）
+        marked = [
+            obj for obj in vars(module).values()
+            if callable(obj) and hasattr(obj, "__flowing_tool_name__")
+            and getattr(obj, "__module__", None) == module.__name__
+        ]
+        subclasses = [
+            obj for obj in vars(module).values()
+            if isinstance(obj, type) and issubclass(obj, ScriptTool)
+            and obj is not ScriptTool and obj.__module__ == module.__name__
+        ]
+        if marked and subclasses:
+            raise AmbiguousToolError(
+                f"{path} 同时存在 @flowing_tool 打标函数与 ScriptTool 子类")
+        if len(marked) > 1:
+            raise AmbiguousToolError(f"{path} 含多个 @flowing_tool 打标函数")
+        if len(subclasses) > 1:
+            raise AmbiguousToolError(
+                f"{path} 含多个 ScriptTool 子类（spec 未列多子类形态，"
+                "就近归入 AmbiguousToolError 通道）")
+        if not marked and not subclasses:
+            raise FormatError(f"{path} 内没有 @flowing_tool 打标函数或 ScriptTool 子类")
+        if marked:
+            return _auto_generate_tool(marked[0])
+        cls = subclasses[0]
+        explicit_name = cls.__dict__.get("name")   # name 非机制字段：写了仅作一致性断言
+        if explicit_name is not None and explicit_name != identity:
+            raise NameMismatchError(explicit_name, identity, str(path))
+        return cls()
 
     def get_tool_class(self, name_or_path: str, *,
                        source_dir: Path | None = None) -> type[Tool]:

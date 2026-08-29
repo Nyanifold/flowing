@@ -1,0 +1,12 @@
+# 测试 35/40 的目录形态 script 工具：callable 显式指针通道
+# （impl.py 中的函数故意不打 @flowing_tool 标——两条声明通道互斥）
+type: script
+description: 对指定订单发起支付。
+callable: ./impl.py::make_payment
+args:
+  order_id:
+    type: string
+    description: 订单 ID
+  amount:
+    type: number
+    description: 支付金额（元）

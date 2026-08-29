@@ -1,0 +1,25 @@
+# 测试 46（通用名 TOOL.fya 候选 + name 断言）与测试 48（批次 3 CliTool
+# 执行）共用的 cli 形态目录工具——形态按 spec 中 CliTool 使用示例给全
+name: run-tests
+type: cli
+description: 运行项目测试套件。在需要验证代码正确性时调用。
+shell: sh
+command: |
+  cd {{ working_dir }} && python -m pytest {{ test_path }} --json-report
+args:
+  working_dir:
+    type: string
+    description: 项目根目录的绝对路径
+  test_path:
+    type: string
+    default: src/
+    description: 测试路径
+output:
+  type: object
+  properties:
+    exit_code:
+      type: integer
+    stdout:
+      type: string
+    stderr:
+      type: string
