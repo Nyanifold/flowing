@@ -424,6 +424,13 @@ def test_glob_at_prefix_requires_project_root(tmp_path):
                              source_dir=tmp_path)
 
 
+def test_glob_prescan_passes_malformed_items_through(tmp_path):
+    """@/ 预扫描只对单键映射取键：空映射等形态错误条目放过给下游
+    ``normalize_entries`` 统一报 FormatError（不泄漏裸 StopIteration）。"""
+    with pytest.raises(FormatError, match="单键映射"):
+        _expand_glob_entries([{}], naming=AGENT_NAMING, source_dir=tmp_path)
+
+
 # ---------------------------------------------------------------------------
 # 验收标准 1：fya 目录形态 + 单文件形态全链（解析 → 装配 → 合成 → 注册 →
 # Runtime 创建 → FakeProvider 回合）

@@ -611,9 +611,13 @@ def _expand_glob_entries(
     # 时 @/ 引用（显式条目与 glob 模式同样）显式报错，不静默退回 cwd
     if project_root is None:
         for item in items:
-            raw_str = (item if isinstance(item, str)
-                       else next(iter(item.keys())) if isinstance(item, Mapping) else None)
-            if isinstance(raw_str, str) and raw_str.startswith("@/"):
+            if isinstance(item, str):
+                raw_str = item
+            elif isinstance(item, Mapping) and len(item) == 1:
+                raw_str = next(iter(item.keys()))
+            else:
+                continue   # 形态错误（含空映射）留给下游 normalize_entries 统一报
+            if raw_str.startswith("@/"):
                 raise ValueError(
                     "@/ 条目展开需要 launch 上下文（project_root 未提供）")
     root = project_root if project_root is not None else Path.cwd()   # 哑根：@/ 已在上方拒绝
