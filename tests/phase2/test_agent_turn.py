@@ -49,6 +49,18 @@ class EchoTool(Tool):
         return text
 
 
+class OpenTool(Tool):
+    """strict=False 工具：LLM 多传的未声明参数放行透传到 execute
+    （「工具层不限制参数」契约的回归载体）。"""
+
+    definition = ToolDefinition(
+        name="open", description="开放参数工具",
+        params_schema={"text": {"type": "string"}}, strict=False)
+
+    async def execute(self, *, text: str = "", **extra) -> dict:
+        return {"text": text, "extra": extra}
+
+
 class WaitTool(Tool):
     """门控工具：等到共享 Event 置位才返回；记录调用次数。"""
 
@@ -874,6 +886,19 @@ async def test_t77_hallucinated_param(runtime, provider):
     assert "ghost" in err_text   # 错误文本以 LLM 命名空间（幻觉参数名）
     assert after_seen == ["error"]   # after_tool_call 照常触发
     assert result.status == "completed"   # 回合不因此异常终止
+
+
+async def test_t77b_strict_false_tool_receives_undeclared_params(runtime, provider):
+    """T77 补充回归：strict=False 工具的 LLM 多传参数放行透传到 execute
+    （ToolDefinition「False 时工具层不限制参数」契约；strict=True 的拒绝
+    语义由 T77 覆盖，不回归）。"""
+    runtime.register_tool(OpenTool())
+    agent = await runtime.create_agent(SimpleAgent)
+    agent.add_tool("open")
+    result = await agent.tool_call(ToolCall(
+        id="c1", name="open", args={"text": "x", "max_rounds": 2}))
+    assert result.status == "completed"
+    assert result.output == {"text": "x", "extra": {"max_rounds": 2}}
 
 
 # ---------------------------------------------------------------------------

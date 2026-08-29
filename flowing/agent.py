@@ -268,6 +268,8 @@ class _LlmViewValidationError(FlowingError):
     要求显式拒绝——未知键检查在 ``Agent._normalize`` 内以本异常报出，
     键名即 LLM 自己提供的别名（回指不构成泄漏）；``Agent.tool_call``
     捕获后包装为 ``ToolResult(status="error")`` 正常产物。
+    ``ToolDefinition.strict is False`` 的工具不施加未知键拒绝（工具层
+    不限制参数，见 ``Agent._normalize`` 行为规约第 1 步）。
     """
 
 
@@ -4273,7 +4275,11 @@ class Agent:
            校验失败：错误文本以 **LLM 命名空间**（别名）
            进入 ``ToolResult.error``，LLM 可据以自我修正；LLM 传出
            schema 未定义的参数（幻觉同名隐藏参数）→ 按「未定义参数」
-           校验错误处理（参数名由 LLM 自己提供，回指不构成泄漏）。
+           校验错误处理（参数名由 LLM 自己提供，回指不构成泄漏）——
+           但 ``tool.definition.strict is False`` 的工具**不施加**未知键
+           拒绝（契约：strict=False 时工具层不限制参数，参数由下游自行
+           校验——如 ``run-workflow`` 把其余参数透传给
+           ``Workflow.run()``），未知键原样进入第 2 步聚合。
         2. :meth:`flowing.tool.ToolEntry.resolve` —— 别名映射回规范名
            → ``specified`` 惰性求值覆盖（固定值/注入表达式——注入
            表达式在求值时沿 provide 链上溯，R-4：无独立 inject 步骤）；
@@ -4321,9 +4327,11 @@ class Agent:
         llm_model = schema_to_model(f"{entry.name_alias}-llm-args", llm_schema)
         llm_model.model_validate(tool_call.args)   # 类型/必填错误 -> ValidationError 上抛给 tool_call 包装
         unknown = sorted(set(tool_call.args) - set(llm_schema))
-        if unknown:
+        if unknown and tool.definition.strict:
             # 幻觉参数（LLM 传出 schema 未定义的参数）按「未定义参数」校验
-            # 错误处理——桥接模型默认忽略多余键，未知键在此显式拒绝
+            # 错误处理——桥接模型默认忽略多余键，未知键在此显式拒绝；
+            # strict=False 工具不施加本拒绝（工具层不限制参数，未知键
+            # 原样放行进入下方聚合，由下游自行校验）
             raise _LlmViewValidationError(
                 f"工具 {entry.name_alias!r} 收到未定义参数: {unknown}")
         # 2. 别名映射 -> specified 求值覆盖（固定值/注入表达式；注入表达式

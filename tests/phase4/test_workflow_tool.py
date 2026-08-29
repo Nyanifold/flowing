@@ -10,8 +10,6 @@ import asyncio
 import json
 import logging
 
-import pytest
-
 from flowing.message import MessageKind
 from flowing.plugins.workflow import WorkflowPlugin
 
@@ -53,13 +51,6 @@ def _capture_plugin_messages(agent, done: asyncio.Event,
     return collected
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="上游缺口待裁决：Agent._normalize 的「未定义参数」校验未放行 "
-           "strict=False 工具（run-workflow 的其余参数透传 run() 依赖此语义），"
-           "一行修复已经本地验证（`if unknown and tool.definition.strict`），"
-           "待协调者裁决后落地并摘掉本标记",
-)
 async def test_t88_receipt_before_run_completes(project, tmp_path):
     """T88：LLM 调 run-workflow(path="@/verify_fix.py", max_rounds=2) →
     execute 在 run() 完成之前返回收据 {"status":"started",...}；实例的
@@ -102,10 +93,6 @@ async def test_t88_receipt_before_run_completes(project, tmp_path):
         await runtime.shutdown()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="同 T88：strict=False 透传参数被 Agent._normalize 拦截（上游缺口待裁决）",
-)
 async def test_t89_caller_query_no_deadlock(project, tmp_path):
     """T89：workflow 的 run() 中 await self.caller.query("?") → caller
     工作循环在当前逻辑 Turn 结束后消费该消息，无死锁（异步防死锁规则
