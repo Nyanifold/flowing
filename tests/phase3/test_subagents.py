@@ -12,6 +12,9 @@ S-19 无隐式附加、同别名撞名 ``EntryNameConflictError``、glob 显式�
 
 from __future__ import annotations
 
+import importlib.util
+from pathlib import Path
+
 import pytest
 from pydantic import BaseModel
 
@@ -23,6 +26,16 @@ from flowing.subagents import SubagentEntry, _expand_glob_entries
 from flowing.runtime import AGENT_NAMING
 
 from fakes import FakeAgent, FakeRuntime
+
+# 复用阶段 2 的 HarnessRuntime 迷你管线（真 Agent 侧接口面）；按路径载入
+# 避免新增 phase3/conftest.py——它会以顶级模块名 ``conftest`` 入
+# sys.modules，遮蔽 phase2 测试的 ``from conftest import ...``。
+_PHASE2_CONFTEST = Path(__file__).parent.parent / "phase2" / "conftest.py"
+_spec = importlib.util.spec_from_file_location("phase2_conftest", _PHASE2_CONFTEST)
+_mod = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_mod)
+HarnessRuntime = _mod.HarnessRuntime
+SimpleAgent = _mod.SimpleAgent
 
 
 class _PaymentArgs(BaseModel):
@@ -41,6 +54,21 @@ class PaymentAgent(Agent):
     async def setup(self, **kwargs):
         for key, value in kwargs.items():
             setattr(self, key, value)
+
+
+@pytest.fixture
+async def runtime(tmp_path):
+    """HarnessRuntime 实例（收尾销毁全部存活 Agent，防跨测试泄漏）。"""
+    rt = HarnessRuntime(tmp_path)
+    rt.register_agent_type("test-agent", SimpleAgent)
+    yield rt
+    for node_id, node in list(rt._nodes.items()):
+        if node is rt:
+            continue
+        try:
+            await node.destroy()
+        except Exception:
+            pass
 
 
 @pytest.fixture
