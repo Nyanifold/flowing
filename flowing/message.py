@@ -1137,9 +1137,10 @@ def to_record(msg: Message) -> dict:
       "timestamp": <ISO 8601>, "usage": None}``。
     - ``kind`` 落盘为枚举字符串值；``priority`` 落盘为枚举数值；
       ``timestamp`` 落盘为 ISO 格式（naive UTC）。
-    - ``usage`` 本期恒序列化为 ``None``——``providers.Usage`` 类型 L3
-      才接通，恢复端容忍缺省（X2）；接通后只需改本函数与
-      :func:`from_record` 两处。
+    - ``usage`` 自 L3 起序列化为七计数字段 + ``raw`` 的 dict
+      （``None`` 保持 ``None``；存量 v0/v1 行的 ``"usage": null``
+      天然兼容）。message 不认识 providers（单向依赖），序列化按
+      ``Usage`` 的字段名鸭子类型读取，还原端在函数内局部 import。
 
     .. rubric:: 调用关系（审计）
 
@@ -1162,7 +1163,17 @@ def to_record(msg: Message) -> dict:
         "tags": list(msg.tags),
         "priority": int(msg.priority),
         "timestamp": msg.timestamp.isoformat(),
-        "usage": None,  # Usage 接通归 L3（X2），恢复端容忍缺省
+        # Usage 已接通（X2 收尾）：鸭子类型读取七字段 + raw，不 import providers
+        "usage": None if msg.usage is None else {
+            "input": msg.usage.input,
+            "fresh_input": msg.usage.fresh_input,
+            "output": msg.usage.output,
+            "cache_read": msg.usage.cache_read,
+            "cache_write": msg.usage.cache_write,
+            "reasoning": msg.usage.reasoning,
+            "total_tokens": msg.usage.total_tokens,
+            "raw": dict(msg.usage.raw),
+        },
     }
 
 
@@ -1173,8 +1184,9 @@ def from_record(record: dict) -> Message:
 
     - 要求 ``record["type"] == "message"``，否则 ``ValueError``。
     - 逐字段还原（``kind`` / ``priority`` 重建为枚举，``timestamp``
-      经 ``datetime.fromisoformat`` 还原）；``usage`` 恒还原为 ``None``
-      （L3 接通前，见 :func:`to_record`）。
+      经 ``datetime.fromisoformat`` 还原）；``usage`` 为 ``None`` 或
+      重建为 ``providers.Usage``（局部 import——message 不认识
+      providers 的单向依赖在运行期无环）。
 
     .. rubric:: 调用关系（审计）
 
@@ -1184,6 +1196,13 @@ def from_record(record: dict) -> Message:
     """
     if record.get("type") != "message":
         raise ValueError(f"不是消息行: type={record.get('type')!r}")
+    raw_usage = record.get("usage")
+    usage = None
+    if raw_usage is not None:
+        # Usage 已接通（X2 收尾）；局部 import 破 message→providers 方向
+        from flowing.providers.provider import Usage
+
+        usage = Usage(**raw_usage)
     return Message(
         id=record["id"],
         parent_id=record["parent_id"],
@@ -1198,7 +1217,7 @@ def from_record(record: dict) -> Message:
         tags=list(record["tags"]),
         priority=MessagePriority(record["priority"]),
         timestamp=datetime.fromisoformat(record["timestamp"]),
-        usage=None,  # Usage 接通归 L3（X2）
+        usage=usage,
     )
 
 

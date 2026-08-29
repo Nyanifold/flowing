@@ -160,6 +160,23 @@ class TestSerialization:
         msg = from_record(json.loads(lines[1]))
         assert msg.id == "m1" and msg.kind is MessageKind.USER
 
+    def test_m7_usage_roundtrip(self):
+        """M7 补充（X2 收尾）：usage 非 None 时序列化为七字段 + raw dict，还原为 Usage。"""
+        from flowing.providers.provider import Usage
+
+        usage = Usage(
+            input=10, fresh_input=6, output=5, cache_read=4,
+            cache_write=0, reasoning=0, total_tokens=15,
+            raw={"prompt_tokens": 10},
+        )
+        msg = make_message(kind=MessageKind.PROVIDER, usage=usage)
+        rec = to_record(msg)
+        assert rec["usage"]["input"] == 10
+        assert rec["usage"]["raw"]["prompt_tokens"] == 10
+        restored = from_record(rec)
+        assert restored.usage == usage
+        assert restored.usage.raw is not usage.raw  # 深拷贝，不共享
+
 
 class TestEstimateTokens:
     def test_m9_cjk_heuristic(self):
