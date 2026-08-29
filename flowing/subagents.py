@@ -33,13 +33,21 @@ catalog 装配的条目侧）分文件——``agent.py`` 只保留 Agent 对象�
 
 from __future__ import annotations   # 注解延迟求值：Agent 仅 TYPE_CHECKING 引用，破注解级循环边
 
+import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from xml.sax.saxutils import escape as _xml_escape
 
+from flowing.errors import FormatError
+from flowing.params import apply_param_overrides
 from flowing.parsable import Parsable
+from flowing.paths import NamingRules, classify_ref, resolve_path
 
 if TYPE_CHECKING:
     from flowing.agent import Agent
+    from flowing.parser import EntryRef
 
 __all__ = [
     "SubagentEntry",
@@ -423,9 +431,8 @@ class SubagentEntry:
             mapped[self.param_aliases.get(alias, alias)] = value   # 别名映射回规范名
         for key, parsable in self.specified.items():
             mapped[key] = parsable.resolve(parent)   # specified 以父 Agent 实例上下文惰性求值后覆盖（固定值/注入表达式同路——注入表达式求值即 provide 链上溯）
-        # R-02 占位（L4 真身阶段 3 替换）：以上为 spec 骨架的别名映射 +
-        # specified 求值；产物对子 Agent args_model 的「调用方视角校验」
-        # 属创建管线（runtime 批次 / 阶段 3 装配）职责，本方法不承载。
+        # 产物对子 Agent args_model 的「调用方视角校验」在创建管线（
+        # create_subagent → Runtime.create_agent）落地，本方法只做聚合
         return mapped
 
     def catalog_view(self, parent: Agent) -> dict[str, Any]:
@@ -473,16 +480,163 @@ class SubagentEntry:
             - :class:`flowing.context.Context` —— catalog 的最终归宿
               （system_prompt 段）。
         """
-        description: str = ""
+        cls = parent.get_agent_class(self.name_ori)   # 惰性解析 Agent 类（限定名只查注册表；路径形态走文件链，语义由 runtime 承载）
         if self.override_description is not None:
             description = str(self.override_description.resolve(parent))   # 以父 Agent 实例为上下文求值
-        # R-02 占位（L4 真身阶段 3 替换）：无 override 时子类原 description
-        # 的回退（name_ori -> Agent 类经 Runtime.get_agent_class 惰性解析）
-        # 与 params_xml（args_model 派生 schema 经 apply_param_overrides +
-        # param_aliases 改名 + 排除 specified）本期不实现，留空串。
-        params_xml: str = ""   # 占位：args_model 派生 schema 的覆写产物
+        else:
+            # 无覆写时回退子类原 description（Parsable，渲染上下文同样是父
+            # Agent 实例——Agent.description 字段契约「实例创建前由父 Agent
+            # 读取」）；缺失 / None → 空串
+            raw_desc = getattr(cls, "description", None)
+            if raw_desc is None:
+                description = ""
+            elif isinstance(raw_desc, Parsable):
+                description = str(raw_desc.resolve(parent))
+            else:
+                description = str(raw_desc)
         return {"name": self.name_alias, "description": description,
-                "params_xml": params_xml}
+                "params_xml": _entry_params_xml(self, cls)}
+
+
+def _prop_type_text(prop: dict[str, Any]) -> str:
+    """property schema → catalog ``<param>`` 的 type 文本。内部 API。
+
+    ``type`` 直取（``[T, "null"]`` 可空列表形态滤掉 ``"null"`` 成员后
+    ``|`` 连接）；pydantic ``Optional[...]`` 派生的 ``anyOf`` 形态同口径
+    展开；皆无 → ``"any"``。
+    """
+    t: Any = prop.get("type")
+    if isinstance(t, list):
+        members = [str(x) for x in t if x != "null"]
+        return "|".join(members) if members else "null"
+    if t is None and isinstance(prop.get("anyOf"), list):   # pydantic Optional 形态
+        members = [str(b.get("type")) for b in prop["anyOf"]
+                   if isinstance(b, dict) and b.get("type") not in (None, "null")]
+        return "|".join(members) if members else "any"
+    return str(t) if t is not None else "any"
+
+
+def _entry_params_xml(entry: SubagentEntry, cls: "type[Agent]") -> str:
+    """生成 catalog 条目的 ``<params>`` 片段（无可见参数 → 空串）。内部 API。
+
+    子类 ``args_model.model_json_schema()`` 派生的 properties 依次应用：
+    ``override_params`` 稀疏覆写（:func:`flowing.params.apply_param_overrides`，
+    非法关键字 fail-fast、未知参数名新增）→ 排除 ``specified`` 声明的参数
+    （固定值与注入表达式同对 LLM 隐藏）→ ``param_aliases`` 改名
+    （规范名 → LLM 别名；撞名 → ``FormatError``，与 tool 侧
+    ``_apply_param_aliases`` 同口径）。
+
+    排布格式（推测点 7 落点，以「specified 排除」为硬契约）：
+    ``<params><param name=".." type=".." required="true|false">
+    [<description>..</description>]</param>...</params>``，无换行。
+    """
+    args_model = getattr(cls, "args_model", None)
+    if args_model is None:
+        return ""
+    schema = args_model.model_json_schema()
+    props: dict[str, dict[str, Any]] = {
+        k: dict(v) for k, v in schema.get("properties", {}).items()}
+    required: set[str] = set(schema.get("required", ()))
+    if entry.override_params:
+        props = apply_param_overrides(props, entry.override_params)
+    for key in entry.specified:   # specified 参数（固定值/注入表达式）排除在 LLM 视图之外
+        props.pop(key, None)
+        required.discard(key)
+    if entry.param_aliases:
+        inverse = {canonical: alias for alias, canonical in entry.param_aliases.items()}
+        renamed: dict[str, dict[str, Any]] = {}
+        for key, prop in props.items():
+            new_key = inverse.get(key, key)
+            if new_key in renamed:   # 改名撞名 fail-fast（与 tool 侧同口径）
+                raise FormatError(
+                    f"参数别名应用后撞名: {new_key!r}（子 Agent {entry.name_alias}）")
+            renamed[new_key] = prop
+        props = renamed
+        required = {inverse.get(k, k) for k in required}
+    if not props:
+        return ""
+    parts: list[str] = []
+    for pname, prop in props.items():
+        text = (f'<param name="{_xml_escape(pname, {chr(34): "&quot;"})}" '
+                f'type="{_prop_type_text(prop)}" '
+                f'required="{str(pname in required).lower()}">')
+        desc = prop.get("description")
+        if desc:
+            text += f"<description>{_xml_escape(str(desc))}</description>"
+        parts.append(text + "</param>")
+    return "<params>" + "".join(parts) + "</params>"
+
+
+_GLOB_META = re.compile(r"[*?\[]")
+"""glob 元字符判别（条目 ``raw`` 是否 glob 模式）。"""
+
+
+def _expand_glob_entries(
+    items: list[Any],
+    *,
+    naming: NamingRules,
+    source_dir: Path,
+    project_root: Path | None = None,
+) -> "list[EntryRef]":
+    """装配层的条目列表 glob 展开（「glob 显式优先」规则的唯一落点）。
+
+    **内部 API，不属稳定契约**——``.fya`` 装配层（compiler）对
+    ``subagents:`` / ``tools:`` / ``skills:`` 条目列表统一调用。入参是
+    **规范化之前**的原始 YAML 列表项（glob 模式的 ``raw`` 不具别名推断
+    条件，不能先过 :func:`flowing.parser.normalize_entries`）。
+
+    .. rubric:: 行为规约
+
+    - **先收显式条目**（原序透传，经 ``normalize_entries`` 规范化），再
+      展开 glob 条目（引用串含 ``*`` / ``?`` / ``[``）；glob 模式支持
+      ``./``（相对 ``source_dir``）与 ``@/``（相对 ``project_root``）
+      前缀，每命中一条路径产一个条目（``raw`` 为命中路径的绝对形态
+      字符串，别名经 ``normalize_entries`` → ``infer_name`` 推断；
+      glob 条目带覆写映射时每个展开产物继承同一 body）。
+    - **同一资源跳过**：glob 命中路径与已收条目（显式或先展开的 glob
+      产物）解析后绝对路径相同 → 跳过，不报错；只有**不同资源**得出同
+      别名才由下游 ``add_agent`` / ``add_tool`` 抛
+      ``EntryNameConflictError``（本层不做别名查重）。
+    - 稳定序：glob 命中按路径排序。
+
+    .. seealso:: :class:`SubagentEntry` 行为规约「同 alias 重复」的例外
+        条款（规则文本的唯一权威）。
+    """
+    from flowing.parser import normalize_entries   # 函数内 import：本模块头部对 parser 只留 TYPE_CHECKING 边
+
+    root = project_root or Path.cwd()
+    explicit_items: list[Any] = []
+    glob_items: list[tuple[str, dict[str, Any]]] = []   # (模式, body)
+    for item in items:
+        if isinstance(item, str):
+            raw_str, body = item, {}
+        elif isinstance(item, Mapping) and len(item) == 1:
+            raw_str, body = next(iter(item.items()))
+        else:
+            # 形态校验交给 normalize_entries 统一报（显式条目通道）
+            explicit_items.append(item)
+            continue
+        if _GLOB_META.search(str(raw_str)):
+            glob_items.append((str(raw_str), dict(body) if isinstance(body, Mapping) else {}))
+        else:
+            explicit_items.append(item)
+    refs = normalize_entries(explicit_items, naming=naming)
+    seen: set[Path] = {
+        resolve_path(r.raw, project_root=root, source_dir=source_dir).resolve()
+        for r in refs if classify_ref(r.raw) == "path"}
+    for pattern_raw, body in glob_items:
+        if pattern_raw.startswith("@/"):
+            base, pattern = root, pattern_raw[2:]
+        else:
+            base, pattern = source_dir, pattern_raw.removeprefix("./")
+        for hit in sorted(base.glob(pattern)):   # 稳定序
+            resolved = hit.resolve()
+            if resolved in seen:   # 与已收条目同一资源 → 跳过（glob 显式优先）
+                continue
+            seen.add(resolved)
+            item: Any = {str(resolved): body} if body else str(resolved)
+            refs.extend(normalize_entries([item], naming=naming))
+    return refs
 
 
 DEFAULT_SUBAGENT_CATALOG_TEMPLATE: str = (
