@@ -1,0 +1,28 @@
+# order-agent —— 目录形态 Agent 样例（阶段 3 多批次共用 fixture，目录即契约）。
+# 覆盖清单点名的形态：tools 条目 `- payment as pay`（含 specified 固定值 /
+# 注入表达式 / as 改名空补丁）、`description: _`（PENDING）、`$system_prompt:`
+# 具名块、深层块 `$tools.pay.args.cwd.description:`、`$script` 块。
+name: order-agent
+description: _
+model: main
+tools:
+  - payment as pay:
+      args:
+        currency: USD                            # 固定值 → specified
+        user_id: "{{ self.inject('user_id') }}"  # 注入表达式 → specified
+        working_dir as cwd: _                    # as 改名 + 空补丁（深层块逐字段填充）
+subagents:
+  - payment as pay:
+      args:
+        currency: USD
+        user_id: "{{ self.inject('user_id') }}"
+---
+$system_prompt:
+你是订单处理助手，负责发起支付与查询订单状态。
+---
+$tools.pay.args.cwd.description:
+本订单的工作目录
+---
+$script:
+def setup(self):
+    pass

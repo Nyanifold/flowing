@@ -1,0 +1,14 @@
+# bad-syntax.fya —— 负例集合（整文件不可解析；各负例按切片使用，
+# 见 tests/phase3/test_parser.py）。
+# 负例 1（清单 8，YAML 段）：顶层为列表而非映射。
+- 1
+- 2
+---
+$x:
+负例 2（清单 4）：同名 $x: 块第一次出现。
+---
+$x:
+负例 2：重复块路径 → split_fya 抛 FormatError。
+---
+$tools[0].x:
+负例 3（清单 5）：下标段块头已禁止 → split_fya 抛 FormatError。

@@ -62,6 +62,9 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Collection, Mapping
 
+from ruamel.yaml import YAML   # R-10：全项目统一 ruamel（与 flowing.model 同库）
+from ruamel.yaml.error import YAMLError
+
 from flowing.errors import FormatError
 from flowing.parsable import PENDING
 from flowing.paths import NamingRules, classify_ref, infer_name
@@ -254,6 +257,9 @@ def parse_fya(
 # 第 1 层：文本切分
 # ---------------------------------------------------------------------------
 
+_BLOCK_HEADER_PATTERN = re.compile(r"^\$([A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*):$")
+"""块头模式：``$<点分路径>:`` 独占一行；段字符集不含 ``[``，下标段天然失配。"""
+
 
 def split_fya(text: str) -> RawFya:
     """``.fya`` 文本 → 顶层 YAML 文本 + 具名块 + ``$script``。
@@ -301,9 +307,36 @@ def split_fya(text: str) -> RawFya:
 
     .. seealso:: :func:`load_fya_yaml` —— 紧接着的 YAML 加载层。
     """
-    # 逐行扫描:`---` 独占一行切段;段首行匹配 ^\$([A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*):$
-    #   不匹配 -> FormatError;路径重复 / $script 重复 -> FormatError
-    ...  # 结构示意,见行为规约
+    # 逐行扫描:`---` 独占一行（严格相等，不容忍首尾空白）切段;段首行匹配
+    # ^\$([A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*):$ ——段字符集不含 `[`，下标段
+    # 天然失配 -> FormatError;路径重复 / $script 重复 -> FormatError
+    lines = text.splitlines(keepends=True)
+    sep = [i for i, line in enumerate(lines) if line.rstrip("\r\n") == "---"]
+    yaml_text = "".join(lines[: sep[0]]) if sep else text
+    blocks: dict[str, str] = {}
+    script: str | None = None
+    for idx, sep_i in enumerate(sep):
+        body_start = sep_i + 2   # 块头行之后
+        if sep_i + 1 >= len(lines):
+            raise FormatError(f"块分隔符 --- 后缺少块头（第 {sep_i + 1} 行）")
+        header = lines[sep_i + 1].rstrip("\r\n")
+        m = _BLOCK_HEADER_PATTERN.match(header)
+        if m is None:
+            raise FormatError(
+                f"非法块头（第 {sep_i + 2} 行）: {header!r}"
+                "——须为 $<点分路径>:（段字符集 [A-Za-z0-9_-]，无下标段）")
+        path = m.group(1)
+        body_end = sep[idx + 1] if idx + 1 < len(sep) else len(lines)
+        body = "".join(lines[body_start:body_end])   # 原文保留（不去缩进/尾部换行）
+        if path == "script":
+            if script is not None:
+                raise FormatError("$script 块出现多次")
+            script = body
+        else:
+            if path in blocks:
+                raise FormatError(f"块路径重复: ${path}:")
+            blocks[path] = body
+    return RawFya(yaml_text=yaml_text, blocks=blocks, script=script)
 
 
 # ---------------------------------------------------------------------------
@@ -351,7 +384,39 @@ def load_fya_yaml(text: str) -> dict[str, Any]:
 
     .. seealso:: :data:`flowing.parsable.PENDING` —— 哨兵语义本体。
     """
-    ...  # safe_load + 递归 _ → PENDING,见行为规约
+    # safe_load 语义经 ruamel YAML(typ="safe") 落实（R-10：全项目统一
+    # ruamel）；语法错误包装为 FormatError，ruamel 报文自带行号
+    if not text.strip():
+        return {}
+    try:
+        data = YAML(typ="safe").load(text)
+    except YAMLError as exc:
+        raise FormatError(f".fya 顶层 YAML 语法错误:\n{exc}") from exc
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        # 行号取首个非注释非空行（spec 要求报文含行号；safe_load 成功路径
+        # 无异常 mark，就地扫描合成——spec 未写清处，见实现报告对照表）
+        first = next(
+            (i + 1 for i, ln in enumerate(text.splitlines())
+             if ln.strip() and not ln.lstrip().startswith("#")),
+            1,
+        )
+        raise FormatError(
+            f".fya 顶层必须是映射（mapping），实际为 "
+            f"{type(data).__name__}（第 {first} 行起）")
+    return _map_pending(data)
+
+
+def _map_pending(value: Any) -> Any:
+    """递归把 YAML 标量值 ``"_"`` 映射为 ``PENDING``（嵌套 dict/list 内同样生效）。"""
+    if isinstance(value, dict):
+        return {k: _map_pending(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_map_pending(v) for v in value]
+    if value == "_" and isinstance(value, str):
+        return PENDING
+    return value
 
 
 # ---------------------------------------------------------------------------
@@ -469,8 +534,8 @@ def normalize_entries(
       ``flowing.plugins.skills.use_skill``（``_extra["skills"]``，
       声明期——核心不感知 ``skills`` 字段，插件自行规范化）
     """
-    # R-02 占位实现（裸名 / 限定名 / as 的最小词法为最终语义；路径形态
-    # 别名推断委托 paths.infer_name，与阶段 3 同一入口）。
+    # 逐条:形态校验 -> split_as -> classify_ref -> 别名推断（见行为规约）；
+    # 路径形态别名推断委托 paths.infer_name
     refs: list[EntryRef] = []
     for item in items:
         # 1. 形态校验：字符串（纯引用）或单键映射；其余 -> FormatError
