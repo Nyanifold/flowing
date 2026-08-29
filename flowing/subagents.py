@@ -526,7 +526,7 @@ def _entry_params_xml(entry: SubagentEntry, cls: "type[Agent]") -> str:
     （规范名 → LLM 别名；撞名 → ``FormatError``，与 tool 侧
     ``_apply_param_aliases`` 同口径）。
 
-    排布格式（推测点 7 落点，以「specified 排除」为硬契约）：
+    排布格式（以「specified 排除」为硬契约）：
     ``<params><param name=".." type=".." required="true|false">
     [<description>..</description>]</param>...</params>``，无换行。
     """
@@ -593,6 +593,9 @@ def _expand_glob_entries(
       前缀，每命中一条路径产一个条目（``raw`` 为命中路径的绝对形态
       字符串，别名经 ``normalize_entries`` → ``infer_name`` 推断；
       glob 条目带覆写映射时每个展开产物继承同一 body）。
+      ``project_root=None`` 时 ``@/`` 引用（显式条目与 glob 模式同样）
+      → 内置 ``ValueError``（显式报错，不静默退回 cwd——与
+      ``ToolRegistry.get`` 的 ``@/`` 失败姿态一致）。
     - **同一资源跳过**：glob 命中路径与已收条目（显式或先展开的 glob
       产物）解析后绝对路径相同 → 跳过，不报错；只有**不同资源**得出同
       别名才由下游 ``add_agent`` / ``add_tool`` 抛
@@ -604,7 +607,16 @@ def _expand_glob_entries(
     """
     from flowing.parser import normalize_entries   # 函数内 import：本模块头部对 parser 只留 TYPE_CHECKING 边
 
-    root = project_root or Path.cwd()
+    # 失败姿态与 ToolRegistry.get 对齐：无 launch 上下文（project_root 缺失）
+    # 时 @/ 引用（显式条目与 glob 模式同样）显式报错，不静默退回 cwd
+    if project_root is None:
+        for item in items:
+            raw_str = (item if isinstance(item, str)
+                       else next(iter(item.keys())) if isinstance(item, Mapping) else None)
+            if isinstance(raw_str, str) and raw_str.startswith("@/"):
+                raise ValueError(
+                    "@/ 条目展开需要 launch 上下文（project_root 未提供）")
+    root = project_root if project_root is not None else Path.cwd()   # 哑根：@/ 已在上方拒绝
     explicit_items: list[Any] = []
     glob_items: list[tuple[str, dict[str, Any]]] = []   # (模式, body)
     for item in items:

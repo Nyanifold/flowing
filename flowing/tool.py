@@ -437,7 +437,7 @@ def register_media_converter(
 
 
 def _sniff_mime(data: bytes) -> str | None:
-    """bytes 魔数嗅探（推测点 8 定稿）：只内置常见魔数，推不出返回 ``None``
+    """bytes 魔数嗅探：只内置常见魔数，推不出返回 ``None``
     （调用方按「宁文件勿图」落 ``FileBlock``）。"""
     if data.startswith(b"\x89PNG\r\n\x1a\n"):
         return "image/png"
@@ -2066,7 +2066,7 @@ class ScriptTool(Tool):
 # ──────────────────────────────────────────────────────────────────
 
 _ENV_JINJA = jinja2.Environment(autoescape=False, undefined=jinja2.StrictUndefined)
-"""``{{ env.X }}`` 凭证模板的一次性渲染环境（推测点 9 落点）。
+"""``{{ env.X }}`` 凭证模板的一次性渲染环境。
 
 顶层 ``env`` 绑定 ``os.environ`` 只读视图；``StrictUndefined`` 使缺失变量
 fail fast（渲染方就地包成 ``FormatError``），不静默降级为空串。渲染产物
@@ -2302,13 +2302,18 @@ class McpTool(Tool):
         self.definition = definition
         self.command = command
         self.args = args
-        # {{ env.X }} 模板装配期一次性渲染（推测点 9）：缺失变量 FormatError
+        # {{ env.X }} 模板装配期一次性渲染：缺失变量 FormatError
         # fail fast；渲染产物只进连接配置，不进消息、不落盘
         self.env = _render_env_templates(env)
         # url 无路径参数阶段（区别于 RequestTool 的两阶段），装配期一次渲染；
-        # 缺失 env 变量 FormatError fail fast
-        self.url = (_ENV_JINJA.from_string(url).render(env=MappingProxyType(os.environ))
-                    if url is not None else None)
+        # 缺失 env 变量 FormatError fail fast（与 _render_env_templates 同口径）
+        if url is not None:
+            try:
+                self.url = _ENV_JINJA.from_string(url).render(env=MappingProxyType(os.environ))
+            except jinja2.UndefinedError as exc:
+                raise FormatError(f"模板 {url!r} 引用的环境变量缺失: {exc}") from exc
+        else:
+            self.url = None
         self.headers = _render_env_templates(headers)
         self.tools = tools
         self.overrides = overrides
@@ -2378,7 +2383,7 @@ class McpTool(Tool):
 
         .. rubric:: 功能介绍
 
-        装配期 schema 拉取的唯一入口（推测点 4 落点）：``ToolRegistry.get``
+        装配期 schema 拉取的唯一入口：``ToolRegistry.get``
         命中 mcp 型 TOOL.fya 只产**声明实例**（骨架 definition）；装配层在
         get 解析完成后调用本方法一次——每个服务端工具产一个独立 `McpTool`
         代理实例，规范名 = ``<fya 声明名>-<server 暴露工具名>``，由装配层
@@ -2550,7 +2555,8 @@ class CliTool(Tool):
           ``args:``）。
         :param command: Jinja2 命令模板；插入值自动转义，``| raw`` 旁路并
           告警。
-        :param shell: 执行 shell，默认 ``sh``。
+        :param shell: 执行 shell，默认 ``sh``；非法值构造期
+            :class:`flowing.errors.FormatError`（fail fast，不留到执行期）。
 
         .. rubric:: 调用关系（审计）
 
@@ -2560,6 +2566,11 @@ class CliTool(Tool):
         """
         if not definition.params_schema:
             raise MissingSchemaError("cli 工具必须声明 args（无自动推断来源）")
+        if shell not in _SHELL_EXECUTABLES:
+            # 加载期 fail-fast（声明笔误），不留到执行期 KeyError
+            raise FormatError(
+                f"非法 shell 声明: {shell!r}（可选值："
+                f"{', '.join(sorted(_SHELL_EXECUTABLES))}）")
         self.definition = definition
         self.command = command
         self.shell = shell
@@ -2717,12 +2728,12 @@ class RequestTool(Tool):
         if not definition.params_schema:
             raise MissingSchemaError("request 工具必须声明 args")
         self.definition = definition
-        # URL 两阶段渲染（推测点 9 落实）：装配期先渲染 {{ env.X }}（非 env
+        # URL 两阶段渲染：装配期先渲染 {{ env.X }}（非 env
         # 占位原样保留），执行期再渲染路径参数（见 execute）
         self.url = _ENV_URL_JINJA.from_string(url).render(
             env=MappingProxyType(os.environ))
         self.method = method
-        # {{ env.X }} 模板装配期一次性渲染（推测点 9）：凭证只经模板进
+        # {{ env.X }} 模板装配期一次性渲染：凭证只经模板进
         # 请求头，不进消息、不落盘；缺失变量 FormatError fail fast
         self.headers = _render_env_templates(headers)
         self.auth = _render_env_templates(auth)
@@ -3222,15 +3233,13 @@ class ToolRegistry:
         # （目录派生，如 "@/order-agent::payment" / 绝对路径形态），过不了
         # classify_ref 的限定名判别（左段含 / 会判成路径形态）——注册表在场
         # 证据优先于词法分流，docstring 承诺的「llm_definition / 审批路径
-        # 必命中注册表快路径」靠此成立（阶段 3 批次 4 接缝接通时暴露并修复）
+        # 必命中注册表快路径」靠此成立
         if name_or_path in self._tools:
             return self._tools[name_or_path]
         form = classify_ref(name_or_path)
         if form == "qualified":
             # 限定名（ns::name）：只查注册表精确键，不走文件查找链
-            # （命名空间无法反向映射到文件）
-            if name_or_path in self._tools:
-                return self._tools[name_or_path]
+            # （命名空间无法反向映射到文件；命中已在上方精确键短路返回）
             raise ToolNotFoundError(f"工具未注册: {name_or_path}")
         if form == "bare":
             if source_dir is not None:

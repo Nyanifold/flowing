@@ -76,6 +76,16 @@ def test_mcp_source_mutex():
         _declaration()
 
 
+def test_mcp_url_env_missing_is_format_error(monkeypatch):
+    """url 的 ``{{ env.X }}`` 装配期渲染缺失变量 → FormatError（与
+    env/headers 通道同口径，不外泄 jinja2.UndefinedError）。"""
+    from flowing.errors import FormatError
+
+    monkeypatch.delenv("FLOWING_TEST_GHOST", raising=False)
+    with pytest.raises(FormatError, match="环境变量缺失"):
+        _declaration(url="http://127.0.0.1:{{ env.FLOWING_TEST_GHOST }}/sse")
+
+
 # ---------------------------------------------------------------------------
 # 清单 51 · stdio（command 形态，直接构造）
 # ---------------------------------------------------------------------------

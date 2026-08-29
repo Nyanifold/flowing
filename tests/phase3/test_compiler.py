@@ -31,10 +31,16 @@ from flowing.compiler import (
     compile_fya_file,
     compile_project,
 )
-from flowing.errors import ArtifactModifiedError, FormatError, NameMismatchError
+from flowing.errors import (
+    ArtifactModifiedError,
+    EntryNameConflictError,
+    FormatError,
+    NameMismatchError,
+)
 from flowing.parser import EntryRef, parse_fya
 from flowing.parsable import PENDING, Parsable
 from flowing.runtime import AGENT_NAMING
+from flowing.subagents import _expand_glob_entries
 
 # 复用阶段 2 的真 Runtime 测试助手；按路径载入避免新增 phase3/conftest.py
 # （会以顶级模块名 ``conftest`` 入 sys.modules，遮蔽 phase2 的裸导入）。
@@ -386,6 +392,36 @@ def test_glob_entries_wired_in_build(tmp_path):
     asm = _build(top)
     assert asm.source.count("EntryRef(") == 2   # a 显式 + b glob；./a 的 glob 命中被跳过
     assert "alias='a'" in asm.source and "alias='b'" in asm.source
+
+
+async def test_t54_e2e_name_conflict_via_file_chain(tmp_path):
+    """54 端到端：两个同名资源的 .fya agent（``./a/payment`` 与
+    ``./b/payment``，别名均推断为 payment）经真实文件链装配 →
+    ``EntryNameConflictError``（撞名检测在 add_agent，与类来源无关）。"""
+    for sub in ("a", "b"):
+        d = tmp_path / sub / "payment"
+        d.mkdir(parents=True)
+        (d / "agent.fya").write_text(
+            f"description: {sub}\n---\n$system_prompt:\n你是支付助手。\n",
+            encoding="utf-8")
+    (tmp_path / "top.fya").write_text(
+        "subagents:\n  - ./a/payment\n  - ./b/payment\n"
+        "---\n$system_prompt:\n调度。\n",
+        encoding="utf-8")
+    runtime = make_runtime(tmp_path)
+    try:
+        with pytest.raises(EntryNameConflictError):
+            await runtime.create_agent("@/top.fya")
+    finally:
+        await runtime.shutdown()
+
+
+def test_glob_at_prefix_requires_project_root(tmp_path):
+    """``_expand_glob_entries`` 无 launch 上下文时 ``@/`` glob 显式
+    ValueError（不静默退回 cwd——与 ToolRegistry.get 的 @/ 失败姿态一致）。"""
+    with pytest.raises(ValueError, match="launch 上下文"):
+        _expand_glob_entries(["@/agents/*/"], naming=AGENT_NAMING,
+                             source_dir=tmp_path)
 
 
 # ---------------------------------------------------------------------------
