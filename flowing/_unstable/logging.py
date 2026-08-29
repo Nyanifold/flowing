@@ -76,14 +76,18 @@ INFO 级关键节点——这些 INFO 级扩展钩子点与 DEBUG 全集一样�
   级全局日志（Runtime 事件暂无需求，需要时加 ``runtime.log`` 再说）。
 """
 
-from typing import Any, ClassVar, Literal, TextIO
+import json
+import sys
+from datetime import datetime, timezone
+from enum import Enum
+from typing import Any, ClassVar, Literal
 
 from flowing.agent import Agent
+from flowing.errors import FlowingError
 from flowing.plugins import Plugin
-from flowing.provide import ProvideNode
 from flowing.runtime import Runtime
 
-logging_plugin_key: str
+logging_plugin_key: str = "logging:plugin"
 """use_logging 经 ``inject`` 取回 LoggingPlugin 实例的 provide key。
 字符串值即 ``"logging:plugin"``。
 """
@@ -91,6 +95,49 @@ logging_plugin_key: str
 LogLevel = Literal["OFF", "INFO", "DEBUG"]
 """全局等级字面量。语义见模块 docstring「等级语义」。
 """
+
+_LEVELS: tuple[str, ...] = ("OFF", "INFO", "DEBUG")
+"""合法等级集合（``LoggingPlugin.level`` setter 的校验依据）。"""
+
+_INFO_HOOK_POINTS: tuple[str, ...] = (
+    # 生命周期三对（before_create/before_recover 在 setup 前 dispatch，
+    # 挂载发生于 setup 内，创建/恢复管线上实际观察不到，挂载仅为对称完整）
+    "before_create", "after_create",
+    "before_recover", "after_recover",
+    "before_destroy", "after_destroy",
+    # 逻辑 turn 边界
+    "before_turn", "after_turn",
+    # 消息出入队
+    "after_enqueue", "after_dequeue",
+    # LLM 调用边界
+    "before_provider_gen", "after_provider_gen", "on_provider_error",
+    # 工具调用边界
+    "before_tool_call", "after_tool_call",
+    # 子 Agent
+    "before_subagent_invoke", "after_subagent_invoke",
+    # 取消与 fork
+    "before_cancel", "after_cancel",
+    "before_fork", "after_fork",
+)
+"""INFO 级关键节点清单（21 点，``use_logging`` 立即挂钩；模块 docstring
+「等级语义」的落地名表）。"""
+
+_EXTENSION_HOOK_POINTS: dict[str, tuple[str, ...]] = {
+    "skill": ("before_skill_load", "after_skill_load"),
+    "comm": ("on_signal", "on_event"),
+    "cron": ("on_cron_trigger",),
+    # workflow 无实例级钩子点声明（install 仅注册 run-workflow 工具，
+    # Workflow 自持独立 HookRegistry，不经 Agent.hooks 枚举抵达）
+    "workflow": (),
+}
+"""插件探测白名单：已安装内置扩展名 → 其声明的扩展钩子点。``detected``
+命中且该 Agent 已 ``declare`` 时，``_attach_debug`` 才挂钩。"""
+
+
+def _utc_ts() -> str:
+    """ISO 8601 UTC 毫秒精度时间戳（``Z`` 后缀，与落盘样例行同形态）。"""
+    return (datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+            .replace("+00:00", "Z"))
 
 
 class LoggingPlugin(Plugin):
@@ -114,10 +161,11 @@ class LoggingPlugin(Plugin):
 
     - 不变量：``install()`` 遵守 R1（只注册：provide 自身 + 记录探测
       结果，不挂钩——钩子是 per-agent 的，属 ``use_logging`` 职责）。
-    - ``level`` 运行期可写，写后下一次钩子触发即生效；非法值抛
-      :class:`flowing.errors.FlowingError`。
+    - ``level`` 运行期可写（property setter 校验），写后下一次钩子
+      触发即生效；非法值抛 :class:`flowing.errors.FlowingError`。
     - 边缘情况：重复安装（``runtime.use(LoggingPlugin())`` 两次）→
-      provide 同名 key 冲突，按框架既有规则报错。
+      同名插件冲突，按框架既有规则报错（``Runtime.use()`` 的插件表
+      key 冲突）。
 
     .. rubric:: 调用关系（审计）
 
@@ -129,11 +177,8 @@ class LoggingPlugin(Plugin):
     """
 
     name: ClassVar[str] = "logging"
-    namespace: ClassVar[str]  # = "logging"
-
-    level: LogLevel
-    """全局等级。运行期可改；handler 每次触发时回读，不缓存。
-    """
+    namespace: ClassVar[str] = "logging"
+    dependencies: ClassVar[list[str]] = []   # S-10：与基类 Plugin 的 ClassVar 对齐
 
     detected: frozenset[str]
     """install 时探测到的已安装内置扩展名集合（``"skill"`` 等的子集）。
@@ -147,18 +192,35 @@ class LoggingPlugin(Plugin):
     def __init__(self, level: LogLevel = "INFO", *, max_value_repr: int = 500) -> None:
         """构造插件实例。
 
-        :param level: 初始全局等级，默认 ``"INFO"``。
+        :param level: 初始全局等级，默认 ``"INFO"``（经 setter 校验，
+            非法值抛 :class:`flowing.errors.FlowingError`）。
         :param max_value_repr: DEBUG 级 value 摘要的 repr 截断长度。
 
         .. rubric:: 调用关系（审计）
 
-        - 调用：无（纯赋值构造，docstring 未见其它调用规约）
+        - 调用：``level`` property setter（时机：构造期初始等级校验）
         - 被调：无（框架内无调用方；用户代码
           ``runtime.use(LoggingPlugin(...))`` 构造时调用）
         """
-        self.level = level
+        self.level = level   # 走 setter：初始等级同样过校验
         self.max_value_repr = max_value_repr
         # self.detected 由 install() 探测后写入（时序见模块 docstring）
+
+    @property
+    def level(self) -> LogLevel:
+        """全局等级。运行期可改；handler 每次触发时回读，不缓存。
+
+        写入非法值（非 ``"OFF"`` / ``"INFO"`` / ``"DEBUG"``）抛
+        :class:`flowing.errors.FlowingError`。
+        """
+        return self._level
+
+    @level.setter
+    def level(self, value: LogLevel) -> None:
+        if value not in _LEVELS:
+            raise FlowingError(
+                f"非法日志等级：{value!r}（合法值：{', '.join(_LEVELS)}）")
+        self._level = value
 
     def install(self, runtime: Runtime) -> None:
         """provide 自身（``logging_plugin_key``）并一次性探测四个内置扩展。
@@ -179,10 +241,11 @@ class LoggingPlugin(Plugin):
           安装本插件，恰好一次）
         """
         runtime.provide(logging_plugin_key, self)
-        # 探测 skills/comm/cron/workflow 四扩展（有意探测 → 显式 strict=False），
-        # 结果记入 self.detected（时序见模块 docstring）：
-        for _name in ("skill", "comm", "cron", "workflow"):
-            runtime.get_plugin(_name, strict=False)
+        # 探测 skill/comm/cron/workflow 四扩展（有意探测 → 显式 strict=False），
+        # 结果记入 self.detected（时序见模块 docstring）；未安装的点名不登记
+        self.detected = frozenset(
+            name for name in _EXTENSION_HOOK_POINTS
+            if runtime.get_plugin(name, strict=False) is not None)
 
 
 def use_logging(agent: Agent) -> None:
@@ -207,9 +270,11 @@ def use_logging(agent: Agent) -> None:
       ``declare`` 完各自钩子点，枚举 ``agent.hooks._hook_points``
       才能覆盖全集；同时消除「``use_logging`` 必须在其它 ``use_*``
       之后调用」的顺序约束。recover 管线同理由 ``after_recover``
-      内部 handler 兜底重挂（幂等：重复挂同名 handler 去重）。
-    - 所有 handler 为纯观察：不修改 value、不 ``raise Intercepted``、
-      不 return；自身异常捕获后置为 stderr 警告（不打断管线）。
+      内部 handler 兜底重挂（幂等：已挂过的点名不重复挂钩）。
+    - 所有 handler 为纯观察：不修改 value（dispatch 契约不允许携带
+      value 的钩子点 handler 返回 ``None``——原样透传返回）、不
+      ``raise Intercepted``；自身异常捕获后置为 stderr 警告
+      （不打断管线）。
 
     .. rubric:: 行为规约
 
@@ -238,48 +303,110 @@ def use_logging(agent: Agent) -> None:
     # 经 inject 沿链上溯取回插件实例；未安装本插件时抛
     # flowing.errors.MissingProvideError（不静默跳过）
     plugin: LoggingPlugin = agent.inject(logging_plugin_key)
-    # 落盘路径解析（session 目录 = tree.jsonl / state.jsonl 所在目录）属
-    # 内部路径解析，规约未具名符号，按契约不虚构函数名（见模块 docstring「落盘」）
+    # session 目录取 Agent 管线预绑的 _session_dir（tree.jsonl /
+    # state.jsonl 所在目录），不在本插件重写路径拼接
+    log_path = agent._session_dir / "logging.jsonl"
+    # per-agent 闭包状态：写盘降级标记 + 已挂点名集（use_logging 随
+    # setup 在每实例上跑一次，天然按实例隔离；recover 换新实例后
+    # setup 重跑，闭包随之重建）
+    state: dict[str, bool] = {"write_failed": False}
+    attached: set[str] = set()
 
-    async def _observe(agent: Agent, value: Any) -> None:
-        # 纯观察 handler：每次触发回读 plugin.level 当前值（不缓存），
-        # "OFF" 早退；INFO 记摘要（类型名 + 标识字段），DEBUG 记 repr
-        # 截断 max_value_repr；追加 logging.jsonl 一行；写盘失败静默降级
-        # （一次性 stderr 警告后不再尝试）；自身异常置 stderr 警告，不打断管线
-        ...
+    def _summarize(value: Any) -> Any:
+        # INFO 摘要：类型名 + 标识字段（如 tool 名 / 消息 id）；
+        # 无 value 钩子点记 None；on_provider_error 记异常类型名
+        if value is None:
+            return None
+        if isinstance(value, (str, int, float, bool)):
+            return value
+        parts: list[str] = []
+        for field_name in ("id", "name", "kind", "type", "topic", "source", "reason"):
+            field_value = getattr(value, field_name, None)
+            if field_value is None:
+                continue
+            if isinstance(field_value, Enum):
+                field_value = field_value.value
+            parts.append(f"{field_name}={field_value!r}")
+        error = getattr(value, "error", None)
+        if isinstance(error, BaseException):
+            parts.append(f"error={type(error).__name__}")
+        if not parts:
+            return type(value).__name__
+        return f"{type(value).__name__}({', '.join(parts)})"
+
+    def _make_observer(hook_name: str):
+        # 按点名构造观察 handler（落盘行的 "hook" 字段需要点名，
+        # dispatch 不透传钩子点名，故逐点绑定）
+
+        async def _observe(host: Agent, value: Any = None) -> Any:
+            # 纯观察 handler：每次触发回读 plugin.level 当前值（不缓存），
+            # "OFF" 早退；INFO 记摘要，DEBUG 记 repr 截断 max_value_repr；
+            # 追加 logging.jsonl 一行；写盘失败静默降级（一次性 stderr
+            # 警告后不再尝试）；自身异常置 stderr 警告，不打断管线
+            try:
+                level = plugin.level
+                if level == "OFF" or state["write_failed"]:
+                    return value
+                rendered = (repr(value)[: plugin.max_value_repr]
+                            if level == "DEBUG" else _summarize(value))
+                line = json.dumps(
+                    {"ts": _utc_ts(), "agent_id": agent.node_id,
+                     "level": level, "hook": hook_name,
+                     "value": rendered, "handler_tag": None},
+                    ensure_ascii=False, default=repr)
+                try:
+                    with open(log_path, "a", encoding="utf-8") as f:
+                        f.write(line + "\n")
+                except OSError as exc:
+                    # 写盘失败（磁盘满 / 目录被删）静默降级：一次性
+                    # stderr 警告后该 Agent 后续不再尝试写盘
+                    state["write_failed"] = True
+                    print(f"[flowing._unstable.logging] agent {agent.node_id} "
+                          f"写盘失败，后续不再尝试 {log_path}：{exc!r}",
+                          file=sys.stderr)
+            except Exception as exc:
+                # handler 自身异常：stderr 警告，不传播（日志插件绝不能
+                # 打断业务管线）
+                print(f"[flowing._unstable.logging] agent {agent.node_id} "
+                      f"观察 handler 异常（hook={hook_name}，已吞掉）：{exc!r}",
+                      file=sys.stderr)
+            return value
+
+        return _observe
+
+    def _attach(hook_name: str) -> None:
+        if hook_name in attached:
+            return   # 幂等去重：已挂过的点名不重复挂钩
+        attached.add(hook_name)
+        agent.hooks._hook_points[hook_name](
+            _make_observer(hook_name), by="logging")
 
     # INFO 关键节点立即挂钩（by="logging"，清单见模块 docstring「等级语义」；
     # handler 内早退判断当前等级）
-    agent.hooks.before_create(_observe, by="logging")
-    agent.hooks.after_create(_observe, by="logging")
-    agent.hooks.before_recover(_observe, by="logging")
-    agent.hooks.after_recover(_observe, by="logging")
-    agent.hooks.before_destroy(_observe, by="logging")
-    agent.hooks.after_destroy(_observe, by="logging")
-    agent.hooks.before_turn(_observe, by="logging")
-    agent.hooks.after_turn(_observe, by="logging")
-    agent.hooks.after_enqueue(_observe, by="logging")
-    agent.hooks.after_dequeue(_observe, by="logging")
-    agent.hooks.before_provider_gen(_observe, by="logging")
-    agent.hooks.after_provider_gen(_observe, by="logging")
-    agent.hooks.on_provider_error(_observe, by="logging")
-    agent.hooks.before_tool_call(_observe, by="logging")
-    agent.hooks.after_tool_call(_observe, by="logging")
-    agent.hooks.before_subagent_invoke(_observe, by="logging")
-    agent.hooks.after_subagent_invoke(_observe, by="logging")
-    agent.hooks.before_cancel(_observe, by="logging")
-    agent.hooks.after_cancel(_observe, by="logging")
-    agent.hooks.before_fork(_observe, by="logging")
-    agent.hooks.after_fork(_observe, by="logging")
+    for _name in _INFO_HOOK_POINTS:
+        _attach(_name)
 
-    async def _attach_debug(agent: Agent) -> None:
-        # DEBUG 全集与插件钩子点的延迟挂钩：枚举 agent.hooks._hook_points
-        # （内部 API），对该实例已存在的全部钩子点挂 _observe（幂等去重，
-        # 重复挂同名 handler 去重）；detected 白名单放行的扩展钩子点
-        # （before_skill_load / after_skill_load / on_signal / on_event /
-        # on_cron_trigger / workflow 声明的点）在该 Agent 已 declare 的
-        # 前提下纳入；on_provider_delta 在 DEBUG 下逐条输出
-        ...
+    async def _attach_debug(host: Agent, _value: Any = None) -> None:
+        # DEBUG 全集与插件钩子点的延迟挂钩：挂载面按当前等级分流
+        # （只影响「挂不挂」；等级判定统一收敛在 handler 触发时回读，
+        # 与早退逻辑叠加不冲突）
+        level = plugin.level
+        if level == "OFF":
+            return
+        if level == "DEBUG":
+            # 枚举 agent.hooks._hook_points（内部 API），对该实例已存在
+            # 的全部钩子点挂观察 handler（含 on_provider_delta 逐条输出；
+            # 幂等去重由 _attach 承担）
+            for name in agent.hooks._hook_points:
+                _attach(name)
+            return
+        # INFO：只挂 detected 白名单放行的扩展钩子点，且以该 Agent
+        # 已 declare 为前提（枚举自然跳过未声明的点，不触发
+        # UnknownHookPointError）
+        for ext_name in plugin.detected:
+            for name in _EXTENSION_HOOK_POINTS[ext_name]:
+                if name in agent.hooks._hook_points:
+                    _attach(name)
 
     # 延迟到 after_create / after_recover：此刻其它 use_*() 已 declare 完
     # 各自钩子点，枚举才能覆盖全集；recover 管线由 after_recover 兜底重挂
