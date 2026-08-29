@@ -126,8 +126,10 @@ no」）+ 从回合产物 ``TurnResult.final_text`` 解析结构化选择。
 
 from abc import ABC, abstractmethod
 from typing import Any
+from uuid import uuid4
 
 from flowing.agent import Agent
+from flowing.errors import Intercepted
 from flowing.hooks import HookRegistry
 from flowing.params import InjectionKey
 from flowing.provide import inject_from
@@ -310,7 +312,7 @@ class Workflow(ABC):
         """
         self.caller = caller
         self.runtime = runtime
-        self.node_id = f"workflow-{id(self):x}"  # 占位：node_id 分配（workflow-* 前缀）的具体符号未见规约
+        self.node_id = f"workflow-{uuid4()}"  # workflow-* 前缀（与 ToolCall id 的 <来源类型名>-<uuid4> 同族，S-41 裁决②）
         self.hooks = HookRegistry()  # 实例级独立钩子注册表（与任何 Agent 的 hooks 完全独立）
         self._provided = {}
         self._agents = {}
@@ -515,15 +517,24 @@ class Workflow(ABC):
             - :class:`flowing.tool.ToolRegistry`、:class:`flowing.tool.ToolResult`
         """
         tool = self.runtime.tool_registry.get(tool_name)  # 规范名直查；未注册 -> ToolNotFoundError
-        from uuid import uuid4
 
         # id 由框架生成（S-41 裁决②：编程路径 id 形如 <来源类型名>-<uuid4>，仅作追踪）
         call = ToolCall(id=f"workflow-{uuid4()}", name=tool_name, args=args)  # -> flowing.tool.ToolCall
-        call = await self.hooks.before_tool_call.dispatch(  # Workflow 自己的钩子，与 Agent 侧完全独立
-            self, call,
-        )  # handler 可改写 args / shortcut 短路（产物未经 __call__ 归一，由收尾归一兜底，D19）；raise Intercepted -> 返回 ToolResult.blocked(...)（异常路径）
-        result = await tool(call.args, caller=None)  # ToolCall→dict 解包点 = call.args 直取（无 _normalize 等价物）；caller 恒 None
-        result = await self.hooks.after_tool_call.dispatch(self, result)  # value 为 ToolResult，可改写（含改写 result.output 为原料——由收尾归一兜底，D19）
+        try:
+            call = await self.hooks.before_tool_call.dispatch(  # Workflow 自己的钩子，与 Agent 侧完全独立
+                self, call,
+            )  # handler 可改写 args / shortcut 短路
+        except Intercepted as exc:
+            # 硬阻断：工具本体不执行，after_tool_call 不触发（与 Agent.tool_call 同一出口）
+            return ToolResult.blocked(reason=str(exc))
+        if call.shortcut is not None:
+            result = call.shortcut  # 协商短路：handler 提供的 ToolResult 直接作为本次结果（产物未经 __call__ 归一，由收尾归一兜底，D19）
+        else:
+            result = await tool(call.args, caller=None)  # ToolCall→dict 解包点 = call.args 直取（无 _normalize 等价物）；caller 恒 None
+        try:
+            result = await self.hooks.after_tool_call.dispatch(self, result)  # value 为 ToolResult，可改写（含改写 result.output 为原料——由收尾归一兜底，D19）
+        except Intercepted as exc:
+            result = ToolResult.blocked(reason=str(exc))   # after_tool_call 拦截 → blocked 结果返回（与 Agent.tool_call 同一塑形）
         result.output = await normalize_output(result.output)  # 收尾归一（D19）：return 前幂等再跑一次；与 Agent.tool_call 同一不变量——出 tool_call 的 output 恒为五形态之一
         return result  # status 四值语义与 Agent 路径一致
 

@@ -2,6 +2,7 @@
 """
 
 import asyncio
+import logging
 from typing import Any, ClassVar
 
 from flowing.agent import Agent
@@ -11,6 +12,8 @@ from flowing.tool import Tool, ToolDefinition
 
 from .loader import resolve_workflow
 from .workflow import Workflow
+
+_logger = logging.getLogger(__name__)
 
 
 class RunWorkflowTool(Tool):
@@ -101,7 +104,14 @@ class RunWorkflowTool(Tool):
         - :class:`flowing.tool.Tool` —— ``execute()`` 签名与返回值包装。
     """
 
-    definition: ToolDefinition
+    definition: ToolDefinition = ToolDefinition(
+        name="run-workflow",
+        description="启动一个编排工作流。参数 path 为 workflow 定义文件路径"
+                    "（@/ 项目根相对），其余参数透传给 Workflow.run()。",
+        params_schema={"path": {"type": "string",
+                                "description": "workflow 定义文件路径"}},
+        strict=False,   # 其余参数透传给 Workflow.run()
+    )
     """类级默认声明：``name="run-workflow"``、``params`` 只含 ``path``、
     ``strict=False``——workflow 的运行参数由 ``Workflow.run()`` 签名
     决定，工具层透传（与 :class:`flowing.plugins.skills.SkillLoadTool`
@@ -140,7 +150,21 @@ class RunWorkflowTool(Tool):
         """
         wf_class: type[Workflow] = resolve_workflow(path)
         instance = wf_class(caller, caller.runtime)
-        asyncio.create_task(instance.run(**args))  # 后台启动，绝不 await（异步防死锁，见类 docstring）
+        task = asyncio.create_task(instance.run(**args))  # 后台启动，绝不 await（异步防死锁，见类 docstring）
+        # fire-and-forget 任务的强引用与异常观察：任务脱离后不向本工具传播，
+        # 但不静默吞掉——异常记日志（任务对象本身也携带 exception 可查）
+        tasks = self.__dict__.setdefault("_run_tasks", set())
+
+        def _finalize(done: asyncio.Task) -> None:
+            tasks.discard(done)
+            if done.cancelled():
+                return
+            exc = done.exception()
+            if exc is not None:
+                _logger.error("workflow 后台运行失败（%s）", path, exc_info=exc)
+
+        tasks.add(task)
+        task.add_done_callback(_finalize)
         receipt = {"status": "started", "workflow": path}  # 立即返回的收据；run() 返回值不进收据
         return receipt
 
