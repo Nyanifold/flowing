@@ -845,6 +845,7 @@ class Runtime:
             # shutdown 销毁循环须跳过自身（Runtime 无 destroy()）
         self._plugins = {}
         self.tool_registry = ToolRegistry()
+        self._agent_types = {}   # 须在 register_builtins 之前初始化（ExploreAgent 注册写本表）
         # 框架自带工具与标准子智能体注册（P3-06：全部物理归
         # flowing.builtins）：核心内置 subagent-invoke / finish +
         # 六个标准文件/shell 工具 + ExploreAgent，随 Runtime 天生在场，
@@ -858,7 +859,6 @@ class Runtime:
         self._config_namespaces = {}
         self._resources = {}
         self._agent_pool = {}
-        self._agent_types = {}
         self._states = {}
         self._persist_dir = Path.cwd() / ".flowing"   # 默认持久化根（S-37 裁决）：本质是 flowing 启动路径——启动时可经 set_persist_dir 手动指定，默认为 cwd（R-07 澄清）；set_persist_dir 覆写（mount 前）
         config_home = Path(os.environ.get(
