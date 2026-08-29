@@ -6,6 +6,10 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
+from datetime import timedelta
+
 import pytest
 
 from flowing.message import MessageKind
@@ -18,7 +22,6 @@ from cron_support import (
     next_minute,
     utcnow,
 )
-from datetime import timedelta
 
 
 @pytest.fixture
@@ -185,3 +188,33 @@ async def test_t53_one_shot_self_delete(harness):
     assert jid not in scheduler._jobs
     assert agent.state.cron_jobs == []
     assert len(_events()) == 1
+
+
+async def test_executor_exception_contained(tmp_path, caplog):
+    """执行器兜底：自定义执行器抛异常 → 记日志（含 job_id 与异常）、不逃逸
+    进事件循环（fire-and-forget 路径无杂散 RuntimeWarning）、任务保留、
+    游标不推进（未成功交付口径）。"""
+    async def boom(agent, job, action, ctx):
+        raise RuntimeError("executor boom")
+
+    runtime, scheduler = make_cron_harness(tmp_path, executors={"message": boom})
+    CronAgent.captured = []
+    agent = await runtime.create_agent("cron-agent", start_loop=False)
+    try:
+        # 真实武装路径（_on_timer → create_task(_fire)）：时钟先钉在理想点
+        # 前 0.1s 再注册任务——武装延迟以假时钟计（0.1s 真实）
+        FakeClock(scheduler, next_minute() - timedelta(seconds=0.1))
+        jid = scheduler.schedule(
+            agent.node_id, "* * * * *", job_id="j", source="tick",
+            action=CronAction(kind="message", prompt="x"))
+        with caplog.at_level(logging.ERROR,
+                             logger="flowing.plugins.cron.scheduler"):
+            await asyncio.sleep(0.6)   # 到点触发 → 执行器抛异常
+        assert any(jid in r.getMessage() and "执行器异常" in r.getMessage()
+                   for r in caplog.records)
+        assert jid in scheduler._jobs                      # 任务保留
+        assert scheduler._jobs[jid].last_fired_at is None  # 游标不推进
+        assert _events() == []                             # 未交付
+    finally:
+        scheduler._stop()
+        await agent.destroy()

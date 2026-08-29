@@ -3,6 +3,7 @@
 """
 
 import asyncio
+import logging
 import warnings
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -23,6 +24,8 @@ from .executors import (
     default_tool_executor,
 )
 from .models import CronAction, CronFireContext, CronJob, CronTrigger
+
+_logger = logging.getLogger(__name__)
 
 
 cron_scheduler_key: InjectionKey["CronScheduler"] = InjectionKey("cron_scheduler")
@@ -595,7 +598,10 @@ class CronScheduler:
            ``await executor(agent, job, trigger.action, ctx)``；表中无该
            kind（恢复出的旧任务撞上未注册对应执行器的插件配置）→
            ``warnings.warn`` 并跳过本次触发——定时链路无人 await，异常
-           不应逃逸进事件循环回调。
+           不应逃逸进事件循环回调。执行器自身抛出的异常同样不逃逸：
+           捕获后记日志（含 ``job_id`` 与异常）并结束本次触发——
+           未成功交付口径不变（不推进游标、一次性任务不自删，错过
+           次数继续累积）。
         7. 执行成功 → 推进 ``job.last_fired_at = ctx.fired_at`` 并写透
            落盘；``job.recurring`` 为 ``False`` → 随即 ``unschedule``
            自删（写透落盘）。**游标推进到实际交付时刻（now）而非区间
@@ -659,7 +665,15 @@ class CronScheduler:
             warnings.warn(f"cron job {job_id}: kind "
                           f"{trigger.action.kind!r} 无注册执行器，跳过本次触发")
             return
-        await executor(agent, job, trigger.action, ctx)
+        try:
+            await executor(agent, job, trigger.action, ctx)
+        except Exception:
+            # 第 6 步兜底：执行器异常不逃逸进事件循环（fire-and-forget
+            # 任务无人 await）——记日志后结束本次触发；未成功交付口径
+            # 不变（不推进游标、一次性任务不自删，错过次数继续累积）
+            _logger.exception("cron job %s 执行器异常（kind=%r），跳过本次触发",
+                              job_id, trigger.action.kind)
+            return
         job.last_fired_at = ctx.fired_at  # 第 7 步：执行成功 → 推进游标
         jobs_data = [job.to_dict() if j.get("id") == job_id else j
                      for j in agent.state.get("cron_jobs", [])]
