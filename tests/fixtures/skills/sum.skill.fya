@@ -1,0 +1,4 @@
+# 与 sum/ 目录并存：目录内候选优先（T09 断言本文件不被命中）。
+name: sum
+description: 目录外 sum.skill.fya 版描述（T09 不应命中）。
+content: FILE_FYA_BODY 标记（目录外 fya 版正文）。

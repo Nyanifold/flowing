@@ -1,0 +1,3 @@
+# 裸名语境回退命中：nope/ 目录存在但无合法定义文件时继续向下解析本文件（T10）。
+description: empty-dir 下的裸名回退命中技能。
+content: NOPE_FYA_BODY 标记。

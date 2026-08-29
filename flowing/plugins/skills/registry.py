@@ -1,11 +1,22 @@
 """Skill 注册表与注入键（skill_registry_key / SkillRegistry / _parse_skill_file）。"""
 
 
+import types
+import warnings
 from pathlib import Path
+from typing import Any
 
-from flowing.errors import FlowingError
-from flowing.params import InjectionKey
-from .models import CatalogTemplate, Skill
+from flowing.errors import (
+    FlowingError,
+    FormatError,
+    MissingFieldError,
+    NameMismatchError,
+)
+from flowing.params import InjectionKey, expand_args_schema
+from flowing.parsable import PENDING, Parsable
+from flowing.parser import load_fya_yaml, split_fya
+from flowing.paths import classify_ref, infer_name, probe_candidates, resolve_path
+from .models import SKILL_NAMING, CatalogTemplate, Skill
 
 
 skill_registry_key: InjectionKey["SkillRegistry"] = InjectionKey("skill_registry")
@@ -160,6 +171,7 @@ class SkillRegistry:
         if key in self._skills:
             raise FlowingError(f"技能重名注册：{key}")  # 全键重名永远不允许
         self._skills[key] = skill
+        skill.registry_key = key   # 落账时回写全键（与 get 的解析通道同口径）
 
     def get(self, name: str, source_dir: Path | None = None) -> Skill:
         """按规范名取 Skill，未命中缓存时现场解析定义文件。
@@ -237,29 +249,137 @@ class SkillRegistry:
 
         .. seealso:: :class:`Skill`、:func:`use_skill`
         """
+        # 精确键短路（先于形态判别）：文件派生限定键的命名空间含路径特征
+        # （目录派生，如 "@/skills::sum"），过不了 classify_ref 的限定名判别
+        # ——注册表在场证据优先于词法分流，「catalog 渲染 / skill_load 热路径
+        # 必命中缓存」的 docstring 承诺靠此成立（与 ToolRegistry.get 同口径）
+        if name in self._skills:
+            return self._skills[name]
         if "::" in name:  # 限定名:只查注册表精确键(插件注册通道),不走文件查找链
-            if name in self._skills:
-                return self._skills[name]
             raise FlowingError(f"技能未注册：{name}")
-        if source_dir is not None:
-            # 裸名且 source_dir 提供:先走定向文件查找链(文件覆盖注册表,
-            # 与 ToolRegistry.get 同口径)——探测定位(目录内 SKILL.fya >
-            # skill.fya > <name>.skill.fya > <name>.fya > SKILL.md > skill.md;
-            # 目录外 <name>.skill.fya > <name>.fya > <name>.md;probe_candidates)
-            # 后,先按命中文件所在目录算派生键查注册表:已注册 -> 短路返回
-            # 现有实例;未注册才解析:
-            derived_ns: str = ...  # -> str(source_dir/命中文件所在目录的 §7a 派生;派生函数未见具名符号)
-            # if f"{derived_ns}::<name>" in self._skills: return ...（短路复用）
-            skill = _parse_skill_file(name, source_dir)  # 定位并解析（首个存在者生效）
-            # 解析成功才写缓存；解析失败异常上抛且不写入（下次重试）
-            key = f"{derived_ns}::{skill.name}"
-            self._skills[key] = skill
-            skill.registry_key = key   # 回写全键（use_skill 预解析落账 SkillEntry.name_ori 的依据）
-            return skill
-        for key in (f"default::{name}", f"builtin::{name}"):  # source_dir 缺省:纯注册表查询(裸名视图 default 优先)
+        if classify_ref(name) == "path" or source_dir is not None:
+            # 路径形态恒走文件定位（@/ 无需 source_dir；./ ../ 缺省时报错，
+            # resolve_path 现有口径——与 ToolRegistry.get 同姿态）；裸名 +
+            # source_dir 提供：先走定向文件查找链（文件覆盖注册表）——探测
+            # 定位（目录内 SKILL.fya > skill.fya > <name>.skill.fya >
+            # <name>.fya > SKILL.md > skill.md；目录外 <name>.skill.fya >
+            # <name>.fya > <name>.md）后，先按命中文件所在目录算派生键查
+            # 注册表：已注册 -> 短路复用现有实例；未注册才解析
+            located = _locate_skill_file(name, source_dir)
+            if located is not None:
+                hit, folder_form, _base_dir, _candidates = located
+                identity = infer_name(hit, naming=SKILL_NAMING)
+                ns_dir = hit.parent.parent if folder_form else hit.parent   # 文件夹式取上层目录（§7a）
+                derived_ns = _derive_namespace(ns_dir)
+                derived_key = f"{derived_ns}::{identity}"
+                if derived_key in self._skills:
+                    return self._skills[derived_key]   # 派生键短路复用（文件解析是声明期行为）
+                skill = _parse_skill_file(name, source_dir)  # 定位并解析（首个存在者生效）
+                # 解析成功才写缓存；解析失败异常上抛且不写入（下次重试）
+                key = f"{derived_ns}::{skill.name}"
+                self._skills[key] = skill
+                skill.registry_key = key   # 回写全键（use_skill 预解析落账 SkillEntry.name_ori 的依据）
+                return skill
+        # 注册表裸名视图：default:: 优先于 builtin::（default 优先 = 覆盖通道）；
+        # source_dir 缺省时跳过文件链、不命中即报错，不做文件探测
+        for key in (f"default::{name}", f"builtin::{name}"):
             if key in self._skills:
                 return self._skills[key]
-        raise FlowingError(f"技能未注册且无文件上下文：{name}")
+        if classify_ref(name) == "path":
+            # 路径形态：文件定位未命中（不存在或后缀非法）——报文含原引用串
+            raise FlowingError(f"技能定义文件不存在或形态非法：{name}")
+        attempted = _attempted_paths(name, source_dir)
+        raise FlowingError(
+            f"技能未注册且查找链不命中：{name}（已尝试: "
+            + (", ".join(str(p) for p in attempted) if attempted else "仅注册表裸名视图")
+            + "）")
+
+
+def _dir_candidates(name: str) -> list[str]:
+    """``<name>/`` 目录内的定向查找链（首个存在者生效）：
+    ``SKILL.fya > skill.fya > <name>.skill.fya > <name>.fya > SKILL.md >
+    skill.md``。内部 API。"""
+    return ["SKILL.fya", "skill.fya", f"{name}.skill.fya", f"{name}.fya",
+            "SKILL.md", "skill.md"]
+
+
+def _derive_namespace(ns_dir: Path) -> str:
+    """所在目录 → 派生命名空间字符串（``@/`` 下根相对、根外绝对，§7a 口径）。
+
+    内部 API。与 Tool/Agent 注册表的同名逻辑保持**同一份实现**——委托
+    ``ToolRegistry._derived_namespace``（单一来源，不另造轮子）。
+    """
+    from flowing.tool import ToolRegistry   # 局部 import：注册表层对工具层只借这一个符号
+
+    return ToolRegistry._derived_namespace(ns_dir)
+
+
+def _launch_project_root() -> "Path | None":
+    """读 launch 上下文的项目根（委托 ``flowing.tool._launch_project_root``，
+    同一 ContextVar 来源）。内部 API。"""
+    from flowing.tool import _launch_project_root as _impl   # 局部 import：单一来源复用
+
+    return _impl()
+
+
+def _attempted_paths(name: str, source_dir: "Path | None") -> list[Path]:
+    """拼装裸名查找链的已尝试路径列表（供 fail-fast 报文）。内部 API。"""
+    if source_dir is None or classify_ref(name) == "path":
+        return []
+    directory = source_dir / name
+    return ([directory / c for c in _dir_candidates(name)]
+            + [source_dir / f"{name}{suffix}" for suffix in (".skill.fya", ".fya", ".md")])
+
+
+def _locate_skill_file(
+    ref: str, source_dir: "Path | None"
+) -> "tuple[Path, bool, Path, list[str]] | None":
+    """按定向查找优先级定位 Skill 定义文件（**内部 API**）。
+
+    返回 ``(命中路径, 是否文件夹式命中, 探测基准目录, 候选名列表)``，
+    全部未命中 → ``None``（裸名语境调用方继续查注册表裸名视图）。
+
+    - 裸名：``<name>/`` 目录内 6 候选（目录存在但无合法定义文件 → 继续
+      向下，仅裸名语境）→ 目录外 ``<name>.skill.fya > <name>.fya >
+      <name>.md``；
+    - 路径形态：``@/`` 锚 launch 上下文项目根（无需 ``source_dir``，无
+      上下文时显式 ``ValueError``——与 ``ToolRegistry.get`` 同姿态）；
+      目录 → 目录内 6 候选，无候选直接 ``FormatError``（定点引用的目录
+      为空几乎必为笔误）；直指文件 → 命中即返回。
+    """
+    if classify_ref(ref) == "path":
+        root = _launch_project_root()
+        if root is None and ref.replace("\\", "/").startswith("@/"):
+            raise ValueError("@/ 路径解析需要 launch 上下文（_current_project_root 未登记）")
+        resolved = resolve_path(
+            ref, project_root=root if root is not None else Path.cwd(),   # 哑根：@/ 已在上方拒绝
+            source_dir=source_dir)
+        if resolved.is_dir():
+            dir_name = infer_name(resolved, naming=SKILL_NAMING)   # 目录：basename 即目录名
+            candidates = _dir_candidates(dir_name)
+            hit = probe_candidates(resolved, candidates)
+            if hit is None:
+                # 显式路径语境：目录无候选 -> 直接报错，不继续向下
+                raise FormatError(f"显式路径目录无合法技能入口: {resolved}")
+            return hit, True, resolved, candidates
+        if resolved.is_file() and (
+                resolved.name.endswith(".fya") or resolved.name.endswith(".md")):
+            return resolved, False, resolved.parent, [resolved.name]
+        return None
+    # 裸名（调用方保证 source_dir 非 None）
+    assert source_dir is not None
+    directory = source_dir / ref
+    if directory.is_dir():
+        candidates = _dir_candidates(ref)
+        hit = probe_candidates(directory, candidates)
+        if hit is not None:
+            return hit, True, directory, candidates
+        # 裸名语境：目录存在但无合法定义文件 -> 继续链上下一项
+    candidates = [f"{ref}.skill.fya", f"{ref}.fya", f"{ref}.md"]
+    hit = probe_candidates(source_dir, candidates)
+    if hit is not None:
+        return hit, False, source_dir, candidates
+    return None
 
 
 def _parse_skill_file(name: str, source_dir: Path) -> Skill:
@@ -270,25 +390,148 @@ def _parse_skill_file(name: str, source_dir: Path) -> Skill:
     块结构 / 目录形式）到统一 :class:`Skill` 实例的解析，含 ``$script``
     中 ``on_load`` 的提取与 ``_extra_fields`` 的收纳。
 
+    .. rubric:: 行为规约
+
+    - 定向查找：按规范名 ``name`` 在 ``source_dir`` 下首个存在者生效——
+      ``<name>/`` 目录内 ``SKILL.fya > skill.fya > <name>.skill.fya >
+      <name>.fya > SKILL.md > skill.md``（裸名语境目录无合法定义文件时
+      继续向下；显式路径目录无候选 → ``FormatError``，定位层分流）→
+      目录外 ``<name>.skill.fya > <name>.fya > <name>.md``；``.fya`` 系
+      与 ``.md`` 并存 → 告警 + ``.fya`` 系优先；通用名命中 → 规范名取
+      目录名。全部不存在 → ``FlowingError``（消息含规范名与已尝试路径）。
+    - 解析：``.md`` = YAML frontmatter（``description`` 必填，缺 →
+      ``MissingFieldError``；``name`` 仅作一致性断言，不符 →
+      ``NameMismatchError``）+ Markdown 正文（即 ``content``）；
+      ``.skill.fya`` = 块结构（``args:`` 经 ``expand_args_schema`` 归一、
+      ``content`` / ``description`` 包装 ``Parsable``、未知字段收
+      ``_extra_fields``）+ ``$script`` 提取 ``on_load``（经
+      ``types.MethodType`` 绑定，``self`` 即本 Skill 实例）；目录形式
+      正文可 ``{% include %}`` 目录内资料（渲染期经 Parsable include
+      加载器，基准为调用方 Agent 的 ``source_dir``）。
+
     .. rubric:: 调用关系（审计）
 
-    - 调用：文件定位与解析的具体调用目标未见规约（三种定义形式解析 +
-      ``$script`` 的 ``on_load`` 提取 + ``_extra_fields`` 收纳）
+    - 调用：``_locate_skill_file()``（定位）；``flowing.parser.split_fya``
+      / ``load_fya_yaml``（字面解析）；``flowing.params.expand_args_schema``
+      （``args:`` 归一）；``flowing.paths.infer_name``（规范名推断）
     - 被调：``flowing.plugins.skills.SkillRegistry.get()``
       缓存未命中分支（时机：``use_skill()`` 声明期预解析，或声明外
       编程式按需解析）
 
     .. seealso:: :meth:`SkillRegistry.get`
     """
-    # 定向查找（按规范名 name 在 source_dir 下首个存在者生效；定位/解析器未见具名符号，不虚构）：
-    #   1. <name>/ 目录内 SKILL.fya > skill.fya > <name>.skill.fya > <name>.fya
-    #      > SKILL.md > skill.md（裸名语境目录无合法定义文件时继续向下；
-    #      显式路径目录无候选 -> FormatError，在 use_skill 声明期分流，不进本函数）
-    #   2. <name>.skill.fya   3. <name>.fya   4. <name>.md
-    #   .fya 系与 .md 并存 -> 告警 + .fya 系优先；通用名命中 -> 规范名取目录名
-    # 全部不存在 -> raise flowing.errors.FlowingError（消息含规范名与已尝试路径）
-    # 解析：.md = YAML frontmatter（description 必填，缺 -> MissingFieldError）+ Markdown 正文；
-    #       .skill.fya = 块结构 + $script 提取 on_load，未知字段收入 _extra_fields；
-    #       目录形式正文可 {% include %} 目录内资料
-    skill: Skill = Skill()  # 三种形式统一解析为同一 Skill 实例（字段填充细节规约未具名）
+    located = _locate_skill_file(name, source_dir)
+    if located is None:
+        attempted = _attempted_paths(name, source_dir)
+        raise FlowingError(
+            f"按 {name!r} 找不到任何合法技能定义文件（已尝试: "
+            + (", ".join(str(p) for p in attempted) if attempted else str(name))
+            + "）")
+    hit, _folder_form, base_dir, candidates = located
+    identity = infer_name(hit, naming=SKILL_NAMING)   # 通用名命中 -> 规范名取目录名
+    if hit.name.endswith(".fya"):
+        # .fya 系与同名 .md 并存 -> 告警 + .fya 系优先（链上顺序已保证优先，
+        # 此处只补告警——与 Tool 的「.fya 优先于同名 .py 并告警」同口径）
+        coexisting = [c for c in candidates
+                      if c.endswith(".md") and (base_dir / c).exists()]
+        if coexisting:
+            warnings.warn(
+                f"同名 .fya 系与 .md 并存，.fya 系优先: {hit}"
+                f"（并存: {', '.join(coexisting)}）")
+        return _parse_skill_fya(hit, identity)
+    return _parse_skill_md(hit, identity)
+
+
+def _split_frontmatter(text: str) -> "tuple[str | None, str]":
+    """``.md`` 文本 → ``(frontmatter YAML 文本, Markdown 正文)``。
+
+    内部 API。首行必须是 ``---`` 独占行（仅 rstrip CR/LF——与
+    ``flowing.parser.split_fya`` 的分隔符口径一致），否则视为无
+    frontmatter（``(None, 原文)``——``description`` 必填检查随后自然
+    fail-fast）。
+    """
+    lines = text.splitlines()
+    if not lines or lines[0].rstrip("\r\n") != "---":
+        return None, text
+    for i in range(1, len(lines)):
+        if lines[i].rstrip("\r\n") == "---":
+            return "\n".join(lines[1:i]), "\n".join(lines[i + 1:]).strip("\n")
+    return None, text   # 无闭合 ---：视为无 frontmatter（缺 description 报错）
+
+
+def _parse_skill_md(path: Path, identity: str) -> Skill:
+    """``.md`` 形式解析：YAML frontmatter + Markdown 正文。内部 API。
+
+    ``description`` 必填（缺 → ``MissingFieldError``）；``name`` 写了仅作
+    一致性断言（不符 → ``NameMismatchError``）；``_``（PENDING）值视同
+    未声明；其余字段收 ``_extra_fields``；``.md`` 形式无 ``args_schema``
+    （空 dict）与 ``on_load``（None）。
+    """
+    frontmatter, body = _split_frontmatter(path.read_text(encoding="utf-8"))
+    fields = load_fya_yaml(frontmatter) if frontmatter is not None else {}
+    explicit_name = fields.get("name")
+    if (explicit_name is not None and explicit_name is not PENDING
+            and explicit_name != identity):
+        raise NameMismatchError(explicit_name, identity, str(path))
+    description = fields.get("description")
+    if description is None or description is PENDING:
+        # MissingFieldError 的第二参按契约是「所属 Agent 类型名」；Skill 无
+        # Agent 类型语境，以定义文件路径充当场定位（spec 未规定 skill 语境
+        # 的取值，就地裁决）
+        raise MissingFieldError("description", str(path))
+    extra = {k: v for k, v in fields.items() if k not in ("name", "description")}
+    return Skill(name=identity, description=Parsable(description),
+                 content=Parsable(body), _extra_fields=extra)
+
+
+_SKILL_FYA_RESERVED = frozenset({"name", "description", "content", "args"})
+"""``.skill.fya`` 保留字段集——其余字段原样收 ``_extra_fields``（与
+Agent ``_extra`` 的宽松解析策略同构）。"""
+
+
+def _parse_skill_fya(path: Path, identity: str) -> Skill:
+    """``.skill.fya`` 形式解析：块结构 + ``$script`` 提取 ``on_load``。内部 API。
+
+    ``args:`` 块经 ``expand_args_schema`` 归一化为 JSON Schema properties
+    （值为 ``_``/PENDING 的参数归一为 ``{}``——any 类型、无默认值、必填，
+    覆盖义务原样保留）；具名块（``$script`` 以外）不支持——Skill 正文经
+    ``content`` 字段声明，写具名块几乎必为笔误，fail-fast。
+    """
+    raw = split_fya(path.read_text(encoding="utf-8"))
+    if raw.blocks:
+        raise FormatError(
+            f"{path} 含 Skill 定义不支持的具名块: {sorted(raw.blocks)}"
+            "（Skill 正文经 content 字段声明；$script 只用于定义 on_load）")
+    fields = load_fya_yaml(raw.yaml_text)
+    explicit_name = fields.get("name")
+    if (explicit_name is not None and explicit_name is not PENDING
+            and explicit_name != identity):
+        raise NameMismatchError(explicit_name, identity, str(path))
+    description = fields.get("description")
+    if description is None or description is PENDING:
+        raise MissingFieldError("description", str(path))
+    content = fields.get("content")
+    if content is None or content is PENDING:
+        raise MissingFieldError("content", str(path))
+    raw_args = fields.get("args")
+    if raw_args is not None and not isinstance(raw_args, dict):
+        raise FormatError(f"{path} 的 args 字段必须是映射: {raw_args!r}")
+    args_schema = expand_args_schema(
+        {k: ({} if v is PENDING else v) for k, v in (raw_args or {}).items()})
+    on_load = None
+    if raw.script is not None:
+        namespace: dict[str, Any] = {}
+        # $script 是声明式定义面，与 Agent .fya 的 $script 同一信任级
+        exec(compile(raw.script, str(path), "exec"), namespace)  # noqa: S102
+        fn = namespace.get("on_load")
+        if fn is not None and not callable(fn):
+            raise FormatError(f"{path} 的 $script 中 on_load 不是可调用对象")
+        on_load = fn
+    extra = {k: v for k, v in fields.items() if k not in _SKILL_FYA_RESERVED}
+    skill = Skill(name=identity, description=Parsable(description),
+                  content=Parsable(content), args_schema=args_schema,
+                  _extra_fields=extra)
+    if on_load is not None:
+        # 描述符绑定：self 即本 Skill 实例，框架以 (agent, args) 调用
+        skill.on_load = types.MethodType(on_load, skill)
     return skill

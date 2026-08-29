@@ -210,11 +210,13 @@ Skill 扩展按「未来纳入核心长什么样」来设计，若后续收编�
 
 from typing import Any, ClassVar
 
+from collections.abc import Mapping
+
 from flowing.agent import Agent
 from flowing.errors import EntryNameConflictError, FlowingError, FormatError
 from flowing.message import Message, MessageKind, MessagePriority, TextBlock
-from flowing.parsable import Parsable
-from flowing.parser import EntryRef, normalize_entries
+from flowing.parsable import PENDING, Parsable
+from flowing.parser import EntryRef, normalize_entries, split_as
 from flowing.plugins import Plugin
 from .models import (
     SKILL_NAMING,
@@ -227,6 +229,7 @@ from .models import (
 )
 from .registry import SkillRegistry, skill_registry_key
 from flowing.runtime import Runtime
+from flowing.subagents import _expand_glob_entries
 from flowing.tool import Tool, ToolDefinition
 
 
@@ -452,7 +455,11 @@ class SkillLoadTool(Tool):
         - :class:`SkillResult`、:class:`SkillLoadContext`
     """
 
-    definition: ToolDefinition
+    definition: ToolDefinition = ToolDefinition(
+        name="skill-load",
+        description="加载指定技能的详细执行指南。可用技能见 <available_skills>。",
+        params_schema={"name": {"type": "string", "description": "要加载的技能名称"}},
+    )
     """类级默认声明：``name="skill-load"``、``params`` 只含 ``name``
     （LLM 不传参——角度五裁决；参数合并在 ``skill_load()`` 内完成）。
     """
@@ -830,6 +837,8 @@ def use_skill(
     registry: SkillRegistry = agent.inject(skill_registry_key)  # 第 1 步：未安装 SkillPlugin -> MissingProvideError
     agent.hooks.declare("before_skill_load", by="skill")  # 第 2 步：幂等声明（同名同 by 重复调用幂等）
     agent.hooks.declare("after_skill_load", by="skill")
+    if not hasattr(agent, "_skill_entries"):
+        agent._skill_entries = {}  # 绑定层条目表（别名 -> SkillEntry）；核心不感知，本插件自建
     if not hasattr(agent, "skill_add"):  # 第 3 步：「检查后跳过」——条目装配单点（契约见 docstring「skill_add 契约」）
         def skill_add(name: str | EntryRef, *, alias: str | None = None,
                       body: dict[str, Any] | None = None) -> SkillEntry:
@@ -840,14 +849,36 @@ def use_skill(
             else:
                 item = {f"{name} as {alias}" if alias is not None else name: body or {}}
                 ref = normalize_entries([item], naming=SKILL_NAMING)[0]
-            # body 判别（键集 description/args/enabled——R-4：无 inject 键；未知键 -> FormatError）：
-            #   description -> override_description（str->Parsable 包装 / Parsable 透传 / _->None）
-            #   args -> 每值进 specified（Parsable 包装；注入表达式同路）；PENDING 值视为未声明；键含 as -> FormatError
-            #   enabled -> 布尔
+            # body 判别（键集 description/args/enabled——R-4：无 inject 键；未知键 -> FormatError）
             override_description = None
             specified: dict[str, Parsable] = {}
             enabled = True
-            # ...（按「skill_add 契约」第 2 条逐键分派到上述局部量）
+            for bkey, bvalue in ref.body.items():
+                if bkey == "description":
+                    # description -> override_description（str->Parsable 包装 / Parsable 透传 / _->None 空补丁）
+                    if bvalue is PENDING:
+                        override_description = None
+                    elif isinstance(bvalue, Parsable):
+                        override_description = bvalue
+                    else:
+                        override_description = Parsable(bvalue)
+                elif bkey == "args":
+                    if bvalue is PENDING:
+                        continue   # args: _ —— 空补丁语义（与条目覆写位 PENDING 同口径）
+                    if not isinstance(bvalue, Mapping):
+                        raise FormatError(f"skill 条目的 args 必须是映射: {bvalue!r}")
+                    for pname, pvalue in bvalue.items():
+                        if split_as(str(pname))[1] is not None:
+                            # 键含 as -> FormatError（无改名通道——param_aliases 已随「LLM 不传参」裁决删除）
+                            raise FormatError(f"skill 条目 args 的参数键不允许 as 改名: {pname!r}")
+                        if pvalue is PENDING:
+                            continue   # _（PENDING）值视为未声明该参数（不进 specified，覆盖校验照常）
+                        specified[pname] = pvalue if isinstance(pvalue, Parsable) else Parsable(pvalue)
+                elif bkey == "enabled":
+                    enabled = bool(bvalue)
+                else:
+                    raise FormatError(
+                        f"skill 条目含未知键: {bkey!r}（键集固定 description/args/enabled）")
             if ref.alias in agent._skill_entries:   # 同 alias = 笔误（绑定层统一 fail-fast）
                 raise EntryNameConflictError(ref.alias, kind="skill")
             entry = SkillEntry(
@@ -858,7 +889,8 @@ def use_skill(
             skill = registry.get(entry.name_ori, agent.source_dir())  # M-98：声明期一次性预解析（含 disabled），失败此刻即报错
             # 落账 name_ori：文件派生技能记派生限定键（skill.registry_key，热路径
             # 精确命中零文件 IO）；注册表命中（default::/builtin::）保持裸名
-            if skill.registry_key not in (f"default::{entry.name_ori}", f"builtin::{entry.name_ori}"):
+            if skill.registry_key is not None and skill.registry_key not in (
+                    f"default::{entry.name_ori}", f"builtin::{entry.name_ori}"):
                 entry.name_ori = skill.registry_key  # type: ignore[assignment]
             # 覆盖校验（角度五，声明期 fail-fast）：args_schema 每参数须被
             # specified（固定值/注入表达式）覆盖或带默认值
@@ -875,7 +907,17 @@ def use_skill(
     # 第 4 步：解析 agent.skills（_extra 原始声明；裸名 / as 别名 / 显式路径 / glob 形态，
     # glob 项先行展开并排除已显式声明的规范名）——逐条委托 agent.skill_add（装配单点）
     source_dir = agent.source_dir()  # 定向查找根：agent 定义文件所在目录本身（不设 skills/ 子目录；None → 纯注册表）
-    for ref in normalize_entries(getattr(agent, "skills", None) or [], naming=SKILL_NAMING):  # 无 skills: 字段视为空列表；glob 展开在装配层先行完成
+    raw_items = list(getattr(agent, "skills", None) or [])  # 无 skills: 字段视为空列表
+    if source_dir is not None:
+        # glob 展开复用阶段 3 落地的通用 helper（三类条目同一份实现）：
+        # 入参是规范化之前的原始列表项；先收显式条目，glob 命中与已收条目
+        # 解析后绝对路径相同（同一资源）的跳过
+        refs = _expand_glob_entries(
+            raw_items, naming=SKILL_NAMING, source_dir=source_dir,
+            project_root=getattr(agent.runtime, "project_root", None))
+    else:
+        refs = normalize_entries(raw_items, naming=SKILL_NAMING)   # 无文件上下文：纯注册表条目
+    for ref in refs:
         agent.skill_add(ref)  # type: ignore[attr-defined]
     # 第 5 步：渲染模板解析（S-42 单槽位；渲染器模板化裁决）——本函数参数 > SkillPlugin 构造参数（随注册表注入）> 内置 DEFAULT_CATALOG_TEMPLATE
     catalog = catalog_template or registry.catalog_template or DEFAULT_CATALOG_TEMPLATE
@@ -1009,7 +1051,20 @@ async def _load_skill(
     ctx = await agent.hooks.before_skill_load.dispatch(agent, ctx)  # 第 4 步：可改 args；raise Intercepted 终止后续
     if skill.on_load is not None:  # 第 5 步：不拦截、不返回值；抛异常则加载失败上抛
         skill.on_load(agent, ctx.args)
-    rendered = skill.content.resolve(agent)  # 第 6 步：上下文 = agent 局部变量 + 合并 args（合成细节未见具名符号）
+    # 第 6 步：上下文 = agent 局部变量 + 合并 args（spec 未具名合成细节——
+    # 落实口径：复刻 Parsable._do_resolve 的摊平顺序（状态键 < _extra <
+    # 实例属性 < agent/self 入口），合并 args 置最高优先级；经
+    # agent.parsable 重绑定到调用方实例后走 Mapping 分支，env/config 注入
+    # 与 include/FILE_REF 的 source_dir 基准随之自动就位）
+    render_context = {
+        **dict(getattr(agent, "_state", None) or {}),   # 与 _do_resolve 同口径的状态键读取
+        **agent._extra,
+        **agent.__dict__,
+        "agent": agent,
+        "self": agent,
+        **ctx.args,
+    }
+    rendered = agent.parsable(skill.content.source).resolve(render_context)  # 先 $ 展开再 Jinja2，同步
     content = SkillContent(name=name, body=rendered)
     content = await agent.hooks.after_skill_load.dispatch(agent, content)  # 第 7 步：可改渲染后正文
     await agent.enqueue_message(Message(  # 第 8 步：独立 PLUGIN 消息入队，不合并进 ToolResult

@@ -201,6 +201,44 @@ class Skill:
     catalog 渲染 / ``skill_load`` 热路径精确命中、零文件 IO）。内部 API。
     """
 
+    def __init__(
+        self,
+        name: str,
+        description: "str | Parsable[str]" = "",
+        content: "str | Parsable[str]" = "",
+        *,
+        args_schema: dict[str, dict[str, Any]] | None = None,
+        on_load: Callable[[Agent, dict[str, Any]], Any] | None = None,
+        _extra_fields: dict[str, Any] | None = None,
+        registry_key: str | None = None,
+    ) -> None:
+        """构造 Skill 实例（解析器与编程式注册的统一入口）。
+
+        .. rubric:: 行为规约
+
+        - ``description`` / ``content`` 收 ``str``（包装为
+          :class:`flowing.parsable.Parsable`）或已构造的 ``Parsable``
+          （透传）——保持「存如何解析、不存结果」的惰性语义。
+        - ``args_schema`` 缺省为空 dict（无参数即无覆盖义务）；
+          ``registry_key`` 缺省 ``None``（未注册实例）。
+        - 非行为：不读文件、不求值、不注册（注册是
+          :class:`SkillRegistry` 的职责）。
+
+        .. rubric:: 调用关系（审计）
+
+        - 调用：``flowing.parsable.Parsable`` 构造（``str`` 入参包装）
+        - 被调：``flowing.plugins.skills._parse_skill_file()``（三种定义
+          形式统一解析产物）；插件作者编程式构造后经
+          ``SkillRegistry.register()`` 注册
+        """
+        self.name = name
+        self.description = description if isinstance(description, Parsable) else Parsable(description)
+        self.content = content if isinstance(content, Parsable) else Parsable(content)
+        self.args_schema = {} if args_schema is None else dict(args_schema)
+        self.on_load = on_load
+        self._extra_fields = {} if _extra_fields is None else dict(_extra_fields)
+        self.registry_key = registry_key
+
     def __getattr__(self, name: str) -> Any:
         """未定义属性回退 ``_extra_fields`` 查找。
 
@@ -220,8 +258,12 @@ class Skill:
 
         .. seealso:: :attr:`_extra_fields`
         """
-        if name in self._extra_fields:
-            return self._extra_fields[name]  # 原样返回，不做 Parsable 求值
+        # 护栏：只经 __dict__ 探表（不经属性查找）——_extra_fields 尚未建立
+        # 时（如构造中途）回退路径整体短路，干净抛 AttributeError 而非
+        # RecursionError（与 Agent.__getattr__ 的 P3-03 护栏同构）
+        extra = self.__dict__.get("_extra_fields")
+        if extra is not None and name in extra:
+            return extra[name]  # 原样返回，不做 Parsable 求值
         raise AttributeError(name)  # 未命中：正常触发 getattr 默认值语义
 
 

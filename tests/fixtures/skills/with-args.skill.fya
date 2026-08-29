@@ -1,0 +1,14 @@
+# 含 args_schema 与 $script on_load 的技能（T19/T26 等）。
+name: with-args
+description: 带参数与 on_load 回调的技能。
+content: "长度上限 {{ max_length }}；工作目录 {{ work_directory }}。"
+args:
+  max_length:
+    type: integer
+    default: 1000
+    description: 摘要最大长度（字符）
+  work_directory: ""
+---
+$script:
+def on_load(self, agent, args):
+    agent._on_load_args = dict(args)
