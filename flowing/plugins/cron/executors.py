@@ -1,5 +1,6 @@
 """执行器类型与默认执行器：``CronExecutor`` / ``CronTemplate`` /
 ``DEFAULT_MESSAGE_TEMPLATE`` / ``DEFAULT_TOOL_NOTICE_TEMPLATE`` /
+``DEFAULT_TOOL_RESULT_TEMPLATE`` /
 ``default_message_executor`` / ``default_tool_executor``。
 """
 
@@ -91,6 +92,32 @@ DEFAULT_TOOL_NOTICE_TEMPLATE: str = (
    :func:`default_tool_executor`
 """
 
+DEFAULT_TOOL_RESULT_TEMPLATE: str = (
+    '<cron-fire jobId="{{ job.id }}" cron="{{ job.cron }}"'
+    ' coalescedCount="{{ coalesced_count }}"/>\n'
+    '<cron-tool-call tool="{{ action.tool }}" args="{{ action.args }}">'
+    '以下为本次定时工具调用的结果。</cron-tool-call>'
+)
+"""默认 tool_call 标注块模板：准时触发（``coalesced_count == 1``）真执行
+工具后，多块 EVENT 第一个 content 块的文本（Jinja2 模板源，D15）。
+
+形态：
+
+.. code-block:: text
+
+    <cron-fire jobId="mail-poll" cron="*/10 * * * *" coalescedCount="1"/>
+    <cron-tool-call tool="check-email" args="{'folder': 'INBOX'}">以下为本次定时工具调用的结果。</cron-tool-call>
+
+标注块只承载元信息，工具结果本体由紧随其后的塑形块（
+:func:`flowing.tool.output_to_blocks`）承载。覆写槽位
+``cron_tool_result_template``，优先链：**Agent 属性 >
+``CronScheduler._templates["tool_result"]`` > 本常量**（见
+:func:`default_tool_executor`）。
+
+.. seealso:: :data:`DEFAULT_TOOL_NOTICE_TEMPLATE`、
+   :func:`default_tool_executor`
+"""
+
 async def default_message_executor(
     agent: Agent, job: "CronJob", action: CronAction, ctx: CronFireContext,
     *, template: CronTemplate = DEFAULT_MESSAGE_TEMPLATE,
@@ -145,6 +172,7 @@ async def default_message_executor(
 async def default_tool_executor(
     agent: Agent, job: "CronJob", action: CronAction, ctx: CronFireContext,
     *, template: CronTemplate = DEFAULT_TOOL_NOTICE_TEMPLATE,
+    result_template: CronTemplate | None = None,
 ) -> None:
     """默认 tool_call 执行器：准时执行，合并降级为通知。
 
@@ -175,15 +203,22 @@ async def default_tool_executor(
     标注块（D15）：多块 EVENT 的第一个 content 块，一个 TextBlock，
     文本由模板渲染（Jinja2 + ``$./file.j2`` FILE_REF，
     ``agent.parsable(...).resolve(...)``），默认 XML
-    （``<cron-fire …/>`` + ``<cron-tool-call …>…</cron-tool-call>``）。
+    （``<cron-fire …/>`` + ``<cron-tool-call …>…</cron-tool-call>``，
+    默认常量 :data:`DEFAULT_TOOL_RESULT_TEMPLATE`）。
     覆写槽位 ``cron_tool_result_template``，优先链：**Agent 属性 >
     cron ``_templates`` 表 > 默认常量**——Agent 自己有该属性
     （``str | None`` 或返回 ``str`` 的 ``property``，普通方法不被
-    调用）则用，否则查 ``_templates`` 表，再落默认常量（沿用
-    ``subagent_catalog_template`` 先例）。
+    调用）则用，否则查 ``_templates`` 表（键 ``"tool_result"``，经
+    ``result_template`` 参数由调度器构造期闭包注入），再落默认常量
+    （沿用 ``subagent_catalog_template`` 先例）。
 
     - 边缘情况：工具调用抛出的异常由执行器捕获并同样以 EVENT 消息
       形式推回（定时链路无人 await，异常不应逃逸进事件循环回调）。
+
+    :param result_template: 标注块模板（D15 覆写链的「``_templates`` 表」
+        一档）：调度器构造期闭包以 ``self._templates.get("tool_result")``
+        注入；``None`` 且 Agent 无 ``cron_tool_result_template`` 属性时落
+        :data:`DEFAULT_TOOL_RESULT_TEMPLATE`。
 
     .. rubric:: 调用关系（审计）
 
@@ -207,7 +242,20 @@ async def default_tool_executor(
             tc = ToolCall(id=f"cron-{uuid4()}",   # 编程路径 id 框架生成（S-41 裁决②：<来源类型名>-<uuid4> 全量，仅追踪）
                           name=action.tool, args=action.args)
             result = await agent.tool_call(tc)   # Agent.tool_call 唯一正式签名（单收 ToolCall）；出 tool_call 已归一（D19）
-            blocks = [TextBlock(text=渲染标注模板)]   # 标注块：默认 XML，覆写槽位 cron_tool_result_template（D15，见 docstring）
+            # 标注块（D15）模板覆写链：Agent 属性 > result_template 参数
+            # （_templates["tool_result"]，闭包注入）> 默认常量；
+            # Agent 属性为 str 才采用（property 已求值为 str；普通方法
+            # 不被调用——绑定方法非 str，自然落入下一档）
+            agent_tpl = getattr(agent, "cron_tool_result_template", None)
+            tpl = (agent_tpl if isinstance(agent_tpl, str) and agent_tpl
+                   else result_template or DEFAULT_TOOL_RESULT_TEMPLATE)
+            annotation = agent.parsable(tpl).resolve({
+                "job": job, "action": action,
+                "scheduled_at": ctx.scheduled_at, "fired_at": ctx.fired_at,
+                "coalesced_count": ctx.coalesced_count,
+                "last_fired_at": ctx.last_fired_at,
+            })  # 渲染机制与上下文变量表同 default_message_executor；渲染异常 fail-fast
+            blocks = [TextBlock(text=annotation)]   # 标注块：多块 EVENT 的第一个 content 块
             blocks.extend(output_to_blocks(result.output, error=result.error))  # 塑形统一出口（D22，§5.4 同一实现）
         except Exception as exc:
             # 工具调用异常同样以 EVENT 消息推回（docstring 边缘情况：

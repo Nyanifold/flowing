@@ -237,9 +237,10 @@ class CronJob:
     ``match_on`` 匹配字段（fnmatch）。缺省 ``f"cron:{id}"``——应用层
     应显式指定语义化来源（如 ``"daily_consolidation"``）以便过滤。
     """
-    created_at: datetime = ...
+    created_at: datetime
     """创建时间，naive UTC ``datetime``（与通信信封的时间约定一致）；
-    也是从未交付任务的合并计数基数。
+    也是从未交付任务的合并计数基数。必填（无默认值）——任务的合并计数
+    语义依赖一个真实时刻，由 ``schedule()`` / ``from_dict()`` 显式给出。
     """
     recurring: bool = True
     """``False`` = 一次性任务：第一次成功交付后自删（写透落盘）。
