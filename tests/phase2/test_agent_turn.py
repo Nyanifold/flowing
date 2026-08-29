@@ -391,6 +391,22 @@ async def test_t58_fork_switches_branch(agent, provider):
     path_ids = [m.id for m in agent._assemble_context().messages]
     assert "m8" in path_ids and "m7" not in path_ids   # 组装路径含 m8 不含 m7
 
+    # 错误路径：目标不在树中 -> ValueError；before_fork 拦截 -> Intercepted 上抛
+    with pytest.raises(ValueError):
+        await agent.fork("ghost")
+    with pytest.raises(ValueError):
+        await agent.fork("m7-deleted-never-existed")
+    await agent.fork("m7")   # 兄弟分支可切
+    assert agent.current_head_id == "m7"
+
+    async def _veto(a, target):
+        raise Intercepted("不许 fork")
+
+    agent.hooks.before_fork(_veto)
+    with pytest.raises(Intercepted):
+        await agent.fork("m6")
+    assert agent.current_head_id == "m7"   # 被拦截，游标不动
+
 
 async def test_t59_in_turn_fork_seek(runtime, provider):
     # 先完成第一回合：u1 -> p1
@@ -759,6 +775,27 @@ async def test_t74_before_tool_call_rewrite(runtime, provider):
     assert result.output == "改写后"   # execute 收到改写后参数
 
 
+async def test_t74b_schema_default_fill(runtime, provider):
+    """_normalize 第 3 步：schema 默认值填充（前两步未给的参数按 default 补齐）。"""
+
+    class DefaultTool(Tool):
+        definition = ToolDefinition(
+            name="greeter", description="",
+            params_schema={"name": {"type": "string"},
+                           "lang": {"type": "string", "default": "zh"}})
+
+        async def execute(self, *, name: str, lang: str) -> str:
+            return f"{lang}:{name}"
+
+    runtime.register_tool(DefaultTool())
+    agent = await runtime.create_agent(SimpleAgent)
+    agent.add_tool("greeter")
+    result = await agent.tool_call(ToolCall(id="c1", name="greeter",
+                                            args={"name": "甲"}))
+    assert result.status == "completed"
+    assert result.output == "zh:甲"   # lang 未传 -> default 补齐
+
+
 async def test_t75_before_tool_call_intercepted(runtime, provider):
     executed: list = []
 
@@ -1050,3 +1087,55 @@ async def test_t84_hook_exception_not_wedged(agent, provider, caplog):
     result = await agent.query("第二条")   # 队列后续消息照常消费
     assert result.status == "completed"
     assert result.final_text == "二"
+
+
+# ---------------------------------------------------------------------------
+# 补充：_dequeue 重试循环（R-13 落地语义）与 enqueue_messages 批量入队
+# ---------------------------------------------------------------------------
+
+
+async def test_dequeue_hook_discard_retries(agent, provider):
+    """before_dequeue 窗口内扔掉消息 -> dequeue_nowait 得 None -> 重等重发；
+    每条真正出队的消息之前恰好一次 before 派发。"""
+    before_calls: list[int] = []
+    dropped = {"done": False}
+
+    async def _drop_first(a, _value=None):   # 无 value 钩子点同样收 (agent, value)
+        before_calls.append(len(agent._message_queue))
+        if not dropped["done"]:
+            dropped["done"] = True
+            victim = agent._message_queue.peek()
+            agent.cancel_queued(victim.id)   # 钩子在窗口内扔掉消息（合法出口）
+        return None
+
+    agent.hooks.before_dequeue(_drop_first)
+    script_provider(provider, text_response("ok"))
+    mid1 = await agent.message("会被扔掉")
+    await _yield(4)
+    assert dropped["done"]
+    result = await agent.query("正常消费")
+    assert result.status == "completed"
+    # before 恰好对「真正出队的消息」各派发一次（被扔消息那次不计入消费）
+    assert before_calls[0] >= 1
+
+
+async def test_enqueue_messages_batch(agent, provider):
+    m1 = Message(kind=MessageKind.USER, content=[TextBlock(text="一")])
+    m2 = Message(kind=MessageKind.USER, content=[TextBlock(text="二")])
+    ids = await agent.enqueue_messages([m1, m2])
+    assert ids == [m1.id, m2.id]   # 返回顺序与输入一致
+    assert len(agent._message_queue) == 2
+
+    # 单条形态与 Intercepted 不回滚
+    async def _veto(a, msg):
+        if "拒" in getattr(msg.content[0], "text", ""):
+            raise Intercepted("拒")
+        return msg
+
+    agent.hooks.before_enqueue(_veto)
+    with pytest.raises(Intercepted):
+        await agent.enqueue_messages([
+            Message(kind=MessageKind.USER, content=[TextBlock(text="三")]),
+            Message(kind=MessageKind.USER, content=[TextBlock(text="拒")]),
+        ])
+    assert len(agent._message_queue) == 3   # 已入队的不回滚

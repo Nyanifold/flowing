@@ -1998,6 +1998,10 @@ class Agent:
             - :class:`flowing.parsable.PENDING` —— 延迟定义哨兵
               （见 :mod:`flowing.parsable`）。
         """
+        # 基类空实现（契约注释）：子类覆写承载装配逻辑——状态赋值、钩子注册、
+        # inject 读取、Composable 调用；**禁写 state**（写闸门在管线到位前
+        # 锁定）；可重入语义见上文「行为规约」（create 与 recover 各跑一次、
+        # 必为不同实例）。
         ...
 
     async def destroy(self) -> None:
