@@ -188,6 +188,24 @@ async def test_t119_archive_orphans(tmp_path):
 # ---------------------------------------------------------------------------
 
 
+async def test_bootstrap_materializes_persist_dir_for_plugin_state(tmp_path, monkeypatch):
+    """疑虑①回归：默认 persist 路径 + 插件写全局状态 + 全程无 agent ——
+    构造期只读引导不建目录；use() 引导解锁时建目录；写透不失败、store 不 poison。"""
+    monkeypatch.chdir(tmp_path)   # 默认 persist 路径 = <cwd>/.flowing，隔离到 tmp
+    runtime = make_runtime(tmp_path, persist=False, models=False,
+                           register_default_type=False)
+    assert runtime._persist_dir == tmp_path / ".flowing"
+    assert not runtime._persist_dir.exists()   # __init__ 只读引导不建目录
+    runtime.use(PluginStub(
+        "plug", on_install=lambda rt: rt.register_state("plug", defaults={})))
+    assert runtime._persist_dir.exists()   # use() 引导解锁新命名空间 → 建目录
+    runtime.state("plug").k = 1   # 闸门已开；写透不失败（此前这里会 drain poison）
+    await runtime.state("plug")._store.drain()
+    assert runtime.state("plug")._store._poisoned is None
+    assert '"k"' in (runtime._persist_dir / "plug.jsonl").read_text(encoding="utf-8")
+    await runtime.shutdown()
+
+
 async def test_t120_shutdown_and_await(tmp_path):
     """T120：await runtime 阻塞至 shutdown；解除阻塞时 Agent 已 destroy；
     重复 shutdown 幂等；空 Runtime 同样可 await/shutdown。"""

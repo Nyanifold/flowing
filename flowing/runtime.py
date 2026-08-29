@@ -900,7 +900,7 @@ class Runtime:
         # 并再次引导——幂等）
         self.register_state(
             "core", defaults={"agents": [], "session_dirs": {}, "plugins": []})
-        self._bootstrap_persistence()   # 含 agent 池扫描（读 core 名录逐个开 session 目录；实例不在扫描阶段创建，见 §8-9）
+        self._bootstrap_persistence(_materialize=False)   # 含 agent 池扫描（读 core 名录逐个开 session 目录；实例不在扫描阶段创建，见 §8-9）；构造期只读引导——不在 cwd 建默认目录（零持久化场景不污染工作目录，建目录归后续写意图时点，见 _bootstrap_persistence 的 _materialize 约定）
 
     def use(self, *plugins: Plugin) -> None:
         """安装插件（阶段一启用）：按实参顺序执行各插件的 ``install(runtime)``。
@@ -2711,22 +2711,30 @@ class Runtime:
             merged.update(self._flatten_config(layer))
         return merged
 
-    def _bootstrap_persistence(self) -> None:
+    def _bootstrap_persistence(self, *, _materialize: bool = True) -> None:
         """全局持久化引导（R-07 落实；内部 API）：重放全部未引导的全局
         命名空间 → 解锁写闸门 → 压缩三时点① → agent 池扫描。
 
         幂等：只处理写闸门仍关闭的命名空间视图（已引导的不重放——重放会
         用文件旧值覆盖尚未 drain 的内存写）；池扫描只补登记池中缺失的 id。
         调用点：``__init__`` 尾部（默认 persist 路径场景的重放点）、
-        ``set_persist_dir``（重指存储后）、``_ensure_persist_ready``
-        （首个 mount/create/recover 前兜底——覆盖默认路径下 post-init
-        注册的插件命名空间）。
+        ``set_persist_dir``（重指存储后）、``use()`` 尾部（install 完成后）、
+        ``_ensure_persist_ready``（首个 mount/create/recover 前兜底——
+        覆盖默认路径下 post-init 注册的插件命名空间）。
+
+        ``_materialize``：有新命名空间本次解锁（其写透即将成为可能）时，
+        是否把持久化根目录建出来。**必须为真**的担保：FileRecordStore
+        惰性打开句柄时不建父目录——「默认路径 + 插件写全局状态 + 全程无
+        agent」会在 drain 时 FileNotFoundError → store poison。唯二的例外
+        是 ``__init__`` 尾部（只读引导：core 一个视图，解锁它不代表任何
+        业务写意图，不在 cwd 建默认目录——零持久化场景不污染工作目录）。
 
         .. rubric:: 调用关系（审计）
 
         - 调用：``RecordStore.replay``（每命名空间重放）；``StateView._maybe_compact``（压缩三时点①）；``self._scan_agent_pool``（每次调用收尾）
-        - 被调：``Runtime.__init__`` / ``set_persist_dir`` / ``_ensure_persist_ready``
+        - 被调：``Runtime.__init__``（``_materialize=False``）/ ``set_persist_dir`` / ``use`` / ``_ensure_persist_ready``
         """
+        unlocked = False
         for view in self._states.values():
             if view._write_gate_open:
                 continue   # 已引导：不重放（防文件旧值覆盖未 drain 的内存写）
@@ -2739,10 +2747,15 @@ class Runtime:
                     persisted.pop(record["key"], None)
                 # 未知行形态（meta 已被 replay 吸收）静默跳过——与 Agent._restore 同口径
             object.__setattr__(view, "_write_gate_open", True)
+            unlocked = True
             if persisted:
                 # 压缩三时点①的 Runtime 侧落点（空袋跳过：无内容可压，
                 # 避免引导即在磁盘建出仅有 meta 首行的空文件）
                 view._maybe_compact(force=True)
+        if unlocked and _materialize:
+            # 新命名空间解锁 = 其写透即将成为可能——此刻建好持久化根目录
+            # （无新解锁则不建：use() 无状态插件 / 重复引导不落盘）
+            self._persist_dir.mkdir(parents=True, exist_ok=True)
         self._scan_agent_pool()
 
     def _scan_agent_pool(self) -> None:
