@@ -284,3 +284,23 @@ def add_fake_provider(runtime: Any, name: str = "fake") -> FakeProvider:
     provider = FakeProvider()
     runtime.provider_registry._instances[name] = provider
     return provider
+
+
+class PluginStub:
+    """最小插件桩（阶段 4 前 Plugin 协议以桩驱动：name / dependencies /
+    install / shutdown 四面；on_install/on_shutdown 回调注入行为）。"""
+
+    def __init__(self, name: str, dependencies: list[str] | None = None,
+                 on_install=None, on_shutdown=None) -> None:
+        self.name = name
+        self.dependencies = list(dependencies or [])
+        self._on_install = on_install
+        self._on_shutdown = on_shutdown
+
+    def install(self, runtime: Any) -> None:
+        if self._on_install is not None:
+            self._on_install(runtime)
+
+    async def shutdown(self) -> None:
+        if self._on_shutdown is not None:
+            self._on_shutdown()

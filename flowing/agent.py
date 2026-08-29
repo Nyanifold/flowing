@@ -2018,7 +2018,9 @@ class Agent:
            write-behind 契约②钉死的排空屏障点，不排空即销毁会静默丢
            尾部记录）；
         3. dispatch ``before_destroy``；
-        4. 深度优先递归 ``child.destroy()``，清空 ``_children``；
+        4. 深度优先递归 ``child.destroy()``（子树收集双来源：``_children``
+           ∪ ``_nodes`` 按 ``_parent_id`` 扫描——覆盖「destroy 后现场
+           恢复」重新注册的同 id 新实例），清空 ``_children``；
         5. 从 ``_nodes`` 摘除（池移除实例值）——死活由在册与否表达；
         6. dispatch ``after_destroy``。
 
@@ -2071,9 +2073,10 @@ class Agent:
               进程级收尾（递归 destroy 的调用方）。
         """
         # 幂等守卫（spec 行为规约：重复调用安全，二次调用「直接返回」）：
-        # 已摘除（不在 _nodes——含被父级级联销毁后，Runtime.shutdown 的
-        # 快照列表再次触及的情形）即二次调用，直接返回
-        if self.node_id not in self.runtime._nodes:
+        # **本实例**已摘除即二次调用，直接返回——按身份比较而非 id：本 id
+        # 可能已被「有 key 无 value → 现场恢复」重建为新实例重新注册，
+        # 旧实例（如父级 _children 里的过期引用）不得再操作已关闭的后端
+        if self.runtime._nodes.get(self.node_id) is not self:
             return
         for fut in list(self._pending_turns.values()):   # 1. resolve 所有 pending
             if not fut.done():
@@ -2093,7 +2096,17 @@ class Agent:
         self._state_bag._maybe_compact(force=True)   # 2c. 压缩三时点②：destroy 收尾（请求随 _close 排空一并执行）
         await self._state_bag._close()
         await self.hooks.before_destroy.dispatch(self)   # 3.
-        for child in list(self._children.values()):      # 4. 深度优先递归
+        # 4. 深度优先递归（双来源收集：_children 生命周期子树 ∪ _nodes 按
+        #    _parent_id 扫描——后者覆盖「destroy 后现场恢复」重新注册的同 id
+        #    新实例（旧引用已随本例的幂等守卫失效）；重复/过期引用由
+        #    child.destroy() 的幂等守卫兜住）
+        seen_children: set[int] = set()
+        for child in [*list(self._children.values()),
+                      *[node for node in self.runtime._nodes.values()
+                        if getattr(node, "_parent_id", None) == self.node_id]]:
+            if id(child) in seen_children:
+                continue
+            seen_children.add(id(child))
             await child.destroy()
         self._children.clear()
         self.runtime._nodes.pop(self.node_id, None)     # 5. 从 _nodes 摘除（池 key 保留）

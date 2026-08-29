@@ -35,6 +35,7 @@ from flowing.parsable import PENDING, Parsable
 from flowing.runtime import Runtime, resolve
 
 from conftest import (
+    PluginStub,
     SimpleAgent,
     add_fake_provider,
     make_runtime,
@@ -44,28 +45,8 @@ from conftest import (
 
 
 # ---------------------------------------------------------------------------
-# 测试桩与工具 Agent 类
+# 工具 Agent 类
 # ---------------------------------------------------------------------------
-
-
-class PluginStub:
-    """最小插件桩（阶段 4 前 Plugin 协议以桩驱动：name / dependencies /
-    install / shutdown 四面）。"""
-
-    def __init__(self, name: str, dependencies: list[str] | None = None,
-                 on_install=None, on_shutdown=None) -> None:
-        self.name = name
-        self.dependencies = list(dependencies or [])
-        self._on_install = on_install
-        self._on_shutdown = on_shutdown
-
-    def install(self, runtime: Runtime) -> None:
-        if self._on_install is not None:
-            self._on_install(runtime)
-
-    async def shutdown(self) -> None:
-        if self._on_shutdown is not None:
-            self._on_shutdown()
 
 
 class RewriteAgent(Agent):

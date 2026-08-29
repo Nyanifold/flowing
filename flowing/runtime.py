@@ -972,6 +972,9 @@ class Runtime:
             plugin.install(self)
             self._plugins[plugin.name] = plugin
         self._check_dependencies()   # 增量校验已装子图：成环抛 DependencyError；缺失 warnings.warn 不抛（R9：与 mount 解绑）
+        # install 中声明的全局命名空间（闸门未开——install 内禁写，R1 持久化版）
+        # 在安装完成后引导解锁：插件在运行期 / shutdown() 中写全局状态才可用
+        self._bootstrap_persistence()
 
     def get_plugin(self, name: str, *, strict: bool = True) -> Any | None:
         """按名查询已安装插件实例；``strict`` 标志兼容「直接用」与「探测」两种写法。
@@ -2971,7 +2974,8 @@ class Runtime:
           ``_shutdown_event.set()``。
         - 不变量：插件收尾与总线关闭均发生在 ``_shutdown_event.set()`` **之前**
           ——``await runtime`` 解除阻塞时所有善后已完成。
-        - 幂等：重复调用安全（已置位的事件重复置位无副作用）。
+        - 幂等：重复调用安全（收尾流程已完成过的重复调用直接返回；
+          已置位的事件重复置位无副作用）。
         - 空 Runtime（无 Agent）合法：直接跳到插件收尾。
         - 非行为：不删除任何 session 目录（池 key 到显式删目录才移除）；不等待
           ``await runtime`` 的 waiter 实际被调度唤醒。
@@ -2991,6 +2995,11 @@ class Runtime:
         .. seealso:: :meth:`flowing.runtime.Runtime.__await__`、
             :meth:`flowing.agent.Agent.destroy`
         """
+        # 幂等闸：收尾流程已完成过（事件已置位）的重复调用直接返回——
+        # destroy / 插件收尾 / 视图关闭均不重演（重演会对已关闭的
+        # RecordStore 再提交压缩请求而报错）
+        if self._shutdown_event.is_set():
+            return
         for node in list(self._nodes.values()):   # 第 1 步：递归 destroy 所有节点（Agent 的工作循环 Task 被取消，session 记录保留；Workflow 节点级联销毁其子 Agent）
             if node is self:
                 continue   # Runtime 自注册在 _nodes 中但无 destroy()——销毁循环跳过自身
