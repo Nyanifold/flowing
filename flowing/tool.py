@@ -2163,12 +2163,20 @@ PowerShell 7 的 ``pwsh``。可执行文件不存在 → 子进程启动失败�
 def _mcp_input_schema_to_params(input_schema: "dict[str, Any] | None") -> dict[str, dict[str, Any]]:
     """MCP ``inputSchema``（完整 JSON Schema object）→ 框架 properties 映射。
 
-    内部 API。required 口径对齐（框架以 ``default`` 有无派生）：
-    ``required`` 列表之外的 property 若无 ``default`` 补
-    ``default=None``——否则可选参数会被 ``schema_to_model`` 建成必填字段。
+    内部 API。两点归一：
+
+    - property 键裁剪到 :data:`flowing.params.SCHEMA_KEYWORDS` 子集——
+      FastMCP/pydantic 生成的 inputSchema 带 ``title`` 等超子集键，
+      不裁剪会在 ``schema_to_model`` 桥接时炸 ``FormatError``；
+    - required 口径对齐（框架以 ``default`` 有无派生）：
+      ``required`` 列表之外的 property 若无 ``default`` 补
+      ``default=None``——否则可选参数会被 ``schema_to_model`` 建成必填字段。
     """
+    from flowing.params import SCHEMA_KEYWORDS
+
     schema = input_schema or {}
-    props = {k: dict(v) for k, v in schema.get("properties", {}).items()}
+    props = {k: {kk: vv for kk, vv in v.items() if kk in SCHEMA_KEYWORDS}
+             for k, v in schema.get("properties", {}).items()}
     required = set(schema.get("required") or ())
     for key, prop in props.items():
         if key not in required and "default" not in prop:
@@ -2343,13 +2351,27 @@ class McpTool(Tool):
                     await session.initialize()
                     yield session
         else:
-            from mcp.client.streamable_http import streamablehttp_client
+            import httpx
+            from mcp.client import streamable_http as _streamable_http
 
-            async with streamablehttp_client(
-                    self.url, headers=self.headers) as (read, write, _get_sid):
-                async with ClientSession(read, write) as session:
-                    await session.initialize()
-                    yield session
+            # mcp 1.29 起更名 streamable_http_client 且 headers 改经
+            # http_client 传入（旧名 headers 形态 deprecated 告警）；兼容更早
+            # 的 1.x 回退旧名
+            client_fn = getattr(_streamable_http, "streamable_http_client", None)
+            if client_fn is not None:
+                async with httpx.AsyncClient(
+                        headers=self.headers) as http_client:
+                    async with client_fn(
+                            self.url, http_client=http_client) as (read, write, _get_sid):
+                        async with ClientSession(read, write) as session:
+                            await session.initialize()
+                            yield session
+            else:
+                async with _streamable_http.streamablehttp_client(
+                        self.url, headers=self.headers) as (read, write, _get_sid):
+                    async with ClientSession(read, write) as session:
+                        await session.initialize()
+                        yield session
 
     async def list_tools(self) -> "list[McpTool]":
         """连接服务器拉取 ``list_tools()`` schema，产出逐工具代理实例列表。

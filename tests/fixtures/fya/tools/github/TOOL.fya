@@ -1,0 +1,12 @@
+# 测试 51 的 mcp 形态目录工具（SSE 连接方式走本 fixture；stdio /
+# streamable HTTP 由测试直接构造）。端口经 {{ env.X }} 装配期注入（推测点 9）
+name: github
+type: mcp
+description: GitHub 操作工具组（demo）。
+url: "http://127.0.0.1:{{ env.DEMO_MCP_PORT }}/sse"
+tools: [create-issue]        # 服务端工具子集：list-prs 不暴露
+overrides:
+  create-issue:
+    description: "创建 GitHub Issue（覆写描述）。"
+    args:
+      title: {description: "Issue 标题，不超过 80 字符。"}
