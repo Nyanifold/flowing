@@ -264,13 +264,9 @@ class Plugin:
         .. seealso:: :class:`Plugin`（R1–R4 约定）、
             :meth:`flowing.runtime.Runtime.provide`
         """
-        # 基类本身无默认注册行为；下列注册通道由实现类按需选用（均为可选，
-        # 非必经步骤），此处列出供类型检查（R1：只注册，不做业务）：
-        runtime.register_tool(...)  # 按需：注册全局工具
-        runtime.provide("namespace:key", ...)  # 按需：provide 值；重复同名 key 后注册者报错
-        runtime.register_config_namespace("namespace", schema=...)  # 按需：配置命名空间
-        runtime.register_agent_type("name", ...)  # 按需：注册 Agent 类型
-        runtime.register_resource("name", ...)  # 按需：注册资源
+        # 基类本身无默认注册行为（空实现）；注册通道（register_tool /
+        # provide / register_config_namespace / register_agent_type /
+        # register_resource）由实现类按需选用，均为可选、非必经步骤。
 
     async def shutdown(self) -> None:
         """收尾入口：Runtime 优雅关闭时框架对每个插件调用一次（S-05 裁决）。
