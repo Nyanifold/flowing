@@ -197,3 +197,10 @@ async def test_t71_glob_recursive_mtime_order(tmp_path):
     assert lines[0] == str(sub / "b.py")   # mtime 新的在前
     assert lines[1] == str(tmp_path / "a.py")
     assert all(os.path.isabs(line) for line in lines)
+
+
+async def test_t71_glob_missing_dir_is_error(tmp_path):
+    """71 负例：基准目录不存在 → error 结果。"""
+    result = await GlobTool()({
+        "pattern": "**/*.py", "path": str(tmp_path / "ghost"), "cwd": None})
+    assert result.status == "error"
