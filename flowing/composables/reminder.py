@@ -81,6 +81,8 @@ import time
 
 from typing import TYPE_CHECKING
 
+from flowing.message import Message, MessageKind, TextBlock
+
 if TYPE_CHECKING:
     from flowing.agent import Agent
 
@@ -100,18 +102,50 @@ def use_system_reminder(
     同步注册型 Composable（M-91）：注册 ``by="system-reminder"`` 的
     ``before_turn`` 注入 handler（``clean=True`` 时加 ``after_turn``
     清理 handler）；卸载经 ``remove_by_owner("system-reminder")``。
+
+    间隔判定的消息计数口径：以消息级树的总结点数（``len(agent._messages)``）
+    为水位——``before_turn`` 触发时 ``turn.message_ids`` 恒为空（本回合
+    批次尚未挂树），骨架注释中的 ``turn.message_ids`` 提法不成立，按
+    「距上次注入后新增消息数」的语义以树水位差实现。首次注入前
+    （``last_count is None``）不做间隔判定——「距上次注入」在从未注入时
+     vacuously 满足（先注入再谈「再次注入」）。
     """
-    ...
-    # 安装（框架 spec，方法体为时序注释）：
-    # state = {"last_head_count": 0, "last_fired": 0.0}   # 间隔判定（闭包，纯运行期）
-    # async def _inject(agent, turn):
-    #     # 间隔判定：turn.message_ids 与上次注入的差 < message_interval
-    #     # 或 time.time() - last_fired < time_interval → 跳过（原样 return turn）
-    #     # blocks = [TextBlock(text=c(agent) if callable(c) else c) for c in contents]
-    #     # 全空 -> 不注入；否则压缩为一条 Message(kind=EVENT,
-    #     #   source="system-reminder", tags=["system-reminder"]) 附加到
-    #     #   turn.pending_messages 末尾
-    # async def _cleanup(agent, turn):   # 仅 clean=True 注册
-    #     agent.remove_by_tags({"system-reminder"})
-    # agent.hooks.before_turn(_inject, by="system-reminder")
-    # clean and agent.hooks.after_turn(_cleanup, by="system-reminder")
+    items = list(contents or [])
+    # 间隔判定状态：闭包持有，纯运行期——不落盘、不进 state 袋
+    state: dict = {"last_count": None, "last_fired": None}
+
+    async def _inject(agent: "Agent", turn) -> "object":
+        # 间隔判定：message_interval 与 time_interval 与关系（任一不满足
+        # 即跳过）；从未注入过时直接放行
+        if state["last_count"] is not None:
+            if len(agent._messages) - state["last_count"] < message_interval:
+                return turn   # 新增消息数未达间隔
+            if time_interval > 0 and time.time() - state["last_fired"] < time_interval:
+                return turn   # 墙钟间隔未达
+        # contents 现场求值：callable 或静态串；空串条目剔除，全空不注入
+        texts = []
+        for c in items:
+            text = c(agent) if callable(c) else c
+            if text:
+                texts.append(text)
+        if not texts:
+            return turn
+        # 压缩为一条 Message 附加到 pending_messages 末尾（排在触发消息
+        # 之后），随批次挂树持久化
+        turn.pending_messages.append(Message(
+            kind=MessageKind.EVENT, source="system-reminder",
+            content=[TextBlock(text=t) for t in texts],
+            tags=["system-reminder"]))
+        state["last_count"] = len(agent._messages)
+        state["last_fired"] = time.time()
+        return turn
+
+    async def _cleanup(agent: "Agent", turn) -> "object":
+        # clean=True 时每回合收尾按 tags 擦除本回合注入的提醒（head 回退
+        # 由 Agent 层 remove_by_tags 处理）
+        agent.remove_by_tags({"system-reminder"})
+        return turn
+
+    agent.hooks.before_turn(_inject, by="system-reminder")
+    if clean:
+        agent.hooks.after_turn(_cleanup, by="system-reminder")
