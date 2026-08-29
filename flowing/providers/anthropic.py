@@ -23,9 +23,51 @@ docstring。
 
 from __future__ import annotations   # S-43 裁决③：注解延迟求值
 
-from typing import ClassVar
+from typing import Any, ClassVar
 
-from flowing.providers.provider import Provider
+import json
+
+from flowing.context import Context
+from flowing.errors import (
+    AuthenticationError,
+    ContentPolicyError,
+    ContextLengthError,
+    FlowingError,
+    InvalidRequestError,
+    NetworkError,
+    ProviderError,
+    ProviderTimeoutError,
+    RateLimitedError,
+    RequestTooLargeError,
+    ServerError,
+)
+from flowing.message import (
+    MediaBlock,
+    Message,
+    MessageKind,
+    StructBlock,
+    TextBlock,
+    ThinkingBlock,
+    ToolCallBlock,
+)
+from flowing.model import ModelConfig
+from flowing.providers.provider import (
+    Provider,
+    ProviderResponse,
+    Usage,
+    register_provider,
+)
+
+
+class _HttpResponseError(Exception):
+    """传输层非 2xx 响应的内部载体（与 openai 家族同构；归类前原始事实）。"""
+
+    def __init__(self, status_code: int, body: Any = None,
+                 headers: dict[str, str] | None = None) -> None:
+        super().__init__(f"HTTP {status_code}")
+        self.status_code = status_code
+        self.body = body
+        self.headers = headers or {}
 
 
 
@@ -88,9 +130,230 @@ class AnthropicMessagesProvider(Provider):
         :class:`flowing.context.PromptBlock` ``cache`` 三值语义。
     """
 
-    api_format: ClassVar[str]  # = "anthropic_messages"
+    api_format: ClassVar[str] = "anthropic_messages"
+    known_model_fields: ClassVar[frozenset[str]] = frozenset({"thinking_budget"})
+    default_base_url: ClassVar[str | None] = None
+    """子类覆写：厂商官方端点；条目配 ``base_url`` 时以条目为准。"""
+
+    anthropic_version: ClassVar[str] = "2023-06-01"
+    """``anthropic-version`` 请求头值。"""
+
+    # ── 网络点（唯一）──────────────────────────────────────────────────
+
+    async def _post(self, path: str, body: dict) -> dict:
+        """发起一次 POST 并返回解析后的 JSON（**唯一网络点**，子类/测试可覆写）。
+
+        行为边界与 openai 家族同构：非 2xx → :class:`_HttpResponseError`；
+        超时 → ``ProviderTimeoutError``；传输层失败 → ``NetworkError``。
+        """
+        import httpx
+
+        base_url = self.config.get("base_url") or self.default_base_url
+        if not base_url:
+            raise FlowingError(
+                f"provider 条目缺少 base_url（adapter {self.name!r} 无官方默认端点）")
+        headers = {
+            "Content-Type": "application/json",
+            "anthropic-version": self.anthropic_version,
+        }
+        credential = self.get_credential()   # 每次发起请求前读取（凭证唯一入口）
+        if credential:
+            headers["x-api-key"] = credential
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(120.0)) as client:
+                resp = await client.post(
+                    f"{str(base_url).rstrip('/')}{path}", json=body, headers=headers)
+        except httpx.TimeoutException as exc:
+            raise ProviderTimeoutError(f"provider 请求超时：{exc}") from exc
+        except httpx.TransportError as exc:
+            raise NetworkError(f"provider 网络层失败：{exc}") from exc
+        if resp.status_code >= 400:
+            try:
+                err_body: Any = resp.json()
+            except Exception:
+                err_body = resp.text
+            raise _HttpResponseError(resp.status_code, err_body, dict(resp.headers))
+        return resp.json()
+
+    # ── 请求映射 ─────────────────────────────────────────────────────────
+
+    def _build_request(self, context: Context, model: ModelConfig) -> dict:
+        """把 ``Context`` 三字段与模型规格映射为 Anthropic Messages 请求体。"""
+        body: dict[str, Any] = {
+            "model": model.model,
+            "system": [
+                # 手动前缀缓存：cache="static" 设 cache_control 必要信息；
+                # cache="dynamic" 不标记；cache="session" 初版不映射断点
+                # （会话冻结语义的断点策略属后续细化，就地注释说明）
+                {"type": "text", "text": seg.content,
+                 **({"cache_control": {"type": "ephemeral"}}
+                    if seg.cache == "static" else {})}
+                for seg in context.system_prompt
+            ],
+            "messages": [m for msg in context.messages
+                         for m in self._map_message(msg)],
+            "max_tokens": model.max_output_tokens or 8192,   # Anthropic 必填
+        }
+        if context.tools:
+            body["tools"] = [self._map_tool(d) for d in context.tools]
+        if model.thinking_budget:
+            body["thinking"] = {"type": "enabled",
+                                "budget_tokens": model.thinking_budget}
+        return body
+
+    def _map_tool(self, definition) -> dict:
+        """白名单组装（D21）：只取 name/description/parameters 三已知字段。"""
+        params = definition.params_schema or {}
+        return {
+            "name": definition.name,
+            "description": definition.description,
+            "input_schema": {
+                "type": "object",
+                "properties": params,
+                "required": [k for k, v in params.items() if "default" not in v],
+            },
+        }
+
+    def _map_plain_blocks(self, msg: Message) -> list[dict[str, Any]]:
+        """纯内容块 → Anthropic content 块（媒体原生内嵌，无需转移）。"""
+        out: list[dict[str, Any]] = []
+        for block in msg.content:
+            if isinstance(block, StructBlock):
+                # StructBlock 恒投影为 json.dumps 文本（所有 adapter 统一）
+                out.append({"type": "text",
+                            "text": json.dumps(block.data, ensure_ascii=False)})
+            elif isinstance(block, MediaBlock):
+                out.append({
+                    "type": "image",
+                    "source": {"type": "base64",
+                               "media_type": block.mime_type or "application/octet-stream",
+                               "data": block.data},
+                })
+            elif isinstance(block, TextBlock):
+                out.append({"type": "text", "text": block.text})
+        return out
+
+    def _map_message(self, msg: Message) -> list[dict[str, Any]]:
+        """单条消息 → Anthropic messages 数组元素。"""
+        if msg.kind is MessageKind.PROVIDER:
+            content: list[dict[str, Any]] = []
+            for block in msg.content:
+                if isinstance(block, ToolCallBlock):
+                    content.append({"type": "tool_use", "id": block.id,
+                                    "name": block.name, "input": block.args})
+                elif isinstance(block, ThinkingBlock):
+                    # thinking 块的 signature 为不透明签名字符串，回放原样带回
+                    content.append({"type": "thinking", "thinking": block.thinking,
+                                    "signature": block.signature or ""})
+                elif isinstance(block, StructBlock):
+                    content.append({"type": "text", "text": json.dumps(
+                        block.data, ensure_ascii=False)})
+                elif isinstance(block, TextBlock):
+                    content.append({"type": "text", "text": block.text})
+            return [{"role": "assistant", "content": content}]
+        if msg.kind is MessageKind.TOOL:
+            # TOOL 消息块直接映射进 user 消息内的 tool_result 块：
+            # tool_call_id → tool_use_id；tool_status="error" → is_error
+            return [{"role": "user", "content": [{
+                "type": "tool_result",
+                "tool_use_id": msg.tool_call_id,
+                "content": self._map_plain_blocks(msg) or [
+                    {"type": "text", "text": ""}],   # 空 content 兜底（pending 收据等）
+                **({"is_error": True} if msg.tool_status == "error" else {}),
+            }]}]
+        return [{"role": "user", "content": self._map_plain_blocks(msg)}]
+
+    # ── 响应映射 ─────────────────────────────────────────────────────────
+
+    def _map_response(self, resp: dict) -> ProviderResponse:
+        """录制/真实响应 dict → ``ProviderResponse``（usage 附着到消息）。"""
+        blocks: list = []
+        for raw in resp.get("content") or []:
+            btype = raw.get("type")
+            if btype == "text":
+                blocks.append(TextBlock(text=raw.get("text", "")))
+            elif btype == "thinking":
+                blocks.append(ThinkingBlock(thinking=raw.get("thinking", ""),
+                                            signature=raw.get("signature")))
+            elif btype == "tool_use":
+                blocks.append(ToolCallBlock(id=raw["id"], name=raw["name"],
+                                            args=raw.get("input") or {}))
+        msg = Message(kind=MessageKind.PROVIDER, content=blocks)
+        raw_usage = resp.get("usage")
+        if raw_usage:   # Anthropic 原生 input_tokens 不含 cache，按恒等式归一组装
+            fresh = raw_usage.get("input_tokens", 0)
+            cache_read = raw_usage.get("cache_read_input_tokens", 0)
+            cache_write = raw_usage.get("cache_creation_input_tokens", 0)
+            output = raw_usage.get("output_tokens", 0)
+            msg.usage = Usage(
+                input=fresh + cache_read + cache_write,
+                fresh_input=fresh,
+                output=output,
+                cache_read=cache_read,
+                cache_write=cache_write,
+                reasoning=0,
+                total_tokens=fresh + cache_read + cache_write + output,
+                raw=dict(raw_usage),
+            )
+        stop_reason = resp.get("stop_reason")
+        has_tool_call = any(b.type == "tool_call" for b in blocks)
+        return ProviderResponse(
+            message=msg,
+            model=resp.get("model", ""),
+            finish=not has_tool_call and stop_reason != "tool_use",
+            provider_data={"stop_reason": stop_reason},
+        )
+
+    # ── 错误归类 ─────────────────────────────────────────────────────────
+
+    def _classify_error(self, exc: "_HttpResponseError") -> ProviderError:
+        """HTTP 状态码 → 异常分类（分类表见包 docstring；与 openai 家族同口径）。"""
+        status = exc.status_code
+        body = exc.body if isinstance(exc.body, dict) else {}
+        message = (body.get("error") or {}).get("message") or str(exc.body or exc)
+        kwargs: dict[str, Any] = {"status_code": status}
+        if status in (401, 403):
+            return AuthenticationError(message, **kwargs)
+        if status == 429:
+            return RateLimitedError(message, **kwargs)
+        if status == 413:
+            return RequestTooLargeError(message, **kwargs)
+        if status == 400:
+            lowered = message.lower()
+            if "context" in lowered and ("length" in lowered or "window" in lowered
+                                         or "too long" in lowered):
+                return ContextLengthError(message, **kwargs)
+            if "content_policy" in lowered or "content policy" in lowered:
+                return ContentPolicyError(message, **kwargs)
+            return InvalidRequestError(message, **kwargs)
+        if status >= 500:
+            return ServerError(message, **kwargs)
+        return ProviderError(message, **kwargs)
+
+    # ── 契约方法 ─────────────────────────────────────────────────────────
+
+    async def generate(
+        self, context: Context, model: ModelConfig
+    ) -> ProviderResponse:
+        """非流式单次生成（映射/错误归类见各 ``_*`` 方法）。
+
+        .. rubric:: 调用关系（审计）
+
+        - 调用：``_build_request`` / ``_post`` / ``_map_response`` /
+          ``_classify_error``（每次调用）
+        - 被调：同 :meth:`Provider.generate` 契约
+        """
+        body = self._build_request(context, model)
+        try:
+            resp = await self._post("/v1/messages", body)
+        except _HttpResponseError as exc:
+            raise self._classify_error(exc) from exc
+        return self._map_response(resp)
+
+    # generate_stream 不覆写：初版走基类默认回退（同 openai 家族注释）。
 
 
+@register_provider
 class AnthropicProvider(AnthropicMessagesProvider):
     """Anthropic 官方端点内置 adapter（``name="anthropic"``）。
 
@@ -128,9 +391,11 @@ class AnthropicProvider(AnthropicMessagesProvider):
         :class:`AnthropicMessagesProvider` 格式实现来源。
     """
 
-    name: ClassVar[str]  # = "anthropic"
+    name: ClassVar[str] = "anthropic"
+    default_base_url: ClassVar[str | None] = "https://api.anthropic.com"
 
 
+@register_provider
 class BedrockProvider(AnthropicMessagesProvider):
     """AWS Bedrock 上的 Anthropic 模型 adapter（``name="bedrock"``）。
 
@@ -171,4 +436,13 @@ class BedrockProvider(AnthropicMessagesProvider):
         :meth:`Provider.get_credential` 凭证覆写点。
     """
 
-    name: ClassVar[str]  # = "bedrock"
+    name: ClassVar[str] = "bedrock"
+
+    def get_credential(self) -> str | None:
+        """凭证覆写点约定（初版仅落实本覆写点，AWS 凭证链不实现）。
+
+        优先级：config 显式 ``aws_session_token`` > 基类 ``api_key``。
+        完整 AWS credential chain（环境变量 / 实例元数据）与 SigV4 签名
+        传输属后续版本；当前 ``_post`` 继承基类 HTTP 形态。
+        """
+        return self.config.get("aws_session_token") or super().get_credential()

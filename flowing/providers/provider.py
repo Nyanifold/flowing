@@ -14,15 +14,23 @@ schema、异常分类、凭证安全边界）见 :mod:`flowing.providers` 包 do
 
 from __future__ import annotations   # S-43 裁决③：注解延迟求值
 
+import os
+import re
+
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar
 
+from ruamel.yaml import YAML   # 与 flowing.model 同一 yaml 库（R-10 澄清选定 ruamel）
+
 from flowing.context import Context
-from flowing.errors import ProviderNameConflictError
-from flowing.message import Message
+from flowing.errors import (
+    MissingEnvironmentVariableError,
+    ProviderNameConflictError,
+)
+from flowing.message import ContentBlock, Message
 from flowing.model import ModelConfig
 
 
@@ -182,6 +190,25 @@ class ProviderDelta:
     副线 ``"_side"``；下划线开头为框架保留值。钩子过滤依据
     （``on_provider_delta`` 以 ``match_on="by"`` 声明）。
     """
+    usage: "Usage | None" = None
+    """本次调用的最终用量（**仅末帧**携带，其余帧为 ``None``）。
+
+    spec 未写清处的落实（R-11 补充）：流式路径的完整响应由
+    ``provider_gen()`` 组装，``ProviderDelta`` 原四字段无 usage 载体——
+    「adapter 末帧提取的 usage 只进入组装消息的 ``message.usage``」
+    的契约需要一个传输通道，本字段即该通道（末帧附着）。非流式路径
+    不经过本字段（usage 直接附着在 ``generate()`` 的响应消息上）。
+    """
+    block: ContentBlock | None = None
+    """非文本类内容的**完整块**载体（如流式末端拼装完成的
+    ``ToolCallBlock``）。
+
+    spec 未写清处的落实（R-11 补充）：文本/思考类 delta 经 ``text`` 逐段
+    累积；工具调用等结构化内容无法从文本分片在 ``provider_gen()`` 侧
+    无损重建，adapter 在流式末端以完整块形态交付（``provider_gen()``
+    按 ``content_index`` 归位进组装消息）。携带本字段的 delta 其
+    ``text`` 为空字符串。
+    """
 
 
 @dataclass
@@ -309,7 +336,7 @@ class Usage:
     total_tokens: int
     """总 token 数。恒等式：``total_tokens == input + output``。
     """
-    raw: dict[str, Any] = ...
+    raw: dict[str, Any] = field(default_factory=dict)   # R-10 落实：= ... 占位 → 空 dict 工厂
     """provider 返回的全部原始用量字段原样保留（未文档化字段不稳定）。
     行为边界：框架核心不依赖其内容；turn 聚合时不求和（聚合体为空
     dict——逐次原始字段的消费方走 ``after_provider_gen``）。参见 :class:`Usage`。
@@ -431,11 +458,11 @@ class ProviderResponse:
     S-14 分层），本字段不直接承担。得出方式由 adapter 决定（推荐
     准则见类 docstring）。
     """
-    model: str = ...
+    model: str = ""   # R-10 落实：= ... 占位 → 空串（docstring 未明示缺省）
     """实际响应的模型 ID（响应侧记录，保持 ``str``）。行为边界：不要求
     与请求侧 ``ModelConfig.model`` 相同；不回填任何结构体。
     """
-    cancelled: bool = ...
+    cancelled: bool = False   # R-10 落实：= ... 占位 → False（docstring 明示缺省 False）
     """Turn 被取消标记。``True`` 时 ``finish`` 保持 ``False``（provider
     未完成，S-14）、``message`` 可为 ``None``；``after_turn`` 据此
     区分结局。缺省 ``False``。
@@ -446,7 +473,7 @@ class ProviderResponse:
     ``after_provider_gen`` 钩子点以 ``match_on="by"`` 声明，handler 可按
     来源模式过滤注册。缺省 ``None``。
     """
-    provider_data: dict[str, Any] = ...
+    provider_data: dict[str, Any] = field(default_factory=dict)   # R-10 落实：= ... 占位 → 空 dict 工厂
     """provider 特有元信息（原始 stop_reason 等），透明传递。行为边界：
     框架核心不依赖其内容做决策；未文档化字段不稳定。缺省空 dict。
     """
@@ -798,7 +825,23 @@ class Provider(ABC):
                 text = "".join(
                     getattr(block, "text", "") for block in message.content
                 )  # 非文本类 block 允许为空字符串贡献
-                yield ProviderDelta(kind="text", text=text, content_index=0)
+                # R-11 补充落实：usage 与非文本块经末帧字段透传给
+                # provider_gen() 的流式组装——纯文本响应仍恰好一条 delta
+                # （usage 附着其上），含结构化块时逐块补发 block delta
+                nontext = [b for b in message.content
+                           if getattr(b, "text", None) is None]
+                if not nontext:
+                    yield ProviderDelta(kind="text", text=text, content_index=0,
+                                        usage=message.usage)
+                else:
+                    yield ProviderDelta(kind="text", text=text, content_index=0)
+                    for i, block in enumerate(message.content):
+                        if getattr(block, "text", None) is None:
+                            yield ProviderDelta(kind=block.type, text="",
+                                                content_index=i, block=block)
+                    yield ProviderDelta(kind="text", text="",
+                                        content_index=len(message.content),
+                                        usage=message.usage)
             # abort 路径（message=None）：不产生 delta，由 provider_gen() 组装完整响应
 
         return _default_stream()
@@ -1137,6 +1180,30 @@ class ProviderRegistry:
         return instance
 
 
+_ENV_REF_RE = re.compile(r"\{\{env\.([A-Za-z_][A-Za-z0-9_]*)\}\}")
+"""``{{env.VAR}}`` 引用正则（R-04 落实：仅匹配 env. 前缀，其余 ``{{...}}`` 原样保留）。"""
+
+
+def _substitute_env(value: Any, *, entry: str) -> Any:
+    """对字符串值做 ``{{env.VAR}}`` 全局替换；缺失即抛，非字符串原样返回。
+
+    R-04 落实细节：regex 范围 ``\\{\\{env\\.([A-Za-z_][A-Za-z0-9_]*)\\}\\}``、
+    仅 ``str`` 类型值、全局替换；环境变量缺失抛
+    :class:`flowing.errors.MissingEnvironmentVariableError`（消息含变量名
+    与条目名）。凭证不经 Jinja2/Parsable（凭证口径见包 docstring）。
+    """
+    if not isinstance(value, str):
+        return value
+
+    def _sub(m: "re.Match[str]") -> str:
+        var = m.group(1)
+        if var not in os.environ:
+            raise MissingEnvironmentVariableError(var, entry)
+        return os.environ[var]
+
+    return _ENV_REF_RE.sub(_sub, value)
+
+
 def load_provider_candidates(
     path: Path,
 ) -> dict[str, tuple[type[Provider], ProviderConfig]]:
@@ -1173,9 +1240,23 @@ def load_provider_candidates(
     .. seealso:: :class:`ProviderRegistry`、:func:`register_provider`
     """
     candidates: dict[str, tuple[type[Provider], ProviderConfig]] = {}
-    # 逐条目：adapter_cls = _provider_adapters[条目 adapter 名]（未知名
-    # 启动期报错）；config = ProviderConfig(...)（{{env.VAR}} 替换后的
-    # 条目 dict）；candidates[条目名] = (adapter_cls, config)
+    # 文件不存在 → 空候选清单（Runtime 零配置启动容忍：懒加载原则下
+    # 没有 providers.yaml 不等于启动失败）
+    if not Path(path).exists():
+        return candidates
+    data = YAML(typ="rt").load(Path(path).read_text(encoding="utf-8"))
+    if not data:   # 空文件 → 空清单
+        return candidates
+    for entry_name, fields in dict(data).items():
+        fields = dict(fields or {})
+        # {{env.VAR}} 纯字符串替换（R-04：仅 str 值、全局替换；缺失即
+        # 加载期抛 MissingEnvironmentVariableError——fail fast，不静默降级）；
+        # 非 {{env. 前缀的 {{...}} 保持原样
+        resolved = {k: _substitute_env(v, entry=str(entry_name))
+                    for k, v in fields.items()}
+        # adapter 名扫描期解析为类（未知名 → KeyError 快速失败，C-04 口径）
+        adapter_cls = _provider_adapters[resolved["adapter"]]
+        candidates[str(entry_name)] = (adapter_cls, ProviderConfig(resolved))
     return candidates
 
 
@@ -1281,9 +1362,13 @@ def register_provider(
     def _register(cls: type[Provider]) -> type[Provider]:
         # 前置条件：Provider 子类且定义非空 name 类属性，否则 ValueError
         if not (isinstance(cls, type) and issubclass(cls, Provider)):
-            raise ValueError("...")
-        if not cls.name:
-            raise ValueError("...")
+            raise ValueError(
+                "register_provider: 被装饰对象必须是 Provider 子类"
+                f"（got {cls!r}）")
+        if not getattr(cls, "name", None):
+            raise ValueError(
+                "register_provider: Provider 子类必须定义非空 name 类属性"
+                f"（{cls.__qualname__}）")
         existing = _provider_adapters.get(cls.name)
         if existing is not None and existing is not cls:
             # 同名冲突：override=False -> 具名报错（P3-14）；override=True -> 覆盖并产生警告
@@ -1291,7 +1376,10 @@ def register_provider(
                 raise ProviderNameConflictError(cls.name)
             import warnings
 
-            warnings.warn("...")  # 每次覆盖均警告；多个 override 按 import 顺序后者胜出
+            warnings.warn(
+                f"register_provider: adapter {cls.name!r} 被 "
+                f"{existing.__qualname__} → {cls.__qualname__} 覆盖（override=True）",
+                stacklevel=2)  # 每次覆盖均警告；多个 override 按 import 顺序后者胜出
         _provider_adapters[cls.name] = cls  # 登记进进程级注册表
         return cls  # 原样返回被装饰类（不包装、不子类化）
 

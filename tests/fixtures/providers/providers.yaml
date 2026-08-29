@@ -1,11 +1,14 @@
 # provider 条目样例（凭证侧）。
-# 注意：本文件本期（阶段 1）不被任何 loader 消费——providers.yaml 的加载
-# （含 {{env.VAR}} 凭证替换）属阶段 2 Runtime 启动期；此处随 W-02 按
-# 「目录即契约」一并建立。
+# 一个条目 = 一个 API key 身份；adapter 字段是 register_provider 的注册键。
+# {{env.VAR}} 在加载期纯字符串替换（非 Jinja2/Parsable），缺失即抛
+# MissingEnvironmentVariableError；非 {{env. 前缀的 {{...}} 原样保留。
 deepseek-personal:
-  api_format: openai
+  adapter: deepseek
   base_url: https://api.deepseek.com
   api_key: "{{env.DEEPSEEK_API_KEY}}"
-anthropic:
-  api_format: anthropic
+anthropic-main:
+  adapter: anthropic
   api_key: "{{env.ANTHROPIC_API_KEY}}"
+literal-holder:
+  adapter: deepseek
+  note: "{{other.x}}"   # 非 {{env. 前缀：原样保留，不报错不替换

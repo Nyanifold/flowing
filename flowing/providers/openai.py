@@ -22,9 +22,56 @@ key 写回）；``function.arguments`` 为 JSON 字符串，流式按数字 ``in
 
 from __future__ import annotations   # S-43 裁决③：注解延迟求值
 
-from typing import ClassVar
+from typing import Any, ClassVar
 
-from flowing.providers.provider import Provider
+import json
+
+from flowing.context import Context
+from flowing.errors import (
+    AuthenticationError,
+    ContentPolicyError,
+    ContextLengthError,
+    FlowingError,
+    InvalidRequestError,
+    NetworkError,
+    ProviderError,
+    ProviderTimeoutError,
+    RateLimitedError,
+    RequestTooLargeError,
+    ServerError,
+)
+from flowing.message import (
+    MediaBlock,
+    Message,
+    MessageKind,
+    StructBlock,
+    TextBlock,
+    ThinkingBlock,
+    ToolCallBlock,
+)
+from flowing.model import ModelConfig
+from flowing.providers.provider import (
+    Provider,
+    ProviderResponse,
+    Usage,
+    register_provider,
+)
+
+
+class _HttpResponseError(Exception):
+    """传输层非 2xx 响应的内部载体（归类前的原始事实；不属异常层次）。
+
+    ``_post``（唯一网络点）在非 2xx 时抛出；``generate()`` 捕获后经
+    ``_classify_error`` 归类为 :mod:`flowing.errors` 类型。mock
+    transport 测试以抛出本异常模拟各状态码（T05 等）。
+    """
+
+    def __init__(self, status_code: int, body: Any = None,
+                 headers: dict[str, str] | None = None) -> None:
+        super().__init__(f"HTTP {status_code}")
+        self.status_code = status_code
+        self.body = body
+        self.headers = headers or {}
 
 
 
@@ -86,9 +133,280 @@ class OpenAICompletionsProvider(Provider):
         :class:`AnthropicMessagesProvider` 另一格式家族基类。
     """
 
-    api_format: ClassVar[str]  # = "openai_completions"
+    api_format: ClassVar[str] = "openai_completions"
+    known_model_fields: ClassVar[frozenset[str]] = frozenset()
+    default_base_url: ClassVar[str | None] = None
+    """子类覆写：厂商官方端点；条目配 ``base_url`` 时以条目为准（代理场景）。"""
+
+    _reasoning_dialect: str | None
+    """入站扫描记住的思考方言 key（``reasoning_content`` / ``reasoning`` /
+    ``reasoning_text`` / ``reasoning_details``），历史回放时同方言回写。"""
+
+    # ── 网络点（唯一）──────────────────────────────────────────────────
+
+    async def _post(self, path: str, body: dict) -> dict:
+        """发起一次 POST 并返回解析后的 JSON（**唯一网络点**，子类/测试可覆写）。
+
+        行为边界：非 2xx → :class:`_HttpResponseError`（归类在调用方）；
+        超时 → :class:`ProviderTimeoutError`；传输层失败 →
+        :class:`NetworkError`。每次调用新建 ``httpx.AsyncClient``
+        （初版从简——连接池复用属 adapter 层后续优化，不影响契约）。
+        """
+        import httpx
+
+        base_url = self.config.get("base_url") or self.default_base_url
+        if not base_url:
+            raise FlowingError(
+                f"provider 条目缺少 base_url（adapter {self.name!r} 无官方默认端点）")
+        headers = {"Content-Type": "application/json"}
+        credential = self.get_credential()   # 每次发起请求前读取（凭证唯一入口）
+        if credential:
+            headers["Authorization"] = f"Bearer {credential}"
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(120.0)) as client:
+                resp = await client.post(
+                    f"{str(base_url).rstrip('/')}{path}", json=body, headers=headers)
+        except httpx.TimeoutException as exc:
+            raise ProviderTimeoutError(f"provider 请求超时：{exc}") from exc
+        except httpx.TransportError as exc:
+            raise NetworkError(f"provider 网络层失败：{exc}") from exc
+        if resp.status_code >= 400:
+            try:
+                err_body: Any = resp.json()
+            except Exception:
+                err_body = resp.text
+            raise _HttpResponseError(resp.status_code, err_body, dict(resp.headers))
+        return resp.json()
+
+    # ── 请求映射（Context → chat/completions 请求体）────────────────────
+
+    def _build_request(self, context: Context, model: ModelConfig) -> dict:
+        """把 ``Context`` 三字段与模型规格映射为 chat/completions 请求体。"""
+        messages: list[dict[str, Any]] = [
+            {"role": "system", "content": seg.content}
+            for seg in context.system_prompt
+        ]
+        for msg in context.messages:
+            messages.extend(self._map_message(msg))
+        body: dict[str, Any] = {"model": model.model, "messages": messages}
+        if context.tools:
+            body["tools"] = [self._map_tool(d) for d in context.tools]
+        if model.max_output_tokens is not None:
+            body["max_tokens"] = model.max_output_tokens
+        return body
+
+    def _map_tool(self, definition) -> dict:
+        """白名单组装（D21）：只取 name/description/parameters 三已知字段。"""
+        params = definition.params_schema or {}
+        return {
+            "type": "function",
+            "function": {
+                "name": definition.name,
+                "description": definition.description,
+                "parameters": {
+                    "type": "object",
+                    "properties": params,
+                    "required": [k for k, v in params.items() if "default" not in v],
+                },
+            },
+        }
+
+    def _map_content_blocks(self, msg: Message) -> tuple[str, list[MediaBlock]]:
+        """纯内容块 → 拼接文本 + 媒体块列表（TOOL 消息文本-only 的预处理）。"""
+        parts: list[str] = []
+        media: list[MediaBlock] = []
+        for block in msg.content:
+            if isinstance(block, MediaBlock):
+                media.append(block)
+            elif isinstance(block, StructBlock):
+                # StructBlock 恒投影为 json.dumps 文本（所有 adapter 统一）
+                parts.append(json.dumps(block.data, ensure_ascii=False))
+            elif isinstance(block, TextBlock):
+                parts.append(block.text)
+        return "".join(parts), media
+
+    def _map_user_content(self, msg: Message) -> Any:
+        """user 系消息的内容位：有媒体 → parts 形态（image_url），否则纯文本。"""
+        text, media = self._map_content_blocks(msg)
+        if not media:
+            return text
+        parts: list[dict[str, Any]] = [{"type": "text", "text": text}]
+        for m in media:
+            mime = m.mime_type or "application/octet-stream"
+            parts.append({"type": "image_url", "image_url": {
+                "url": f"data:{mime};base64,{m.data}"}})
+        return parts
+
+    def _map_message(self, msg: Message) -> list[dict[str, Any]]:
+        """单条消息 → chat/completions messages 数组元素（一对多：媒体转移）。"""
+        if msg.kind is MessageKind.PROVIDER:
+            out: dict[str, Any] = {"role": "assistant"}
+            text_parts: list[str] = []
+            tool_calls: list[dict[str, Any]] = []
+            thinking_texts: list[str] = []
+            for block in msg.content:
+                if isinstance(block, ToolCallBlock):
+                    tool_calls.append({
+                        "id": block.id, "type": "function",
+                        "function": {"name": block.name,
+                                     "arguments": json.dumps(block.args, ensure_ascii=False)},
+                    })
+                elif isinstance(block, ThinkingBlock):
+                    thinking_texts.append(block.thinking)
+                elif isinstance(block, StructBlock):
+                    text_parts.append(json.dumps(block.data, ensure_ascii=False))
+                elif isinstance(block, TextBlock):
+                    text_parts.append(block.text)
+            out["content"] = "".join(text_parts) or None
+            if tool_calls:
+                out["tool_calls"] = tool_calls
+            if thinking_texts and self._reasoning_dialect:
+                # 出站同方言回写：端点实际说的方言 key 原样写回
+                out[self._reasoning_dialect] = "".join(thinking_texts)
+            return [out]
+        if msg.kind is MessageKind.TOOL:
+            # Chat Completions 的 tool 消息为文本-only → 媒体转移：媒体块
+            # 攒入紧随 tool 消息的合成 user 消息（固定措辞提示）
+            text, media = self._map_content_blocks(msg)
+            tool_msg = {"role": "tool", "tool_call_id": msg.tool_call_id,
+                        "content": text}
+            if not media:
+                return [tool_msg]
+            follow_up = {"role": "user", "content": [
+                {"type": "text",
+                 "text": "[上述工具结果包含以下媒体内容]"},
+                *[{"type": "image_url", "image_url": {
+                    "url": f"data:{m.mime_type or 'application/octet-stream'};base64,{m.data}"}}
+                  for m in media],
+            ]}
+            return [tool_msg, follow_up]
+        if msg.kind is MessageKind.SYSTEM:
+            text, _ = self._map_content_blocks(msg)
+            return [{"role": "system", "content": text}]
+        # USER / EVENT / PEER / PLUGIN / SUBAGENT → user
+        return [{"role": "user", "content": self._map_user_content(msg)}]
+
+    # ── 响应映射（chat/completions 响应 → ProviderResponse）──────────────
+
+    _REASONING_KEYS: ClassVar[tuple[str, ...]] = (
+        "reasoning_content", "reasoning_details", "reasoning", "reasoning_text")
+    """思考无官方字段的线上方言四种——入站扫描顺序（先见者胜出并记住）。"""
+
+    def _map_response(self, resp: dict) -> ProviderResponse:
+        """录制/真实响应 dict → ``ProviderResponse``（usage 附着到消息）。"""
+        choice = resp["choices"][0]
+        raw_msg = choice.get("message") or {}
+        blocks: list = []
+        # 思考方言入站扫描（记住端点实际说的方言，回放时同 key 写回）
+        for key in self._REASONING_KEYS:
+            value = raw_msg.get(key)
+            if value:
+                self._reasoning_dialect = key
+                text = value if isinstance(value, str) else json.dumps(
+                    value, ensure_ascii=False)
+                blocks.append(ThinkingBlock(thinking=text))
+                break
+        if raw_msg.get("content"):
+            blocks.append(TextBlock(text=raw_msg["content"]))
+        has_tool_call = False
+        for tc in raw_msg.get("tool_calls") or []:
+            has_tool_call = True
+            try:
+                args = json.loads(tc["function"].get("arguments") or "{}")
+            except json.JSONDecodeError as exc:
+                raise InvalidRequestError(
+                    f"tool_call arguments 非法 JSON：{exc}") from exc
+            blocks.append(ToolCallBlock(
+                id=tc["id"], name=tc["function"]["name"], args=args))
+        msg = Message(kind=MessageKind.PROVIDER, content=blocks)
+        raw_usage = resp.get("usage")
+        if raw_usage:   # usage 附着契约：唯一权威落点是 message.usage
+            cached = (raw_usage.get("prompt_tokens_details") or {}).get(
+                "cached_tokens", 0)
+            prompt = raw_usage.get("prompt_tokens", 0)
+            completion = raw_usage.get("completion_tokens", 0)
+            msg.usage = Usage(
+                input=prompt,
+                fresh_input=prompt - cached,   # OpenAI 系：prompt_tokens 含 cache 读
+                output=completion,
+                cache_read=cached,
+                cache_write=0,
+                reasoning=(raw_usage.get("completion_tokens_details") or {}).get(
+                    "reasoning_tokens", 0),
+                total_tokens=prompt + completion,   # 恒等式回填
+                raw=dict(raw_usage),
+            )
+        finish_reason = choice.get("finish_reason")
+        return ProviderResponse(
+            message=msg,
+            model=resp.get("model", ""),
+            finish=not has_tool_call,   # 默认准则：有 tool_call → False
+            provider_data={"stop_reason": finish_reason},
+        )
+
+    # ── 错误归类（_HttpResponseError → flowing.errors 类型）──────────────
+
+    def _classify_error(self, exc: "_HttpResponseError") -> ProviderError:
+        """HTTP 状态码 → 异常分类（分类表见包 docstring；不重试不兜底）。"""
+        status = exc.status_code
+        body = exc.body if isinstance(exc.body, dict) else {}
+        message = (body.get("error") or {}).get("message") or str(exc.body or exc)
+        retry_after = exc.headers.get("retry-after")
+        kwargs: dict[str, Any] = {
+            "status_code": status,
+            "retry_after": float(retry_after) if retry_after else None,
+        }
+        if status in (401, 403):
+            return AuthenticationError(message, **kwargs)
+        if status == 429:
+            return RateLimitedError(message, **kwargs)
+        if status == 413:
+            return RequestTooLargeError(message, **kwargs)
+        if status == 400:
+            # 上下文溢出 / 内容策略是 400 的特化：按已知错误文案模式识别
+            lowered = message.lower()
+            if "context length" in lowered or "context_length" in lowered \
+                    or "maximum context" in lowered:
+                return ContextLengthError(message, **kwargs)
+            if "content_policy" in lowered or "content policy" in lowered:
+                return ContentPolicyError(message, **kwargs)
+            return InvalidRequestError(message, **kwargs)
+        if status == 422:
+            return InvalidRequestError(message, **kwargs)
+        if status >= 500:
+            return ServerError(message, **kwargs)
+        return ProviderError(message, **kwargs)
+
+    # ── 契约方法 ─────────────────────────────────────────────────────────
+
+    def __init__(self, config) -> None:
+        super().__init__(config)
+        self._reasoning_dialect = None   # 入站扫描前未知；不建连接（零启动成本）
+
+    async def generate(
+        self, context: Context, model: ModelConfig
+    ) -> ProviderResponse:
+        """非流式单次生成（映射/错误归类见各 ``_*`` 方法）。
+
+        .. rubric:: 调用关系（审计）
+
+        - 调用：``_build_request`` / ``_post`` / ``_map_response`` /
+          ``_classify_error``（每次调用）
+        - 被调：同 :meth:`Provider.generate` 契约
+        """
+        body = self._build_request(context, model)
+        try:
+            resp = await self._post("/chat/completions", body)
+        except _HttpResponseError as exc:
+            raise self._classify_error(exc) from exc
+        return self._map_response(resp)
+
+    # generate_stream 不覆写：初版走基类默认回退（generate() 结果包成
+    # delta——契约合法，见 Provider.generate_stream「默认实现行为」）；
+    # 真 SSE 流式属后续优化，不影响 Turn 循环可见语义。
 
 
+@register_provider
 class DeepSeekProvider(OpenAICompletionsProvider):
     """DeepSeek 内置 adapter（``name="deepseek"``）。
 
@@ -129,9 +447,12 @@ class DeepSeekProvider(OpenAICompletionsProvider):
         :class:`OpenAICompletionsProvider` 格式实现来源。
     """
 
-    name: ClassVar[str]  # = "deepseek"
+    name: ClassVar[str] = "deepseek"
+    known_model_fields: ClassVar[frozenset[str]] = frozenset({"thinking_budget"})
+    default_base_url: ClassVar[str | None] = "https://api.deepseek.com"
 
 
+@register_provider
 class KimiProvider(OpenAICompletionsProvider):
     """Kimi（Moonshot）内置 adapter（``name="kimi"``）。
 
@@ -168,9 +489,11 @@ class KimiProvider(OpenAICompletionsProvider):
         :class:`OpenAICompletionsProvider` 格式实现来源。
     """
 
-    name: ClassVar[str]  # = "kimi"
+    name: ClassVar[str] = "kimi"
+    default_base_url: ClassVar[str | None] = "https://api.moonshot.cn/v1"
 
 
+@register_provider
 class GroqProvider(OpenAICompletionsProvider):
     """Groq 内置 adapter（``name="groq"``）。
 
@@ -207,9 +530,11 @@ class GroqProvider(OpenAICompletionsProvider):
         :class:`OpenAICompletionsProvider` 格式实现来源。
     """
 
-    name: ClassVar[str]  # = "groq"
+    name: ClassVar[str] = "groq"
+    default_base_url: ClassVar[str | None] = "https://api.groq.com/openai/v1"
 
 
+@register_provider
 class OpenRouterProvider(OpenAICompletionsProvider):
     """OpenRouter 内置 adapter（``name="openrouter"``）。
 
@@ -250,4 +575,5 @@ class OpenRouterProvider(OpenAICompletionsProvider):
         :class:`ProviderResponse` ``model`` 字段语义。
     """
 
-    name: ClassVar[str]  # = "openrouter"
+    name: ClassVar[str] = "openrouter"
+    default_base_url: ClassVar[str | None] = "https://openrouter.ai/api/v1"
