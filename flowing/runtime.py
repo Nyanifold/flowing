@@ -406,12 +406,6 @@ _POOL_META_KEYS: tuple[str, ...] = (
 ``_agent_pool`` 条目）。内部 API，不属稳定契约。
 """
 
-_FYA_NOT_SUPPORTED = (
-    ".fya 的编译装配属阶段 3（parser/compiler），当前版本不支持直接引用：{ref}"
-)
-"""``.fya`` 命中时的显式错误消息模板（R-03：本期不静默失败）。"""
-
-
 _current_project_root: ContextVar[Path | None] = ContextVar(
     "_current_project_root", default=None)
 """``@`` 项目根上下文的载体（**内部 API，不属稳定契约**）。
@@ -3136,6 +3130,12 @@ class Runtime:
             :meth:`flowing.runtime.Runtime.create_agent`、
             :meth:`flowing.tool.ToolRegistry.get` —— 同构的 Tool 解析入口
         """
+        # 精确键短路（先于形态判别）：文件派生限定键的命名空间含路径特征
+        # （目录派生，如 "@/order-agent::payment"），过不了 classify_ref 的
+        # 限定名判别（左段含 / 判成路径形态）——注册表在场证据优先于词法
+        # 分流（阶段 3 批次 4 接缝接通时暴露并修复；与 ToolRegistry.get 同口径）
+        if agent_type in self._agent_types:
+            return self._agent_types[agent_type]
         # 形态判别委托 classify_ref（词法唯一来源）——注意不能用
         # `"::" in agent_type` 粗判：「文件::类名」（R21 消歧形态）也含 ::，
         # 但属路径形态（左段含路径特征时 classify_ref 判 "path"）
@@ -3168,20 +3168,20 @@ class Runtime:
     def _load_agent_from_name_chain(
         self, name: str, source_dir: Path
     ) -> "type[Agent] | None":
-        """裸名的定向文件查找链（R-03 本期最小链；**内部 API**）。
+        """裸名的定向文件查找链（**内部 API**）。
 
         相对 ``source_dir`` 探测：目录形态 ``<name>/`` 优先（候选链只含
         ``.fya``：``AGENT.fya > agent.fya > <name>.agent.fya > <name>.fya``，
         首个存在者生效）；目录外依次 ``<name>.fya`` 单文件、
-        ``<name_snake>.py`` 手写文件。``.fya`` 命中即抛「阶段 3 就绪前不
-        支持」的显式 FormatError（编译装配属阶段 3，不静默失败）；
-        ``.fya`` 与同名 ``.py`` 并存 → 告警且 ``.fya`` 优先（同样抛
-        FormatError——「优先」的语义保留到阶段 3 兑现）。全部未命中 →
+        ``<name_snake>.py`` 手写文件。``.fya`` 命中经
+        :meth:`_load_agent_from_fya` 编译装配（parse_fya → 装配 → 合成）；
+        ``.fya`` 与同名 ``.py`` 并存 → 告警且 ``.fya`` 优先。全部未命中 →
         ``None``（调用方继续查注册表裸名视图）。
 
         .. rubric:: 调用关系（审计）
 
-        - 调用：``self._load_agent_from_py``（.py 命中时）
+        - 调用：``self._load_agent_from_fya``（.fya 命中时）/
+          ``self._load_agent_from_py``（.py 命中时）
         - 被调：``Runtime.get_agent_class``（裸名且 source_dir 提供时）
         """
         directory = source_dir / name
@@ -3190,14 +3190,14 @@ class Runtime:
                 directory,
                 ["AGENT.fya", "agent.fya", f"{name}.agent.fya", f"{name}.fya"])
             if hit is not None:
-                raise FormatError(_FYA_NOT_SUPPORTED.format(ref=str(hit)))
+                return self._load_agent_from_fya(hit, ref=name)
         fya_file = source_dir / f"{name}.fya"
         py_file = source_dir / f"{_kebab_to_snake(name)}.py"
         if fya_file.exists():
             if py_file.exists():
                 warnings.warn(
                     f"同名 .fya 与手写 .py 并存，.fya 优先：{fya_file} / {py_file}")
-            raise FormatError(_FYA_NOT_SUPPORTED.format(ref=str(fya_file)))
+            return self._load_agent_from_fya(fya_file, ref=name)
         if py_file.exists():
             return self._load_agent_from_py(py_file, None, ref=name)
         return None
@@ -3205,16 +3205,17 @@ class Runtime:
     def _load_agent_from_path(
         self, resolved: Path, class_name: "str | None", *, ref: str
     ) -> "type[Agent]":
-        """路径形态的编译/加载（R-03 本期最小链；**内部 API**）。
+        """路径形态的编译/加载（**内部 API**）。
 
-        目录 → 候选链探测（只含 ``.fya``；无任一候选 → ``KeyError``，命中 →
-        阶段 3 显式 FormatError）；``.fya`` 文件 → 阶段 3 显式 FormatError；
+        目录 → 候选链探测（只含 ``.fya``；无任一候选 → ``KeyError``）；
+        ``.fya`` 文件 → :meth:`_load_agent_from_fya` 编译装配；
         手写 ``.py`` → :meth:`_load_agent_from_py`；不存在 / 其它后缀 →
         ``KeyError``（解析失败的统一口径）。
 
         .. rubric:: 调用关系（审计）
 
-        - 调用：``self._load_agent_from_py``（.py 命中时）
+        - 调用：``self._load_agent_from_fya``（.fya 命中时）/
+          ``self._load_agent_from_py``（.py 命中时）
         - 被调：``Runtime.get_agent_class``（路径形态）
         """
         if resolved.is_dir():
@@ -3224,14 +3225,47 @@ class Runtime:
                 ["AGENT.fya", "agent.fya", f"{name}.agent.fya", f"{name}.fya"])
             if hit is None:
                 raise KeyError(ref)   # 目录存在但无任一候选 → 解析失败
-            raise FormatError(_FYA_NOT_SUPPORTED.format(ref=str(hit)))
+            return self._load_agent_from_fya(hit, ref=ref)
         if not resolved.exists():
             raise KeyError(ref)
         if resolved.suffix == ".fya":
-            raise FormatError(_FYA_NOT_SUPPORTED.format(ref=str(resolved)))
+            return self._load_agent_from_fya(resolved, class_name, ref=ref)
         if resolved.suffix == ".py":
             return self._load_agent_from_py(resolved, class_name, ref=ref)
         raise KeyError(ref)
+
+    def _load_agent_from_fya(
+        self, path: Path, class_name: "str | None" = None, *, ref: str
+    ) -> "type[Agent]":
+        """``.fya`` 命中的编译装配与派生注册（**内部 API**）。
+
+        经 :func:`flowing.compiler.compile_fya_class` 现场合成 Agent 子类
+        （解析 → 装配 → 合成；``name`` 一致性断言在合成层完成）。派生注册
+        与 :meth:`_load_agent_from_py` 同范式：派生键
+        ``to_project_path(dir)::infer_name`` + ``registry_key`` 回写 +
+        派生键已在注册表 → 短路复用（不重复合成）。``class_name``
+        （``路径::ClassName`` 形态）对 ``.fya`` 仅作一致性断言——单文件
+        只合成一个类，不符 → :class:`flowing.errors.FormatError`。
+
+        .. rubric:: 调用关系（审计）
+
+        - 调用：``flowing.compiler.compile_fya_class``（每次未短路命中）
+        - 被调：``Runtime._load_agent_from_name_chain`` / ``_load_agent_from_path``
+        """
+        from flowing.compiler import compile_fya_class   # 局部 import：模块头依赖图保持单向（S-43）
+
+        name = _infer_name(path, naming=AGENT_NAMING)   # 身份名推断（通用名取目录名）
+        derived_key = f"{self.to_project_path(path.parent)}::{name}"   # 目录派生命名空间（§7a）
+        if derived_key in self._agent_types:
+            return self._agent_types[derived_key]   # 派生键短路复用（文件解析是声明期行为）
+        cls = compile_fya_class(path)
+        if class_name is not None and cls.__name__ != class_name:
+            raise FormatError(
+                f"{path} 合成的类为 {cls.__name__}，与 {class_name!r} 不符"
+                "（.fya 单文件只合成一个类，:: 消歧是手写 .py 多类文件的机制）")
+        cls.registry_key = derived_key   # 回写（与 _load_agent_from_py 同构）
+        self._agent_types[derived_key] = cls
+        return cls
 
     def _load_agent_from_py(
         self, path: Path, class_name: "str | None", *, ref: str

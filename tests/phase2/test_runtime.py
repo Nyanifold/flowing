@@ -591,7 +591,7 @@ async def test_t124_get_agent_class_registry_forms(tmp_path):
 
 async def test_t124b_get_agent_class_py_path_form(tmp_path):
     """T124 补（R-03 路径形态）：手写 .py 恰好一个子类 / ::ClassName 消歧 /
-    零子类 FormatError / .fya 显式报「阶段 3」/ 不命中 KeyError。"""
+    零子类 FormatError / .fya 编译装配（阶段 3 接缝已接通）/ 不命中 KeyError。"""
     runtime = make_runtime(tmp_path)
     (tmp_path / "solo_agent.py").write_text(textwrap.dedent("""\
         from flowing import Agent
@@ -632,21 +632,21 @@ async def test_t124b_get_agent_class_py_path_form(tmp_path):
     (tmp_path / "empty_agent.py").write_text("X = 1\n", encoding="utf-8")
     with pytest.raises(FormatError, match="没有 Agent 子类"):
         runtime.get_agent_class("@/empty_agent.py")
-    # .fya 命中 → 显式「阶段 3」错误（不静默失败）
+    # .fya 命中 → 编译装配（阶段 3 接缝已接通：compile_fya_class 现场合成）
     (tmp_path / "x.fya").write_text("", encoding="utf-8")
-    with pytest.raises(FormatError, match="阶段 3"):
-        runtime.get_agent_class("@/x.fya")
-    with pytest.raises(FormatError, match="阶段 3"):
-        runtime.get_agent_class("x", source_dir=tmp_path)   # 裸名文件链同样显式报错
-    # 目录形态：存在但无候选 → KeyError；含 .fya 候选 → 阶段 3 显式错误
+    x_cls = runtime.get_agent_class("@/x.fya")
+    assert issubclass(x_cls, Agent) and x_cls.__name__ == "XAgent"
+    assert x_cls.registry_key == "@/::x"   # 派生键回写（与 .py 通道同构）
+    assert runtime.get_agent_class("x", source_dir=tmp_path) is x_cls   # 裸名文件链经派生键短路复用
+    # 目录形态：存在但无候选 → KeyError；含 .fya 候选 → 编译装配
     (tmp_path / "emptydir").mkdir()
     with pytest.raises(KeyError):
         runtime.get_agent_class("@/emptydir")
     agent_dir = tmp_path / "myagent"
     agent_dir.mkdir()
     (agent_dir / "agent.fya").write_text("", encoding="utf-8")
-    with pytest.raises(FormatError, match="阶段 3"):
-        runtime.get_agent_class("@/myagent")
+    my_cls = runtime.get_agent_class("@/myagent")
+    assert issubclass(my_cls, Agent) and my_cls.__name__ == "MyagentAgent"
     # 不存在的路径 → KeyError
     with pytest.raises(KeyError):
         runtime.get_agent_class("@/missing.py")

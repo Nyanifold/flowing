@@ -17,6 +17,9 @@ subagents:
         currency: USD
         user_id: "{{ self.inject('user_id') }}"
 ---
+$description:
+处理电商订单的查询、支付与物流跟踪。
+---
 $system_prompt:
 你是订单处理助手，负责发起支付与查询订单状态。
 ---

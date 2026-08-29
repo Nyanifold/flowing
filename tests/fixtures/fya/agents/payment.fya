@@ -1,0 +1,28 @@
+# payment —— 单文件形态 Agent 样例（测试 58/63，目录即契约）。
+# 覆盖形态：name 一致性断言、description、args 三糖（完整展开 / 字面量默认 /
+# 裸类型）、$system_prompt 具名块、$script（@on 钩子 + 带签名 setup）。
+name: payment
+description: 发起支付并返回交易结果。
+args:
+  amount:
+    type: number
+    description: 支付金额（元）
+  currency: CNY          # 字面量默认值糖 → {type: string, default: CNY}（可选）
+  user_id: str           # 裸类型字符串糖 → {type: string}（必填）
+---
+$system_prompt:
+你是支付处理助手。根据用户需求发起支付并报告交易号。
+---
+$script:
+from flowing import on
+
+
+@on('before_tool_call')
+def _(self, tool_call):
+    return tool_call
+
+
+async def setup(self, amount: float, user_id: str, currency: str = "CNY"):
+    self.amount = amount
+    self.user_id = user_id
+    self.currency = currency

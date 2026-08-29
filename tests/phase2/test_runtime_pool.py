@@ -83,23 +83,26 @@ async def test_t115_get_agent_lazy_recover(tmp_path):
 
 async def test_t116_mount_idempotent(tmp_path):
     """T116：指定 id 且在池中 → mount 走 recover 分支（不解析文件内容）、
-    node_id 不变；agent_id=None 的 .fya 新建属阶段 3（显式 FormatError）。"""
+    node_id 不变；agent_id=None 的 .fya 新建根经编译装配真实创建（阶段 3
+    接缝已接通）。"""
     runtime = make_runtime(tmp_path)
     provider = add_fake_provider(runtime)
     script_provider(provider, text_response("挂载前"))
     agent = await runtime.create_agent("test-agent", agent_id="agent-main", tag="v1")
     await agent.query("hi")
     await agent.destroy()
-    (tmp_path / "root.fya").write_text("name: whatever\n", encoding="utf-8")   # recover 分支不解析内容
+    (tmp_path / "root.fya").write_text("name: root\n", encoding="utf-8")   # recover 分支不解析内容
     mounted = await runtime.mount("@/root.fya", agent_id="agent-main")
     assert mounted.node_id == "agent-main"
     assert len(mounted._messages) == 2   # 消息树完好
     # 路径不存在 → FileNotFoundError
     with pytest.raises(FileNotFoundError):
         await runtime.mount("@/nope.fya")
-    # agent_id=None 的 .fya 新建根：编译装配属阶段 3 → 显式报错
-    with pytest.raises(FormatError, match="阶段 3"):
-        await runtime.mount("@/root.fya")
+    # agent_id=None 的 .fya 新建根：编译装配现场合成 RootAgent 并真实创建
+    new_root = await runtime.mount("@/root.fya")
+    assert new_root.node_id != "agent-main" and new_root._parent_id == runtime.node_id
+    assert type(new_root).__name__ == "RootAgent"
+    assert new_root.node_id in runtime._nodes
     await runtime.shutdown()
 
 

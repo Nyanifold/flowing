@@ -1,0 +1,11 @@
+# summarize —— skill 形态样例（测试 65：本期只验证字面层解析，
+# skill 装配层本体属阶段 4）。
+name: summarize
+description: 把给定文本压缩为要点列表。
+---
+$prompt:
+请把以下内容压缩为不超过三行的要点列表，保留关键数字与结论。
+---
+$script:
+def setup(self):
+    pass

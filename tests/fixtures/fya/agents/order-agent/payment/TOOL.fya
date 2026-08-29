@@ -1,0 +1,17 @@
+# payment 工具（script 形态）——order-agent fixture 的 tools 条目
+# `- payment as pay` 的文件链命中目标（测试 57/验收 1 e2e 用）。
+# 目录即契约：与 agent.fya 同目录，裸名 `payment` 经 TOOL.fya 通用名命中，
+# 身份名取目录名 payment（与 name 断言一致）。
+type: script
+name: payment
+description: 发起支付。
+callable: ./impl.py::make_payment
+args:
+  amount:
+    type: number
+    description: 支付金额（元）
+  currency: CNY
+  user_id: str
+  working_dir:
+    type: [string, "null"]
+    default: null

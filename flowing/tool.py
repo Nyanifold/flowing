@@ -3218,6 +3218,13 @@ class ToolRegistry:
             - :meth:`flowing.runtime.Runtime.get_agent_class` ——
               同构的 Agent 解析管线。
         """
+        # 精确键短路（先于形态判别）：文件派生限定键的命名空间含路径特征
+        # （目录派生，如 "@/order-agent::payment" / 绝对路径形态），过不了
+        # classify_ref 的限定名判别（左段含 / 会判成路径形态）——注册表在场
+        # 证据优先于词法分流，docstring 承诺的「llm_definition / 审批路径
+        # 必命中注册表快路径」靠此成立（阶段 3 批次 4 接缝接通时暴露并修复）
+        if name_or_path in self._tools:
+            return self._tools[name_or_path]
         form = classify_ref(name_or_path)
         if form == "qualified":
             # 限定名（ns::name）：只查注册表精确键，不走文件查找链
