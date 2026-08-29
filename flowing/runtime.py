@@ -318,29 +318,44 @@ per-agent session 目录并列。声明与访问经 ``Runtime.register_state`` /
 from __future__ import annotations   # S-43 裁决③：注解延迟求值，配合 TYPE_CHECKING 破注解级循环边
 
 import asyncio
+import json
+import logging
 import os
+import warnings
 
 from collections.abc import Awaitable, Callable, Generator, MutableMapping
 from contextvars import ContextVar
+from datetime import datetime, timezone
 from pathlib import Path
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, TypeVar, overload
+
+from ruamel.yaml import YAML   # 与 flowing.model 同一 yaml 库选型（R-10 澄清）
 
 from flowing.persistence import FileRecordStore, StateView
 from flowing.errors import (
     ConfigNamespaceConflictError,
     ConfigNotReadyError,
     DependencyError,
+    FormatError,
+    MissingFieldError,
     MissingProvideError,
+    NameMismatchError,
     ResourceNameConflictError,
     ResourceNotFoundError,
+    UnknownHookPointError,
 )
 from flowing.params import ConfigKey, InjectionKey
 from flowing.paths import NamingRules
+from flowing.paths import classify_ref as _classify_ref
+from flowing.paths import infer_name as _infer_name
+from flowing.paths import kebab_to_snake as _kebab_to_snake
+from flowing.paths import probe_candidates as _probe_candidates
 from flowing.paths import resolve_path as _paths_resolve_path
 from flowing.paths import to_project_path as _paths_to_project_path
 from flowing.provide import ProvideNode, inject_from
 from flowing.providers import ProviderRegistry, load_provider_candidates
-from flowing.snapshot import RuntimeSnapshot
+from flowing.snapshot import AgentInfo, NodeInfo, RuntimeSnapshot
 from flowing.builtins import register_builtins
 from flowing.tool import Tool, ToolRegistry
 
@@ -360,6 +375,8 @@ __all__ = [
 
 T = TypeVar("T")
 
+_logger = logging.getLogger("flowing.runtime")
+
 AGENT_NAMING = NamingRules(
     suffixes=(".agent.fya", ".fya", ".py"),
     generic_names=frozenset({"agent.fya", "AGENT.fya"}),
@@ -372,6 +389,27 @@ AGENT_NAMING = NamingRules(
 :func:`flowing.parser.parse_fya` 时传入 ``naming=AGENT_NAMING``，以及
 name 断言的推断侧。
 """
+
+_FRAMEWORK_CONFIG_DEFAULTS: dict[str, Any] = {
+    "agent": {"timeout": 60, "max_turns": 20, "max_depth": 10},
+    "runtime": {"log_level": "info"},
+}
+"""框架推荐默认值层（配置优先级链的最底层，模块 docstring §6 已知 key 清单）。
+内部 API，不属稳定契约。
+"""
+
+_POOL_META_KEYS: tuple[str, ...] = (
+    "agent_type", "parent_agent_id", "created_at", "args",
+)
+"""池元数据在 agent 自己 ``state.jsonl`` 中的框架核心裸名键（模块 docstring
+§9「元数据持久化」的落点；create 管线第 7 步写入，池扫描 / 恢复据此重建
+``_agent_pool`` 条目）。内部 API，不属稳定契约。
+"""
+
+_FYA_NOT_SUPPORTED = (
+    ".fya 的编译装配属阶段 3（parser/compiler），当前版本不支持直接引用：{ref}"
+)
+"""``.fya`` 命中时的显式错误消息模板（R-03：本期不静默失败）。"""
 
 
 _current_project_root: ContextVar[Path | None] = ContextVar(
@@ -547,6 +585,49 @@ def resolve(path: str) -> Path:
     return Path(path)   # 非 @/ 路径：普通 Path 语义（完整前缀规则是 Runtime.resolve_path 的职责）
 
 
+def _check_pending(instance: "Agent") -> None:
+    """创建/恢复管线第 6 步的 PENDING 检查器（R-05 落实；**内部 API**）。
+
+    扫实例 ``__dict__`` 与类 MRO 属性中的 ``PENDING`` 哨兵（含
+    ``Parsable`` 包裹形态——``Parsable.source is PENDING``），命中即抛
+    :class:`flowing.errors.MissingFieldError`（消息含字段名清单）；
+    同帧结算 S-29 扩展：``instance.hooks._pending_on`` 非空（``@on``
+    暂记的钩子点在 setup 结束前未被 declare）→ 抛
+    :class:`flowing.errors.UnknownHookPointError`（消息列出 hook_name
+    与方法名）。
+
+    .. rubric:: 调用关系（审计）
+
+    - 调用：无具名符号（读实例 ``__dict__`` / 类 MRO / ``hooks._pending_on``）
+    - 被调：``Runtime.create_agent`` / ``Runtime.recover_agent``（各自管线
+      第 6 步，``setup()`` 之后、after_* 钩子之前）
+    """
+    from flowing.parsable import PENDING, Parsable   # 局部 import：模块头依赖图保持单向
+
+    pending: list[str] = []
+    seen: set[str] = set()
+    for mapping in (vars(instance), *(vars(c) for c in type(instance).__mro__)):
+        for field, value in mapping.items():
+            if field in seen or field.startswith("__"):
+                continue
+            seen.add(field)
+            if isinstance(value, Parsable):
+                value = value.source   # Parsable 包裹形态：哨兵在 source 位
+            if value is PENDING:
+                pending.append(field)
+    if pending:
+        raise MissingFieldError(
+            f"PENDING 延迟定义未兑现（setup() 返回后仍为 PENDING）："
+            f"{', '.join(sorted(pending))}")
+    # S-29 扩展：同帧结算 @on 暂记（目标钩子点未 declare 即未消费）
+    if instance.hooks._pending_on:
+        unclaimed = [f"{hook_name}（方法 {getattr(bound, '__name__', bound)}）"
+                     for bound, hook_name, _, _, _ in instance.hooks._pending_on]
+        raise UnknownHookPointError(
+            f"@on 标记未找到归属钩子点：{'; '.join(unclaimed)}"
+            "——钩子点名拼写错误，或对应插件/Composable 未在 setup() 中启用")
+
+
 # ``ProvideNode`` 协议与 ``inject_from`` 统一上溯算法的 canonical home 是
 # ``flowing.provide``（S-43 裁决③：共享符号下沉叶子模块，破 agent↔runtime
 # 循环依赖）；此处为 import + 再导出（``__all__`` 保留），旧引用
@@ -680,8 +761,10 @@ class Runtime:
     处理（见 ``flowing.model``）。内部 API，不属稳定契约。
     """
     _models_path: Path | None
-    """models.yaml 来源路径（``set_models`` 赋值；默认 ``None`` = 未设定，
-    用默认 ``$FLOWING_CONFIG_HOME/models.yaml`` 或 ``FLOWING_MODELS_PATH``）。
+    """models.yaml 来源路径（``set_models`` 赋值；构造期解析为
+    ``FLOWING_MODELS_PATH`` / ``$FLOWING_CONFIG_HOME/models.yaml`` 的有效
+    默认路径——``Agent._resolve_model_tag`` 要求两路径均非 ``None``，
+    「未设定 → 默认路径」的现场求值由构造期的就地换算承担）。
     内部 API，不属稳定契约。
     """
     _providers_path: Path | None
@@ -692,6 +775,21 @@ class Runtime:
     _shutdown_event: asyncio.Event
     """退出事件；``__await__`` 等待它，``shutdown()`` 末尾置位。
     内部 API，不属稳定契约。
+    """
+    _config_ready: bool
+    """配置就绪闸（R-06 落实）：优先级链浅合并在 ``__init__`` 尾部同步
+    完成前为 ``False``，``get_config`` 未就绪即抛 ``ConfigNotReadyError``。
+    内部 API，不属稳定契约。
+    """
+    _merged_config: dict[str, Any]
+    """优先级链浅合并产物（点分扁平 key → 值）；``get_config`` 的第二读源
+    （第一是 ``_config_overrides``）。内部 API，不属稳定契约。
+    """
+    env: MappingProxyType
+    """``os.environ`` 只读视图——Parsable 渲染上下文的 ``env`` 入口
+    （``{{ env.X }}`` 经 Jinja 的 attr→item 回退命中，R-4 澄清：env 直接
+    以可点号引用对象进渲染上下文）。构造期建立，随进程环境快照语义
+    （``os.environ`` 的活视图）。
     """
 
     def __init__(self) -> None:
@@ -773,11 +871,15 @@ class Runtime:
         self._agent_pool = {}
         self._agent_types = {}
         self._states = {}
-        self._persist_dir = Path.cwd() / ".flowing"   # 默认持久化根（S-37 裁决）；set_persist_dir 覆写（mount 前）
+        self._persist_dir = Path.cwd() / ".flowing"   # 默认持久化根（S-37 裁决）：本质是 flowing 启动路径——启动时可经 set_persist_dir 手动指定，默认为 cwd（R-07 澄清）；set_persist_dir 覆写（mount 前）
+        config_home = Path(os.environ.get(
+            "FLOWING_CONFIG_HOME", os.path.expanduser("~/.flowing")))
         self._model_tags_path = Path(os.environ.get(
             "FLOWING_MODEL_TAGS",
-            os.path.expanduser("~/.flowing/model-tags.yaml")))   # 默认启用（用户裁决：模型标签不可不启用；env 优先、默认 ~/.flowing/model-tags.yaml，set_model_tags 可覆盖）
-        self._models_path = None       # 未设定 = 用默认 models.yaml（FLOWING_MODELS_PATH / $FLOWING_CONFIG_HOME，解析现场求值）
+            str(config_home / "model-tags.yaml")))   # 默认启用（用户裁决：模型标签不可不启用；env 优先、默认 $FLOWING_CONFIG_HOME/model-tags.yaml，set_model_tags 可覆盖）
+        self._models_path = Path(os.environ.get(
+            "FLOWING_MODELS_PATH",
+            str(config_home / "models.yaml")))   # 构造期就地换算有效默认路径（Agent._resolve_model_tag 要求非 None）
         self._shutdown_event = asyncio.Event()
         # 扫描 providers.yaml + FLOWING_PROVIDER_MODULES 构建 provider 候选清单
         # （S-03 裁决具名：load_provider_candidates；懒加载原则：不实例化任何
@@ -786,9 +888,24 @@ class Runtime:
         # ~/.flowing/）；set_providers 可在 mount 前编程覆盖
         self._providers_path = Path(os.environ.get(
             "FLOWING_PROVIDERS_PATH",
-            os.path.expanduser("~/.flowing/providers.yaml")))
+            str(config_home / "providers.yaml")))
         self.provider_registry = ProviderRegistry(load_provider_candidates(self._providers_path))
-        # 扫描持久化目录 + core 名录构建 agent 池注册表（实例不在扫描阶段创建，见 §8-9）
+        # R-06 落实：配置优先级链三层浅合并（框架默认 < 项目级 @/config.yaml
+        # < 用户级 $FLOWING_CONFIG_HOME/config.yaml）在 __init__ 尾部同步完成，
+        # 完成后置就绪闸；命令行层不进链（由调用方经 set_config 落
+        # _config_overrides 表达），env 层暂无 key 映射规约（FLOWING_* 均为
+        # 路径/开关类，由各自消费点直读）
+        self._config_ready = False
+        self._merged_config = self._merge_config_layers()
+        self._config_ready = True
+        self.env = MappingProxyType(os.environ)   # os.environ 只读视图（渲染上下文 env 入口，R-5）
+        # R-07 落实：框架自登记 core 全局命名空间（已注册 agent id 名录 +
+        # session_dirs 平行映射 + 已安装插件清单），随后引导重放（默认
+        # persist 路径场景的重放点；set_persist_dir 会重指全部命名空间存储
+        # 并再次引导——幂等）
+        self.register_state(
+            "core", defaults={"agents": [], "session_dirs": {}, "plugins": []})
+        self._bootstrap_persistence()   # 含 agent 池扫描（读 core 名录逐个开 session 目录；实例不在扫描阶段创建，见 §8-9）
 
     def use(self, *plugins: Plugin) -> None:
         """安装插件（阶段一启用）：按实参顺序执行各插件的 ``install(runtime)``。
@@ -853,8 +970,12 @@ class Runtime:
             :class:`flowing.plugins.Plugin`
         """
         for plugin in plugins:   # 按实参顺序执行 install；可分批调用
+            if plugin.name in self._plugins:
+                raise ValueError(
+                    f"插件重复安装：{plugin.name}——同名插件已安装"
+                    "（后安装者报错；spec 未具名异常类型，属编程错误，用内置 ValueError）")
             plugin.install(self)
-            self._plugins[plugin.name] = plugin   # 重复安装同名插件 → 后安装者报错（冲突检测见行为规约）
+            self._plugins[plugin.name] = plugin
         self._check_dependencies()   # 增量校验已装子图：成环抛 DependencyError；缺失 warnings.warn 不抛（R9：与 mount 解绑）
 
     def get_plugin(self, name: str, *, strict: bool = True) -> Any | None:
@@ -1040,7 +1161,10 @@ class Runtime:
             :meth:`flowing.runtime.Runtime.recover_agent`、
             :class:`flowing.plugins.workflow.Workflow`
         """
-        resolved = self.resolve_path(node)   # 统一为路径字符串（M-61）；FileNotFoundError 由后续加载抛出
+        resolved = self.resolve_path(node)   # 统一为路径字符串（M-61）
+        if not resolved.exists():
+            raise FileNotFoundError(f"mount 路径不存在：{resolved}")
+        self._ensure_persist_ready()   # 首个 mount 前的持久化就位（persist 目录 + 插件清单 + 兜底引导）
         if resolved.suffix == ".fya":
             # Agent 根：与子 Agent 走同一条唯一创建入口，仅 parent_id=None 不同；
             # 幂等挂载：agent_id 指定且已在池中 -> 恢复而非新建（手动 mount 的
@@ -1204,6 +1328,7 @@ class Runtime:
         """
         from uuid import uuid4
 
+        self._ensure_persist_ready()   # 入口就位：persist 目录 + core 插件清单 + 兜底引导
         agent_class = self.get_agent_class(agent_type)   # 第 1 步：类型名 → 类（惰性解析）
         instance: Agent = agent_class.__new__(agent_class)   # 第 2 步：__new__ + 绑定
         if agent_id is not None:
@@ -1214,44 +1339,87 @@ class Runtime:
                     f"agent_id 已存在：{agent_id}——重复创建不允许"
                     "（create 要求不存在，恢复请用 recover_agent）")
             node_id = agent_id
+            resolved_session = self._resolve_session_dir(session_dir, node_id)
+            # 目录存在性检查（R22，create 侧严格）：id 不在池/活体表但目录
+            # 已存在 → FileExistsError（可能是 archive 留档或指定错了
+            # session_dir / agent_id；runtime 不销毁任何内容，由调用方决定）
+            if resolved_session.exists():
+                raise FileExistsError(
+                    f"session 目录已存在：{resolved_session}——可能是已 archive "
+                    "的留档（archive_agent）或指定错了 session_dir / agent_id；"
+                    "请改 id / 先删目录 / 运维恢复")
         else:
-            node_id = f"{agent_class._id_prefix}-{uuid4()}"   # 缺省：自动生成
+            # 缺省自动生成：撞目录不报错，重新生成随机 id（uuid 碰撞概率为零，
+            # 此为防御性兜底；session_dir 显式指定时目录即定点，撞了只能报错）
+            while True:
+                node_id = f"{agent_class._id_prefix}-{uuid4()}"
+                resolved_session = self._resolve_session_dir(session_dir, node_id)
+                if not resolved_session.exists():
+                    break
+                if session_dir is not None:
+                    raise FileExistsError(
+                        f"session 目录已存在：{resolved_session}——指定了已存在的"
+                        " session_dir；请检查路径或先删目录")
         instance.node_id = node_id
         instance.runtime = self
         # None 翻译为 Runtime 的 node_id：「根」由「父是 Runtime」表达，
         # _parent_id 字段内不出现 None（inject 链终点可达性的结构保证之一）
         instance._parent_id = parent_id if parent_id is not None else self.node_id
-        instance._session_dir = self._resolve_session_dir(session_dir, node_id)   # session 目录（可指定；Agent.__init__ 的 _open_stores 使用，骨架期即可知）
+        instance._session_dir = resolved_session   # session 目录（Agent.__init__ 的 _open_stores 使用，骨架期即可知）
+        # 管线负责建 session 目录（FileRecordStore 惰性打开句柄时不建父目录；
+        # 目录存在性检查已过，此处 mkdir 即「创建即注册」的物理侧）
+        resolved_session.mkdir(parents=True, exist_ok=True)
         instance.__init__()   # 第 3 步：同步骨架
         kwargs = await instance.hooks.before_create.dispatch(instance, kwargs)   # 第 4 步：可改写 kwargs
         await instance.setup(**kwargs)   # 第 5 步
-        # 第 6 步：PENDING 检查（固定步骤，非钩子；检查器未见具名符号，见 flowing.parsable.PENDING）
-        # S-29 扩展：同步检查 instance.hooks._pending_on——非空则抛
-        # UnknownHookPointError（@on 暂记未结算：拼错的钩子点名 / 插件未启用）
-        if instance.hooks._pending_on:
-            from flowing.errors import UnknownHookPointError
-            unclaimed = [f"{hook_name}（方法 {getattr(bound, '__name__', bound)}）"
-                         for bound, hook_name, _, _, _ in instance.hooks._pending_on]
-            raise UnknownHookPointError(
-                f"@on 标记未找到归属钩子点：{'; '.join(unclaimed)}"
-                "——钩子点名拼写错误，或对应插件/Composable 未在 setup() 中启用")
-        self.state("core")["agents"] = [node_id]   # 第 7 步：core 名录追加（写透持久化）
+        # 第 6 步：PENDING 检查（固定步骤，非钩子；R-05 落实为模块级
+        # _check_pending——含 S-29 扩展的 hooks._pending_on 结算）
+        _check_pending(instance)
+        # 模型初始解析（agent.py 类属性契约「实例化时由 model_tag 解析填充
+        # 初始值」的管线落点——spec 管线步骤未具名列出）：setup 已直接赋
+        # self.model（ModelConfig 任意模型通道）或改过 model_tag（__setattr__
+        # 已重解析）则跳过；解析失败（模型文件缺失 / 标签未定义）即创建失败
+        # ——fail fast，不留「创建成功但首次调用才爆雷」的窗口
+        if "model" not in instance.__dict__:
+            instance.model = instance._resolve_model_tag(instance.model_tag)
+        # 第 7 步：池注册——core 名录**追加**（读-改-写写透；spec 骨架的
+        # `= [node_id]` 整表替换是笔误，会丢掉既有名录项）
         core = self.state("core")
+        core["agents"] = [*core.get("agents", []), node_id]
         core["session_dirs"] = {
             **core.get("session_dirs", {}),
             node_id: self._store_session_dir(instance._session_dir),
         }   # 名录平行映射：agent_id → session 目录（根内相对 / 根外绝对；池扫描与恢复据此定位）
+        created_at = datetime.now(timezone.utc).isoformat()
+        try:
+            json.dumps(kwargs)   # args 应可 JSON 序列化；不可序列化值初版不被持久化（恢复时缺失）
+            persisted_args = kwargs
+        except TypeError:
+            _logger.warning("agent %s 的 args 不可 JSON 序列化，池元数据按空 args 持久化", node_id)
+            persisted_args = {}
         self._agent_pool[node_id] = {
             "agent_type": agent_type,
             "parent_agent_id": instance._parent_id,   # 存翻译后的实际值，recover 直接回绑
-            "created_at": "",   # 占位：创建时间戳
+            "created_at": created_at,
             "session_dir": self._store_session_dir(instance._session_dir),   # 自定义 session 目录（None 时为默认路径的存储形式）
-            "args": kwargs,     # args 是 Agent 身份的一部分，应可 JSON 序列化
+            "args": dict(persisted_args),     # args 是 Agent 身份的一部分
         }
-        # 第 7 步：池元数据 + 初始 state 写盘：物理写经 instance._tree_store /
-        # _state_bag 内嵌的 FileRecordStore（write-behind 同步提交；后端已在
-        # __init__ 经 _open_stores 建立，P3-03）；
-        # 本步完成后解开 StateView 写闸门
+        # 第 7 步（续）：池元数据作为框架核心裸名键持久化到该 agent 自己的
+        # state.jsonl（单袋，无命名空间——池扫描 / 跨进程恢复据此重建
+        # _agent_pool 条目；恢复时经 _restore 无 schema 装袋自动读回）；
+        # 闸门未开，直写 _persisted + store.submit 绕过写通道（管线专属写径）
+        bag = instance._state_bag
+        for meta_key, meta_value in (
+            ("agent_type", agent_type),
+            ("parent_agent_id", instance._parent_id),
+            ("created_at", created_at),
+            ("args", dict(persisted_args)),
+        ):
+            bag._persisted[meta_key] = meta_value
+            bag._store.submit({"op": "set", "key": meta_key, "value": meta_value})
+        # 本步完成后解开 StateView 写闸门（setup 中禁写 state；唯一解锁通道
+        # 是 object.__setattr__——StateView 自举护栏）
+        object.__setattr__(bag, "_write_gate_open", True)
         self._nodes[node_id] = instance   # 第 8 步：创建即注册
         await instance.hooks.after_create.dispatch(instance)   # 第 9 步
         instance._loop_task = asyncio.create_task(instance._work_loop())   # 第 10 步：常驻工作循环 Task 启动（具名句柄，destroy 第 2 步的取消落点）
@@ -1357,6 +1525,7 @@ class Runtime:
             :meth:`flowing.agent.Agent.setup`、
             :meth:`flowing.agent.Agent._restore`
         """
+        self._ensure_persist_ready()   # 入口就位：persist 目录 + core 插件清单 + 兜底引导
         meta = self._agent_pool[agent_id]   # 第 1 步：读池元数据；不在池中即 KeyError
         agent_class = self.get_agent_class(meta["agent_type"])   # 第 2 步
         args: dict[str, Any] = dict(meta.get("args", {}))
@@ -1366,23 +1535,39 @@ class Runtime:
         instance.runtime = self
         instance._parent_id = meta["parent_agent_id"]   # meta 存的是翻译后实际值（根条目为 Runtime 的 node_id），直接回绑
         # 第 4b 步（R14）：父链可达性——父在池但不在 _nodes → 逐级向上
-        # recover_agent(parent_id)（到 Runtime 止；inject 上溯依赖父链完整，
-        # 父缺位会在子恢复后造成 MissingProvideError 假故障）；
-        # 父悬空（既不在 _nodes 也不在池、且非 runtime-0）→ warnings.warn
-        # 孤儿警告，仍继续恢复本节点（不抛错，保持可用性）
+        # recover_agent(parent_id)（到 Runtime 止：根条目的父是 runtime-0，
+        # 在 _nodes 中即终止；inject 上溯依赖父链完整，父缺位会在子恢复后
+        # 造成 MissingProvideError 假故障）；父悬空（既不在 _nodes 也不在
+        # 池、且非 runtime-0）→ warnings.warn 孤儿警告，仍继续恢复本节点
+        # （不抛错，保持可用性；运维应跑 archive_orphans() 清理）
+        recover_parent = instance._parent_id
+        if recover_parent != self.node_id and recover_parent not in self._nodes:
+            if recover_parent in self._agent_pool:
+                await self.recover_agent(recover_parent)
+            else:
+                warnings.warn(
+                    f"recover_agent：{agent_id} 的父节点 {recover_parent} 悬空"
+                    "（不在 _nodes 也不在池）——按孤儿继续恢复本节点，inject "
+                    "上溯将在断裂处以 MissingProvideError 告终；请经 "
+                    "archive_orphans() 清理")
         instance._session_dir = self._load_session_dir(meta.get("session_dir"), agent_id)   # 自定义 session 目录回绑（缺省 persist_dir/agent_id，兼容旧数据）
+        if not instance._session_dir.exists():
+            # 名录在案但目录缺失：可诊断告警 + 按空 session 容忍（与
+            # Agent._restore 的「按空 session 处理并报出可诊断错误」同裁）；
+            # mkdir 使 _restore 的压缩 sync 有落点（FileRecordStore 不建父目录）
+            warnings.warn(
+                f"recover_agent：{agent_id} 的 session 目录缺失"
+                f"（{instance._session_dir}）——按空 session 恢复")
+            instance._session_dir.mkdir(parents=True, exist_ok=True)
         instance.__init__()   # 第 5 步：同步骨架
         args = await instance.hooks.before_recover.dispatch(instance, args)   # 可改写 args
         await instance.setup(**args)   # 触发 before/after_recover 钩子对（不触发 before/after_create）
-        # 第 6 步：PENDING 检查（同 create 管线，含 S-29 的 _pending_on 结算
-        # 检查；检查器未见具名符号，见 flowing.parsable.PENDING）
-        if instance.hooks._pending_on:
-            from flowing.errors import UnknownHookPointError
-            unclaimed = [f"{hook_name}（方法 {getattr(bound, '__name__', bound)}）"
-                         for bound, hook_name, _, _, _ in instance.hooks._pending_on]
-            raise UnknownHookPointError(
-                f"@on 标记未找到归属钩子点：{'; '.join(unclaimed)}"
-                "——钩子点名拼写错误，或对应插件/Composable 未在 setup() 中启用")
+        # 第 6 步：PENDING 检查（同 create 管线——R-05 落实为模块级
+        # _check_pending，含 S-29 的 _pending_on 结算检查）
+        _check_pending(instance)
+        # 模型初始解析（同 create 管线落点；setup 已直接赋 self.model 则跳过）
+        if "model" not in instance.__dict__:
+            instance.model = instance._resolve_model_tag(instance.model_tag)
         await instance._restore()   # 第 7 步：仅 recover 有；重放 tree.jsonl / state.jsonl，解开 StateView 写闸门（后端已在 __init__ 建立，P3-03）
         self._nodes[agent_id] = instance   # 第 8 步：创建即注册
         await instance.hooks.after_recover.dispatch(instance)   # 第 9 步
@@ -1845,12 +2030,18 @@ class Runtime:
             :meth:`flowing.runtime.Runtime.set_config`、
             :class:`flowing.params.ConfigKey`
         """
-        # 调用时机约束：模块顶层（优先级链合并未完成）调用 → ConfigNotReadyError
-        # （就绪判定未见具名符号，见行为规约）
-        merged: dict[str, Any] = {}   # 占位：优先级链浅合并结果（合并器未见具名符号，见模块 docstring §6）
-        if str(key) in self._config_overrides:
-            return self._config_overrides[str(key)]   # set_config 运行期覆盖层优先
-        return merged.get(str(key), default)   # 未注册命名空间静默保留、可自由读取；ConfigKey[T] 约束 default 类型
+        # 调用时机约束（黑名单式）：优先级链合并完成（__init__ 尾部）之前——
+        # 典型即模块顶层 import 期——调用抛 ConfigNotReadyError；就绪判定 =
+        # _config_ready 闸（R-06 落实，__dict__ 读取兼管子类 super().__init__()
+        # 之前的过早调用）
+        if not self.__dict__.get("_config_ready", False):
+            raise ConfigNotReadyError(
+                f"配置未就绪（优先级链合并未完成）：{key}——"
+                "禁止模块顶层 / Runtime.__init__ 完成前调用 get_config")
+        k = str(key)
+        if k in self._config_overrides:
+            return self._config_overrides[k]   # set_config 运行期覆盖层优先
+        return self._merged_config.get(k, default)   # 浅合并产物（点分扁平 key）；未注册命名空间静默保留、可自由读取；ConfigKey[T] 约束 default 类型
 
     def set_config(self, key: str, value: Any) -> None:
         """运行期配置覆盖（``_config_overrides`` 层，``get_config`` 读取时最优先）。
@@ -1887,6 +2078,34 @@ class Runtime:
         .. seealso:: :meth:`flowing.runtime.Runtime.get_config`
         """
         self._config_overrides[key] = value   # 同 key 覆盖写（后写胜出；不持久化）
+
+    @property
+    def config(self) -> dict[str, Any]:
+        """项目配置合并视图（Parsable 渲染上下文的 ``config`` 入口）。
+
+        功能与动机：优先级链浅合并产物（``_merged_config``）的**嵌套**形态
+        ——模板里 ``{{ config.agent.timeout }}`` 逐级取值（Jinja attr→item
+        回退）；``get_config`` 消费的是点分扁平形态。现场反摊平，只读语义
+        ——改写返回的 dict 不回写框架。不含 ``set_config`` 的运行期覆盖层
+        （渲染上下文契约是「配置合并视图」，覆盖层只服务 ``get_config``）。
+
+        .. rubric:: 调用关系（审计）
+
+        - 调用：无（读 ``_merged_config`` 反摊平）
+        - 被调：``flowing.parsable``（渲染上下文组装，每次模板求值）
+        """
+        nested: dict[str, Any] = {}
+        for dotted, value in self.__dict__.get("_merged_config", {}).items():
+            parts = dotted.split(".")
+            cursor = nested
+            for part in parts[:-1]:
+                nxt = cursor.setdefault(part, {})
+                if not isinstance(nxt, dict):
+                    break   # 叶子与命名空间撞名：保留先到者（配置组织异味，不报错）
+                cursor = nxt
+            else:
+                cursor[parts[-1]] = value
+        return nested
 
     @overload
     def get_resource(self, name: str) -> Any: ...
@@ -2149,13 +2368,43 @@ class Runtime:
         .. seealso:: :meth:`flowing.agent.Agent.snapshot`、
             :class:`flowing.snapshot.RuntimeSnapshot`
         """
+        def _want(name: str) -> bool:
+            return keys is None or name in keys   # S3：None 收集全部切面；指定时只收集指定字段（其余为 None）
+
+        # nodes：_nodes 的 NodeInfo 只读投影（类型取共享 ID 空间前缀——
+        # runtime-/agent-/workflow-；parent_id 对 Runtime 自身为 None——链终点无父）
+        nodes: dict[str, NodeInfo] | None = None
+        if _want("nodes"):
+            nodes = {
+                node_id: NodeInfo(
+                    type=node_id.split("-", 1)[0],
+                    parent_id=getattr(node, "_parent_id", None))
+                for node_id, node in self._nodes.items()
+            }
+        # agents：池注册表的 AgentInfo 投影（含 loaded 标记；created_at 存储形
+        # 式为 ISO 字符串——state.jsonl 须 JSON 可序列化——此处还原 datetime）
+        agents: dict[str, AgentInfo] | None = None
+        if _want("agents"):
+            agents = {}
+            for agent_id, meta in self._agent_pool.items():
+                raw_created = meta.get("created_at") or ""
+                try:
+                    created = (raw_created if isinstance(raw_created, datetime)
+                               else datetime.fromisoformat(str(raw_created)))
+                except ValueError:
+                    created = datetime.fromtimestamp(0, timezone.utc)   # 缺省/旧数据兜底
+                agents[agent_id] = AgentInfo(
+                    agent_type=meta.get("agent_type", ""),
+                    parent_agent_id=meta.get("parent_agent_id", ""),
+                    created_at=created,
+                    loaded=agent_id in self._nodes)
         return RuntimeSnapshot(
-            nodes={},                            # _nodes 的 NodeInfo 只读投影（组装细节见 flowing.snapshot）
-            plugins=[p.name for p in self._plugins.values()],
-            agents=dict(self._agent_pool),       # AgentInfo 投影（含 loaded 标记），见 flowing.snapshot.AgentInfo
-            providers=[],                        # 占位：provider 候选名清单（实例化与否不进快照）
-            config_overrides=dict(self._config_overrides),   # 只读副本（set_config 覆盖层）
-            resources=list(self._resources),
+            nodes=nodes,
+            plugins=([p.name for p in self._plugins.values()] if _want("plugins") else None),
+            agents=agents,
+            providers=(list(self.provider_registry._candidates) if _want("providers") else None),   # 仅候选名——实例化与否不进快照
+            config_overrides=(dict(self._config_overrides) if _want("config_overrides") else None),   # 只读副本（set_config 覆盖层）
+            resources=(list(self._resources) if _want("resources") else None),
         )   # _provided 的值内容绝不进入快照（凭证边界）
 
     def set_model_tags(self, path: str | Path) -> None:
@@ -2288,11 +2537,22 @@ class Runtime:
             :meth:`flowing.agent.Agent.register_state`
         """
         self._persist_dir = self.resolve_path(str(path))   # 覆写默认 <cwd>/.flowing；路径支持 @/ 前缀规则
+        self._persist_dir.mkdir(parents=True, exist_ok=True)   # 显式设定即建目录（默认路径则推迟到首个 mount/create 才建，见 _ensure_persist_ready）
+        # 重指全部已注册命名空间的存储后端到新目录（R-07：__init__ 已对默认
+        # 路径做过一次引导，本方法须让既有视图改读新目录——重建 store、清
+        # 内存持久值、重新上闸，随后 _bootstrap_persistence 统一重放 + 解锁）。
+        # 前置约定：mount()/create_agent() 之前调用（之后调用行为未定义）；
+        # 此刻各命名空间尚无业务写入（闸门未开 / 框架自身尚未写 core），重建安全
+        for namespace, view in self._states.items():
+            object.__setattr__(view, "_store", FileRecordStore(
+                self._persist_dir / f"{namespace}.jsonl", merge_last_line=True))
+            object.__setattr__(view, "_persisted", {})
+            object.__setattr__(view, "_write_gate_open", False)
         # 引导时序：本方法后、池扫描 / 首个 mount() 之前重放全部全局命名空间并解锁全局
         # StateView 写闸门（重放经各命名空间 RecordStore.replay()，逐行覆盖 defaults；
         # 重放完成后各命名空间 view._maybe_compact(force=True)——压缩三时点①
-        # 的 Runtime 侧落点）；
-        # mount()/create_agent() 之后调用的行为未定义（运行时切换目录不受支持）
+        # 的 Runtime 侧落点，空袋跳过）；池扫描随之进行（_bootstrap_persistence）
+        self._bootstrap_persistence()
 
     def register_state(
         self,
@@ -2362,8 +2622,19 @@ class Runtime:
         .. seealso:: :meth:`state`、:meth:`set_persist_dir`、
             :meth:`flowing.agent.Agent.register_state`
         """
-        # 幂等判定：同命名空间 + 同定义重复声明 = 空操作返回同一视图；不同定义 → 报错；
-        # core / meta 为保留命名空间（登记存储 = 类注解 _states）
+        # 幂等判定：同命名空间 + 同定义重复声明 = 空操作返回同一视图；不同定义 → 报错
+        # （spec 未具名异常类型——声明冲突属编程错误，用内置 ValueError）；
+        # core / meta 为保留命名空间（框架在 __init__ 自登记 core，用户侧不同定义
+        # 的重复声明即被「不同定义 → 报错」拦截）
+        defaults = {} if defaults is None else dict(defaults)
+        existing = self._states.get(namespace)
+        if existing is not None:
+            if existing._defaults == defaults:
+                return existing   # 同定义重复声明：幂等返回同一视图
+            raise ValueError(
+                f"全局状态命名空间重复声明且定义不同：{namespace}"
+                f"（已登记 defaults={list(existing._defaults)}，"
+                f"本次 defaults={list(defaults)}）")
         # 路径基 = _persist_dir（默认 <cwd>/.flowing，S-37；引导时序约束：
         # 全局状态声明先于池扫描 / 首个 mount()）
         view = StateView(
@@ -2394,6 +2665,169 @@ class Runtime:
         if strict:
             return self._states[namespace]   # 默认 fail fast 防 typo
         return self._states.get(namespace)   # strict=False：探测形态返回 None
+
+    # ------------------------------------------------------------------
+    # 配置合并与持久化引导（内部 API，R-06 / R-07 落实）
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _read_config_file(path: Path) -> dict[str, Any]:
+        """读一层配置文件（缺失按空层处理——R-06 推测方案；内部 API）。"""
+        if not path.exists():
+            return {}
+        data = YAML(typ="rt").load(path.read_text(encoding="utf-8"))
+        return dict(data) if data else {}
+
+    @staticmethod
+    def _flatten_config(data: dict[str, Any], *, _prefix: str = "") -> dict[str, Any]:
+        """嵌套 dict 摊平为点分 key（浅合并的落实粒度：叶子字段级覆盖——
+        「同名 key 高优先级覆盖、未覆盖 key 沿用低优先级」；列表不递归，
+        整列表覆盖。内部 API）。"""
+        flat: dict[str, Any] = {}
+        for key, value in data.items():
+            dotted = f"{_prefix}{key}"
+            if isinstance(value, dict):
+                flat.update(Runtime._flatten_config(value, _prefix=f"{dotted}."))
+            else:
+                flat[dotted] = value   # 列表值不递归——整列表覆盖（§6）
+        return flat
+
+    def _merge_config_layers(self) -> dict[str, Any]:
+        """优先级链浅合并（R-06 落实；内部 API）。
+
+        低 → 高：框架推荐默认值（``_FRAMEWORK_CONFIG_DEFAULTS``）< 项目级
+        （``@/config.yaml``）< 用户级（``$FLOWING_CONFIG_HOME/config.yaml``，
+        默认 ``~/.flowing/``）。逐层摊平为点分 key 后 ``dict.update`` 叠加。
+        env 层暂无 key 映射规约（模块 docstring §6 环境变量表中的
+        ``FLOWING_*`` 均为路径/开关类，由各自消费点直读，不进合并链）；
+        命令行层不进链——由调用方经 ``set_config`` 落 ``_config_overrides``
+        表达（读取时最优先）。
+        """
+        config_home = Path(os.environ.get(
+            "FLOWING_CONFIG_HOME", os.path.expanduser("~/.flowing")))
+        merged: dict[str, Any] = {}
+        for layer in (
+            _FRAMEWORK_CONFIG_DEFAULTS,
+            self._read_config_file(self.project_root / "config.yaml"),
+            self._read_config_file(config_home / "config.yaml"),
+        ):
+            merged.update(self._flatten_config(layer))
+        return merged
+
+    def _bootstrap_persistence(self) -> None:
+        """全局持久化引导（R-07 落实；内部 API）：重放全部未引导的全局
+        命名空间 → 解锁写闸门 → 压缩三时点① → agent 池扫描。
+
+        幂等：只处理写闸门仍关闭的命名空间视图（已引导的不重放——重放会
+        用文件旧值覆盖尚未 drain 的内存写）；池扫描只补登记池中缺失的 id。
+        调用点：``__init__`` 尾部（默认 persist 路径场景的重放点）、
+        ``set_persist_dir``（重指存储后）、``_ensure_persist_ready``
+        （首个 mount/create/recover 前兜底——覆盖默认路径下 post-init
+        注册的插件命名空间）。
+
+        .. rubric:: 调用关系（审计）
+
+        - 调用：``RecordStore.replay``（每命名空间重放）；``StateView._maybe_compact``（压缩三时点①）；``self._scan_agent_pool``（每次调用收尾）
+        - 被调：``Runtime.__init__`` / ``set_persist_dir`` / ``_ensure_persist_ready``
+        """
+        for view in self._states.values():
+            if view._write_gate_open:
+                continue   # 已引导：不重放（防文件旧值覆盖未 drain 的内存写）
+            persisted = view._persisted
+            for record in list(view._store.replay()):   # replay 是惰性生成器，须显式消费
+                op = record.get("op")
+                if op == "set":
+                    persisted[record["key"]] = record["value"]
+                elif op == "delete":
+                    persisted.pop(record["key"], None)
+                # 未知行形态（meta 已被 replay 吸收）静默跳过——与 Agent._restore 同口径
+            object.__setattr__(view, "_write_gate_open", True)
+            if persisted:
+                # 压缩三时点①的 Runtime 侧落点（空袋跳过：无内容可压，
+                # 避免引导即在磁盘建出仅有 meta 首行的空文件）
+                view._maybe_compact(force=True)
+        self._scan_agent_pool()
+
+    def _scan_agent_pool(self) -> None:
+        """agent 池扫描（模块 docstring §9；内部 API）：以全局 ``core``
+        名录为池 key 唯一权威来源，逐个开 session 目录重建
+        ``{agent_id → 元数据}`` 注册表（实例不在扫描阶段创建）。
+        幂等：已在池的 id 跳过。
+
+        .. rubric:: 调用关系（审计）
+
+        - 调用：``self._read_pool_meta``（每个待登记 id）
+        - 被调：``self._bootstrap_persistence``（每次引导收尾）
+        """
+        core = self._states.get("core")
+        if core is None or not core._write_gate_open:
+            return   # core 未引导（闸门未开读不到持久值）——随引导再行扫描
+        agents = list(core.get("agents", []))
+        session_dirs = dict(core.get("session_dirs", {}))
+        for agent_id in agents:
+            if agent_id in self._agent_pool:
+                continue
+            session_dir = self._load_session_dir(session_dirs.get(agent_id), agent_id)
+            self._agent_pool[agent_id] = self._read_pool_meta(session_dir, agent_id)
+
+    def _read_pool_meta(self, session_dir: Path, agent_id: str) -> dict[str, Any]:
+        """从 session 目录的 ``state.jsonl`` 解析池元数据（扫描专用；内部 API）。
+
+        手解而非走 ``FileRecordStore.replay``——扫描是纯读巡检，不应产生
+        迁移回写等副作用；容错口径与重放一致（撕裂末行截断），损坏行只
+        告警跳过（权威重放归 ``Agent._restore`` 的 CorruptionError 路径）。
+        元数据键 = ``_POOL_META_KEYS``（create 管线第 7 步写入）。
+        """
+        meta: dict[str, Any] = {
+            "agent_type": "",
+            "parent_agent_id": self.node_id,
+            "created_at": "",
+            "session_dir": self._store_session_dir(session_dir),
+            "args": {},
+        }
+        path = session_dir / "state.jsonl"
+        if not path.exists():
+            warnings.warn(
+                f"池扫描：名录中 {agent_id} 对应的 state.jsonl 缺失（{path}）"
+                "——按缺省元数据登记（可诊断告警，不按空 session 静默处理）")
+            return meta
+        segments = path.read_bytes().split(b"\n")
+        segments.pop()   # 撕裂末行截断（与 FileRecordStore 同口径）
+        for lineno, seg in enumerate(segments, start=1):
+            if not seg:
+                continue
+            try:
+                record = json.loads(seg)
+            except json.JSONDecodeError:
+                _logger.warning("池扫描跳过损坏行 %s:%d", path, lineno)
+                continue
+            if not isinstance(record, dict) or record.get("op") != "set":
+                continue
+            key = record.get("key")
+            if key in _POOL_META_KEYS:
+                meta[key] = record.get("value")
+        return meta
+
+    def _ensure_persist_ready(self) -> None:
+        """首个 mount/create/recover 前的持久化就位（内部 API）。
+
+        建持久化根目录（默认路径推迟到真正的持久化动作才落盘，避免零
+        持久化场景在 cwd 留下空 ``.flowing/``）→ core 名录写入已安装
+        插件清单（§8 core 内容之一；此刻 persist 目录已就位，写透安全）→
+        兜底引导 post-init 注册的命名空间（默认路径场景的插件命名空间）。
+
+        .. rubric:: 调用关系（审计）
+
+        - 调用：``self._bootstrap_persistence``（每次调用收尾）
+        - 被调：``Runtime.mount`` / ``create_agent`` / ``recover_agent``（各自入口）
+        """
+        self._persist_dir.mkdir(parents=True, exist_ok=True)
+        core = self._states.get("core")
+        if core is not None and core._write_gate_open:
+            plugins = sorted(self._plugins)
+            if core.get("plugins", []) != plugins:
+                core["plugins"] = plugins   # 写透（merge_last_line 防膨胀）
+        self._bootstrap_persistence()
 
     def resolve_path(self, path: str, *, source_dir: Path | None = None) -> Path:
         """路径前缀规则的执行器：``@/`` ``./`` ``../`` 绝对路径 → ``Path``。
@@ -2573,13 +3007,13 @@ class Runtime:
             try:
                 await plugin.shutdown()
             except Exception:
-                import logging
-                logging.getLogger("flowing.runtime").exception(
+                _logger.exception(
                     "插件 %s 收尾异常，继续后续收尾", getattr(plugin, "name", "?"))
         # 第 3 步：关闭全部全局状态视图（drain 排空 + 停写任务——契约②
         # 排空屏障点；在插件收尾之后，插件 shutdown() 中仍可写全局状态）
         for view in self._states.values():
-            view._maybe_compact(force=True)   # 压缩三时点②的 Runtime 侧落点（请求随 _close 排空一并执行）
+            if view._persisted:
+                view._maybe_compact(force=True)   # 压缩三时点②的 Runtime 侧落点（请求随 _close 排空一并执行；空袋跳过——避免为零内容命名空间建出实体文件）
             await view._close()
         # 第 4 步：通信总线关闭（未见具名符号；发生在 _shutdown_event.set() 之前）
         self._shutdown_event.set()   # 末尾置位；幂等（重复置位无副作用）；空 Runtime 直接跳到此处
@@ -2686,28 +3120,162 @@ class Runtime:
             :meth:`flowing.runtime.Runtime.create_agent`、
             :meth:`flowing.tool.ToolRegistry.get` —— 同构的 Tool 解析入口
         """
-        # 限定名(ns::name)只查注册表精确键;裸名:source_dir 提供时先走
-        # 文件查找链(文件覆盖注册表),缺省时跳过;之后注册表裸名视图
-        # (default:: 优先于 builtin::,插件覆盖原生行为通道);注册表 = 类注解 _agent_types
-        if "::" in agent_type:
+        # 形态判别委托 classify_ref（词法唯一来源）——注意不能用
+        # `"::" in agent_type` 粗判：「文件::类名」（R21 消歧形态）也含 ::，
+        # 但属路径形态（左段含路径特征时 classify_ref 判 "path"）
+        form = _classify_ref(agent_type)
+        if form == "qualified":
+            # 限定名（ns::name）：只查注册表精确键，不走文件查找链
             if agent_type in self._agent_types:
                 return self._agent_types[agent_type]
-            raise KeyError(agent_type)   # 限定名不走文件查找链
-        # 裸名且 source_dir 提供:先按规范名走文件查找链(相对 source_dir);
-        # 命中 -> 编译/加载 -> 注册到派生键(目录派生命名空间)并回写
-        # cls.registry_key -> 返回
-        ...
-        for key in (f"default::{agent_type}", f"builtin::{agent_type}"):
-            if key in self._agent_types:
-                return self._agent_types[key]
-        # 路径形态(./ @/ glob)经 resolve_path 定位(@/ 锚 project_root;
-        # ./ ../ 缺省 source_dir 报错)后编译/加载:目录形态按
-        # AGENT.fya > agent.fya > <name>.agent.fya > <name>.fya 候选链探测
-        # (probe_candidates;身份名推断 infer_name(AGENT_NAMING);.fya 文本解析
-        # 经 flowing.parser.parse_fya;同名文件夹优先、.fya 优先于手写子类并告警)
-        resolved = self.resolve_path(agent_type, source_dir=source_dir)
-        _ = resolved   # 身份名 / class_name 推断规则见 flowing.agent.Agent.class_name
-        raise KeyError(agent_type)   # 注册表与路径均不命中 → KeyError
+            raise KeyError(agent_type)
+        if form == "bare":
+            # 裸名：source_dir 提供时先走文件查找链（相对 source_dir——文件
+            # 覆盖注册表）；缺省时跳过文件链
+            if source_dir is not None:
+                loaded = self._load_agent_from_name_chain(agent_type, source_dir)
+                if loaded is not None:
+                    return loaded
+            # 注册表裸名视图：default:: 优先于 builtin::（插件覆盖原生行为通道）
+            for key in (f"default::{agent_type}", f"builtin::{agent_type}"):
+                if key in self._agent_types:
+                    return self._agent_types[key]
+            raise KeyError(agent_type)
+        # 路径形态（./ @/ 绝对路径 / 含分隔符的相对路径 / 文件::类名）：
+        # @/ 锚 project_root 无需 source_dir；./ ../ 缺省 source_dir 报错
+        # （resolve_path 现有口径）
+        path_part, sep, class_name = agent_type.partition("::")
+        resolved = self.resolve_path(path_part, source_dir=source_dir)
+        return self._load_agent_from_path(
+            resolved, class_name if sep else None, ref=agent_type)
+
+    def _load_agent_from_name_chain(
+        self, name: str, source_dir: Path
+    ) -> "type[Agent] | None":
+        """裸名的定向文件查找链（R-03 本期最小链；**内部 API**）。
+
+        相对 ``source_dir`` 探测：目录形态 ``<name>/`` 优先（候选链只含
+        ``.fya``：``AGENT.fya > agent.fya > <name>.agent.fya > <name>.fya``，
+        首个存在者生效）；目录外依次 ``<name>.fya`` 单文件、
+        ``<name_snake>.py`` 手写文件。``.fya`` 命中即抛「阶段 3 就绪前不
+        支持」的显式 FormatError（编译装配属阶段 3，不静默失败）；
+        ``.fya`` 与同名 ``.py`` 并存 → 告警且 ``.fya`` 优先（同样抛
+        FormatError——「优先」的语义保留到阶段 3 兑现）。全部未命中 →
+        ``None``（调用方继续查注册表裸名视图）。
+
+        .. rubric:: 调用关系（审计）
+
+        - 调用：``self._load_agent_from_py``（.py 命中时）
+        - 被调：``Runtime.get_agent_class``（裸名且 source_dir 提供时）
+        """
+        directory = source_dir / name
+        if directory.is_dir():
+            hit = _probe_candidates(
+                directory,
+                ["AGENT.fya", "agent.fya", f"{name}.agent.fya", f"{name}.fya"])
+            if hit is not None:
+                raise FormatError(_FYA_NOT_SUPPORTED.format(ref=str(hit)))
+        fya_file = source_dir / f"{name}.fya"
+        py_file = source_dir / f"{_kebab_to_snake(name)}.py"
+        if fya_file.exists():
+            if py_file.exists():
+                warnings.warn(
+                    f"同名 .fya 与手写 .py 并存，.fya 优先：{fya_file} / {py_file}")
+            raise FormatError(_FYA_NOT_SUPPORTED.format(ref=str(fya_file)))
+        if py_file.exists():
+            return self._load_agent_from_py(py_file, None, ref=name)
+        return None
+
+    def _load_agent_from_path(
+        self, resolved: Path, class_name: "str | None", *, ref: str
+    ) -> "type[Agent]":
+        """路径形态的编译/加载（R-03 本期最小链；**内部 API**）。
+
+        目录 → 候选链探测（只含 ``.fya``；无任一候选 → ``KeyError``，命中 →
+        阶段 3 显式 FormatError）；``.fya`` 文件 → 阶段 3 显式 FormatError；
+        手写 ``.py`` → :meth:`_load_agent_from_py`；不存在 / 其它后缀 →
+        ``KeyError``（解析失败的统一口径）。
+
+        .. rubric:: 调用关系（审计）
+
+        - 调用：``self._load_agent_from_py``（.py 命中时）
+        - 被调：``Runtime.get_agent_class``（路径形态）
+        """
+        if resolved.is_dir():
+            name = _infer_name(resolved, naming=AGENT_NAMING)   # 目录：basename 即目录名
+            hit = _probe_candidates(
+                resolved,
+                ["AGENT.fya", "agent.fya", f"{name}.agent.fya", f"{name}.fya"])
+            if hit is None:
+                raise KeyError(ref)   # 目录存在但无任一候选 → 解析失败
+            raise FormatError(_FYA_NOT_SUPPORTED.format(ref=str(hit)))
+        if not resolved.exists():
+            raise KeyError(ref)
+        if resolved.suffix == ".fya":
+            raise FormatError(_FYA_NOT_SUPPORTED.format(ref=str(resolved)))
+        if resolved.suffix == ".py":
+            return self._load_agent_from_py(resolved, class_name, ref=ref)
+        raise KeyError(ref)
+
+    def _load_agent_from_py(
+        self, path: Path, class_name: "str | None", *, ref: str
+    ) -> "type[Agent]":
+        """加载手写 ``.py`` 中的 Agent 子类（R-03 本期最小链；**内部 API**）。
+
+        模块内需**恰好一个**本文件定义的 Agent 子类（``__module__`` 过滤掉
+        import 进来的）；零个 → ``FormatError``；多个 → ``FormatError``
+        （消息指明用 ``路径::ClassName`` 消歧，R21）；``class_name`` 指定时
+        直接按名取（绕开「恰好一个」限制）。命中后注册到派生键（命名空间
+        从所在目录派生：``@/`` 下根相对、根外绝对——``to_project_path``
+        形式，仅作内部身份标识，§7a）并回写 ``cls.registry_key``；派生键
+        已在注册表 → 短路复用（不重复加载）。类体写了 ``name`` 仅作一致性
+        断言：与推断值不符抛 ``NameMismatchError``。
+
+        .. rubric:: 调用关系（审计）
+
+        - 调用：``importlib.util`` 文件加载
+        - 被调：``Runtime._load_agent_from_name_chain`` / ``_load_agent_from_path``
+        """
+        import importlib.util
+
+        from flowing.agent import Agent   # 局部 import：模块头依赖图保持单向（S-43）
+
+        name = _infer_name(path, naming=AGENT_NAMING)   # 身份名推断（文件名去后缀、snake→kebab）
+        derived_key = f"{self.to_project_path(path.parent)}::{name}"   # 目录派生命名空间（§7a，内部身份标识）
+        if derived_key in self._agent_types:
+            return self._agent_types[derived_key]   # 派生键短路复用（文件解析是声明期行为）
+        spec = importlib.util.spec_from_file_location(
+            f"flowing_agent_file_{abs(hash(str(path)))}", path)
+        module = importlib.util.module_from_spec(spec)   # type: ignore[union-attr]
+        spec.loader.exec_module(module)   # type: ignore[union-attr]
+        if class_name is not None:
+            cls = getattr(module, class_name, None)
+            if not (isinstance(cls, type) and issubclass(cls, Agent)):
+                raise FormatError(
+                    f"{path} 内不存在 Agent 子类 {class_name}（文件::类名 消歧失败）")
+        else:
+            candidates = [
+                obj for obj in vars(module).values()
+                if isinstance(obj, type) and issubclass(obj, Agent)
+                and obj is not Agent and obj.__module__ == module.__name__
+            ]
+            if not candidates:
+                raise FormatError(
+                    f"{path} 内没有 Agent 子类——手写 .py 需恰好定义一个")
+            if len(candidates) > 1:
+                raise FormatError(
+                    f"{path} 内有多个 Agent 子类"
+                    f"（{', '.join(c.__name__ for c in candidates)}）——"
+                    "用 路径::ClassName 形态消歧（R21）")
+            cls = candidates[0]
+        explicit_name = cls.__dict__.get("name")   # name 非机制字段：写了仅作一致性断言
+        if explicit_name is not None and explicit_name != name:
+            raise NameMismatchError(
+                f"{path} 中 {cls.__name__} 声明 name={explicit_name!r}，"
+                f"与推断身份名 {name!r} 不符")
+        cls.registry_key = derived_key   # 回写（与 register_agent_type 同构）
+        self._agent_types[derived_key] = cls
+        return cls
 
     def _resolve_session_dir(self, session_dir: str | Path | None, node_id: str) -> Path:
         """解析 agent 级 session 目录（**内部 API，不属稳定契约**）。
@@ -2778,9 +3346,26 @@ class Runtime:
         .. seealso:: :meth:`flowing.runtime.Runtime.use`、
             :exc:`flowing.errors.DependencyError`
         """
-        import warnings
         for plugin in self._plugins.values():
             for dep in plugin.dependencies:   # R4：插件只声明 dependencies: list[str]
                 if dep not in self._plugins:
                     warnings.warn(f"插件依赖缺失：{plugin.name} 依赖未安装的 {dep}")   # 警告不抛（R9）
-        # DAG 无环校验（拓扑排序器未见具名符号）：已装子图成环 → DependencyError
+        # DAG 无环校验（DFS 三色标记；只走已装集合内的边——缺依赖已在上方警告，
+        # 不成环）：已装子图成环 → DependencyError（报错现场 = 引入环的那次 use()）
+        color = dict.fromkeys(self._plugins, 0)   # 0=未访问 1=在栈 2=完成
+
+        def _visit(name: str, stack: tuple[str, ...]) -> None:
+            color[name] = 1
+            for dep in getattr(self._plugins[name], "dependencies", []):
+                if dep not in self._plugins:
+                    continue
+                if color[dep] == 1:
+                    raise DependencyError(
+                        f"插件依赖成环：{' -> '.join([*stack, name, dep])}")
+                if color[dep] == 0:
+                    _visit(dep, (*stack, name))
+            color[name] = 2
+
+        for name in self._plugins:
+            if color[name] == 0:
+                _visit(name, ())
