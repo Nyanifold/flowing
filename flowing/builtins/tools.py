@@ -70,7 +70,7 @@ __all__ = [
 ]
 
 _MAX_LINE_LENGTH = 2000
-"""read 输出的单行截断长度（spec 只写「超长行截断」，未给数值——见实现报告对照表）。"""
+"""read 输出的单行截断长度（spec 只写「超长行截断」，未给数值——本实现口径）。"""
 
 _GREP_MAX_LINES = 250
 """grep 输出的匹配行截断上限（spec 给了「默认 250」）。"""
@@ -142,7 +142,7 @@ class ReadTool(Tool):
         offset/limit 截）（D20：标准件统一返 ``str``）。
 
         行号前缀与 ``offset`` 同一 0 基口径（传什么下标就见什么行号——
-        spec 未写清处，见实现报告对照表）。
+        spec 未写清处的落实口径）。
 
         .. rubric:: 调用关系（审计）
 
@@ -826,6 +826,6 @@ class SubagentInvokeTool(Tool):
 
 
 # TOOL_NAMING（Tool 资源的路径形态身份名推断规则表）的单一权威定义在
-# flowing.tool（推测点 2 裁决：Registry 同文件、消费方最近）；本模块经头部
+# flowing.tool（Registry 同文件、消费方最近）；本模块经头部
 # import 再导出（见 __all__），不复制第二份常量（防双份漂移）。
 

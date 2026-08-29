@@ -202,7 +202,7 @@ from flowing.message import Message
 from flowing.parsable import Parsable
 
 if TYPE_CHECKING:
-    # R-1（S-43 裁决③先例）：tool.py 属 L4（阶段 3），本期只做注解级引用，
+    # R-1（S-43 裁决③先例）：只做注解级引用，
     # 运行期不需要真实类（dataclass 字段注解惰性求值）
     from flowing.tool import ToolDefinition
 

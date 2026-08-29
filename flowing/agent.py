@@ -1517,8 +1517,7 @@ class Agent:
             cls.source_file = None   # 推算失败 -> None
             return
         # 经 launch 上下文的当前项目根换算 "@/" 格式；无 launch 上下文（裸
-        # Runtime 不存在 / 测试直接定义子类）时推算失败 -> None（R-03 相邻
-        # 占位：runtime 批次的 _current_project_root 就绪后本路径自动生效）
+        # Runtime 不存在 / 测试直接定义子类）时推算失败 -> None
         try:
             from flowing.runtime import _current_project_root
             root = _current_project_root.get()

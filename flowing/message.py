@@ -1125,7 +1125,7 @@ def to_record(msg: Message) -> dict:
     .. rubric:: 功能介绍
 
     消息对象 ↔ 行映射的**唯一序列化点**（X2 落实：spec 把行格式的字段级
-    schema 归属持久化规约，本模块只约束映射语义——本期将 schema 冻结在
+    schema 归属持久化规约，本模块只约束映射语义——schema 冻结在
     本函数与 :func:`from_record` 一对中，L3 ``Agent._persist_message``
     以本函数为唯一序列化点）。
 
@@ -1146,7 +1146,7 @@ def to_record(msg: Message) -> dict:
 
     - 调用：``_block_to_record``（逐 content 块）
     - 被调：L3 ``flowing.agent.Agent._persist_message``（时机：每次
-      挂树落盘）；本期由测试直接驱动
+      挂树落盘）
     """
     return {
         "type": "message",
@@ -1192,7 +1192,7 @@ def from_record(record: dict) -> Message:
 
     - 调用：``_block_from_record``（逐 content 块）
     - 被调：L3 ``flowing.agent.Agent._restore`` 的重放驱动（时机：
-      恢复管线重放 tree.jsonl）；本期由测试直接驱动
+      恢复管线重放 tree.jsonl）
     """
     if record.get("type") != "message":
         raise ValueError(f"不是消息行: type={record.get('type')!r}")

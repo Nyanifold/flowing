@@ -1197,9 +1197,8 @@ class Parsable(Generic[T]):
             ``flowing.runtime.Runtime.resolve_path``
         """
         state_keys: dict[str, Any] = dict(getattr(agent, "_state", None) or {})
-        # R-6 推测落实：状态袋最小接口约定为 agent._state: dict 直读；
-        # 阶段 2 接真 Agent 时对齐 register_state 的真实存储符号
-        # 保留名检测（R-7 推测落点：摊平构建前检测 agent.__dict__）——
+        # R-6 落实：状态袋最小接口约定为 agent._state: dict 直读
+        # 保留名检测（摊平构建前检测 agent.__dict__）——
         # 实例属性占用 env/config/agent/self 会覆盖框架注入值，fail fast
         for reserved in ("env", "config", "agent", "self"):
             if reserved in agent.__dict__:

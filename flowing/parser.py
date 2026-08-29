@@ -396,7 +396,7 @@ def load_fya_yaml(text: str) -> dict[str, Any]:
         return {}
     if not isinstance(data, dict):
         # 行号取首个非注释非空行（spec 要求报文含行号；safe_load 成功路径
-        # 无异常 mark，就地扫描合成——spec 未写清处，见实现报告对照表）
+        # 无异常 mark，就地扫描合成——spec 未写清处的落实口径）
         first = next(
             (i + 1 for i, ln in enumerate(text.splitlines())
              if ln.strip() and not ln.lstrip().startswith("#")),

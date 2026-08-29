@@ -460,9 +460,8 @@ def load_models(path: Path) -> dict[str, ModelConfig]:
     data = YAML(typ="rt").load(Path(path).read_text(encoding="utf-8")) or {}
     models: dict[str, ModelConfig] = {}
     for name, entry in dict(data).items():
-        # known_model_fields 分流（R-3 本期简化形态）：固定内建字段集
-        # 升属性，其余一律进 _extra；与 adapter 声明的精确分流在阶段 2
-        # 接 providers 时补齐（届时以 providers.py 规约为准重审）
+        # known_model_fields 分流（R-3 简化形态）：固定内建字段集
+        # 升属性，其余一律进 _extra
         fields: dict[str, Any] = {}
         extra: dict[str, Any] = {}
         for key, value in dict(entry).items():
@@ -474,8 +473,7 @@ def load_models(path: Path) -> dict[str, ModelConfig]:
     return models
 
 
-# R-3 本期简化：固定内建字段集（替代 adapter 的 Provider.known_model_fields
-# 声明分流，后者属阶段 2）
+# R-3 简化：固定内建字段集（替代 adapter 声明分流）
 _KNOWN_MODEL_FIELDS: frozenset[str] = frozenset({
     "model", "provider", "thinking_budget", "context_window", "max_output_tokens",
 })
@@ -489,7 +487,7 @@ def _maybe_wrap_parsable(value: Any) -> Any:
     ``RAW``）的值才包装——纯字面量保持静态原值，使全静态条目同样命中
     ``ModelConfig.resolve`` 的幂等短路。``.fya`` 解析层的 M-14 全量包装
     （非字符串值也包 ``LITERAL``）是 parser 层规则，与本 loader 的
-    「路径 → 映射」简化口径不同，阶段 3 接 parser 时复核。
+    「路径 → 映射」简化口径不同。
     """
     if isinstance(value, str):
         p = Parsable(value)

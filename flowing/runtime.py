@@ -3133,7 +3133,7 @@ class Runtime:
         # 精确键短路（先于形态判别）：文件派生限定键的命名空间含路径特征
         # （目录派生，如 "@/order-agent::payment"），过不了 classify_ref 的
         # 限定名判别（左段含 / 判成路径形态）——注册表在场证据优先于词法
-        # 分流（阶段 3 批次 4 接缝接通时暴露并修复；与 ToolRegistry.get 同口径）
+        # 分流（与 ToolRegistry.get 同口径）
         if agent_type in self._agent_types:
             return self._agent_types[agent_type]
         # 形态判别委托 classify_ref（词法唯一来源）——注意不能用
@@ -3276,7 +3276,7 @@ class Runtime:
     def _load_agent_from_py(
         self, path: Path, class_name: "str | None", *, ref: str
     ) -> "type[Agent]":
-        """加载手写 ``.py`` 中的 Agent 子类（R-03 本期最小链；**内部 API**）。
+        """加载手写 ``.py`` 中的 Agent 子类（R-03；**内部 API**）。
 
         模块内需**恰好一个**本文件定义的 Agent 子类（``__module__`` 过滤掉
         import 进来的）；零个 → ``FormatError``；多个 → ``FormatError``
@@ -3302,7 +3302,7 @@ class Runtime:
         name = _infer_name(path, naming=AGENT_NAMING)   # 身份名推断（文件名去后缀、snake→kebab）
         base_key = f"{self.to_project_path(path.parent)}::{name}"   # 目录派生命名空间（§7a，内部身份标识）
         # ::ClassName 消歧形态的派生键含类名（每类一键）——同一多类文件
-        # 先 ::A 后 ::B 时，B 不得误命中 A 的短路（正确性修复，见实现报告）
+        # 先 ::A 后 ::B 时，B 不得误命中 A 的短路
         derived_key = f"{base_key}::{class_name}" if class_name is not None else base_key
         if derived_key in self._agent_types:
             return self._agent_types[derived_key]   # 派生键短路复用（文件解析是声明期行为）

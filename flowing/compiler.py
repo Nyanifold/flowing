@@ -148,7 +148,7 @@ def _merge_named_blocks(fields: dict[str, Any], blocks: Mapping[str, str]) -> No
        :class:`FormatError`。
 
     块体写入前剥掉尾部换行（块体原文以 ``---``/EOF 收尾，必带行尾换行；
-    该换行是容器格式而非内容——spec 未写清处，见实现报告对照表）。
+    该换行是容器格式而非内容——spec 未写清处的落实口径）。
     末端落在列表别名段（路径在条目处耗尽）→ :class:`FormatError`
     （块只能写进映射键，不能整体替换条目）。
     """
@@ -245,7 +245,7 @@ def _annotation_to_schema_type(annotation: Any, *, context: str) -> Any:
     """
     if isinstance(annotation, str):
         # 脚本带 `from __future__ import annotations` 时注解是字符串——
-        # 在内建命名空间求值（spec 未写清处，见实现报告对照表）
+        # 在内建命名空间求值（spec 未写清处的落实口径）
         import builtins
 
         try:
@@ -367,8 +367,7 @@ def _source_file_value(fya_path: Path) -> str:
     """``source_file`` 类属性注入值：根内 ``@/`` 相对形式，根外/无上下文 → 绝对路径。
 
     （spec 只写「``@/`` 路径」；无 launch 上下文时 ``@/`` 不可表达，绝对
-    路径同样被 ``resolve_path`` 原样接受——spec 未写清处，见实现报告
-    对照表。）
+    路径同样被 ``resolve_path`` 原样接受——spec 未写清处的落实口径。）
     """
     resolved = fya_path.resolve()
     root = _project_root()
@@ -464,8 +463,7 @@ def _build(fya_path: Path) -> _Assembly:
         if user_setup_fn is not None:
             derived_props, setup_params = _setup_signature(user_setup_fn, class_name=class_name)
             if derived_props is not None:
-                # 校验对照（spec：参数必须有对应字段；类型兼容检查未实现，
-                # 见实现报告对照表）
+                # 校验对照（spec：参数必须有对应字段；类型兼容检查未实现）
                 for pname in derived_props:
                     if pname not in args_props:
                         raise FormatError(
@@ -503,7 +501,7 @@ def _emit_source(
     need_wrapper: bool,
     setup_params: frozenset[str] | None,
 ) -> str:
-    """发射产物 .py 源码（固定模板，推测点 6 落点）。
+    """发射产物 .py 源码（固定模板）。
 
     模板：文件头注释（来源与「勿手改」提示）→ 按需 import → 模块级
     ``_FYA_*`` 数据常量（刻意**不**放类体——``_check_pending`` 会扫类
@@ -541,7 +539,7 @@ def _emit_source(
     if any("Parsable(" in line for line in body_lines):
         imports[0] = "from flowing import Agent, Parsable"
     if any("= PENDING" in line for line in body_lines):
-        imports[0] += ", PENDING" if "Parsable" in imports[0] else ", PENDING"
+        imports[0] += ", PENDING"
     if args_props is not None:
         imports.append("from flowing.params import schema_to_model")
     if tools_refs or subagent_refs:
@@ -629,12 +627,12 @@ def _normalize_for_hash(value: Any) -> Any:
 
 
 def _fya_hash(doc: FyaDocument) -> str:
-    """``fya_hash``（推测点 5 落点）：解析结构口径——``repr`` 规范化后的
+    """``fya_hash``：解析结构口径——``repr`` 规范化后的
     ``FyaDocument``（注释/空行不进解析产物，天然不影响 hash）。
 
     块体与 ``$script`` 原文在 hash 前剥尾部换行（``rstrip("\r\n")``）——
     与发射侧口径一致（块体以 ``---``/EOF 收尾必带行尾换行，属容器格式而
-    非内容；文件末尾增删空行不应触发重编译，spec 未写清处见实现报告）。
+    非内容；文件末尾增删空行不应触发重编译，spec 未写清处的落实口径）。
     """
     blocks = {k: v.rstrip("\r\n") for k, v in doc.blocks.items()}
     script = doc.script.rstrip("\r\n") if doc.script is not None else None
@@ -644,7 +642,7 @@ def _fya_hash(doc: FyaDocument) -> str:
 
 
 def _py_hash(source: str) -> str:
-    """``py_hash``（推测点 5 落点）：AST 口径——``ast.parse`` 后规范化转储
+    """``py_hash``：AST 口径——``ast.parse`` 后规范化转储
     （格式化改动不影响；语义改动才变）。"""
     tree = ast.parse(source)
     return "sha256:" + hashlib.sha256(ast.dump(tree).encode("utf-8")).hexdigest()
@@ -692,7 +690,7 @@ def compile_fya_class(fya_path: Path) -> type:
     - 每次调用现场合成，无缓存（调用方的注册表/惰性解析层负责去重）。
     - ``.fya`` 与同名手写 ``.py`` 并存时不归本函数管（``fya`` 优先并
       告警的裁决在 ``Runtime.get_agent_class`` 的解析侧）。
-    - 实现形态（spec 未写清处，见实现报告对照表）：合成与发射同源——
+    - 实现形态（spec 未写清处的落实）：合成与发射同源——
       本函数 = ``_build`` 发射源码 + 新模块内 ``exec`` 取类；
       ``FormatError`` 族（声明错误）原样上抛，其余合成失败包装为
       :class:`flowing.errors.CompileError`。
@@ -701,7 +699,7 @@ def compile_fya_class(fya_path: Path) -> type:
     :return: 合成的 Agent 子类。
     :raises flowing.errors.CompileError: 解析或合成失败。
 
-    .. rubric:: 调用关系（审计)
+    .. rubric:: 调用关系（审计）
 
     - 调用：``_build``（解析 + 装配 + 发射，每次调用）
     - 被调：``flowing.runtime.Runtime.get_agent_class``（路径形态类型
@@ -804,7 +802,7 @@ def _is_agent_fya(path: Path) -> bool:
 
     spec 原文为「递归扫描 ``*.fya``」；工具（``TOOL.fya`` / ``*.tool.fya``）
     与 skill（``*.skill.fya``）有各自命名形态与装配层，误当 Agent 合成必炸
-    ——按命名形态排除（spec 未写清处，见实现报告对照表）。
+    ——按命名形态排除（spec 未写清处的落实口径）。
     """
     name = path.name
     if name in _TOOL_SKILL_FYA_GENERIC:
