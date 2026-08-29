@@ -322,10 +322,8 @@ def test_t63c_name_assertion_and_class_name_field(tmp_path):
 def test_t64_file_colon_class_disambiguation(tmp_path):
     """64：多类文件经 ``::ClassName`` 精确取类；无 ``::`` 且多类 → FormatError。
 
-    断言顺序有意安排（无消歧与幽灵类须先于任何成功注册）：派生键短路复用
-    不复查 class_name（同一文件一旦注册过某类，后续 ``::其他类`` 会短路返回
-    首个注册类——阶段 2 ``_load_agent_from_py`` 的既有行为，见实现报告
-    遗留问题）。
+    回归（派生键短路须带 class_name 判别）：先 ``::A`` 后 ``::B`` 各自精确
+    取到、互不串扰；再次 ``::A`` 经（含类名的）派生键短路复用同一类对象。
     """
     shutil.copytree(FIXTURES / "agents" / "multi", tmp_path / "multi")
     runtime = make_runtime(tmp_path)
@@ -335,9 +333,14 @@ def test_t64_file_colon_class_disambiguation(tmp_path):
     # :: 指向不存在的类 → FormatError
     with pytest.raises(FormatError, match="消歧失败"):
         runtime.get_agent_class("@/multi/agents.py::GhostAgent")
-    # ::ClassName 精确取类
-    cls = runtime.get_agent_class("@/multi/agents.py::PaymentAgent")
-    assert cls.__name__ == "PaymentAgent" and issubclass(cls, Agent)
+    # ::ClassName 精确取类；先 A 后 B 互不串扰（B 不得误命中 A 的短路）
+    cls_a = runtime.get_agent_class("@/multi/agents.py::PaymentAgent")
+    assert cls_a.__name__ == "PaymentAgent" and issubclass(cls_a, Agent)
+    cls_b = runtime.get_agent_class("@/multi/agents.py::RefundAgent")
+    assert cls_b.__name__ == "RefundAgent" and issubclass(cls_b, Agent)
+    assert cls_b is not cls_a
+    # 派生键短路复用：再次 ::A 返回同一类对象（不重复加载）
+    assert runtime.get_agent_class("@/multi/agents.py::PaymentAgent") is cls_a
 
 
 # ---------------------------------------------------------------------------

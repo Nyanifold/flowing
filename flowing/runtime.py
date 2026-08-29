@@ -3257,7 +3257,13 @@ class Runtime:
         name = _infer_name(path, naming=AGENT_NAMING)   # 身份名推断（通用名取目录名）
         derived_key = f"{self.to_project_path(path.parent)}::{name}"   # 目录派生命名空间（§7a）
         if derived_key in self._agent_types:
-            return self._agent_types[derived_key]   # 派生键短路复用（文件解析是声明期行为）
+            cls = self._agent_types[derived_key]   # 派生键短路复用（文件解析是声明期行为）
+            # 短路同样过 class_name 一致性断言——不得静默返回不符的已注册类
+            if class_name is not None and cls.__name__ != class_name:
+                raise FormatError(
+                    f"{path} 已注册的合成类为 {cls.__name__}，与 {class_name!r} 不符"
+                    "（.fya 单文件只合成一个类，:: 消歧是手写 .py 多类文件的机制）")
+            return cls
         cls = compile_fya_class(path)
         if class_name is not None and cls.__name__ != class_name:
             raise FormatError(
@@ -3278,8 +3284,11 @@ class Runtime:
         直接按名取（绕开「恰好一个」限制）。命中后注册到派生键（命名空间
         从所在目录派生：``@/`` 下根相对、根外绝对——``to_project_path``
         形式，仅作内部身份标识，§7a）并回写 ``cls.registry_key``；派生键
-        已在注册表 → 短路复用（不重复加载）。类体写了 ``name`` 仅作一致性
-        断言：与推断值不符抛 ``NameMismatchError``。
+        已在注册表 → 短路复用（不重复加载）。**``::ClassName`` 消歧形态的
+        派生键含类名**（``<目录键>::<身份名>::<类名>``——每类一键，否则
+        同一多类文件先注册 ``::A`` 后 ``::B`` 会误短路返回 A）；无
+        ``class_name`` 时为 ``<目录键>::<身份名>``。类体写了 ``name``
+        仅作一致性断言：与推断值不符抛 ``NameMismatchError``。
 
         .. rubric:: 调用关系（审计）
 
@@ -3291,7 +3300,10 @@ class Runtime:
         from flowing.agent import Agent   # 局部 import：模块头依赖图保持单向（S-43）
 
         name = _infer_name(path, naming=AGENT_NAMING)   # 身份名推断（文件名去后缀、snake→kebab）
-        derived_key = f"{self.to_project_path(path.parent)}::{name}"   # 目录派生命名空间（§7a，内部身份标识）
+        base_key = f"{self.to_project_path(path.parent)}::{name}"   # 目录派生命名空间（§7a，内部身份标识）
+        # ::ClassName 消歧形态的派生键含类名（每类一键）——同一多类文件
+        # 先 ::A 后 ::B 时，B 不得误命中 A 的短路（正确性修复，见实现报告）
+        derived_key = f"{base_key}::{class_name}" if class_name is not None else base_key
         if derived_key in self._agent_types:
             return self._agent_types[derived_key]   # 派生键短路复用（文件解析是声明期行为）
         spec = importlib.util.spec_from_file_location(
