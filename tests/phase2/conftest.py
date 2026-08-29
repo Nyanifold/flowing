@@ -231,3 +231,56 @@ def provider(runtime) -> FakeProvider:
 async def agent(runtime, provider):
     """一个已启动工作循环的空闲测试 Agent。"""
     return await runtime.create_agent("test-agent")
+
+
+# ---------------------------------------------------------------------------
+# runtime 批次（W29–W40）助手：真 Runtime 的测试级构造与 FakeProvider 直挂
+# ---------------------------------------------------------------------------
+
+from flowing.runtime import Runtime, _current_project_root   # contextvar 直连的说明见 make_runtime
+
+
+def make_runtime(
+    project_root: str | Path,
+    *,
+    persist: bool = True,
+    models: bool = True,
+    register_default_type: bool = True,
+) -> Runtime:
+    """构造真 ``Runtime``（``launch`` 的 contextvar 登记机制的测试级直连）。
+
+    ``launch`` 本体（import main.py + kwargs 透传 + reset）由 T93/T94 端到端
+    覆盖；其余测试只需要「``@`` 上下文已登记」这一机制事实，故直接对同一
+    contextvar set/reset。``persist=True`` 时把持久化根指到项目内
+    ``.flowing/``（默认路径是 ``<cwd>/.flowing``，测试不得污染工作目录）。
+    ``models=True`` 时写入最小 ``models.yaml`` / ``model-tags.yaml``
+    （provider 名为 ``"fake"`` 的条目）并登记——创建管线的模型初始解析
+    （``model_tag`` → ``ModelConfig``，fail fast）依赖它们。
+    """
+    root = Path(project_root).resolve()
+    token = _current_project_root.set(root)
+    try:
+        rt = Runtime()
+    finally:
+        _current_project_root.reset(token)
+    if persist:
+        rt.set_persist_dir(root / ".flowing")
+    if models:
+        (root / "models.yaml").write_text(
+            "fake:\n  provider: fake\n  model: fake-model\n"
+            "  context_window: 100000\n  max_output_tokens: 4096\n",
+            encoding="utf-8")
+        (root / "model-tags.yaml").write_text(
+            "tags:\n  default: fake\n  fast: fake\n", encoding="utf-8")
+        rt.set_models(root / "models.yaml")
+        rt.set_model_tags(root / "model-tags.yaml")
+    if register_default_type:
+        rt.register_agent_type("test-agent", SimpleAgent)
+    return rt
+
+
+def add_fake_provider(runtime: Any, name: str = "fake") -> FakeProvider:
+    """预置 FakeProvider 实例（绕过懒创建，测试直挂）。"""
+    provider = FakeProvider()
+    runtime.provider_registry._instances[name] = provider
+    return provider

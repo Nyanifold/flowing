@@ -585,12 +585,14 @@ def resolve(path: str) -> Path:
     return Path(path)   # 非 @/ 路径：普通 Path 语义（完整前缀规则是 Runtime.resolve_path 的职责）
 
 
-def _check_pending(instance: "Agent") -> None:
+def _check_pending(instance: "Agent", agent_type: str) -> None:
     """创建/恢复管线第 6 步的 PENDING 检查器（R-05 落实；**内部 API**）。
 
     扫实例 ``__dict__`` 与类 MRO 属性中的 ``PENDING`` 哨兵（含
     ``Parsable`` 包裹形态——``Parsable.source is PENDING``），命中即抛
-    :class:`flowing.errors.MissingFieldError`（消息含字段名清单）；
+    :class:`flowing.errors.MissingFieldError`（该异常为单字段结构
+    （``field`` / ``agent_type``），多字段命中时报**首个**（定义序），
+    其余待修复后下次创建再报——fail fast 逐钉语义）；
     同帧结算 S-29 扩展：``instance.hooks._pending_on`` 非空（``@on``
     暂记的钩子点在 setup 结束前未被 declare）→ 抛
     :class:`flowing.errors.UnknownHookPointError`（消息列出 hook_name
@@ -604,21 +606,14 @@ def _check_pending(instance: "Agent") -> None:
     """
     from flowing.parsable import PENDING, Parsable   # 局部 import：模块头依赖图保持单向
 
-    pending: list[str] = []
-    seen: set[str] = set()
     for mapping in (vars(instance), *(vars(c) for c in type(instance).__mro__)):
         for field, value in mapping.items():
-            if field in seen or field.startswith("__"):
+            if field.startswith("__"):
                 continue
-            seen.add(field)
             if isinstance(value, Parsable):
                 value = value.source   # Parsable 包裹形态：哨兵在 source 位
             if value is PENDING:
-                pending.append(field)
-    if pending:
-        raise MissingFieldError(
-            f"PENDING 延迟定义未兑现（setup() 返回后仍为 PENDING）："
-            f"{', '.join(sorted(pending))}")
+                raise MissingFieldError(field, agent_type)
     # S-29 扩展：同帧结算 @on 暂记（目标钩子点未 declare 即未消费）
     if instance.hooks._pending_on:
         unclaimed = [f"{hook_name}（方法 {getattr(bound, '__name__', bound)}）"
@@ -1374,7 +1369,7 @@ class Runtime:
         await instance.setup(**kwargs)   # 第 5 步
         # 第 6 步：PENDING 检查（固定步骤，非钩子；R-05 落实为模块级
         # _check_pending——含 S-29 扩展的 hooks._pending_on 结算）
-        _check_pending(instance)
+        _check_pending(instance, agent_type)
         # 模型初始解析（agent.py 类属性契约「实例化时由 model_tag 解析填充
         # 初始值」的管线落点——spec 管线步骤未具名列出）：setup 已直接赋
         # self.model（ModelConfig 任意模型通道）或改过 model_tag（__setattr__
@@ -1564,7 +1559,7 @@ class Runtime:
         await instance.setup(**args)   # 触发 before/after_recover 钩子对（不触发 before/after_create）
         # 第 6 步：PENDING 检查（同 create 管线——R-05 落实为模块级
         # _check_pending，含 S-29 的 _pending_on 结算检查）
-        _check_pending(instance)
+        _check_pending(instance, meta["agent_type"])
         # 模型初始解析（同 create 管线落点；setup 已直接赋 self.model 则跳过）
         if "model" not in instance.__dict__:
             instance.model = instance._resolve_model_tag(instance.model_tag)
@@ -2035,9 +2030,7 @@ class Runtime:
         # _config_ready 闸（R-06 落实，__dict__ 读取兼管子类 super().__init__()
         # 之前的过早调用）
         if not self.__dict__.get("_config_ready", False):
-            raise ConfigNotReadyError(
-                f"配置未就绪（优先级链合并未完成）：{key}——"
-                "禁止模块顶层 / Runtime.__init__ 完成前调用 get_config")
+            raise ConfigNotReadyError()   # 无字段叶子（固定英文提示消息，X14）
         k = str(key)
         if k in self._config_overrides:
             return self._config_overrides[k]   # set_config 运行期覆盖层优先
@@ -2110,7 +2103,8 @@ class Runtime:
     @overload
     def get_resource(self, name: str) -> Any: ...
     @overload
-    def get_resource(self, name: str, type_hint: type[T]) -> T:
+    def get_resource(self, name: str, type_hint: type[T]) -> T: ...
+    def get_resource(self, name: str, type_hint: type[T] | None = None) -> Any:
         """共享 Resource 读取；``type_hint`` 仅 IDE 推断，运行时不做 isinstance 校验。
 
         .. rubric:: 功能介绍
@@ -3360,8 +3354,10 @@ class Runtime:
                 if dep not in self._plugins:
                     continue
                 if color[dep] == 1:
-                    raise DependencyError(
-                        f"插件依赖成环：{' -> '.join([*stack, name, dep])}")
+                    # 成环：复用 DependencyError 的结构化字段表达——plugin 为
+                    # 环闭合点所在插件，missing 列出构成环回边的依赖（spec 未
+                    # 区分为缺/成环两种字段语义，就地裁决）
+                    raise DependencyError(name, [dep])
                 if color[dep] == 0:
                     _visit(dep, (*stack, name))
             color[name] = 2

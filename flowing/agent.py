@@ -2070,7 +2070,11 @@ class Agent:
             - :meth:`flowing.runtime.Runtime.shutdown` —— 进程级收尾
               进程级收尾（递归 destroy 的调用方）。
         """
-        # 幂等：重复调用安全（子树已空、已摘除时直接走完即返回）
+        # 幂等守卫（spec 行为规约：重复调用安全，二次调用「直接返回」）：
+        # 已摘除（不在 _nodes——含被父级级联销毁后，Runtime.shutdown 的
+        # 快照列表再次触及的情形）即二次调用，直接返回
+        if self.node_id not in self.runtime._nodes:
+            return
         for fut in list(self._pending_turns.values()):   # 1. resolve 所有 pending
             if not fut.done():
                 fut.set_result(TurnResult(
