@@ -81,9 +81,8 @@ def register_builtins(runtime) -> None:
     .. seealso:: :mod:`flowing.builtins.tools`、
         :mod:`flowing.builtins.agents`
     """
-    for tool in (SubagentInvokeTool(), FinishTool(), ReadTool(),
-                 WriteTool(), BashTool(), EditTool(), GrepTool(),
-                 GlobTool()):
-        runtime.register_tool(tool, namespace="builtin")
-    runtime.register_agent_type("explore-agent", ExploreAgent,
-                                namespace="builtin")
+    # R-02 占位（L4 真身阶段 3 替换）：本期只注册最小 finish 工具
+    # （agent.py 的 finish 置位转移测试 T71 需要）；SubagentInvokeTool 的
+    # execute 本体、六个标准文件/shell 工具与 ExploreAgent 的注册在
+    # 阶段 3/4 补齐。
+    runtime.register_tool(FinishTool(), namespace="builtin")

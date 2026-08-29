@@ -33,7 +33,7 @@ catalog 装配的条目侧）分文件——``agent.py`` 只保留 Agent 对象�
 
 from __future__ import annotations   # 注解延迟求值：Agent 仅 TYPE_CHECKING 引用，破注解级循环边
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from flowing.parsable import Parsable
@@ -200,6 +200,7 @@ class SubagentInvocation:
     """
 
 
+@dataclass
 class SubagentEntry:
     """Agent 对子 Agent 的一次「用法声明」——能力三正交的 Agent 级绑定层。
 
@@ -363,14 +364,14 @@ class SubagentEntry:
     """参数局部覆写：``{规范参数名: {子属性: 新值}}``（如
     ``["currency"]["default"]``）。
     """
-    specified: dict[str, Parsable] = ...
+    specified: dict[str, Parsable] = field(default_factory=dict)
     """指定值初始化参数（LLM 不可见）；``invoke_subagent()`` 内以父 Agent
     实例上下文求值。两种值形态（R-4 裁决，``inject`` 字段已删除）：
     固定值与**注入表达式**（``"{{ self.inject('key') }}"``——求值时
     沿 provide 链上溯，结果落子 Agent **初始化参数**；链断裂抛
     ``MissingProvideError``）。默认空 dict。
     """
-    param_aliases: dict[str, str] = ...
+    param_aliases: dict[str, str] = field(default_factory=dict)
     """LLM 参数名 → 规范参数名。默认空 dict。
     """
     enabled: bool = True
@@ -422,8 +423,9 @@ class SubagentEntry:
             mapped[self.param_aliases.get(alias, alias)] = value   # 别名映射回规范名
         for key, parsable in self.specified.items():
             mapped[key] = parsable.resolve(parent)   # specified 以父 Agent 实例上下文惰性求值后覆盖（固定值/注入表达式同路——注入表达式求值即 provide 链上溯）
-        # 产物经子 Agent args_model 校验（_normalize 同构流程，B1 声明即模型，
-        # 调用方视角；失败异常上抛调用方）
+        # R-02 占位（L4 真身阶段 3 替换）：以上为 spec 骨架的别名映射 +
+        # specified 求值；产物对子 Agent args_model 的「调用方视角校验」
+        # 属创建管线（runtime 批次 / 阶段 3 装配）职责，本方法不承载。
         return mapped
 
     def catalog_view(self, parent: Agent) -> dict[str, Any]:
@@ -474,9 +476,10 @@ class SubagentEntry:
         description: str = ""
         if self.override_description is not None:
             description = str(self.override_description.resolve(parent))   # 以父 Agent 实例为上下文求值
-        # else：取子类原 description（name_ori -> Agent 类经 Runtime.get_agent_class 惰性解析）
-        # params_xml：子类 args_model 派生 schema 经 params.apply_param_overrides
-        # 应用 override_params，再应用 param_aliases 改名，排除 specified 声明的参数
+        # R-02 占位（L4 真身阶段 3 替换）：无 override 时子类原 description
+        # 的回退（name_ori -> Agent 类经 Runtime.get_agent_class 惰性解析）
+        # 与 params_xml（args_model 派生 schema 经 apply_param_overrides +
+        # param_aliases 改名 + 排除 specified）本期不实现，留空串。
         params_xml: str = ""   # 占位：args_model 派生 schema 的覆写产物
         return {"name": self.name_alias, "description": description,
                 "params_xml": params_xml}

@@ -469,4 +469,42 @@ def normalize_entries(
       ``flowing.plugins.skills.use_skill``（``_extra["skills"]``，
       声明期——核心不感知 ``skills`` 字段，插件自行规范化）
     """
-    ...  # 逐条:形态校验 -> split_as -> classify_ref -> 别名推断,见行为规约
+    # R-02 占位实现（裸名 / 限定名 / as 的最小词法为最终语义；路径形态
+    # 别名推断委托 paths.infer_name，与阶段 3 同一入口）。
+    refs: list[EntryRef] = []
+    for item in items:
+        # 1. 形态校验：字符串（纯引用）或单键映射；其余 -> FormatError
+        if isinstance(item, str):
+            ref_str, body = item, {}
+        elif isinstance(item, Mapping):
+            if len(item) != 1:
+                raise FormatError(f"条目必须是单键映射: {item!r}")
+            ref_str, body = next(iter(item.items()))
+            if body is PENDING:
+                body = {}   # 覆写位 PENDING = 空补丁语义（P1-14）
+            elif not isinstance(body, Mapping):
+                raise FormatError(f"覆写集合必须是映射或 _（PENDING）: {item!r}")
+        else:
+            if item is PENDING:
+                # 列表项 PENDING：无别名无法被深层块寻址，永远无法兑现
+                raise FormatError("列表项不允许为 _（PENDING）")
+            raise FormatError(f"条目必须是字符串或单键映射: {item!r}")
+        if not isinstance(ref_str, str):
+            raise FormatError(f"条目引用必须是字符串: {ref_str!r}")
+        # 2. as 切分
+        raw, alias = split_as(ref_str)
+        # 3. 形态判别（路径前缀优先；否则按第一个 :: 为限定名）
+        kind = classify_ref(raw)
+        # 4. 别名推断：显式 as > 限定名 name 段 > 裸名本身 > 路径形态 infer_name
+        if alias is None:
+            if kind == "qualified":
+                alias = raw.split("::", 1)[1]
+            elif kind == "bare":
+                alias = raw
+            else:   # 路径形态：经 infer_name 推断（naming 必传）
+                if naming is None:
+                    raise FormatError(
+                        f"路径形态条目的别名推断需要 naming 规则表: {raw!r}")
+                alias = infer_name(raw, naming=naming)
+        refs.append(EntryRef(raw=raw, alias=alias, body=body))
+    return refs

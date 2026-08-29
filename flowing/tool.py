@@ -122,9 +122,12 @@ LLM 在一次逻辑 Turn 中发出工具调用后，框架按以下**固定顺�
 
 from __future__ import annotations   # S-43 裁决③：注解延迟求值，配合 TYPE_CHECKING 破注解级循环边
 
+import asyncio
+import inspect
+import json
 import os
 from collections.abc import Callable, Iterator
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, field, is_dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -144,6 +147,7 @@ from flowing.message import (
     MediaBlock,
     Message,
     MessageKind,
+    MessagePriority,
     StructBlock,
     TextBlock,
     ThinkingBlock,
@@ -397,12 +401,47 @@ async def normalize_output(value: Any) -> Any:
         - :func:`flowing.tool.output_to_blocks` —— 下游塑形统一出口（D22）。
         - :class:`flowing.tool.ToolResult` —— 五形态的承载字段 ``output``。
     """
-    # 1. 顶层 list/tuple（tuple 归一为 list）：浅层逐成员判别——全基础原样；
-    #    有非基础成员则基础保留、非基础单独转块（合法块原样 / 载体·bytes·Path·
-    #    注册表命中转块 / 违禁块 ValueError / 不可转换 → ValueError 框架错误通道）
-    # 2. 非序列：基础原样 / 合法块原样 / 可转化转单块 / 违禁块 ValueError /
-    #    不可转化 → ValueError（同上）
-    ...
+    # R-02 占位（L4 真身阶段 3 替换）：基础类型 / 合法块 / 序列浅层判别 /
+    # 违禁块检查为最终语义；媒体载体四类 / 裸 bytes / Path / 注册表命中对象
+    # 的「载体 → 块」I/O 转换本期不实现（按 D11 同通道 ValueError 报出，
+    # 注释标注，阶段 3 补齐）。
+    def _is_basic(v: Any) -> bool:
+        # 「基础类型」：None/bool/int/float/str/dict/list/tuple/dataclass
+        # 实例/pydantic BaseModel 实例（JSON 兼容及其常见载体）
+        return (
+            v is None
+            or isinstance(v, (bool, int, float, str, dict, list, tuple))
+            or (is_dataclass(v) and not isinstance(v, type))
+            or isinstance(v, BaseModel)
+        )
+
+    def _convert_one(v: Any) -> Any:
+        """单成员归一：基础原样 / 合法块原样 / 违禁块 ValueError / 其余占位。"""
+        if _is_basic(v):
+            return v
+        if isinstance(v, (ToolCallBlock, ThinkingBlock)):
+            # 违禁块（D12）：任何层级出现 -> 框架错误通道（作者 bug）
+            raise ValueError(f"工具结果中出现违禁块类型: {type(v).__name__}")
+        if isinstance(v, ContentBlock):
+            # 合法块（TextBlock/StructBlock/MediaBlock）原样放行；其余块类型
+            # 按违禁同通道处理（D12 兜底）
+            if isinstance(v, (TextBlock, StructBlock, MediaBlock)):
+                return v
+            raise ValueError(f"工具结果中出现违禁块类型: {type(v).__name__}")
+        # R-02 占位：媒体载体（Image/File/Audio/Video）、裸 bytes / Path、
+        # 注册表命中对象的转换在阶段 3 接入；本期按不可转换处理
+        raise ValueError(
+            f"工具结果类型不可转换（媒体载体转换属阶段 3）: {type(v).__name__}"
+        )
+
+    if isinstance(value, (list, tuple)):
+        # 顶层序列：浅层判别（不递归）——全基础原样（tuple 归一为 list）；
+        # 有非基础成员则基础保留、非基础逐成员转块（D9 混排不报错）
+        items = list(value)
+        if all(_is_basic(v) for v in items):
+            return items
+        return [_convert_one(v) for v in items]
+    return _convert_one(value)
 
 
 def output_to_blocks(output: Any, *, error: str | None = None) -> list[ContentBlock]:
@@ -439,7 +478,37 @@ def output_to_blocks(output: Any, *, error: str | None = None) -> list[ContentBl
     #   混合 list       → 逐成员：标量→TextBlock(dumps)、dict/list→StructBlock、
     #                     块→透传（保序）
     # error 非 None 时末尾追加 TextBlock(error)
-    ...
+    def _member_to_block(v: Any) -> ContentBlock:
+        if isinstance(v, ContentBlock):
+            return v   # 块透传（保序）
+        if isinstance(v, str):
+            return TextBlock(text=v)   # str 原样
+        if isinstance(v, (bool, int, float)) or v is None:
+            return TextBlock(text=json.dumps(v, ensure_ascii=False))   # 标量 dumps（可解析回）
+        if isinstance(v, BaseModel):
+            return StructBlock(data=v.model_dump())
+        if is_dataclass(v) and not isinstance(v, type):
+            return StructBlock(data=asdict(v))   # dataclass 此刻序列化
+        # dict / 纯基础 list / tuple → StructBlock（JSON 校验在 StructBlock 构造点，
+        # 深层埋藏非 JSON 对象在此诚实失败，D5）
+        return StructBlock(data=v)
+
+    blocks: list[ContentBlock] = []
+    if output is None:
+        blocks = []
+    elif isinstance(output, (list, tuple)):
+        if any(isinstance(v, ContentBlock) for v in output):
+            # 混合 list：逐成员（标量→TextBlock(dumps)、dict/list→StructBlock、
+            # 块→透传，保序）
+            blocks = [_member_to_block(v) for v in output]
+        else:
+            # 纯基础 list / tuple → 整体一个 StructBlock（JSON 校验在构造点）
+            blocks = [StructBlock(data=list(output))]
+    else:
+        blocks = [_member_to_block(output)]
+    if error is not None:
+        blocks.append(TextBlock(text=error))   # error 仅 error 态非 None，末尾追加
+    return blocks
 
 
 @dataclass
@@ -878,7 +947,7 @@ class ToolDefinition:
     description: str
     """给 LLM 的工具说明（已是 Parsable 渲染后的文本）。
     """
-    params_schema: dict[str, dict[str, Any]] = ...
+    params_schema: dict[str, dict[str, Any]] = field(default_factory=dict)
     """参数声明表，键为规范参数名、值为 JSON Schema property dict
     （B1 裁决：声明层即 schema；required 由 ``default`` 有无派生）。
     来源两条：Python 层 BaseModel 子类经 ``model_json_schema()`` 派生，
@@ -978,7 +1047,7 @@ class ToolDefinition:
         return ToolDefinition(
             name=name or self.name,
             description=override_description or self.description,
-            params=params,
+            params_schema=params,
             output_schema=self.output_schema,  # 透传：随 llm_definition 产物携带（D21），覆写不触及
             strict=self.strict,
         )
@@ -1104,14 +1173,14 @@ class ToolEntry:
     覆写合并进同一 ``override_params``，对 ``llm_definition()`` 与
     ``resolve()`` 完全透明）。
     """
-    specified: dict[str, Parsable] = ...
+    specified: dict[str, Parsable] = field(default_factory=dict)
     """指定值参数（LLM 不可见）。默认空 dict。值为 `Parsable`，在
     ``resolve()`` 时以调用方 Agent 局部变量为上下文惰性求值。两种值形态
     （R-4 裁决，``inject`` 字段已删除）：固定值（``Parsable("USD")``）
     与**注入表达式**（``Parsable("{{ self.inject('user_id') }}")``——
     求值时沿 provide 链上溯，链断裂抛 ``MissingProvideError``）。
     """
-    param_aliases: dict[str, str] = ...
+    param_aliases: dict[str, str] = field(default_factory=dict)
     """LLM 参数名 → 规范参数名。默认空 dict。LLM 看到别名，``resolve()``
     第一步映射回规范名。
     """
@@ -1182,7 +1251,18 @@ class ToolEntry:
             self.name_alias, self.override_params, description,
             specified_params=hidden)
         # 第 4 步参数别名应用（规范名 → param_aliases 别名）：规约未命名
-        # 具体可调用物，不猜，见 facts/tool.md
+        # 具体可调用物（R-02 占位落实：就地重建 params_schema——param_aliases
+        # 是 LLM 别名 → 规范名，反向映射；未被别名化的参数保持规范名）
+        if self.param_aliases:
+            reverse = {canonical: alias for alias, canonical in self.param_aliases.items()}
+            definition = ToolDefinition(
+                name=definition.name,
+                description=definition.description,
+                params_schema={reverse.get(k, k): v
+                               for k, v in definition.params_schema.items()},
+                output_schema=definition.output_schema,
+                strict=definition.strict,
+            )
         return definition
 
     def resolve(
@@ -1323,7 +1403,7 @@ class Tool:
     """默认 LLM 声明。类属性或实例属性（`ScriptTool.__init__` 自动生成）。
     Agent 级覆写不修改本对象（见 `ToolEntry`）。
     """
-    registry_key: str | None
+    registry_key: str | None = None
     """注册表全键（``ns::name``），``ToolRegistry.register`` 时回写；未注册
     实例为 ``None``。Entry 装配对**文件派生工具**落账本字段为
     ``name_ori``（含目录派生命名空间的限定键，热路径精确命中）；注册表
@@ -1480,16 +1560,15 @@ class Tool:
               对 shortcut / 钩子改写产物幂等再归一，D19）。
             - :class:`flowing.agent.Execution` —— cancel/pause 信号契约。
         """
-        import asyncio
-        import inspect
-
         self._execution = execution  # cancel 注入落点；仅调度期间非 None
+        # R-02 占位（L4 真身阶段 3 替换）：_has_caller 的「注册时 inspect
+        # 检测」本期改为调用时现场检测并实例级缓存；职责 4 的内部校验
+        # （_args_model）本期不做——LLM 视角校验已在 Agent._normalize 完成，
+        # 内部校验随 ScriptTool 编译链在阶段 3 落地。
+        if not hasattr(self, "_has_caller"):
+            self._has_caller = "caller" in inspect.signature(self.execute).parameters
         if self._has_caller:
             resolved_args["caller"] = caller  # caller 自动传入（execute 声明了该参数时）
-        # 职责 4（S-33）：内部校验——caller 注入之后、try 之外。
-        # specified/inject/默认值的配置错误 -> 上抛框架错误通道 + 日志，
-        # 不被下方 except Exception 吞成 ToolResult(error)、不进 LLM 可见文本
-        self._args_model.model_validate(resolved_args)
         try:
             result = self.execute(**resolved_args)  # -> Any（同步）或 awaitable（异步）
             if inspect.isawaitable(result):
@@ -1505,13 +1584,37 @@ class Tool:
         if isinstance(value, asyncio.Task):
             # fire-and-forget 收据；Task 挂 add_done_callback 固定 watcher
             # （D13，非扩展点）：完成回调取终值 → normalize_output →
-            # output_to_blocks → 标注块 + 结果块的多块 EVENT 入队
+            # output_to_blocks → 标注块 + 结果块的多块 EVENT 入队；
+            # 任务异常 → 标注块 + 错误文本块（与同步 error 同语义，LLM 可见）
+            if caller is not None:
+                value.add_done_callback(
+                    lambda t: asyncio.ensure_future(
+                        self._deliver_async_result(t, caller)))
             return ToolResult(status="pending", output=None)
         # 职责 5（D5/D12/D19）：归一化在 try 之外——浅层判别、幂等；
         # 违禁块（ToolCallBlock/ThinkingBlock）ValueError 属作者 bug，
         # 上抛框架错误通道，不被吞成 ToolResult(error)
         value = await normalize_output(value)
         return ToolResult(status="completed", output=value)
+
+    async def _deliver_async_result(self, task: "asyncio.Task", caller: "Agent") -> None:
+        """异步工具完成回调（D13 固定行为，非扩展点）：取终值 → 归一 → 塑形
+        → 标注块 + 结果块的 EVENT 消息（``source="tool_result"``、STEER
+        优先级）入调用方队列；任务异常 → 标注块 + 错误文本块（LLM 可见）。
+
+        **内部 API，不属稳定契约。** R-02 占位实现（L4 真身阶段 3 复核）。
+        """
+        marker = TextBlock(text=f"异步工具 {self.definition.name} 的最终结果：")
+        if task.cancelled():
+            blocks = [marker, TextBlock(text="异步任务被取消")]
+        elif (exc := task.exception()) is not None:
+            blocks = [marker, TextBlock(text=str(exc))]   # 与同步 error 同语义
+        else:
+            value = await normalize_output(task.result())
+            blocks = [marker, *output_to_blocks(value)]
+        await caller.enqueue_message(Message(
+            kind=MessageKind.EVENT, source="tool_result",
+            content=blocks, priority=MessagePriority.STEER))
 
 
 class ScriptTool(Tool):
@@ -2121,6 +2224,10 @@ class ToolRegistry:
     docstring §7a）。内部 API，不属稳定契约。
     """
 
+    def __init__(self) -> None:
+        # R-02 占位补齐（spec 骨架无显式构造段）：空注册表。
+        self._tools = {}
+
     def register(self, tool: Tool, *, name: str | None = None,
                  namespace: str | None = None) -> None:
         """注册工具实例。
@@ -2286,20 +2393,13 @@ class ToolRegistry:
             # 快路径:限定名精确键 / 裸名 default:: > builtin:: 裸名视图
             keys = ([name_or_path] if "::" in name_or_path
                     else [f"default::{name_or_path}", f"builtin::{name_or_path}"])
-            # 裸名且 source_dir 提供时:先走定向文件查找链(文件覆盖注册表)——
-            # 定位候选文件后先算派生键查注册表短路复用,未注册才实例化+register;
-            # source_dir 缺省时跳过文件链,直接走下面的注册表快路径
-            ...
+            # R-02 占位：裸名 + source_dir 的定向文件查找链属阶段 3（文件
+            # 编译链），本期跳过文件链、只查注册表快路径。
             for key in keys:
                 if key in self._tools:
                     return self._tools[key]
-        # 慢路径(声明期行为):路径形态——@/ 经 project_root 定位(无需
-        # source_dir),./ ../ 需 source_dir(缺省报错,resolve_path 现有口径);
-        # 候选链探测 paths.probe_candidates(目录内 TOOL.fya > <name>.tool.fya
-        # > <name>.fya > TOOL.py > tool.py > <name_snake>.py;目录外后三项;
-        # .fya 优先于同名 .py 并告警)
-        # 命中 -> 实例化(_auto_generate_tool 或子类) -> 派生键短路/self.register()
-        # (命名空间从所在目录派生) -> 返回
+        # R-02 占位：慢路径（路径形态定位 + 候选链探测 + 实例化注册）属
+        # 阶段 3 文件编译链，本期不实现——不命中统一报 ToolNotFoundError。
         raise ToolNotFoundError(f"工具未注册且查找链不命中:{name_or_path}")
 
     def get_tool_class(self, name_or_path: str, *,
