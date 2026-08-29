@@ -147,6 +147,7 @@ from flowing.errors import (
     AmbiguousMcpSourceError,
     AmbiguousToolError,
     FormatError,
+    Intercepted,
     MissingMcpSourceError,
     MissingSchemaError,
     NameMismatchError,
@@ -888,7 +889,9 @@ class ToolResult:
     .. rubric:: 行为规约
 
     - 不变量：``status == "blocked"`` 的实例只能经 `ToolResult.blocked`
-      工厂产生，其工具从未进入 `Tool.__call__`。
+      工厂产生——来源两条：``before_tool_call`` / ``after_tool_call``
+      拦截（工具未执行或结果被丢弃），或 ``execute`` 内主动抛出
+      ``Intercepted``（执行被硬阻断于中途）。
     - 不变量：``status == "error"`` 时 ``error`` 字段非空、``output`` 可为
       None；``status == "completed"`` 时 ``error is None``、``output``
       可为 None（语义=工具无实质返回；归一化第一形态，塑形为空
@@ -964,8 +967,10 @@ class ToolResult:
 
         .. rubric:: 功能介绍
 
-        当 ``before_tool_call`` 链中任一 handler ``raise Intercepted`` 时，
-        框架捕获该哨兵异常并调用本工厂生成阻断结果；工具本体不执行。
+        当 ``before_tool_call`` / ``after_tool_call`` 链中任一 handler
+        ``raise Intercepted``，或 ``execute()`` 内部（含其下游扩展钩子）
+        主动抛出 ``Intercepted`` 时，框架捕获该哨兵异常并调用本工厂生成
+        阻断结果；前一来源工具本体不执行，后一来源执行被阻断于中途。
 
         .. rubric:: 设计动机
 
@@ -987,7 +992,8 @@ class ToolResult:
         .. rubric:: 调用关系（审计）
 
         - 调用：``无``
-        - 被调：``flowing.agent.Agent.tool_call()`` （捕获
+        - 被调：``flowing.agent.Agent.tool_call()`` 与
+          ``flowing.tool.Tool.__call__()``（捕获
           ``flowing.errors.Intercepted`` 后生成阻断结果，每次钩子硬阻断）
 
         .. seealso::
@@ -1739,8 +1745,12 @@ class Tool:
            逃生舱的 ``output``）经 `normalize_output` 归一——浅层判别、
            幂等；归一化中的违禁块（``ToolCallBlock`` / ``ThinkingBlock``）
            ``ValueError`` 属作者 bug，与职责 4 同走框架错误通道**在
-           ``try`` 之外上抛**；``execute`` 内异常 → ``ToolResult(error)``
-           （不触发错误钩子）；返回 ``asyncio.Task`` →
+           ``try`` 之外上抛**；``execute`` 内普通异常 → ``ToolResult(error)``
+           （不触发错误钩子）；``execute`` 内抛出的
+           :class:`flowing.errors.Intercepted` → ``ToolResult.blocked``
+           （硬阻断信号语义即 blocked，与 ``before_tool_call`` 拦截同一
+           出口、同一 reason 塑形——「有意拒绝」与「意外故障」不进同一
+           LLM 可见通道）；返回 ``asyncio.Task`` →
            ``ToolResult(pending)``，并给 Task 挂 ``add_done_callback``
            （**固定行为，非扩展点**，D13）——完成回调取终值 →
            `normalize_output` → `output_to_blocks` → 标注块 + 结果块的
@@ -1820,6 +1830,11 @@ class Tool:
                 value = await task
             else:
                 value = result
+        except Intercepted as exc:
+            # execute 内抛出的硬阻断信号（如工具内部下游扩展钩子的拦截）：语义
+            # 即 blocked——与 before_tool_call 拦截同一出口、同一 reason 塑形，
+            # 不当业务异常吞成 error（「有意拒绝」与「意外故障」不进同一通道）
+            return ToolResult.blocked(reason=str(exc))
         except Exception as exc:
             # 异常路径：包装为 error 结果，不触发错误钩子（LLM 可见的正常产物）
             return ToolResult(status="error", error=str(exc))

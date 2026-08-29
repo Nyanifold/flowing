@@ -144,17 +144,11 @@ async def test_t26_before_hook_rewrites_args(tmp_path):
 # ---------------------------------------------------------------------------
 # T27：before_skill_load raise Intercepted → 工具调用 blocked，链路终止
 #
-# 当前红在上游接缝：Intercepted 从 execute 内部（before_skill_load dispatch）
-# 上抛时被 Tool.__call__ 的兜底 except Exception 吞成 status="error"，而
-# skills spec 两处（SkillLoadContext 测试案例 / SkillLoadTool 边缘情况）承诺
-# 经 LLM 入口传播为 blocked。strict xfail：上游补 except Intercepted 分支
-# （或裁决放宽为 error）后本测试 XPASS/FAIL 报警，届时摘除标记。
+# execute 内抛出的 Intercepted 经 Tool.__call__ 的专门分支转为 blocked
+# （与 before_tool_call 拦截同一出口、同一 reason 塑形）。
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "Tool.__call__ 的 except Exception 把 execute 内的 Intercepted 吞成 error；"
-    "spec 要求 blocked——待上游 Tool.__call__ 补 Intercepted 分支或裁决放宽"))
 async def test_t27_intercepted_blocks_load(tmp_path):
     runtime = make_skill_runtime(tmp_path)
     provider = add_fake_provider(runtime)

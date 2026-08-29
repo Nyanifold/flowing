@@ -12,7 +12,7 @@ import asyncio
 import pytest
 from pydantic import ValidationError
 
-from flowing.errors import MissingSchemaError
+from flowing.errors import Intercepted, MissingSchemaError
 from flowing.message import MessageKind, TextBlock
 from flowing.tool import (
     ScriptTool,
@@ -277,3 +277,40 @@ class TestInternalValidation:
             await tool({"n": "x"})
         ok = await tool({"n": 3})
         assert ok.status == "completed" and ok.output == 3
+
+
+# ---------------------------------------------------------------------------
+# execute 内的 Intercepted → blocked（Tool.__call__ 的硬阻断出口）
+# ---------------------------------------------------------------------------
+
+
+class TestExecuteIntercepted:
+    async def test_execute_intercepted_becomes_blocked(self):
+        """execute 内抛出 Intercepted（硬阻断信号）→ ToolResult.blocked，
+        与 before_tool_call 拦截同一出口；reason 经 as_message 塑形为
+        LLM 可见文本块。普通异常仍走 error 通道（对照断言）。"""
+
+        class GuardedTool(Tool):
+            definition = ToolDefinition(name="guarded", description="d",
+                                        params_schema={})
+
+            async def execute(self) -> str:
+                raise Intercepted("策略禁用")
+
+        result = await GuardedTool()({})
+        assert result.status == "blocked"
+        assert result.error is None
+        msg = result.as_message("c1")
+        assert msg.tool_status == "blocked"
+        assert isinstance(msg.content[0], TextBlock)
+        assert "策略禁用" in msg.content[0].text
+
+        class BoomTool(Tool):
+            definition = ToolDefinition(name="boom", description="d",
+                                        params_schema={})
+
+            async def execute(self) -> str:
+                raise ValueError("意外故障")
+
+        plain = await BoomTool()({})
+        assert plain.status == "error" and "意外故障" in plain.error
