@@ -84,7 +84,7 @@ from typing import TYPE_CHECKING
 from flowing.message import Message, MessageKind, TextBlock
 
 if TYPE_CHECKING:
-    from flowing.agent import Agent
+    from flowing.agent import Agent, TurnContext
 
 __all__ = ["use_system_reminder"]
 
@@ -108,13 +108,13 @@ def use_system_reminder(
     批次尚未挂树），骨架注释中的 ``turn.message_ids`` 提法不成立，按
     「距上次注入后新增消息数」的语义以树水位差实现。首次注入前
     （``last_count is None``）不做间隔判定——「距上次注入」在从未注入时
-     vacuously 满足（先注入再谈「再次注入」）。
+    自然满足（先注入再谈「再次注入」）。
     """
     items = list(contents or [])
     # 间隔判定状态：闭包持有，纯运行期——不落盘、不进 state 袋
     state: dict = {"last_count": None, "last_fired": None}
 
-    async def _inject(agent: "Agent", turn) -> "object":
+    async def _inject(agent: "Agent", turn: "TurnContext") -> "TurnContext":
         # 间隔判定：message_interval 与 time_interval 与关系（任一不满足
         # 即跳过）；从未注入过时直接放行
         if state["last_count"] is not None:
@@ -140,7 +140,7 @@ def use_system_reminder(
         state["last_fired"] = time.time()
         return turn
 
-    async def _cleanup(agent: "Agent", turn) -> "object":
+    async def _cleanup(agent: "Agent", turn: "TurnContext") -> "TurnContext":
         # clean=True 时每回合收尾按 tags 擦除本回合注入的提醒（head 回退
         # 由 Agent 层 remove_by_tags 处理）
         agent.remove_by_tags({"system-reminder"})
