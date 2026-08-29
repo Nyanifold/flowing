@@ -1139,3 +1139,39 @@ async def test_enqueue_messages_batch(agent, provider):
             Message(kind=MessageKind.USER, content=[TextBlock(text="拒")]),
         ])
     assert len(agent._message_queue) == 3   # 已入队的不回滚
+
+
+# ---------------------------------------------------------------------------
+# T07（审查 Finding 2 补落点）：流式基类回退与非流式等价
+# ---------------------------------------------------------------------------
+
+
+async def test_t07_stream_fallback_matches_nonstream(agent, provider):
+    """未覆写 generate_stream 的 adapter（FakeProvider 只注入 generate_fn）
+    走流式 provider_gen：on_provider_delta 恰好收到一条完整文本 delta，
+    最终响应与非流式等价。"""
+    usage = Usage(input=3, fresh_input=3, output=2, cache_read=0,
+                  cache_write=0, reasoning=0, total_tokens=5)
+    deltas: list[ProviderDelta] = []
+    agent.hooks.on_provider_delta(lambda a, d: deltas.append(d) or d)
+
+    script_provider(provider, text_response("等价文本", usage=usage))
+    stream_resp = await agent.provider_gen(agent._assemble_context())   # 默认 stream=True，基类回退
+    assert len(deltas) == 1   # 恰好一条全量 delta
+    assert deltas[0].kind == "text" and deltas[0].text == "等价文本"
+
+    deltas.clear()
+    script_provider(provider, text_response("等价文本", usage=usage))
+    nonstream_resp = await agent.provider_gen(agent._assemble_context(),
+                                              stream=False)
+    assert len(deltas) == 1 and deltas[0].text == "等价文本"
+
+    # 最终响应与非流式等价：文本 / finish / usage 一致
+    s_text = "".join(b.text for b in stream_resp.message.content
+                     if isinstance(b, TextBlock))
+    n_text = "".join(b.text for b in nonstream_resp.message.content
+                     if isinstance(b, TextBlock))
+    assert s_text == n_text == "等价文本"
+    assert stream_resp.finish is True and nonstream_resp.finish is True
+    assert (stream_resp.message.usage.total_tokens
+            == nonstream_resp.message.usage.total_tokens == 5)

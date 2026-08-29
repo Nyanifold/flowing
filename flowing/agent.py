@@ -2201,15 +2201,22 @@ class Agent:
                     orphans.append((mid, block.id))
         for provider_id, call_id in orphans:
             placeholder = Message(
+                # 确定性 id（审查修复）：同一孤立调用每次恢复合成同一 id——
+                # 恢复后继续对话的新消息以 parent_id=占位.id 落盘，二次恢复时
+                # 占位落回同一 id，parent 链自愈；随机 id 会让旧子消息悬空、
+                # 重放后历史静默截断
+                id=f"synthetic-{call_id}",
                 kind=MessageKind.TOOL, tool_call_id=call_id,
                 tool_status="error", synthetic=True,
                 content=[TextBlock(
                     text=f"工具调用 {call_id} 的结果缺失（工具执行中崩溃），"
                          "恢复时合成的占位消息。")])
             placeholder.parent_id = provider_id
-            # insert 式挂树（纯内存，不落盘——下次恢复会重新合成，语义幂等）：
-            # provider 消息的既有直接子消息重挂到占位消息之下，保证配对
-            # 占位出现在「调用之后、既有后续之前」的链上位置
+            # insert 式挂树（纯内存，不落盘——下次恢复以同一确定性 id 重新
+            # 合成，语义幂等且 parent 链自愈）：provider 消息的既有直接子消息
+            # 重挂到占位消息之下，保证配对占位出现在「调用之后、既有后续之前」
+            # 的链上位置；上次恢复后追加的消息（parent_id 已是占位 id）经
+            # 确定性 id 天然接回
             for child in list(self._messages.values()):
                 if child.parent_id == provider_id and child.id != placeholder.id:
                     child.parent_id = placeholder.id
@@ -5051,7 +5058,7 @@ class Agent:
             if bag is not None and name in bag:
                 raise StateKeyError(name)
         object.__setattr__(self, name, value)   # 赋值语义不受 handler 影响
-        if name == "model_tag" and not name.startswith("_"):
+        if name == "model_tag":
             # model_tag 可变路径一（类属性 docstring 规约）：赋值即重新解析
             # 覆盖 self.model，只能指向配置已定义模型；骨架期护栏——袋未建立
             # 或 runtime 未绑定时跳过（落普通实例属性）

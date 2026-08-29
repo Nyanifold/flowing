@@ -1137,7 +1137,7 @@ def to_record(msg: Message) -> dict:
       "timestamp": <ISO 8601>, "usage": None}``。
     - ``kind`` 落盘为枚举字符串值；``priority`` 落盘为枚举数值；
       ``timestamp`` 落盘为 ISO 格式（naive UTC）。
-    - ``usage`` 自 L3 起序列化为七计数字段 + ``raw`` 的 dict
+    - ``usage`` 序列化为七计数字段 + ``raw`` 的 dict
       （``None`` 保持 ``None``；存量 v0/v1 行的 ``"usage": null``
       天然兼容）。message 不认识 providers（单向依赖），序列化按
       ``Usage`` 的字段名鸭子类型读取，还原端在函数内局部 import。

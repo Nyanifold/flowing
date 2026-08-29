@@ -244,3 +244,52 @@ async def test_invoke_subagent_end_to_end(runtime, provider):
     parent.hooks.before_subagent_invoke(_veto)
     with pytest.raises(Intercepted):
         await parent.invoke_subagent("kid", prompt="再来")
+
+
+# ---------------------------------------------------------------------------
+# 审查 Finding 1 回归：占位消息确定性 id，二次恢复历史不丢
+# ---------------------------------------------------------------------------
+
+
+async def test_orphan_placeholder_stable_across_recovers(tmp_path):
+    """「恢复 → 继续对话 → destroy → 再恢复」：孤立 tool_call 的占位消息以
+    确定性 id（``synthetic-<call_id>``）重新合成，parent 链自愈，
+    崩溃前历史与新回合消息完整保留。"""
+    from conftest import add_fake_provider, make_runtime
+
+    runtime = make_runtime(tmp_path)
+    provider = add_fake_provider(runtime)
+    agent = await runtime.create_agent("test-agent", agent_id="agent-orphan")
+
+    # 构造「tool_call 已挂树、结果未 append」的崩溃现场（半截 turn）
+    agent.push(Message(id="m-user", kind=MessageKind.USER,
+                       content=[TextBlock(text="崩溃前历史")]))
+    agent.push(Message(id="m-call", kind=MessageKind.PROVIDER,
+                       content=[ToolCallBlock(id="call-x", name="echo",
+                                              args={"text": "x"})]))
+    await agent.destroy()
+
+    # 第一次恢复：合成确定性 id 占位，head 上移到占位消息
+    rec1 = await runtime.recover_agent("agent-orphan")
+    assert rec1.current_head_id == "synthetic-call-x"
+    placeholder1 = rec1._messages["synthetic-call-x"]
+    assert placeholder1.synthetic is True
+    assert placeholder1.tool_call_id == "call-x"
+
+    # 恢复后继续对话：新消息以 parent_id=占位.id 落盘
+    script_provider(provider, text_response("继续的回复"))
+    r = await rec1.query("继续")
+    assert r.status == "completed"
+    head_after = r.turn.message_ids[-1]
+    await rec1.destroy()
+
+    # 第二次恢复：占位落回同一 id，parent 链自愈，历史完整
+    rec2 = await runtime.recover_agent("agent-orphan")
+    assert rec2.current_head_id == head_after   # 续上最后持久化消息
+    placeholder2 = rec2._messages["synthetic-call-x"]
+    assert placeholder2.synthetic and placeholder2.tool_call_id == "call-x"
+    path_texts = [getattr(b, "text", "")
+                  for m in rec2._assemble_context().messages for b in m.content]
+    assert "崩溃前历史" in path_texts   # 崩溃前历史不丢
+    assert "继续" in path_texts and "继续的回复" in path_texts   # 新回合也在
+    await rec2.destroy()
