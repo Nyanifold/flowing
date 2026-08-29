@@ -1595,7 +1595,7 @@ class Agent:
         # S-29 收集原语：MRO 派生→基类方向判覆写（每个名字只认最派生的
         # 最终定义），收集后按基类→派生类顺序注册
         seen: set[str] = set()
-        marked: list[tuple[str, tuple]] = []   # （方法名， 记录 tuple）
+        marked: list[tuple[Any, tuple]] = []   # （最终定义函数， 记录 tuple）
         for cls in type(self).__mro__:
             for attr_name, member in vars(cls).items():
                 if attr_name in seen:
@@ -1603,19 +1603,22 @@ class Agent:
                 seen.add(attr_name)
                 marks = getattr(member, "__flowing_hooks__", None)
                 if marks:
-                    marked.append((attr_name, marks))
-        for attr_name, marks in reversed(marked):   # 基类 → 派生类
-            bound = getattr(self, attr_name)   # 按绑定方法注册
+                    marked.append((member, marks))
+        for member, marks in reversed(marked):   # 基类 → 派生类
+            # spec 未写清处落实（「按绑定方法注册」与 dispatch 的 (agent, value)
+            # 统一签名冲突——绑定方法会多收一个位置参数）：注册**未绑定函数**，
+            # dispatch 时首参 agent 恰好落进方法的 self 位（与 .fya $script
+            # 的 def _(self, tool_call) 写法相容）
             for hook_name, by, tags, pattern in marks:
                 point = self.hooks._hook_points.get(hook_name)
                 if point is None:
                     # 钩子点尚未声明（插件点，等 use_xxx 的 declare 冲刷）；
                     # setup 后 PENDING 检查仍非空 → UnknownHookPointError
-                    self.hooks._pending_on.append((bound, hook_name, by, tags, pattern))
+                    self.hooks._pending_on.append((member, hook_name, by, tags, pattern))
                 elif pattern is None:
-                    point(bound, by=by, tags=tags)
+                    point(member, by=by, tags=tags)
                 else:
-                    point[pattern](bound, by=by, tags=tags)
+                    point[pattern](member, by=by, tags=tags)
 
     # ────────────────────────── 生命周期 ──────────────────────────────────
 
@@ -5520,6 +5523,12 @@ class Agent:
         except Exception as exc:
             error = exc
             raise   # 同上
+        except asyncio.CancelledError:
+            # 工作循环 Task 被取消（destroy 第 2 步）：回合按取消结局收尾——
+            # 置位 aborted 使 finally 的 build_turn_result 产出 cancelled，
+            # 在途 waiters 不挂起、不谎报 completed
+            turn.aborted = True
+            raise
         finally:
             # 5a. 释放回合身份牌（先于一切钩子）。head 随每条消息挂树即时
             # 前移（空 turn 无 append 自然不动），回合末无结算写入；
