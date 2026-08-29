@@ -374,7 +374,8 @@ name 断言的推断侧。
 """
 
 
-_current_project_root: ContextVar[Path | None]
+_current_project_root: ContextVar[Path | None] = ContextVar(
+    "_current_project_root", default=None)
 """``@`` 项目根上下文的载体（**内部 API，不属稳定契约**）。
 
 功能与动机：``launch`` 用 ``.set(Path(path).resolve())`` 登记、``.reset(token)`` 复位；

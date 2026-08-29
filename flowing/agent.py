@@ -1521,7 +1521,7 @@ class Agent:
         # 占位：runtime 批次的 _current_project_root 就绪后本路径自动生效）
         try:
             from flowing.runtime import _current_project_root
-            root = _current_project_root()
+            root = _current_project_root.get()
         except Exception:
             root = None
         if root is None:
