@@ -182,7 +182,7 @@ cron 任务是落盘数据不该清）。完整状态转换表：
       （setup 中，per-agent）。
 """
 
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from flowing.agent import Agent
 from flowing.plugins import Plugin
@@ -366,7 +366,12 @@ class CronPlugin(Plugin):
         scheduler = CronScheduler(runtime, executors=self._executors,
                                   templates=self._templates)  # S-24：构造注入
         self._scheduler = scheduler   # 自留引用：shutdown() 收尾用（S-05）
-        runtime.provide(cron_scheduler_key, scheduler)
+        # 上游缺口（阶段 2，已上报）：``Runtime.provide`` 以 ``str(key)``
+        # 归一，而 ``InjectionKey`` 未定义 ``__str__``（落 ``__repr__``），
+        # 传 InjectionKey 会写进错误槽位；按契约「``_provided`` 的 key 恒为
+        # 键名字符串」显式传 ``.name``（inject 侧按 name 匹配，不受影响；
+        # FakeRuntime 替身直存对象键，同槽位语义不变）
+        runtime.provide(cron_scheduler_key.name, scheduler)
         runtime.register_tool(ScheduleCronTool())
         runtime.register_tool(ScheduleCronMessageTool())
         runtime.register_tool(ScheduleCronToolCallTool())
@@ -561,8 +566,9 @@ def use_cron(agent: Agent) -> None:
     agent.register_state("cron_jobs", [])
     # 单袋化最终裁决：register_state 不再有 load 参数——派生运行时结构
     # （定时器）的重建统一走 after_recover 钩子
-    async def _rebuild_on_recover(a: Agent) -> None:
-        # 先重建任务与定时器（同步），再合并回顾过期触发
+    async def _rebuild_on_recover(a: Agent, _value: Any = None) -> None:
+        # HookList.dispatch 恒以 (agent, value) 两参调用（无 value 钩子点
+        # 传 None）；先重建任务与定时器（同步），再合并回顾过期触发
         # （C-15：_sweep 为 async def；钩子 handler sync/async 透明混用 M-37）
         scheduler._load_jobs(a.node_id, a.state.get("cron_jobs", []))
         await scheduler._sweep(a.node_id)
