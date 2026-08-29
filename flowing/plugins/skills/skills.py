@@ -907,7 +907,18 @@ def use_skill(
     # 第 4 步：解析 agent.skills（_extra 原始声明；裸名 / as 别名 / 显式路径 / glob 形态，
     # glob 项先行展开并排除已显式声明的规范名）——逐条委托 agent.skill_add（装配单点）
     source_dir = agent.source_dir()  # 定向查找根：agent 定义文件所在目录本身（不设 skills/ 子目录；None → 纯注册表）
-    raw_items = list(getattr(agent, "skills", None) or [])  # 无 skills: 字段视为空列表
+    raw_decl = getattr(agent, "skills", None)
+    if raw_decl is None:
+        raw_items: list[Any] = []   # 无 skills: 字段视为空列表
+    elif raw_decl is PENDING:
+        # skills: _ 是延迟定义承诺——须在调用本函数前赋值兑现；仍为 PENDING
+        # 即承诺未兑现，fail-fast（插件层的 PENDING 检查点，核心检查不覆盖
+        # _extra 字段）
+        raise FormatError("skills 字段声明为 _（PENDING）但在 use_skill 前未赋值兑现")
+    elif isinstance(raw_decl, list):
+        raw_items = list(raw_decl)
+    else:
+        raise FormatError(f"skills 字段必须是列表: {raw_decl!r}")
     if source_dir is not None:
         # glob 展开复用阶段 3 落地的通用 helper（三类条目同一份实现）：
         # 入参是规范化之前的原始列表项；先收显式条目，glob 命中与已收条目
@@ -925,7 +936,10 @@ def use_skill(
         agent._skill_entries, registry,
         catalog_template=catalog,
     )
-    # 包装为动态 Parsable 注册进 prompt_blocks（包装符号未见规约；块名未见规约具名）
+    # 包装为动态块注册进 prompt_blocks——PromptBlock.content 的求值协议是
+    # 「带 resolve(agent) 方法的对象」，LazySkillsPrompt 天然满足（duck-typed，
+    # _assemble_context 只做 str(block.content.resolve(self))）；块名取
+    # "skills"（标识与分组管理用，非唯一键）
     agent.prompt_blocks.append(  # type: ignore[arg-type]
         "skills", lazy, cache="dynamic", by="skill", tags=["skill.catalog"],
     )

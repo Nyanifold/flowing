@@ -154,7 +154,7 @@ async def test_t26_before_hook_rewrites_args(tmp_path):
 
 @pytest.mark.xfail(strict=True, reason=(
     "Tool.__call__ 的 except Exception 把 execute 内的 Intercepted 吞成 error；"
-    "spec 要求 blocked——待上游裁决（见阶段4 skills 实现报告）"))
+    "spec 要求 blocked——待上游 Tool.__call__ 补 Intercepted 分支或裁决放宽"))
 async def test_t27_intercepted_blocks_load(tmp_path):
     runtime = make_skill_runtime(tmp_path)
     provider = add_fake_provider(runtime)
