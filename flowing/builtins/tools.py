@@ -50,11 +50,14 @@ shell 工具：`ReadTool` / `WriteTool` / `BashTool` / `EditTool` /
 from __future__ import annotations
 
 import asyncio
+import os
+import shutil
+import signal
+from pathlib import Path
 
 from flowing.agent import Agent
 from flowing.params import schema_to_model
-from flowing.paths import NamingRules
-from flowing.tool import Tool, ToolDefinition
+from flowing.tool import TOOL_NAMING, Tool, ToolDefinition
 
 __all__ = [
     "BashTool",
@@ -63,7 +66,35 @@ __all__ = [
     "GrepTool",
     "ReadTool",
     "WriteTool",
+    "TOOL_NAMING",   # re-export（单一权威在 flowing.tool，见文件尾注）
 ]
+
+_MAX_LINE_LENGTH = 2000
+"""read 输出的单行截断长度（spec 只写「超长行截断」，未给数值——见实现报告对照表）。"""
+
+_GREP_MAX_LINES = 250
+"""grep 输出的匹配行截断上限（spec 给了「默认 250」）。"""
+
+_GLOB_MAX_RESULTS = 100
+"""glob 输出的结果数截断上限（spec 给了「默认 100」）。"""
+
+
+def _resolve_under_cwd(path: str, cwd: str | None) -> Path:
+    """``cwd`` 基准口径（N-01①）的唯一落点：路径参数 → 绝对 ``Path``。
+
+    ``cwd`` 给则必须是绝对路径；``path`` 相对仅当 ``cwd`` 非 ``None``
+    （相对 ``cwd`` 解析），``cwd=None`` 时仅收绝对路径。违反即
+    ``ValueError``——经 ``Tool.__call__`` 包装为 ``status="error"`` 的
+    ``ToolResult``（LLM 可见、可自纠正），不向调用方抛。
+    """
+    if cwd is not None and not Path(cwd).is_absolute():
+        raise ValueError(f"cwd 必须是绝对路径: {cwd!r}")
+    p = Path(path)
+    if p.is_absolute():
+        return p
+    if cwd is None:
+        raise ValueError(f"相对路径需要显式 cwd 基准（cwd=None 时仅收绝对路径）: {path!r}")
+    return Path(cwd) / p
 
 
 class ReadTool(Tool):
@@ -110,14 +141,28 @@ class ReadTool(Tool):
         """读文件并返回带行号文本（``<行号>\\t<内容>``，行窗由
         offset/limit 截）（D20：标准件统一返 ``str``）。
 
+        行号前缀与 ``offset`` 同一 0 基口径（传什么下标就见什么行号——
+        spec 未写清处，见实现报告对照表）。
+
         .. rubric:: 调用关系（审计）
 
         - 调用：无（文件 IO 为内部细节）
         - 被调：``flowing.tool.Tool.__call__`` 调度层（LLM 每次调用 read）
         """
-        # 读文件 -> 非 UTF-8 / 目录 / 不存在 -> 由 Tool.__call__ 包装为
-        # error ToolResult；行窗 offset/limit 切片 -> 行号前缀拼接
-        ...
+        p = _resolve_under_cwd(path, cwd)
+        if p.is_dir():
+            raise ValueError(f"路径是目录，不是文本文件: {p}")
+        if not p.exists():
+            raise ValueError(f"文件不存在: {p}")
+        try:
+            text = p.read_text(encoding="utf-8")
+        except UnicodeDecodeError as exc:
+            raise ValueError(f"非 UTF-8 文本文件（不做编码猜测）: {p}") from exc
+        lines = text.splitlines()
+        window = lines[offset:] if limit is None else lines[offset:offset + limit]
+        return "\n".join(
+            f"{i}\t{line[:_MAX_LINE_LENGTH]}"
+            for i, line in enumerate(window, start=offset))
 
 
 class WriteTool(Tool):
@@ -163,8 +208,12 @@ class WriteTool(Tool):
         - 调用：无（文件 IO 为内部细节）
         - 被调：``flowing.tool.Tool.__call__`` 调度层
         """
-        # mkdir(parents=True) -> 整文件覆盖写
-        ...
+        p = _resolve_under_cwd(path, cwd)
+        if p.is_dir():
+            raise ValueError(f"路径是目录，不能覆盖写: {p}")
+        p.parent.mkdir(parents=True, exist_ok=True)   # 父目录自动创建
+        p.write_text(content, encoding="utf-8")       # 整文件覆盖（非追加）
+        return f"已写入 {p}（{len(content)} 字符）"
 
 
 class BashTool(Tool):
@@ -208,14 +257,38 @@ class BashTool(Tool):
                       cwd: str | None = None) -> str:
         """执行命令并返回 stdout/stderr/exit_code 拼成的裸文本（D20）。
 
+        超时杀**进程组**（``start_new_session=True`` 使子进程自立会话，
+        ``os.killpg`` 一锅端——含命令再拉起的孙进程），随后返回 error。
+
         .. rubric:: 调用关系（审计）
 
         - 调用：无（asyncio 子进程为内部细节）
         - 被调：``flowing.tool.Tool.__call__`` 调度层
         """
-        # asyncio.create_subprocess_exec("bash", "-c", command) ->
-        # communicate(timeout)（超时杀进程组）-> 三元组拼为文本
-        ...
+        if cwd is not None and not Path(cwd).is_absolute():
+            raise ValueError(f"cwd 必须是绝对路径: {cwd!r}")
+        proc = await asyncio.create_subprocess_exec(
+            "bash", "-c", command,
+            stdin=asyncio.subprocess.DEVNULL,   # 不做交互式命令
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=cwd,
+            start_new_session=True,   # 独立进程组：超时杀整组
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout)
+        except TimeoutError:   # 3.11+ asyncio.TimeoutError 即内置 TimeoutError
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass   # 进程已自行退出
+            await proc.wait()   # 回收僵尸
+            raise ValueError(f"命令超时（{timeout}s），进程组已终止") from None
+        out = stdout.decode("utf-8", errors="replace")
+        err = stderr.decode("utf-8", errors="replace")
+        # 非零退出码不是异常——照常在 output 里返回（LLM 应看到）
+        return (f"exit_code: {proc.returncode}\n"
+                f"--- stdout ---\n{out}--- stderr ---\n{err}")
 
 
 class EditTool(Tool):
@@ -266,8 +339,24 @@ class EditTool(Tool):
         - 调用：无（文件 IO 为内部细节）
         - 被调：``flowing.tool.Tool.__call__`` 调度层
         """
-        # 读 -> 计数（≠1 且非 replace_all -> error）-> 替换 -> 覆盖写
-        ...
+        p = _resolve_under_cwd(path, cwd)
+        if p.is_dir():
+            raise ValueError(f"路径是目录，不能编辑: {p}")
+        if not p.exists():
+            raise ValueError(f"文件不存在: {p}")
+        text = p.read_text(encoding="utf-8")
+        count = text.count(old_string)
+        if count == 0:
+            raise ValueError(f"未找到要替换的字符串（0 次命中）: {p}")
+        if count > 1 and not replace_all:
+            raise ValueError(
+                f"old_string 命中 {count} 处（歧义，文件未改）——"
+                "精确化 old_string 或显式 replace_all=True")
+        replaced = text.replace(old_string, new_string) if replace_all \
+            else text.replace(old_string, new_string, 1)
+        p.write_text(replaced, encoding="utf-8")
+        n = count if replace_all else 1
+        return f"已编辑 {p}：替换 {n} 处"
 
 
 class GrepTool(Tool):
@@ -311,14 +400,42 @@ class GrepTool(Tool):
                       glob: str | None = None) -> str:
         """调 rg 并返回带行号匹配文本（D20）。
 
+        ``rg`` 未安装 → error ToolResult（提示安装，不做 Python 兜底——
+        行为一致性优先于可用性）；rg 退出码 1（无匹配）不是错误。
+
         .. rubric:: 调用关系（审计）
 
         - 调用：无（``rg`` 子进程为内部细节）
         - 被调：``flowing.tool.Tool.__call__`` 调度层
         """
-        # rg --line-number [--glob glob] pattern path -> 截断 -> 文本；
-        # FileNotFoundError -> error ToolResult（提示安装 rg）
-        ...
+        p = _resolve_under_cwd(path, cwd)
+        rg = shutil.which("rg")
+        if rg is None:
+            raise RuntimeError(
+                "rg（ripgrep）未安装——grep 工具委托 rg 执行，"
+                "请先安装 ripgrep（不做 Python 兜底扫描）")
+        cmd = [rg, "--line-number", "--with-filename"]
+        if glob is not None:
+            cmd += ["--glob", glob]
+        cmd += ["--", pattern, str(p)]
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode not in (0, 1):   # 0=有匹配；1=无匹配（非错误）
+            raise RuntimeError(
+                f"rg 执行失败（exit {proc.returncode}）: "
+                f"{stderr.decode('utf-8', errors='replace').strip()}")
+        lines = stdout.decode("utf-8", errors="replace").splitlines()
+        if not lines:
+            return "（无匹配）"
+        if len(lines) > _GREP_MAX_LINES:
+            lines = lines[:_GREP_MAX_LINES] + [
+                f"…（已截断：共 {len(lines)} 行匹配，仅显示前 {_GREP_MAX_LINES} 行）"]
+        return "\n".join(lines)
 
 
 class GlobTool(Tool):
@@ -367,9 +484,17 @@ class GlobTool(Tool):
         - 调用：无（``pathlib`` 枚举为内部细节）
         - 被调：``flowing.tool.Tool.__call__`` 调度层
         """
-        # pathlib.Path(path).glob(pattern) -> 仅文件 -> mtime 倒序 ->
-        # 截断（默认 100）-> 逐行拼接为文本
-        ...
+        p = _resolve_under_cwd(path, cwd)
+        if not p.is_dir():
+            raise ValueError(f"基准目录不存在或不是目录: {p}")
+        matches = [f for f in p.glob(pattern) if f.is_file()]   # 只列文件不列目录
+        matches.sort(key=lambda f: f.stat().st_mtime, reverse=True)   # mtime 倒序
+        truncated = len(matches) > _GLOB_MAX_RESULTS
+        lines = [str(f) for f in matches[:_GLOB_MAX_RESULTS]]
+        if truncated:
+            lines.append(
+                f"…（已截断：共 {len(matches)} 个匹配，仅显示前 {_GLOB_MAX_RESULTS} 个）")
+        return "\n".join(lines) if lines else "（无匹配）"
 
 
 class FinishTool(Tool):
@@ -700,15 +825,7 @@ class SubagentInvokeTool(Tool):
         }
 
 
-TOOL_NAMING = NamingRules(
-    suffixes=(".tool.fya", ".fya", ".py"),
-    generic_names=frozenset({"TOOL.fya", "tool.fya", "TOOL.py", "tool.py"}),
-)
-"""Tool 资源的路径形态身份名推断规则表（:class:`flowing.paths.NamingRules`）。
-
-紧邻候选链声明（:meth:`ToolRegistry.get`）：命中通用名候选
-（``TOOL.fya`` 等）→ 身份名取目录名；否则文件名去首个匹配后缀、
-snake→kebab。供装配层调 :func:`flowing.parser.parse_fya` 时传入
-``naming=TOOL_NAMING``，以及 name 断言的推断侧。
-"""
+# TOOL_NAMING（Tool 资源的路径形态身份名推断规则表）的单一权威定义在
+# flowing.tool（推测点 2 裁决：Registry 同文件、消费方最近）；本模块经头部
+# import 再导出（见 __all__），不复制第二份常量（防双份漂移）。
 
