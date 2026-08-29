@@ -186,12 +186,14 @@ def test_t19_injection_key_eq_and_repr():
     assert k == "locale"
     assert k == InjectionKey[int]("locale")  # 运行期不校验泛型 T
     assert repr(k) == "InjectionKey('locale')"
+    assert str(k) == "locale"   # str(key) 归一点落键名（与裸 str 同槽位）
 
 
 def test_t20_config_key():
     k = ConfigKey[int]("retry.max_attempts")
     assert k == "retry.max_attempts"
     assert hash(k) == hash("retry.max_attempts")
+    assert str(k) == "retry.max_attempts"   # 与 InjectionKey.__str__ 同语义
 
 
 def test_t21_key_and_str_share_dict_slot():

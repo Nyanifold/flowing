@@ -310,6 +310,23 @@ async def test_t102_provide_inject_chain(tmp_path):
     await runtime.shutdown()
 
 
+async def test_t102b_provide_inject_injection_key(tmp_path):
+    """T102 补：provide/inject 以 InjectionKey 直传——str(key) 归一落键名，
+    子 Agent 经 InjectionKey 与裸名双通道命中同一槽位。"""
+    from flowing.params import InjectionKey
+
+    key: InjectionKey[str] = InjectionKey("i18n.locale")
+    runtime = make_runtime(tmp_path)
+    add_fake_provider(runtime)
+    runtime.provide(key, "zh")   # InjectionKey 直传（runtime.provide 的 str(key) 归一）
+    agent = await runtime.create_agent("test-agent")
+    assert runtime._provided["i18n.locale"] == "zh"   # 槽位 key 恒为键名字符串
+    assert agent.inject(key) == "zh"        # InjectionKey 通道
+    assert agent.inject("i18n.locale") == "zh"   # 裸名通道（同一槽位）
+    assert runtime.inject(key) == "zh"
+    await runtime.shutdown()
+
+
 async def test_t103_global_state(tmp_path):
     """T103：全局状态写透 + 进程重启重放；同空间不同定义报错；闸门未开写抛错。"""
     persist = tmp_path / "persist"

@@ -625,6 +625,10 @@ class InjectionKey(Generic[T]):
     - ``__eq__``：与另一个 ``InjectionKey`` 比较 ``name``，或与裸 ``str``
       直接比较；``__hash__`` 等于 ``hash(self.name)``——因此键可直接用于
       dict 查找并与字符串 key 混用。
+    - ``__str__`` 返回 ``name``——``str(key)`` 归一点（如
+      ``Runtime.provide`` 写 ``_provided`` 前的 ``str(key)``）落键名本身，
+      与「``_provided`` 的 key 始终是 str」「键与裸字符串同槽位」契约
+      一致；``__repr__`` 保持 ``InjectionKey("name")`` 调试形态。
     - 非行为：运行期不做 ``T`` 的类型校验——父 provide 了 ``int``、子按
       ``InjectionKey[str]`` inject 不会被框架拦截（类型契约是静态的）。
     - 边缘情况：两个泛型参数不同但 ``name`` 相同的键（如
@@ -751,6 +755,33 @@ class InjectionKey(Generic[T]):
             return NotImplemented  # 其余类型按 Python 惯例
         return result  # -> bool
 
+    def __str__(self) -> str:
+        """返回键名本身（``self.name``）。
+
+        .. rubric:: 功能介绍与动机
+
+        ``str(key)`` 归一点（``Runtime.provide`` 等写 ``_provided`` 前的
+        归一）的落地：键对象经 ``str()`` 归一后必须落键名，与
+        「``_provided`` 的 key 始终是 str」「``InjectionKey`` 与裸字符串
+        key 同槽位」契约一致。调试形态由 :meth:`__repr__` 承担
+        （``InjectionKey("name")``），两者分工不同。
+
+        .. rubric:: 行为规约
+
+        - 不变量：``str(InjectionKey("x")) == "x"`` 恒成立；纯函数、
+          无副作用。
+
+        .. rubric:: 调用关系（审计）
+
+        - 调用：无
+        - 被调：``flowing.runtime.Runtime.provide`` 的 ``str(key)``
+          归一（时机：每次根级 provide 注册）；一切 ``str()`` /
+          f-string / 字符串拼接的隐式触发
+
+        .. seealso:: :attr:`name`、:meth:`__repr__`、:meth:`__eq__`
+        """
+        return self.name
+
     def __repr__(self) -> str:
         """返回 ``InjectionKey("name")`` 形式的调试表示。
 
@@ -813,7 +844,8 @@ class ConfigKey(Generic[T]):
       命名空间访问控制，任何代码可读取任何命名空间下的值。
     - ``__eq__`` / ``__hash__`` 语义与 :class:`InjectionKey` 相同：按
       ``name`` 与另一个 ``ConfigKey`` 或裸 ``str`` 比较，哈希等于
-      ``hash(self.name)``。
+      ``hash(self.name)``；``__str__`` 同样返回 ``name``（``str(key)``
+      归一点落键名，见 :meth:`InjectionKey.__str__`）。
     - 非行为：运行期不做 ``T`` 的类型校验——配置文件里实际值类型与 ``T``
       不符时，框架不拦截（静态契约，非运行期校验器）。
     - 调用时机约束（消费侧规则）：``get_config`` 只能在 ``setup()`` 与钩子
@@ -915,6 +947,30 @@ class ConfigKey(Generic[T]):
         else:
             return NotImplemented  # 其余类型按 Python 惯例
         return result  # -> bool
+
+    def __str__(self) -> str:
+        """返回键名本身（``self.name``）。
+
+        .. rubric:: 功能介绍与动机
+
+        与 :meth:`InjectionKey.__str__` 同语义：``str(key)`` 归一点
+        （``Runtime.get_config`` 的 ``str(key)``）落键名本身，与「与同名
+        裸字符串等价」契约一致；调试形态由 :meth:`__repr__` 承担。
+
+        .. rubric:: 行为规约
+
+        - 不变量：``str(ConfigKey("x")) == "x"`` 恒成立；纯函数、无副作用。
+
+        .. rubric:: 调用关系（审计）
+
+        - 调用：无
+        - 被调：``flowing.runtime.Runtime.get_config`` 的 ``str(key)``
+          归一（时机：每次配置读取）；一切 ``str()`` / f-string /
+          字符串拼接的隐式触发
+
+        .. seealso:: :attr:`name`、:meth:`__repr__`、:meth:`InjectionKey.__str__`
+        """
+        return self.name
 
     def __repr__(self) -> str:
         """返回 ``ConfigKey("name")`` 形式的调试表示。
