@@ -18,7 +18,7 @@ import pytest
 from flowing import launch, on
 from flowing.agent import Agent
 from flowing.errors import CorruptionError, MissingProvideError
-from flowing.message import MessageKind
+from flowing.message import Message, MessageKind, TextBlock
 from flowing.parsable import Parsable
 from flowing.tool import Tool, ToolDefinition
 
@@ -364,7 +364,8 @@ async def test_t129_provide_inject_chain_climbing(tmp_path):
 
 async def test_t88_recover_torn_tail(tmp_path, copy_fixture):
     """T88（补做）：tree.jsonl 含完整消息 + 撕裂末行 → 完整消息恢复、
-    撕裂末行丢弃、current_head_id 指向最后完整消息。"""
+    撕裂末行丢弃、current_head_id 指向最后完整消息（决策 9：head 以 core
+    袋为准——预写崩溃时落盘的 head）。"""
     runtime = make_runtime(tmp_path)
     add_fake_provider(runtime)
     agent = await runtime.create_agent("test-agent")   # 建立池条目与 session 目录
@@ -372,10 +373,14 @@ async def test_t88_recover_torn_tail(tmp_path, copy_fixture):
     # 用预写语料替换 session 的 tree.jsonl（目录即契约：fixtures/persistence/）
     torn = copy_fixture("persistence/tree-torn-tail.jsonl")
     (agent._session_dir / "tree.jsonl").write_bytes(torn.read_bytes())
+    # 决策 9：恢复 head 读 core 袋、不树校验——预写崩溃时落盘的 head
+    (agent._session_dir / "core.jsonl").write_text(
+        '{"type": "meta", "format_version": 1}\n'
+        '{"op": "set", "key": "current_head_id", "value": "m2"}\n')
     recovered = await runtime.recover_agent(agent.node_id)
     assert set(recovered._messages) == {"m1", "m2"}   # 撕裂的 m3 行丢弃
     assert recovered._messages["m2"].parent_id == "m1"
-    assert recovered.current_head_id == "m2"   # 指向最后完整消息
+    assert recovered.current_head_id == "m2"   # 指向最后完整消息（袋为准）
     await runtime.shutdown()
 
 
@@ -578,3 +583,27 @@ async def test_pool_scan_meta_missing_fails(tmp_path):
     with pytest.raises(FileNotFoundError):
         runtime2.set_persist_dir(tmp_path / ".flowing")
     await runtime2.shutdown()
+
+
+async def test_head_persisted_and_recovered_bag_authority(tmp_path):
+    """D7/决策 9：current_head_id 落盘 core 袋；fork 切换 head 后恢复以袋为
+    准（树末条 ≠ head 的典型场景——fork 后未加新消息）；property getter-only
+    （S10）：用户写 → AttributeError。"""
+    runtime = make_runtime(tmp_path)
+    add_fake_provider(runtime)
+    agent = await runtime.create_agent("test-agent")
+    agent.push(Message(id="m1", kind=MessageKind.USER,
+                       content=[TextBlock(text="一")]))
+    agent.push(Message(id="m2", kind=MessageKind.USER,
+                       content=[TextBlock(text="二")]))
+    await agent.fork("m1")   # head 切到历史消息（树末条是 m2）
+    assert agent.current_head_id == "m1"
+    await agent.destroy()
+    recovered = await runtime.recover_agent(agent.node_id)
+    assert recovered.current_head_id == "m1"   # 袋为准：fork 目标，非树末条 m2
+    # getter-only（S10）：用户写核心量 → AttributeError
+    with pytest.raises(AttributeError):
+        recovered.current_head_id = "m2"
+    with pytest.raises(AttributeError):
+        recovered.child_ids = {}
+    await runtime.shutdown()

@@ -110,7 +110,7 @@ peek 到 ``INTERRUPT`` 则连 drain ``INTERRUPT``+``STEER`` 两带挂树并
 dispatch → ① 设 ``parent_id = current_head_id`` → ② 挂入 ``_messages`` →
 ③ ``_persist_message`` 提交落盘（write-behind：同步排队即返，
 墓碑压缩由 FileRecordStore drain 任务自主触发）→
-④ 更新 ``current_head_id = msg.id``（head 即时前移——head 即「添加节点
+④ 更新 ``current_head_id = msg.id``（head 即时前移并落盘 core 袋——head 即「添加节点
 的位置」，空 turn 无 append 自然不动）→ ⑤ 记入 ``turn.message_ids`` →
 ``after_turn_append`` dispatch。**消息完整后才经过它**——流式进行中的
 增量（尚未定型为消息的 delta 累积态）不经过它，天然不落盘；流式被
@@ -1254,14 +1254,17 @@ class Agent:
     销毁移除；回答「谁该随我销毁」。与 ``_executions`` / provide 链
     正交，不可合并。内部 API。
     """
-    _child_ids: dict[str, str]
+    child_ids: dict[str, str]
     """语义名 → agent_id 翻译表（S-34 裁决）：``invoke_subagent(
     resume=...)`` 的按名查找载体——**语义名只存在于唤起方（父 Agent）
     的这张表里**（simplename 字段已删除，子实例不自持名字；A15 裁决）。
     与 ``_children`` 的分工：``_children`` 只装**活着的**实例（生命周期，
     以 node_id 为 key），本表装**历史事实**
     （创建登记、destroy 不删——destroy ≠ 删除，记录保留，带记忆续接
-    依赖它）。持久化为框架核心状态键 ``child_ids``（写透整表）。
+    依赖它）。**core 袋唯一真值（D7 property 透传）**：读经
+    :attr:`child_ids` property（= ``_core_state["child_ids"]``，写透整表
+    落盘 core.jsonl）；getter-only（S10：用户写 → ``AttributeError``），
+    框架内部写经 ``_core_state["child_ids"] = 整表``。
     未命名子 Agent（创建时 ``name=None``）不入表（无法按名续接，
     语义自洽）。**只增不改**（destroy 路径）：不提供删除通道（彻底遗忘
     一个子代 = 删除其 session 目录的外部运维动作）；显式遗忘经
@@ -1307,6 +1310,11 @@ class Agent:
     ``_append_message`` 把新消息链到它并随即将它前移（``_assemble_context``
     从它沿 ``parent_id`` 上溯，回合内新消息当轮可见）；fork 即切换它。
     空树（新 Agent）为 ``None``。
+
+    **core 袋真值（D7）**：本字段是 getter-only property——读
+    ``_core_state["current_head_id"]``（写透落盘 core.jsonl，恢复读袋为准、
+    不树校验——决策 9）；框架内部写经 ``_core_state["current_head_id"] = x``；
+    用户写 → ``AttributeError``（S10）。
     """
     current_turn: TurnContext | None
     """当前活跃逻辑 Turn 的执行期临时对象；``_run_turn`` 入口赋值、
@@ -1441,8 +1449,7 @@ class Agent:
           ``prompt_blocks`` / ``_message_queue`` / ``_messages`` /
           ``chain`` / ``_executions`` / ``_pending_turns`` /
           ``_tool_entries`` / ``_subagent_entries`` 等空结构；
-          ``current_turn = None``、``current_head_id = None``、
-          ``_pause_gate`` 初始 set。
+          ``current_turn = None``、``_pause_gate`` 初始 set。
         - 建立 ``_extra``（实例级静默仓库）与**持久化后端**——经
           :meth:`_open_stores`（换装点）。管线第 2 步（``__new__`` 绑
           ``node_id`` / ``runtime`` / ``_parent_id`` / ``_session_dir``）先于
@@ -1474,7 +1481,6 @@ class Agent:
         self._extra = {}   # 实例级静默仓库；fya 装配层在生成 setup() 前置段合入未知字段
         self._open_stores(self._session_dir)   # 持久化后端（换装点，见 _open_stores；session 目录由管线预绑——create_agent(session_dir=...) 或默认 persist_dir/node_id，子类可于 super().__init__() 前覆写 self._session_dir）
         self._children = {}
-        self._child_ids = {}   # 语义名 -> agent_id 翻译表（S-34）；持久化镜像见 _open_stores
         self._provided = {}
         self.hooks = HookRegistry()
         self.prompt_blocks = PromptBlockList()
@@ -1487,7 +1493,6 @@ class Agent:
         self._tool_entries = {}
         self._subagent_entries = {}
         self.current_turn = None
-        self.current_head_id = None
         self.last_result = None   # 未产生过结果为 None（_run_turn 统一收尾段覆写）
         self._measured_tool_names = set()   # 估算锚点记账（provider_gen 并入；纯内存不持久化）
         self._pause_gate = asyncio.Event()
@@ -1631,6 +1636,39 @@ class Agent:
 
     # ────────────────────────── 生命周期 ──────────────────────────────────
 
+    @property
+    def child_ids(self) -> dict[str, str]:
+        """语义名 → agent_id 翻译表——core 袋唯一真值（D7 property 透传）。
+
+        **内部 API，不属稳定契约。** 只读（getter-only，S10：用户写 →
+        ``AttributeError``）；框架内部写经 ``_core_state["child_ids"]``
+        整表写透。骨架期（袋未建立）返回空表。
+        """
+        bag = self.__dict__.get("_core_state")
+        if bag is None:
+            return {}
+        try:
+            return bag["child_ids"]
+        except KeyError:
+            return {}
+
+    @property
+    def current_head_id(self) -> str | None:
+        """消息级树游标——core 袋真值（D7：落盘、property 透传）。
+
+        **内部 API，不属稳定契约。** 只读（getter-only，S10：用户写 →
+        ``AttributeError``）；框架内部写经
+        ``_core_state["current_head_id"]``（写透落盘，恢复读袋为准、不树
+        校验——决策 9）。骨架期（袋未建立）返回 ``None``。
+        """
+        bag = self.__dict__.get("_core_state")
+        if bag is None:
+            return None
+        try:
+            return bag["current_head_id"]
+        except KeyError:
+            return None
+
     def _open_stores(self, session_dir: Path) -> None:
         """建立本 Agent 的持久化后端（**内部 API，不属稳定契约**）。
 
@@ -1680,9 +1718,11 @@ class Agent:
             FileRecordStore(session_dir / "core.jsonl", merge_last_line=True))
         self._state_bag = StateView(
             FileRecordStore(session_dir / "state.jsonl", merge_last_line=True))
-        # 框架核心键登记进核心袋（裸名保留，插件声明撞之报错）：child_ids =
-        # 语义名 -> agent_id 翻译表（S-34），默认空表、不落盘
+        # 框架核心键登记进核心袋（裸名保留，插件声明撞之报错）：
+        # child_ids = 语义名 -> agent_id 翻译表（S-34），默认空表不落盘；
+        # current_head_id = 消息级树游标（D7：写透落盘，恢复读袋为准）
         self._core_state._register("child_ids", {})
+        self._core_state._register("current_head_id", None)
 
     def register_state(self, key: str, default: Any = None) -> StateView:
         """声明一个持久化状态键（setup 中的「建表」动作；单袋化最终裁决）。
@@ -2195,10 +2235,17 @@ class Agent:
                 target = self._messages.get(record.get("id"))
                 if target is not None:   # 悬空 move 容忍
                     target.parent_id = record.get("parent_id")
-        # 框架核心键最小集：current_head_id 指向最后持久化消息（由树重放
-        # 行序推导；state.jsonl 无对应存储键——推导规则见 spec 措辞，
-        # 「队列待消费消息」无持久化记录源，恢复后为空队）
-        self.current_head_id = order[-1] if order else None
+        # ② 读 core.jsonl（_core_state._store.replay()）逐键重放进核心袋
+        #    （直写 _persisted 绕过写通道；current_head_id 落盘此袋——
+        #    恢复 head 以袋为准、不树校验，决策 9）
+        core_persisted = self._core_state._persisted
+        for record in list(self._core_state._store.replay()):
+            op = record.get("op")
+            if op == "set":
+                core_persisted[record["key"]] = record["value"]
+            elif op == "delete":
+                core_persisted.pop(record["key"], None)
+            # 未知行形态（meta 已被 replay 吸收）静默跳过
         # ①b 孤立 tool_call 合成占位（M-25 恢复扫描，配对锚为消息字段）：
         #    逐分支扫描 PROVIDER 消息的 ToolCallBlock.id，同分支后续无
         #    tool_call_id 匹配的 TOOL 消息者，合成占位消息挂树封闭配对：
@@ -2240,28 +2287,13 @@ class Agent:
             self._messages[placeholder.id] = placeholder
             if self.current_head_id == provider_id:
                 # provider 消息本是分支尾：占位消息成为新尾，head 随之上移
-                self.current_head_id = placeholder.id
-        # ② 读 core.jsonl（_core_state._store.replay()）逐键重放进核心袋
-        #    （直写 _persisted 绕过写通道；current_head_id 阶段 C 起落盘
-        #    此袋并以袋为准——本阶段仍树推导，见 ①）
-        core_persisted = self._core_state._persisted
-        for record in list(self._core_state._store.replay()):
-            op = record.get("op")
-            if op == "set":
-                core_persisted[record["key"]] = record["value"]
-            elif op == "delete":
-                core_persisted.pop(record["key"], None)
-            # 未知行形态（meta 已被 replay 吸收）静默跳过
-        # ②b S-34：重放出的 child_ids 直接装入 _child_ids 内存镜像
-        #    （setup 阶段无子代创建，装入无合并冲突；阶段 C property 化后
-        #    镜像删除，改读 core 袋）
-        replayed_child_ids = core_persisted.get("child_ids")
-        if isinstance(replayed_child_ids, dict):
-            self._child_ids.update(replayed_child_ids)
+                # （写袋——head 以袋为准）
+                self._core_state["current_head_id"] = placeholder.id
         # ③ 读 state.jsonl（_state_bag._store.replay()）逐键重放进默认袋
         #    （直写 _persisted 绕过写通道；无 schema：持久化键
         #    无论声明与否一律装袋，P3-04 裁决——逐键覆盖 register_state 的
-        #    default 是读出回退序的天然结果）
+        #    default 是读出回退序的天然结果；child_ids 已在 core 袋重放中
+        #    装袋——core 袋唯一真值，无内存镜像）
         persisted = self._state_bag._persisted
         for record in list(self._state_bag._store.replay()):
             op = record.get("op")
@@ -3207,7 +3239,7 @@ class Agent:
             self.chain.remove(message_id)   # KeyError 由 chain.remove 抛出
             return
         if message_id == self.current_head_id:
-            self.current_head_id = self._messages[message_id].parent_id
+            self._core_state["current_head_id"] = self._messages[message_id].parent_id
         self.chain.remove(message_id)
 
     def pop(self) -> str | None:
@@ -3252,7 +3284,7 @@ class Agent:
         .. rubric:: 功能介绍
 
         回合外的消息树追加入口：``msg.parent_id = current_head_id`` →
-        挂入 ``_messages`` → 落盘 → ``current_head_id = msg.id``。
+        挂入 ``_messages`` → 落盘 → ``current_head_id = msg.id``（写透 core 袋）。
         它也是回合内 :meth:`_append_message` 的**核心写路径**；
         本方法不 dispatch turn 族钩子、不写 ``turn.message_ids``——
         这两部分由 :meth:`_append_message` 在调用本方法前后补齐。
@@ -3279,7 +3311,7 @@ class Agent:
         msg.parent_id = self.current_head_id
         self._messages[msg.id] = msg
         self._persist_message(msg)
-        self.current_head_id = msg.id
+        self._core_state["current_head_id"] = msg.id   # 热路径：head 落盘（D7，末行合并压物理写）
         return msg.id
 
     def branch(self, msg: Message, parent_id: str | None = None) -> str:
@@ -3339,7 +3371,7 @@ class Agent:
             head_parent = self._messages[head_id].parent_id
         removed = self.chain.remove_by_tags(tags)
         if head_id is not None and head_id not in self._messages:
-            self.current_head_id = head_parent
+            self._core_state["current_head_id"] = head_parent
         return removed
 
     # ────────────────────────── fork 与暂停 ───────────────────────────────
@@ -3442,7 +3474,7 @@ class Agent:
         if target_message_id not in self._messages:
             raise ValueError(target_message_id)   # 含已被 chain.remove 移除的 id
         previous_head_id = self.current_head_id
-        self.current_head_id = target_message_id   # 纯上下文操作：只切换游标
+        self._core_state["current_head_id"] = target_message_id   # 纯上下文操作：只切换游标（落盘）
         await self.hooks.after_fork.dispatch(self, previous_head_id)   # 纯观察（value 为原 head id）
 
     def pause(self) -> None:
@@ -3807,7 +3839,7 @@ class Agent:
         - 谁调用：钩子回调、外部代码、回合内工具（要「创建并持有
           实例」）。setup 内亦可调（无写闸门，D5）。
         - 参数来源：调用方直接传完整 kwargs（``agent_type`` + 类型 args）；
-          可选 ``name`` 为子代起语义名（登记进 ``_child_ids``，供
+          可选 ``name`` 为子代起语义名（登记进 ``child_ids``，供
           ``invoke_subagent(resume=...)`` 按名续接；语义名只存在父侧
           表中，子实例不自持名字——A15 裁决）。
         - **不做** ``SubagentEntry.resolve()``，**不经过**
@@ -3831,7 +3863,7 @@ class Agent:
         - 创建即注册（``_nodes``）+ 进入 ``_children`` + provide 链可
           上溯到本实例。
         - **语义名登记（S-34）**：``name`` 非空时创建成功后登记
-          ``_child_ids[name] = node_id`` 并同步
+          ``child_ids[name] = node_id`` 并同步
           写透核心键 ``child_ids``（整表覆写一行，末行合并防膨胀）。
           未命名子 Agent 不入表。
         - 异常（类型名解析失败 / PENDING 检查失败等）原样上抛，父
@@ -3854,8 +3886,9 @@ class Agent:
             agent_type, parent_id=self.node_id, **kwargs)   # 直接委托，仅提供 parent_id
         self._children[child.node_id] = child   # 进入生命周期子树（node_id 为 key；创建即注册由 create_agent 管线完成）
         if name is not None:   # S-34：语义名 -> agent_id 登记并写透（未命名子 Agent 不入表；语义名只存在父侧本表，子实例不自持）
-            self._child_ids[name] = child.node_id
-            self._core_state["child_ids"] = dict(self._child_ids)   # 写透整表进核心袋（末行合并防膨胀；D1）
+            ids = dict(self.child_ids)   # core 袋唯一真值（D7 property 透传）
+            ids[name] = child.node_id
+            self._core_state["child_ids"] = ids   # 写透整表进核心袋（末行合并防膨胀）
         return child
 
     async def invoke_subagent(
@@ -3926,7 +3959,7 @@ class Agent:
 
         - ``resume`` 与新建参数互斥：续接保持原类型，``kwargs`` 忽略
           （实例已存在）；``resume`` 找不到实例名 → ``ValueError``。
-          查找载体 = ``_child_ids`` 语义名表（S-34）：目标实例活着
+          查找载体 = ``child_ids`` 语义名表（S-34）：目标实例活着
           直接用，已销毁 / 未恢复则经 ``Runtime.get_agent`` 现场恢复
           并重新进入 ``_children``。
         - 子 Agent 注册为 ``Execution(kind="agent")``——``cancel()`` /
@@ -4027,7 +4060,7 @@ class Agent:
           :meth:`_run_subagent` 消费；Execution 清理由运行段 finally
           承担（本段异常路径自清理）。
         - ``name`` 经 ``SubagentInvocation.name`` 进创建管线：新建路径
-          透传 :meth:`create_subagent`（登记 ``_child_ids``）；resume
+          透传 :meth:`create_subagent`（登记 ``child_ids``）；resume
           路径忽略（实例已存在）。
 
         .. rubric:: 调用关系（审计）
@@ -4057,17 +4090,18 @@ class Agent:
         try:
             child: Agent
             if invocation.resume is not None:
-                # 续接（S-34）：语义名 -> agent_id 翻译（_child_ids），再经
+                # 续接（S-34）：语义名 -> agent_id 翻译（child_ids property，
+                # core 袋真值），再经
                 # Runtime.get_agent 按 id 取（活着直接用；已销毁/休眠 ->
                 # 现场恢复——destroy ≠ 删除，记录保留）；表项不随 destroy 删除
-                if invocation.resume not in self._child_ids:
+                if invocation.resume not in self.child_ids:
                     raise ValueError(invocation.resume)   # 按名未找到 -> 报错（C-02 口径）
                 child = await self.runtime.get_agent(
-                    self._child_ids[invocation.resume])
+                    self.child_ids[invocation.resume])
                 self._children[child.node_id] = child   # 重新进入生命周期子树（父级联销毁恢复生效）
             else:
                 child = await self.create_subagent(
-                    entry.name_ori, name=invocation.name, **invocation.args)   # 新建路径：规范类型名（别名只存在绑定层；name 登记 _child_ids）
+                    entry.name_ori, name=invocation.name, **invocation.args)   # 新建路径：规范类型名（别名只存在绑定层；name 登记 child_ids）
         except BaseException:
             self._executions.pop(execution.id, None)   # 创建/续接失败：回收注册，不留半登记状态
             raise

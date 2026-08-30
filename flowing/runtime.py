@@ -1734,7 +1734,7 @@ class Runtime:
         .. rubric:: 行为规约
 
         - 流程：双来源收集子树 → 清理各被归档节点**父侧**引用（父 Agent 的
-          ``_child_ids`` 条目移除并写透）→ 对仍存活的节点 ``await destroy()``
+          ``child_ids`` 条目移除并写透）→ 对仍存活的节点 ``await destroy()``
           → 从 ``_agent_pool`` 与 ``core`` 名录移除（写透；不在池的节点
           pop 幂等）。
         - 返回：被归档的 ``node_id`` 列表（含自身与全部后代）。
@@ -1791,20 +1791,23 @@ class Runtime:
             for nid, node in self._nodes.items():
                 if nid not in to_archive and getattr(node, "_parent_id", None) == cur:
                     stack.append(nid)
-        # 2. 清理父侧 _child_ids（父为活 Agent 时，写透整表）——archive 是显式
-        #    遗忘通道，对「_child_ids 只增不改」的受控例外；child_ids 核心键
-        #    在 core 袋（D1），写透目标为 _core_state
+        # 2. 清理父侧 child_ids（父为活 Agent 时，写透整表）——archive 是显式
+        #    遗忘通道，对「child_ids 只增不改」的受控例外；child_ids 核心键
+        #    在 core 袋（D1，property 透传），读经 parent.child_ids、写经
+        #    _core_state 整表写
         for aid in to_archive:
             meta = self._agent_pool.get(aid)
             parent_id: str | None = (
                 meta.get("parent_agent_id") if meta is not None
                 else getattr(self._nodes.get(aid), "_parent_id", None))
             parent = self._nodes.get(parent_id) if parent_id else None
-            if parent is not None and parent is not self and hasattr(parent, "_child_ids"):
-                for name, cid in list(parent._child_ids.items()):
+            if parent is not None and parent is not self and hasattr(parent, "child_ids"):
+                # Workflow 等非 Agent 节点无 child_ids property——跳过（A15 配套）
+                ids = dict(parent.child_ids)
+                for name, cid in list(ids.items()):
                     if cid == aid:
-                        del parent._child_ids[name]
-                parent._core_state["child_ids"] = dict(parent._child_ids)
+                        del ids[name]
+                parent._core_state["child_ids"] = ids
         # 3. destroy 仍存活的节点（多态分派：Agent.destroy / Workflow.destroy——
         #    后者级联归档其子；已归档子跳过，互调幂等）
         for aid in to_archive:

@@ -150,10 +150,10 @@ async def test_t118_archive_cleans_parent_child_ids(tmp_path):
     add_fake_provider(runtime)
     parent = await runtime.create_agent("test-agent")
     child = await parent.create_subagent("test-agent", name="bee")
-    assert parent._child_ids["bee"] == child.node_id
+    assert parent.child_ids["bee"] == child.node_id
     await parent._core_state._store.drain()
     await runtime.archive_agent(child.node_id)
-    assert "bee" not in parent._child_ids
+    assert "bee" not in parent.child_ids
     assert parent._core_state["child_ids"] == {}   # 写透整表（core 袋，D1）
     await parent._core_state._store.drain()
     # 落盘验证：core.jsonl 末条 child_ids 记录为空表

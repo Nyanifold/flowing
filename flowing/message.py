@@ -1360,7 +1360,7 @@ class MessageQueue:
       ``PROVIDER`` 永不入队。本类**不校验** kind——投递纪律由调用方与
       ``Agent.enqueue_message`` 的钩子链负责。
     - 非行为：不防低优先级饿死、不持久化（队列待消费消息以框架核心
-      裸名键在 ``state.jsonl`` 有最小集记录（单袋化后无命名空间），
+      裸名键在 ``core.jsonl`` 核心袋有最小集记录（D1 双袋），
       恢复语义见持久化规约；本类自身不落盘）。
     - 并发模型：单进程 asyncio；``enqueue`` 是无等待的同步操作（队列无界），
       ``dequeue`` / ``drain_all`` 是协程。

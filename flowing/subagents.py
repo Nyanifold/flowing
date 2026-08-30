@@ -110,7 +110,7 @@ class SubagentResult:
     name_alias: str
     """调用方可读标识：续接名（``resume``）/ 语义名（``name``）/ 唤起别名
     （``alias``），按此优先序取——语义名只存在父 Agent 的
-    ``_child_ids`` 表中，子实例不自持（A15 裁决）。
+    ``child_ids`` 表（core 袋真值，D7）中，子实例不自持（A15 裁决）。
     """
     subagent_id: str
     """子 Agent 的 ``node_id``。纯数据字段，可 JSON 序列化；需要活实例
@@ -199,7 +199,7 @@ class SubagentInvocation:
     规范名、specified（固定值/注入表达式）已注入）。
     """
     name: str | None = None
-    """新建路径的语义名（登记进父 Agent ``_child_ids``，供
+    """新建路径的语义名（登记进父 Agent ``child_ids``，供
     ``resume=...`` 按名续接）；``None`` = 匿名。子实例不自持名字
     （A15 裁决：simplename 已删除）。
     """

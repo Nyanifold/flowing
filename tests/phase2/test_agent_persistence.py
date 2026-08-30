@@ -128,6 +128,10 @@ async def test_t89_orphan_tool_call_placeholder(runtime, provider, tmp_path, cop
                     "timestamp": "2026-08-29T00:00:00", "usage": None}),
     ]
     (session_dir / "tree.jsonl").write_text("\n".join(lines) + "\n")
+    # 决策 9：head 以 core 袋为准——预写崩溃时落盘的 head（m2 是 provider 尾）
+    (session_dir / "core.jsonl").write_text(
+        '{"type": "meta", "format_version": 1}\n'
+        '{"op": "set", "key": "current_head_id", "value": "m2"}\n')
 
     agent = await _restored(runtime, session_dir)
     placeholders = [m for m in agent._messages.values() if m.synthetic]
@@ -215,7 +219,7 @@ async def test_invoke_subagent_end_to_end(runtime, provider):
     assert result.result == "子代回复：审查 auth 模块"   # last_result 文本回传
     assert result.name_alias == "reviewer"
     child_id = result.subagent_id
-    assert parent._child_ids["reviewer"] == child_id   # 语义名登记
+    assert parent.child_ids["reviewer"] == child_id   # 语义名登记（core 袋 property）
     assert child_id in parent._children   # 生命周期子树
 
     # resume 续接同一实例
