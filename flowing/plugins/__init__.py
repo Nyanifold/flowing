@@ -216,8 +216,8 @@ class Plugin:
         ``namespace``） /
         ``runtime.provide()`` / ``runtime.register_config_namespace()`` /
         ``runtime.register_agent_type()`` / ``runtime.register_resource()`` /
-        ``runtime.register_state()``（全局命名空间声明；只声明不读写——
-        引导重放完成前读仅见 defaults，加载/派生时机由插件内部管理）。
+        ``runtime.register_state()``（全局命名空间开启；创建即 replay，
+        加载/派生时机由插件内部管理）。
         （观测面无注册通道——插件状态经插件自己的只读 API 暴露，如
         ``runtime.get_plugin("cron").jobs()``；per-agent 状态声明经
         ``Agent.register_state()`` 在各 Agent 的 ``setup()`` 中完成，

@@ -92,7 +92,7 @@ async def test_t125_full_chain(tmp_path):
         class MainAgent(Agent):
             system_prompt = Parsable("你是集成测试助手。")
             async def setup(self, **kwargs):
-                self.register_state("marker", "init")
+                self.state.register("marker", "init")
 
         async def main(flag=None, **kwargs):
             runtime = Runtime()
@@ -238,7 +238,7 @@ class RecoverGateAgent(Agent):
         return args
 
     async def setup(self, **kwargs) -> None:
-        self.register_state("early", 0)
+        self.state.register("early", 0)
 
 
 async def test_t126_no_write_gate_whole_lifecycle(tmp_path):
@@ -311,13 +311,13 @@ async def test_t128_three_tier_forgetting(tmp_path):
     # 第一档：destroy —— 池 key 与名录保留，现场可恢复
     await agent.destroy()
     assert "agent-x" in runtime._agent_pool
-    assert "agent-x" in runtime.state("core").get("agents", [])
+    assert "agent-x" in runtime.states["core"].get("agents", [])
     restored = await runtime.get_agent("agent-x")
     assert restored is not None and len(restored._messages) == 2
     # 第二档：archive —— 运行时完全遗忘、文件留档
     await runtime.archive_agent("agent-x")
     assert "agent-x" not in runtime._agent_pool
-    assert "agent-x" not in runtime.state("core").get("agents", [])
+    assert "agent-x" not in runtime.states["core"].get("agents", [])
     assert await runtime.get_agent("agent-x") is None
     with pytest.raises(KeyError):
         await runtime.recover_agent("agent-x")
@@ -394,8 +394,8 @@ async def test_t90_recover_state_replay_migration_corruption(tmp_path, copy_fixt
         system_prompt = Parsable("状态重放。")
 
         async def setup(self, **kwargs):
-            self.register_state("n", 0)
-            self.register_state("s", "default-s")
+            self.state.register("n", 0)
+            self.state.register("s", "default-s")
 
     runtime.register_agent_type("state-agent", StateAgent)
 

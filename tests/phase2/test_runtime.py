@@ -111,7 +111,7 @@ class CountingAgent(Agent):
         return turn
 
     async def setup(self, **kwargs) -> None:
-        self.register_state("turns", 0)
+        self.state.register("turns", 0)
 
 
 class HookLogAgent(Agent):
@@ -328,33 +328,40 @@ async def test_t102b_provide_inject_injection_key(tmp_path):
 
 
 async def test_t103_global_state(tmp_path):
-    """T103：全局状态写透 + 进程重启重放；同空间不同定义报错；闸门未开写抛错。"""
+    """T103：全局状态写透 + 进程重启重放；开启即 replay（D13）；幂等同视图；
+    default 袋（runtime.state）。"""
     persist = tmp_path / "persist"
     runtime = make_runtime(tmp_path, persist=False)
-    runtime.register_state("x", defaults={"k": 0})
-    runtime.set_persist_dir(persist)   # 引导重放全部已注册命名空间并解锁闸门
-    runtime.state("x").k = 1
-    # 幂等：同定义重复声明返回同一视图；不同定义报错
-    assert runtime.register_state("x", defaults={"k": 0}) is runtime.state("x")
-    with pytest.raises(ValueError, match="定义不同"):
-        runtime.register_state("x", defaults={"k": 9})
+    runtime.register_state("x")   # 创建即 replay（开空间即恢复）
+    runtime.set_persist_dir(persist)   # 重指存储后全量重放
+    runtime.states["x"].k = 1
+    # 幂等：同命名空间重复开启返回同一视图（无定义可比——defaults 已消除）
+    assert runtime.register_state("x") is runtime.states["x"]
     await runtime.shutdown()
-    # 进程重启（新 Runtime 同 persist_dir）：声明先于引导，重放后值在
+    # 进程重启（新 Runtime 同 persist_dir）：开启即 replay，持久值立即可见
     runtime2 = make_runtime(tmp_path, persist=False)
-    runtime2.register_state("x", defaults={"k": 0})
     runtime2.set_persist_dir(persist)
-    assert runtime2.state("x").k == 1
+    runtime2.register_state("x")
+    assert runtime2.states["x"].k == 1
+    # Mapping 语义（S13）：["ns"] / in / .get()
+    assert "x" in runtime2.states
+    assert "nope" not in runtime2.states
+    assert runtime2.states.get("nope") is None
+    # backend 校验（D3 同签名）
+    with pytest.raises(ValueError):
+        runtime2.register_state("y", backend="memory")
     await runtime2.shutdown()
-    # install 中（引导重放前）写全局状态 → 不抛错（D5 删写闸门；R1 约定 install
-    # 内不写——重放前的写若已落盘会被引导重放读回同一值，未落盘则保留内存写）
+    # default 袋（D13）：runtime.state = states["default"]，与 agent.state 对称
+    assert runtime2.state is runtime2.states["default"]
+    # install 中开启命名空间 → 创建即 replay（持久值立即可见）
     runtime3 = make_runtime(tmp_path / "p3")
 
     def _install_writes(rt: Runtime) -> None:
-        rt.register_state("gw", defaults={})
-        rt.state("gw").k = 1   # 引导重放未覆盖该命名空间，但写不抛错（D5）
+        rt.register_state("gw")
+        rt.states["gw"].k = 1   # 开启即 replay，写透立即可用（D5/D13）
 
     runtime3.use(PluginStub("gate-writer", on_install=_install_writes))
-    assert runtime3.state("gw").k == 1
+    assert runtime3.states["gw"].k == 1
     await runtime3.shutdown()
 
 

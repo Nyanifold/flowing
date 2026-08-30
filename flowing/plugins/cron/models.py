@@ -178,7 +178,7 @@ class CronJob:
     .. rubric:: 功能介绍
 
     描述「哪个 Agent、按什么 cron 表达式、以什么负载与来源触发」。
-    是 ``cron_jobs`` 状态键（``Agent.register_state("cron_jobs", [])``
+    是 ``cron_jobs`` 状态键（``Agent.state.register("cron_jobs", [])``
     声明、写透存储/恢复重放）的序列化单元——**状态袋里恒存
     ``list[dict]`` 纯数据**（P3-12① 裁决：内存形态与磁盘形态同构，
     写透层无需任何领域知识）；对象本体只存在于调度器内存表

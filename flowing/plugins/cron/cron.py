@@ -86,7 +86,7 @@ Cron 是 Flowing 的**内置扩展**（随 ``flowing`` 包发布但不自动启�
 EVENT 消息入队，由 Agent 醒来自行处置）——只有 Agent 活跃时的
 当次触发才真执行工具。
 
-.. rubric:: 持久化与恢复（Agent.register_state("cron_jobs", [])）
+.. rubric:: 持久化与恢复（Agent.state.register("cron_jobs", [])）
 
 任务定义属**插件状态**，以 ``cron_`` 前缀键声明进该 Agent 的单袋状态
 （核心键裸名，插件键带注册名前缀——单袋化最终裁决）。
@@ -217,7 +217,7 @@ class CronPlugin(Plugin):
 
     任务持久化不在 install 挂载——状态袋是 per-agent 声明：
     ``use_cron(self)`` 在各 Agent 的 ``setup()`` 中经
-    ``self.register_state("cron_jobs", [])`` 完成（写透，任务变化即落
+    ``self.state.register("cron_jobs", [])`` 完成（写透，任务变化即落
     该 Agent 自己 ``state.jsonl`` 的 ``cron_jobs`` 键；恢复时由
     ``after_recover`` handler 经 ``CronScheduler._load_jobs`` 重建）。
 
@@ -348,7 +348,7 @@ class CronPlugin(Plugin):
         - 非行为：不启动任务（尚无任务可启动）；不读取其他插件状态（R2）；
           不挂载状态持久化——``cron_jobs`` 状态键是 per-agent 声明，由
           ``use_cron(self)`` 在各 Agent 的 ``setup()`` 中经
-          ``self.register_state("cron_jobs", [])`` 完成。
+          ``self.state.register("cron_jobs", [])`` 完成。
         - 后置条件：调度器已 provide、四件工具已注册；此后每个
           ``use_cron`` 的 Agent 各自获得写透落盘与恢复重建能力。
 
@@ -397,7 +397,7 @@ def use_cron(agent: Agent) -> None:
        match_on="source")`` 声明实例级钩子点——handler 按
        ``CronTrigger.job.source`` 做 fnmatch 过滤注册；同名同 by 的
        重复声明按 hooks 总则幂等返回已有 HookList。
-    3. ``agent.register_state("cron_jobs", [])`` 声明
+    3. ``agent.state.register("cron_jobs", [])`` 声明
        该 Agent 的任务状态键（写透到该 Agent 自己的
        ``state.jsonl``；恢复重放后由第 4 步的 ``after_recover``
        handler 经 ``_load_jobs`` 重建进中央调度器）。同键重复声明
@@ -558,9 +558,9 @@ def use_cron(agent: Agent) -> None:
     """
     scheduler: CronScheduler = agent.inject(cron_scheduler_key)
     agent.hooks.declare("on_cron_trigger", by="cron", match_on="source")
-    agent.register_state("cron_jobs", [])
-    # 单袋化最终裁决：register_state 不再有 load 参数——派生运行时结构
-    # （定时器）的重建统一走 after_recover 钩子
+    agent.state.register("cron_jobs", [])
+    # D4 键注册安全化：register 缺省即写落盘（首次调用冻结初值）——派生
+    # 运行时结构（定时器）的重建统一走 after_recover 钩子
     async def _rebuild_on_recover(a: Agent, _value: Any = None) -> None:
         # HookList.dispatch 恒以 (agent, value) 两参调用（无 value 钩子点
         # 传 None）；先重建任务与定时器（同步），再合并回顾过期触发

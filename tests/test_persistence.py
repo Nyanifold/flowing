@@ -300,9 +300,9 @@ class StubStore:
         self.synced.append(list(records))
 
 
-def _open_view(store=None, defaults=None, **kw) -> StateView:
-    """构造视图（D5 删写闸门后无解锁步骤）。"""
-    return StateView(store or StubStore(), defaults=defaults, **kw)
+def _open_view(store=None, **kw) -> StateView:
+    """构造视图（D5 删写闸门后无解锁步骤；D4 后无 defaults 构造参数）。"""
+    return StateView(store or StubStore(), **kw)
 
 
 def test_s16_attr_and_dict_access_equivalent():
@@ -320,28 +320,31 @@ def test_s16_attr_and_dict_access_equivalent():
     assert v1.n == v2["n"] == 1
 
 
-def test_s17_defaults_fallback_not_persisted():
-    """S17：defaults 回退——默认值不落盘；写入覆盖；del 后回退。"""
+def test_s17_register_writes_default():
+    """S17（翻转，D4）：register 缺省即写——default 落盘并返回；已持久跳过；
+    del 后读回 KeyError（无 defaults 回退）。"""
     view = _open_view()
-    view._register("n", 0)
-    assert view.n == 0  # 读出回退 default
-    assert view._store.submitted == []  # 默认值不落盘
+    assert view.register("n", 0) == 0   # 返回写入的 default
+    assert view.n == 0
+    assert view._store.submitted == [{"op": "set", "key": "n", "value": 0}]
+    assert view.register("n", 9) == 0   # 幂等：已持久跳过，返回真值
+    assert view._store.submitted == [{"op": "set", "key": "n", "value": 0}]
     view.n = 5
-    assert view.n == 5
-    assert view._store.submitted == [{"op": "set", "key": "n", "value": 5}]
+    assert view.register("n", 0) == 5   # 已持久值优先
     del view.n
-    assert view.n == 0  # 删除持久值后回退 default
+    with pytest.raises(KeyError):
+        view["n"]   # 无 defaults 回退
 
 
 def test_s18_undeclared_key_and_contains():
-    """S18：未声明未写键 → KeyError / get 回退；__contains__ 双命中。"""
+    """S18：未注册未写键 → KeyError / get 回退；__contains__ 持久值命中。"""
     view = _open_view()
-    view._register("n", 0)
+    view.register("n", 0)
     with pytest.raises(KeyError):
         view["typo"]
     assert view.get("typo", "d") == "d"
     assert view.get("typo") is None
-    assert "n" in view  # 注册 default 命中
+    assert "n" in view  # register 缺省即写 → 持久值命中
     view["persisted_key"] = 1
     assert "persisted_key" in view  # 持久值命中
     assert "typo" not in view
@@ -350,12 +353,11 @@ def test_s18_undeclared_key_and_contains():
 def test_s19_no_write_gate():
     """S19（翻转，D5）：无写闸门——写透直接成功、持久值直接可见；重放装袋值同键可见。"""
     store = StubStore()
-    view = StateView(store, defaults={"n": 0})
+    view = StateView(store)
     view._persisted["hidden"] = 1  # 模拟 recover 重放装袋
     view["x"] = 1   # 写直接成功（无闸门拦截）
     assert view["x"] == 1
     assert view["hidden"] == 1   # 重放装袋的持久值直接可见
-    assert view.n == 0   # defaults 回退不受影响
 
 
 def test_s20_non_serializable_fails_fast():
@@ -367,12 +369,12 @@ def test_s20_non_serializable_fails_fast():
     assert "x" not in view._persisted
 
 
-def test_s21_register_duplicate_raises():
-    """S21：_register 重复声明同 key → ValueError。"""
+def test_s21_register_idempotent():
+    """S21（翻转，D4）：register 幂等——重复登记无副作用（不再报错）。"""
     view = _open_view()
-    view._register("n", 0)
-    with pytest.raises(ValueError):
-        view._register("n", 1)
+    assert view.register("n", 0) == 0
+    assert view.register("n", 1) == 0   # 幂等：已持久跳过，返回真值
+    assert view._store.submitted == [{"op": "set", "key": "n", "value": 0}]
 
 
 def test_s22_write_through_record_format():
@@ -437,7 +439,7 @@ async def test_s16_real_store_roundtrip(tmp_path):
     path = tmp_path / "state.jsonl"
     store = FileRecordStore(path, merge_last_line=True)
     view = _open_view(store)
-    view._register("n", 0)
+    view.register("n", 0)
     view.n = 1
     view.n += 1
     await view._close()
@@ -446,7 +448,6 @@ async def test_s16_real_store_roundtrip(tmp_path):
     records = list(store2.replay())
     assert records == [{"op": "set", "key": "n", "value": 2}]  # 末行合并生效
     view2 = _open_view(store2)
-    view2._register("n", 0)
     for r in records:
         view2._persisted[r["key"]] = r["value"]
     assert view2.n == 2

@@ -19,8 +19,8 @@ caller 注入（工具经 ``caller`` 读写属主 Agent 的缓冲与阈值）。
   ``clipboard-paste`` 三件全局工具（注册 ≠ 可见：Agent 仍需
   ``add_tool`` 才对 LLM 可见，S-19）。
 - 阶段二（Agent 启用）：``setup()`` 中 ``use_clipboard(self)`` 经
-  ``register_state("clipboard_buffer", None)`` 声明缓冲状态键（挂载到
-  该 Agent 自己的 ``state.jsonl``，写透落盘、recover 可恢复——
+  ``state.register("clipboard_buffer", None)`` 登记缓冲状态键（挂载到
+  该 Agent 自己的 ``state.jsonl``，D4 缺省即写落盘、recover 可恢复——
   N-01② 裁决），并设定阈值实例属性（``clipboard_max_lines`` /
   ``clipboard_max_chars``）。
 
@@ -171,7 +171,7 @@ def use_clipboard(agent: Agent, *, max_lines: int = 500,
 
     .. rubric:: 调用关系（审计）
 
-    - 调用：``Agent.register_state``（时机：本函数体内同步）
+    - 调用：``Agent.state.register``（时机：本函数体内同步）
     - 被调：各 Agent 的 ``setup()``（create / recover 两管线均跑）
 
     .. seealso:: :class:`ClipboardPlugin`、
@@ -181,6 +181,6 @@ def use_clipboard(agent: Agent, *, max_lines: int = 500,
         raise ValueError("max_lines 必须为正整数")
     if not (isinstance(max_chars, int) and max_chars > 0):
         raise ValueError("max_chars 必须为正整数")
-    agent.register_state("clipboard_buffer", None)
+    agent.state.register("clipboard_buffer", None)
     agent.clipboard_max_lines = max_lines
     agent.clipboard_max_chars = max_chars

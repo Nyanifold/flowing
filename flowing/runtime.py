@@ -236,13 +236,17 @@
 
 与 per-agent 状态同构但**不挂在任何 agent 名下**：持久化根目录下
 **每个命名空间一个文件**（``<persist_root>/<namespace>.jsonl``），与
-per-agent session 目录并列。声明与访问经 ``Runtime.register_state`` /
-``Runtime.state``（返回同一个 :class:`flowing.persistence.StateView` 类，
-写透 / 末行合并 / 压缩 / defaults / fail fast 契约全部继承）。``core``
-全局命名空间保留给框架，内容至少含**已注册 agent id 名录**（及平行映射
-``session_dirs``：agent_id → session 目录存储形式，根内相对 / 根外绝对）与
-已安装插件清单。引导时序：``set_persist_dir`` 之后、池扫描 / 首个 ``mount()``
-之前重放全部全局命名空间。**加载/派生时机由插件内部管理**
+per-agent session 目录并列。开启与访问经 ``Runtime.register_state(ns,
+backend='file')``（D3 同签名：**创建即 replay**，开空间即恢复，幂等同
+视图）／``Runtime.states``（只读 Mapping 注册表：``["ns"]`` / ``in`` /
+``.get()``，返回同一个 :class:`flowing.persistence.StateView` 类，
+写透 / 末行合并 / 压缩 / 键注册安全化 / fail fast 契约全部继承）。
+**``__init__`` 注册 ``core`` + ``default`` 两命名空间（D13）**：``core``
+保留给框架，内容至少含**已注册 agent id 名录**（及平行映射
+``session_dirs``：agent_id → session 目录存储形式，根内相对 / 根外绝对）
+与已安装插件清单；``default`` 管 Runtime 自身生命周期状态 + 小插件键
+（``Runtime.state`` property 指向它，与 ``agent.state`` 对称）。
+**加载/派生时机由插件内部管理**
 （最终裁决）——核心不提供 ``load`` 恢复回调；重放产物就位后，插件
 何时读出持久值重建运行时结构是插件自己的事（懒重建、显式初始化方法
 均可）。
@@ -254,7 +258,7 @@ per-agent session 目录并列。声明与访问经 ``Runtime.register_state`` /
   ``session_dir`` 为该 agent 的 session 目录存储形式——根内相对 / 根外
   绝对，缺省 ``persist_dir / agent_id`` 的等价形式，恢复与扫描据此定位）。
 - **名录为准**（最终裁决）：池 key 的唯一权威来源是全局 ``core`` 命名
-  空间中的**已注册 agent id 名录**（``runtime.state("core")["agents"]``，
+  空间中的**已注册 agent id 名录**（``runtime.states["core"]["agents"]``，
   写透持久化）；目录扫描只是按名录逐个开 session 目录。注册 agent =
   一次 core 状态写入（天然持久）；「显式删除才移除池 key」= 删 session
   目录 + 删名录项的一次操作。名录中 id 对应目录缺失 → 可诊断错误
@@ -639,10 +643,12 @@ class Runtime:
     实体（``_nodes``）、已安装插件（``_plugins``）、全局工具/子智能体
     注册表，并提供扩展 API（``register_tool`` / ``provide`` 等）与观测
     通道（``snapshot``）。持久化状态的**声明与访问在 Agent 侧**
-    （``Agent.register_state`` 声明 / ``Agent.state`` 显式视图读写——
-    单袋、无命名空间，P3-03 配套裁决）；Runtime/插件的**全局**状态保留命名空间
-    （``Runtime.register_state`` / ``Runtime.state(ns)``），其加载与
-    派生时机由插件内部管理（核心只提供声明/写透/引导重放）。
+    （``agent.state.register`` 键登记 / ``Agent.state`` 显式视图读写——
+    双袋、无命名空间，P3-03 配套裁决；``register_state(name)`` 开命名
+    空间，D3）；Runtime/插件的**全局**状态保留命名空间
+    （``Runtime.register_state(ns)`` 开启 / ``Runtime.states`` 注册表 /
+    ``Runtime.state`` 默认袋，D13），其加载与
+    派生时机由插件内部管理（核心只提供开启/写透/创建即 replay）。
     Runtime 另管全局目录、池扫描与管线编排。
 
     架构性契约（生命周期两段式、创建/恢复两条管线的逐阶段不变量、
@@ -743,7 +749,8 @@ class Runtime:
     """
     _states: dict[str, StateView]
     """全局持久化状态命名空间表（命名空间 → ``StateView``）；
-    ``register_state`` 写入、``state(ns)`` 读取（S-37 补声明）。
+    ``register_state`` 写入（创建即 replay）、``states`` property 暴露
+    （S-37 补声明；D13 后含 ``core`` + ``default`` 两内建）。
     内部 API，不属稳定契约。
     """
     _persist_dir: Path
@@ -867,7 +874,6 @@ class Runtime:
         self._resources = {}
         self._agent_pool = {}
         self._states = {}
-        self._bootstrapped: set[str] = set()   # 已重放命名空间集合（D5 删闸门后「未引导」判断的替代：_bootstrap_persistence 只重放未入集合的视图——防文件旧值覆盖未 drain 的内存写；阶段 D「注册即 replay」落地后退役）
         self._persist_dir = Path.cwd() / ".flowing"   # 默认持久化根（S-37 裁决）：本质是 flowing 启动路径——启动时可经 set_persist_dir 手动指定，默认为 cwd（R-07 澄清）；set_persist_dir 覆写（mount 前）
         config_home = Path(os.environ.get(
             "FLOWING_CONFIG_HOME", os.path.expanduser("~/.flowing")))
@@ -896,13 +902,14 @@ class Runtime:
         self._merged_config = self._merge_config_layers()
         self._config_ready = True
         self.env = MappingProxyType(os.environ)   # os.environ 只读视图（渲染上下文 env 入口，R-5）
-        # R-07 落实：框架自登记 core 全局命名空间（已注册 agent id 名录 +
-        # session_dirs 平行映射 + 已安装插件清单），随后引导重放（默认
-        # persist 路径场景的重放点；set_persist_dir 会重指全部命名空间存储
-        # 并再次引导——幂等）
-        self.register_state(
-            "core", defaults={"agents": [], "session_dirs": {}, "plugins": []})
-        self._bootstrap_persistence(_materialize=False)   # 含 agent 池扫描（读 core 名录逐个开 session 目录；实例不在扫描阶段创建，见 §8-9）；构造期只读引导——不在 cwd 建默认目录（零持久化场景不污染工作目录，建目录归后续写意图时点，见 _bootstrap_persistence 的 _materialize 约定）
+        # R-07 落实（D13）：框架自登记 core + default 两全局命名空间——
+        # core 管框架注册表（agents/session_dirs/plugins）、default 管
+        # runtime 自身生命周期状态 + 小插件键（键前缀隔离）；register_state
+        # 创建即 replay（开空间即恢复），随后池扫描（构造期只读——不在 cwd
+        # 建默认目录，零持久化场景不污染工作目录）
+        self.register_state("core")
+        self.register_state("default")
+        self._scan_agent_pool()
 
     def use(self, *plugins: Plugin) -> None:
         """安装插件（阶段一启用）：按实参顺序执行各插件的 ``install(runtime)``。
@@ -974,9 +981,10 @@ class Runtime:
             plugin.install(self)
             self._plugins[plugin.name] = plugin
         self._check_dependencies()   # 增量校验已装子图：成环抛 DependencyError；缺失 warnings.warn 不抛（R9：与 mount 解绑）
-        # install 中声明的全局命名空间在安装完成后引导重放：插件在运行期
-        # / shutdown() 中读写全局状态才可用
-        self._bootstrap_persistence()
+        # install 中 register_state 已创建即 replay（开空间即恢复，D13）；
+        # 写透落盘需要持久化根目录——有插件即建（原引导 _materialize 的职责；
+        # 无状态插件 use() 也建目录——持久化根，无害）
+        self._persist_dir.mkdir(parents=True, exist_ok=True)
 
     def get_plugin(self, name: str, *, strict: bool = True) -> Any | None:
         """按名查询已安装插件实例；``strict`` 标志兼容「直接用」与「探测」两种写法。
@@ -1259,8 +1267,8 @@ class Runtime:
            在 setup 结束前未被 declare）→ 抛
            ``flowing.errors.UnknownHookPointError``，消息列出未消费的
            hook_name 与方法名。
-        7. 池注册：全局 ``core`` 名录写入新 ``agent_id``（``state("core")
-        7. 池注册：全局 ``core`` 名录写入新 ``agent_id``（``state("core")
+        7. 池注册：全局 ``core`` 名录写入新 ``agent_id``（``states["core"]
+        7. 池注册：全局 ``core`` 名录写入新 ``agent_id``（``states["core"]
            ["agents"]`` 追加，写透）+ ``_agent_pool[node_id]``（``agent_type`` /
            ``parent_agent_id`` / ``created_at`` / ``args``）——**args 是
            Agent 身份的一部分**（身份四键已在第 3b 步整写进 ``meta.json``，
@@ -1323,7 +1331,7 @@ class Runtime:
 
         .. rubric:: 调用关系（审计）
 
-        - 调用：``self.get_agent_class()``（管线第 1 步）；``flowing.hooks.HookList.dispatch``（before_create / after_create，管线第 4、9 步）；``instance.setup()``（管线第 5 步，见 ``flowing.agent.Agent.setup``）；``self.state("core")`` 名录写透（管线第 7 步）
+        - 调用：``self.get_agent_class()``（管线第 1 步）；``flowing.hooks.HookList.dispatch``（before_create / after_create，管线第 4、9 步）；``instance.setup()``（管线第 5 步，见 ``flowing.agent.Agent.setup``）；``self.states["core"]`` 名录写透（管线第 7 步）
         - 被调：``flowing.runtime.Runtime.mount``（Agent 根路径，每次 mount）；``flowing.agent.Agent.create_subagent``（每次创建子 Agent）；``flowing.plugins.workflow.Workflow.create_agent``（每次 Workflow 创建 Agent）
 
         .. seealso:: :meth:`flowing.runtime.Runtime.recover_agent`、
@@ -1406,7 +1414,7 @@ class Runtime:
             instance.model = instance._resolve_model_tag(instance.model_tag)
         # 第 7 步：池注册——core 名录**追加**（读-改-写写透；spec 骨架的
         # `= [node_id]` 整表替换是笔误，会丢掉既有名录项）
-        core = self.state("core")
+        core = self.states["core"]
         core["agents"] = [*core.get("agents", []), node_id]
         core["session_dirs"] = {
             **core.get("session_dirs", {}),
@@ -1710,7 +1718,7 @@ class Runtime:
 
         框架核心层方法。把 ``node_id`` 及其全部后代从运行时清除：
         ``_nodes``（活体表，经 ``destroy()`` 摘除）、``_agent_pool``
-        （池注册表，仅 Agent 有条目）、全局 ``core`` 名录（``state("core")
+        （池注册表，仅 Agent 有条目）、全局 ``core`` 名录（``states["core"]
         ["agents"]``，写透）。**保留文件**：各 session 目录（``tree.jsonl`` /
         ``core.jsonl`` / ``state.jsonl`` / ``meta.json``）原样留档——归档 ≠
         删除记录。``node_id`` 可为任意
@@ -1763,7 +1771,7 @@ class Runtime:
 
         - 调用：``flowing.agent.Agent.destroy()`` / 其它 ``_nodes`` 成员的
           ``destroy()``（时机：对仍存活的子树节点，多态分派）；
-          ``self.state("core")`` 名录写透（时机：归档集合确定后）；父实例
+          ``self.states["core"]`` 名录写透（时机：归档集合确定后）；父实例
           ``_state_bag["child_ids"]`` 写透（时机：父存活时）
         - 被调：``Workflow.destroy()``（时机：级联归档其子 Agent）；
           ``archive_orphans()``（时机：每个孤儿）；应用层运维 / 管理 UI 的
@@ -1818,8 +1826,8 @@ class Runtime:
         for aid in to_archive:
             self._agent_pool.pop(aid, None)
         archived = set(to_archive)
-        core_agents = list(self.state("core").get("agents", []))
-        self.state("core")["agents"] = [a for a in core_agents if a not in archived]
+        core_agents = list(self.states["core"].get("agents", []))
+        self.states["core"]["agents"] = [a for a in core_agents if a not in archived]
         return to_archive
 
     async def archive_orphans(self) -> list[str]:
@@ -2552,135 +2560,114 @@ class Runtime:
         self._persist_dir = self.resolve_path(str(path))   # 覆写默认 <cwd>/.flowing；路径支持 @/ 前缀规则
         self._persist_dir.mkdir(parents=True, exist_ok=True)   # 显式设定即建目录（默认路径则推迟到首个 mount/create 才建，见 _ensure_persist_ready）
         # 重指全部已注册命名空间的存储后端到新目录（R-07：__init__ 已对默认
-        # 路径做过一次引导，本方法须让既有视图改读新目录——重建 store、清
-        # 内存持久值、标记未重放，随后 _bootstrap_persistence 统一重放）。
+        # 路径做过一次注册即 replay，本方法须让既有视图改读新目录——重建
+        # store、清内存持久值，随后 _bootstrap_persistence 全量重放）。
         # 前置约定：mount()/create_agent() 之前调用（之后调用行为未定义）；
         # 此刻各命名空间尚无业务写入（框架自身尚未写 core），重建安全
         for namespace, view in self._states.items():
             object.__setattr__(view, "_store", FileRecordStore(
                 self._persist_dir / f"{namespace}.jsonl", merge_last_line=True))
             object.__setattr__(view, "_persisted", {})
-            self._bootstrapped.discard(namespace)
-        # 引导时序：本方法后、池扫描 / 首个 mount() 之前重放全部全局命名空间
-        # （重放经各命名空间 RecordStore.replay()，逐行覆盖 defaults；重放完成
-        # 后各命名空间 view._maybe_compact(force=True)——压缩三时点①的 Runtime
-        # 侧落点，空袋跳过）；池扫描随之进行（_bootstrap_persistence）
+        # 全量重放（重建后无内存写，无需幂等保护）+ 池扫描
         self._bootstrap_persistence()
 
-    def register_state(
-        self,
-        namespace: str,
-        defaults: dict[str, Any] | None = None,
-    ) -> StateView:
-        """声明一个**全局**持久化状态命名空间（Runtime/插件级）。
+    def register_state(self, namespace: str, backend: str = "file") -> StateView:
+        """开启/注册一个**全局**持久化状态命名空间（Runtime/插件级）。
 
         .. rubric:: 功能介绍
 
         状态**不挂在任何 agent 名下**：写在持久化根目录的
-        ``<namespace>.jsonl``（一空间一文件）。承载 Runtime/插件的
-        全局状态——框架的 ``core`` 全局命名空间含已注册 agent id 名录
-        与已安装插件清单；插件的全局登记类状态（如通信扩展的全局路由
-        表）也走这里。**加载/派生时机完全由插件内部管理**（最终裁决）：
-        核心只提供基础设施——声明、写透、引导重放（
-        ``set_persist_dir`` 之后、池扫描之前）；何时读出持久值
-        派生运行时结构是插件自己的事（懒重建、显式初始化方法均可），
-        核心不提供 ``load`` 恢复回调（与 Agent 侧单袋化裁决一致：
-        Agent 侧的派生重建走 ``after_recover`` 钩子）。
-
-        .. rubric:: 设计动机
-
-        per-agent 状态解决「智能体自己的状态」；但池名录、插件全局
-        登记等状态**先于、独立于**任何 agent 存在——它们需要一个与
-        per-agent 机制同构（写透/末行合并/压缩/defaults/fail fast
-        全继承）但归属全局的通道。一空间一文件：互不影响压缩与崩溃
-        截断边界。
-
-        .. rubric:: 使用示例
-
-        .. code-block:: python
-
-            def install(self, runtime: Runtime) -> None:
-                self._routes = runtime.register_state(
-                    "comm.routes", defaults={"peers": []})
-            # 之后：runtime.state("comm.routes").peers = [...]
-            # 派生结构（如内存路由索引）由插件自己择时从 _routes 重建
+        ``<namespace>.jsonl``（一空间一文件，``'file'`` 后端细节）。
+        承载 Runtime/插件的全局状态——框架的 ``core`` 全局命名空间含
+        已注册 agent id 名录与已安装插件清单；``default`` 是 Runtime
+        自身生命周期状态 + 小插件键的默认袋（D13，经 :attr:`state`
+        property 访问）；插件的全局登记类状态（如通信扩展的全局路由
+        表）走自定义命名空间。**加载/派生时机完全由插件内部管理**（最终
+        裁决）：核心只提供基础设施——开启、写透、**创建即 replay**
+        （开空间即恢复，与 Agent 侧 :meth:`Agent.register_state` 对称）；
+        何时读出持久值派生运行时结构是插件自己的事（懒重建、显式
+        初始化方法均可），核心不提供 ``load`` 恢复回调（Agent 侧的
+        派生重建走 ``after_recover`` 钩子）。
 
         .. rubric:: 行为规约
 
-        - **幂等**：同命名空间 + 同定义重复声明 = 空操作返回同一视图；
-          同命名空间不同定义 → 报错。``core`` / ``meta`` 保留。
-        - **引导重放**：全局视图在引导重放（``set_persist_dir`` 之后、
-          池扫描之前）完成后读见持久值；重放前读仅见 defaults（内存
-          尚未装载，非闸门拦截——D5 删写闸门）。插件在 ``install()``
-          中声明但**不写**全局状态（R1 的持久化版）。
+        - **幂等**：同命名空间重复声明 = 空操作返回同一视图（D3 语义；
+          无定义可比——defaults 参数已随 D4 消除）。
+        - **创建即 replay**：声明时即重放持久值进 ``_persisted``——
+          ``use()`` 后引导与 ``_ensure_persist_ready`` 兜底重放不再需要
+          （恢复绑定在命名空间创建）。
+        - ``backend`` 当前仅 ``'file'``；其它值 → ``ValueError``。
         - 重放产物是裸持久值（JSON 纯数据）；派生运行时结构的重建
           时机与方式由插件内部管理，异常由插件自行处理。
 
         :param namespace: 全局命名空间名（建议带插件前缀，如
-            ``"comm.routes"``——框架不参与命名，冲突按声明规则处理）。
-        :param defaults: 可选键默认值表；不落盘，读出回退。
+            ``"comm.routes"``——框架不参与命名）。
+        :param backend: 后端（当前仅 ``'file'``）。
         :return: 全局 :class:`flowing.persistence.StateView`。
 
         .. rubric:: 测试案例
 
-        - 前置：注册 ``"x"`` 并写 ``runtime.state("x").k = 1`` → 进程
-          重启 → 期望：重放后 ``runtime.state("x").k == 1``。
-        - 前置：两插件声明同命名空间不同定义 → 期望：后者报错。
-        - 前置：``install()`` 中写全局状态（引导重放前，读仅见 defaults）
-          → 期望：写透本身不报错（D5），但重放前写入的键会被引导重放
-          覆盖——故约定 install 内不写（R1 的持久化版）。
+        - 前置：注册 ``"x"`` 并写 ``runtime.states["x"].k = 1`` → 进程
+          重启 → 期望：重放后 ``runtime.states["x"].k == 1``。
+        - 前置：两插件声明同命名空间 → 期望：幂等返回同一视图。
+        - 前置：``install()`` 中开启命名空间 → 期望：创建即 replay，
+          持久值立即可见。
 
         .. rubric:: 调用关系（审计）
 
-        - 调用：无（声明全局命名空间并返回 ``StateView``）
-        - 被调：各插件 ``install()``（声明全局命名空间，时机：阶段一，见本方法使用示例）；框架自身 ``core`` 命名空间登记（时机：未见规约）
+        - 调用：无（开启全局命名空间并返回 ``StateView``）
+        - 被调：各插件 ``install()``（开启全局命名空间，时机：阶段一）；
+          框架自身 ``core`` / ``default`` 命名空间登记（时机：``__init__``）
 
-        .. seealso:: :meth:`state`、:meth:`set_persist_dir`、
+        .. seealso:: :attr:`states`、:attr:`state`、:meth:`set_persist_dir`、
             :meth:`flowing.agent.Agent.register_state`
         """
-        # 幂等判定：同命名空间 + 同定义重复声明 = 空操作返回同一视图；不同定义 → 报错
-        # （spec 未具名异常类型——声明冲突属编程错误，用内置 ValueError）；
-        # core / meta 为保留命名空间（框架在 __init__ 自登记 core，用户侧不同定义
-        # 的重复声明即被「不同定义 → 报错」拦截）
-        defaults = {} if defaults is None else dict(defaults)
+        if backend != "file":
+            raise ValueError(f"register_state backend 仅支持 'file': {backend!r}")
         existing = self._states.get(namespace)
         if existing is not None:
-            if existing._defaults == defaults:
-                return existing   # 同定义重复声明：幂等返回同一视图
-            raise ValueError(
-                f"全局状态命名空间重复声明且定义不同：{namespace}"
-                f"（已登记 defaults={list(existing._defaults)}，"
-                f"本次 defaults={list(defaults)}）")
-        # 路径基 = _persist_dir（默认 <cwd>/.flowing，S-37；引导时序约束：
-        # 全局状态声明先于池扫描 / 首个 mount()）
-        view = StateView(
-            FileRecordStore(self._persist_dir / f"{namespace}.jsonl",
-                            merge_last_line=True),
-            defaults=defaults)   # 一空间一文件一 store（S-31）；持久值在引导重放前不可见（内存未装载）
+            return existing   # 幂等：同 ns → 同视图
+        # 路径基 = _persist_dir（默认 <cwd>/.flowing，S-37；开空间即恢复，
+        # 不再依赖 set_persist_dir 之后的引导重放）
+        view = StateView(FileRecordStore(
+            self._persist_dir / f"{namespace}.jsonl", merge_last_line=True))
+        # 创建即 replay（开空间即恢复）
+        persisted = view._persisted
+        for record in list(view._store.replay()):   # replay 是惰性生成器——显式消费
+            op = record.get("op")
+            if op == "set":
+                persisted[record["key"]] = record["value"]
+            elif op == "delete":
+                persisted.pop(record["key"], None)
+            # 未知行形态（meta 已被 replay 吸收）静默跳过
+        if persisted:
+            view._maybe_compact(force=True)   # 压缩三时点①的 Runtime 侧落点
         self._states[namespace] = view
         return view
 
-    def state(self, namespace: str, *, strict: bool = True) -> StateView | None:
-        """取已声明全局命名空间的状态袋视图。
-
-        功能与边界：全局侧的主访问路径（对应
-        :meth:`flowing.agent.Agent.state`）。``strict``（C-01 同构，对齐
-        :meth:`get_plugin`）：``True``（默认）未声明即 ``KeyError``
-        （fail fast 防 typo——直接用写法）；``False`` 未声明返回
-        ``None``（探测写法，如观测插件探测某插件是否声明了某命名空间）。
-        读写语义全部继承
-        :class:`flowing.persistence.StateView` 的类级契约。
+    @property
+    def states(self) -> Mapping[str, StateView]:
+        """全局命名空间注册表（D13）：只读 Mapping 视图——``["ns"]`` /
+        ``in`` / ``.get()`` 均可用（读写语义继承
+        :class:`flowing.persistence.StateView` 的类级契约）。
 
         .. rubric:: 调用关系（审计）
 
-        - 调用：无（返回已声明命名空间的 ``StateView``）
-        - 被调：``flowing.runtime.Runtime.create_agent`` 池注册步（``state("core")["agents"]`` 写透，管线第 7 步）；插件代码读写全局状态（时机：声明后任意时刻）
+        - 调用：无（返回注册表视图）
+        - 被调：``flowing.runtime.Runtime.create_agent`` 池注册步
+          （``states["core"]["agents"]`` 写透，管线第 7 步）；插件代码
+          读写全局状态（时机：声明后任意时刻）
 
-        .. seealso:: :meth:`register_state`
+        .. seealso:: :meth:`register_state`、:attr:`state`
         """
-        if strict:
-            return self._states[namespace]   # 默认 fail fast 防 typo
-        return self._states.get(namespace)   # strict=False：探测形态返回 None
+        return MappingProxyType(self._states)
+
+    @property
+    def state(self) -> StateView:
+        """Runtime 默认袋（D13）：``states["default"]``——与
+        ``agent.state`` 对称（runtime 自身生命周期状态 + 小插件键的
+        落点）。"""
+        return self._states["default"]
 
     # ------------------------------------------------------------------
     # 配置合并与持久化引导（内部 API，R-06 / R-07 落实）
@@ -2730,34 +2717,21 @@ class Runtime:
             merged.update(self._flatten_config(layer))
         return merged
 
-    def _bootstrap_persistence(self, *, _materialize: bool = True) -> None:
-        """全局持久化引导（R-07 落实；内部 API）：重放全部未重放的全局
+    def _bootstrap_persistence(self) -> None:
+        """全局持久化全量重放（R-07 落实；内部 API）：重放全部已注册
         命名空间 → 压缩三时点① → agent 池扫描。
 
-        幂等：只重放未入 ``_bootstrapped`` 的命名空间（已重放的不重放——
-        重放会用文件旧值覆盖尚未 drain 的内存写；D5 删写闸门后「未引导」
-        判断的替代机制）；池扫描只补登记池中缺失的 id。
-        调用点：``__init__`` 尾部（默认 persist 路径场景的重放点）、
-        ``set_persist_dir``（重指存储后）、``use()`` 尾部（install 完成后）、
-        ``_ensure_persist_ready``（首个 mount/create/recover 前兜底——
-        覆盖默认路径下 post-init 注册的插件命名空间）。
-
-        ``_materialize``：有新命名空间本次重放（其写透即将成为可能）时，
-        是否把持久化根目录建出来。**必须为真**的担保：FileRecordStore
-        惰性打开句柄时不建父目录——「默认路径 + 插件写全局状态 + 全程无
-        agent」会在 drain 时 FileNotFoundError → store poison。唯二的例外
-        是 ``__init__`` 尾部（只读引导：core 一个视图，重放它不代表任何
-        业务写意图，不在 cwd 建默认目录——零持久化场景不污染工作目录）。
+        **调用点仅 ``set_persist_dir``**（重指存储后——重建 store、清
+        ``_persisted`` 后统一重放；重建前约定无业务写，无需幂等保护）。
+        ``register_state`` 已创建即 replay（D13），``use()`` 后引导与
+        ``_ensure_persist_ready`` 兜底不再需要。
 
         .. rubric:: 调用关系（审计）
 
         - 调用：``RecordStore.replay``（每命名空间重放）；``StateView._maybe_compact``（压缩三时点①）；``self._scan_agent_pool``（每次调用收尾）
-        - 被调：``Runtime.__init__``（``_materialize=False``）/ ``set_persist_dir`` / ``use`` / ``_ensure_persist_ready``
+        - 被调：``Runtime.set_persist_dir``
         """
-        bootstrapped_now = False
-        for namespace, view in self._states.items():
-            if namespace in self._bootstrapped:
-                continue   # 已重放：不重放（防文件旧值覆盖未 drain 的内存写）
+        for view in self._states.values():
             persisted = view._persisted
             for record in list(view._store.replay()):   # replay 是惰性生成器，须显式消费
                 op = record.get("op")
@@ -2766,16 +2740,10 @@ class Runtime:
                 elif op == "delete":
                     persisted.pop(record["key"], None)
                 # 未知行形态（meta 已被 replay 吸收）静默跳过——与 Agent._restore 同口径
-            self._bootstrapped.add(namespace)
-            bootstrapped_now = True
             if persisted:
                 # 压缩三时点①的 Runtime 侧落点（空袋跳过：无内容可压，
                 # 避免引导即在磁盘建出仅有 meta 首行的空文件）
                 view._maybe_compact(force=True)
-        if bootstrapped_now and _materialize:
-            # 新命名空间重放 = 其写透即将成为可能——此刻建好持久化根目录
-            # （无新重放则不建：use() 无状态插件 / 重复引导不落盘）
-            self._persist_dir.mkdir(parents=True, exist_ok=True)
         self._scan_agent_pool()
 
     def _scan_agent_pool(self) -> None:
@@ -2790,8 +2758,8 @@ class Runtime:
         - 被调：``self._bootstrap_persistence``（每次引导收尾）
         """
         core = self._states.get("core")
-        if core is None or "core" not in self._bootstrapped:
-            return   # core 未重放（读不到持久值）——随引导再行扫描
+        if core is None:
+            return   # core 未注册（理论不可能——__init__ 注册即 replay）——防御
         agents = list(core.get("agents", []))
         session_dirs = dict(core.get("session_dirs", {}))
         for agent_id in agents:
@@ -2825,20 +2793,20 @@ class Runtime:
         建持久化根目录（默认路径推迟到真正的持久化动作才落盘，避免零
         持久化场景在 cwd 留下空 ``.flowing/``）→ core 名录写入已安装
         插件清单（§8 core 内容之一；此刻 persist 目录已就位，写透安全）→
-        兜底引导 post-init 注册的命名空间（默认路径场景的插件命名空间）。
+        池扫描（core 已在 __init__ 注册即 replay——D13 后无兜底引导）。
 
         .. rubric:: 调用关系（审计）
 
-        - 调用：``self._bootstrap_persistence``（每次调用收尾）
+        - 调用：``self._scan_agent_pool``（每次调用收尾）
         - 被调：``Runtime.mount`` / ``create_agent`` / ``recover_agent``（各自入口）
         """
         self._persist_dir.mkdir(parents=True, exist_ok=True)
         core = self._states.get("core")
-        if core is not None and "core" in self._bootstrapped:
+        if core is not None:
             plugins = sorted(self._plugins)
             if core.get("plugins", []) != plugins:
                 core["plugins"] = plugins   # 写透（merge_last_line 防膨胀）
-        self._bootstrap_persistence()
+        self._scan_agent_pool()
 
     def resolve_path(self, path: str, *, source_dir: Path | None = None) -> Path:
         """路径前缀规则的执行器：``@/`` ``./`` ``../`` 绝对路径 → ``Path``。

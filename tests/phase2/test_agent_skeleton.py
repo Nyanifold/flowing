@@ -42,22 +42,45 @@ async def test_t34_preskeleton_assignment_guard(runtime, provider):
 
 
 # ---------------------------------------------------------------------------
-# T35：register_state 冲突检测
+# T35：键注册安全化（D4）——幂等、缺省即写、返回真值
 # ---------------------------------------------------------------------------
 
 
-async def test_t35_register_state_conflicts(runtime, provider):
+async def test_t35_register_key_semantics(runtime, provider):
     class StateAgent(SimpleAgent):
         async def setup(self) -> None:
-            self.register_state("tracker_count", 0)
-            with pytest.raises(ValueError):
-                self.register_state("tracker_count", 1)   # 重复声明
-            with pytest.raises(ValueError):
-                self.register_state("message")   # 撞方法名
-            with pytest.raises(ValueError):
-                self.register_state("current_head_id")   # 撞核心保留键
+            assert self.state.register("tracker_count", 0) == 0   # 返回写入的 default
+            assert self.state.register("tracker_count", 1) == 0   # 幂等：已持久跳过
+            assert self.state["tracker_count"] == 0
 
     await runtime.create_agent(StateAgent)   # setup 内断言全部命中即通过
+
+
+async def test_t35_register_state_space(runtime, provider, tmp_path):
+    """D3：register_state(name) 开启命名状态空间——name→<name>.jsonl 映射、
+    校验（保留名/路径分隔符/backend）、幂等、即时恢复、destroy 关闭。"""
+    agent = await runtime.create_agent(SimpleAgent)
+
+    bag = agent.register_state("stats")
+    assert bag is agent.register_state("stats")   # 幂等：同 name → 同视图
+    bag["hits"] = 3
+    await bag._store.drain()
+    assert (agent._session_dir / "stats.jsonl").exists()
+
+    # 校验：保留名 / 路径分隔符 / backend
+    for bad in ("state", "core", "tree", "meta", "", "a/b", ".."):
+        with pytest.raises(ValueError):
+            agent.register_state(bad)
+    with pytest.raises(ValueError):
+        agent.register_state("stats", backend="memory")
+
+    # 即时恢复：新实例同 session 目录 register_state("stats") 读见持久值
+    session_dir = agent._session_dir
+    await agent.destroy()
+    agent2 = await runtime.create_agent(SimpleAgent, session_dir=session_dir)
+    bag2 = agent2.register_state("stats")
+    assert bag2["hits"] == 3   # 开空间即恢复（创建即 replay）
+    await agent2.destroy()
 
 
 # ---------------------------------------------------------------------------
@@ -75,7 +98,7 @@ async def test_t36_state_writethrough_and_recover(runtime, provider, fixtures_di
             return turn
 
         async def setup(self) -> None:
-            self.register_state("tracker_count", 0)
+            self.state.register("tracker_count", 0)
 
     provider.generate_fn = lambda ctx, model: None  # 占位，下方 script 覆盖
     script_provider(provider, text_response("好的"))
@@ -113,7 +136,7 @@ async def test_t36_state_writethrough_and_recover(runtime, provider, fixtures_di
 
 
 async def test_t37_undeclared_key_reads(agent):
-    agent.register_state("tracker", 0)
+    agent.state.register("tracker", 0)
     with pytest.raises(KeyError):
         agent.state["tracke"]
     with pytest.raises(AttributeError):
@@ -126,7 +149,7 @@ async def test_t37_undeclared_key_reads(agent):
 
 
 async def test_t38_get_three_domains(agent):
-    agent.register_state("count", 0)
+    agent.state.register("count", 0)
     agent.mode = "x"
     assert agent.get("count") == 0
     assert agent.get("mode") == "x"
@@ -135,7 +158,7 @@ async def test_t38_get_three_domains(agent):
 
 async def test_t39_set_three_domains(agent):
     calls: list[tuple[Any, Any]] = []
-    agent.register_state("count", 0)
+    agent.state.register("count", 0)
     agent.watch("count", lambda new, old: calls.append(("state", new, old)))
     agent.watch("mode", lambda new, old: calls.append(("attr", new, old)))
 
@@ -154,8 +177,9 @@ async def test_t39_set_three_domains(agent):
     assert agent.state.count == 5   # 袋值未变
     del agent.count   # 普通属性删除，无拦截
 
-    agent.delete("count")   # 删持久值，读回退 default
-    assert agent.state.count == 0
+    agent.delete("count")   # 删持久值——D4 后无 defaults 回退，读 KeyError
+    with pytest.raises(KeyError):
+        agent.state["count"]
     agent._extra["note"] = "a"
     agent.set("note", "b")   # _extra 原地更新，不触发 watcher
     assert agent._extra["note"] == "b"

@@ -13,7 +13,7 @@
   属性式 / 字典式访问，写透到内嵌后端（标注契约形态
   :class:`RecordStore`，构造点给具体实现）；Agent 侧单袋
   （``agent.state`` 显式视图唯一通道）、Runtime 侧按命名空间
-  （``runtime.state(ns)``）共用本类。
+  （``runtime.states``）共用本类。
 
 服务的文件：每 Agent session 目录的 ``tree.jsonl``（消息行 + 变更记录
 行）与 ``state.jsonl``（状态 set/delete 行）；Runtime
@@ -29,7 +29,7 @@
 单写入者原则使压缩、末行合并不需要任何锁。
 
 语义分层：本模块只认「记录」（``dict``）与「行」；记录的语义解释
-（哪条是消息、墓碑如何作用于树、状态行的 defaults 回退）归
+（哪条是消息、墓碑如何作用于树、状态行的键注册语义）归
 ``flowing.message`` / ``flowing.agent`` / ``flowing.runtime``。
 
 .. rubric:: 三条契约（所有后端实现必须兑现）
@@ -63,7 +63,7 @@
   中间行损坏按 corruption 报警，不容忍。
 - **state 全量压缩**（state.jsonl / ``<namespace>.jsonl``）：三时点
   触发——恢复重放后 / 属主 ``destroy`` / 行数超阈值。**触发决策归
-  StateView**（它持有内存终态视图与 defaults 语义，经 ``sync``
+  StateView**（它持有内存终态视图语义，经 ``sync``
   动词提交终态记录，触发符号 :meth:`StateView._maybe_compact`）；
   **物理重写归本类 drain 任务**（队列见底后执行，与墓碑压缩同一
   排空前提）。
@@ -117,7 +117,7 @@ append-only 模型下首行天然稳定（sync 原子重写时元数据记录原
 - 插件**完全接触不到** ``RecordStore``——Agent 作用域走
   ``agent.register_state`` / ``agent.state``（显式视图唯一通道，
   P3-03），全局走
-  ``runtime.register_state`` / ``runtime.state(ns)``；超出 jsonl
+  ``runtime.register_state`` / ``runtime.states``；超出 jsonl
   状态袋的持久化需求（自有格式文件、数据库）由插件自管文件。
 
 .. rubric:: 参见
@@ -208,7 +208,7 @@ class RecordStore(Protocol):
         """请求将存储整体同步为给定终态记录序列（原子重写）。
 
         **命名（X1 裁决）**：本动词叫 ``sync`` 而非 compact——终态由
-        调用方（StateView）从其**内存权威**（``_persisted`` + defaults
+        调用方（StateView）从其**内存权威**（``_persisted``）导出传入，
         语义）导出传入，不是后端重放文件归约：文件可能有已提交未
         drain 的尾部记录，重放会得到旧值。真正的「重放 → 归约 → 写回」
         式压缩是文件后端的墓碑压缩（store 自主），与本动词分工明确。
@@ -765,19 +765,20 @@ class StateView:
 
     .. rubric:: 功能介绍
 
-    :meth:`Agent.register_state` 逐键声明（``register_state("count", 0)``），
+    :meth:`Agent.state.register` 逐键登记（``register("count", 0)``，
+    D4 键注册安全化：缺省即写落盘、幂等、返回真值），
     :attr:`Agent.state` property 返回本视图——**一个 Agent 一袋**，无
     命名空间。Runtime 侧保留命名空间：``Runtime.register_state`` /
-    ``Runtime.state(ns)`` 按命名空间各返回一个本类实例（命名空间一文件、
+    ``Runtime.states`` 按命名空间各返回一个本类实例（命名空间一文件、
     无宿主 agent），本类契约对两侧一致适用。语义上，**每个状态量就是该
     智能体的一个特殊属性**：「特殊」体现在读写走持久化通道（写透到该
-    Agent 自己 session 目录的 ``state.jsonl``）、有声明过的默认值、
-    recover 时被落盘值覆盖。Agent 侧访问形态（P3-03 配套裁决：**读写
-    统一走显式视图**，``agent.xxx`` 不回退状态量）::
+    Agent 自己 session 目录的 ``state.jsonl``）。Agent 侧访问形态
+    （P3-03 配套裁决：**读写统一走显式视图**，``agent.xxx`` 不回退
+    状态量）::
 
         agent.state.count += 1        # 属性式（key 须为合法标识符）
         agent.state["weird-key"] = 1  # 字典式（任意字符串 key）
-        del agent.state.jobs          # 删除持久值；之后读回退到 default（若有）
+        del agent.state.jobs          # 删除持久值
 
     **watch 不察觉 state**（决策 5）：状态写透不触发 watcher 通道——
     watcher 只管普通实例属性（``Agent.__setattr__`` 通道）；经
@@ -795,7 +796,7 @@ class StateView:
     键 / 已注册状态键 → ``register_state`` 立即报错）；运行期经
     ``agent.xxx`` 写已注册键不再拦截（普通实例属性，D6）。Runtime 侧不拍平
     （本体方法多、使用者为带前缀约定的插件、收益小），仍经
-    ``runtime.state(ns)`` 显式访问。
+    ``runtime.states`` 显式访问。
 
     .. rubric:: 使用示例
 
@@ -803,7 +804,7 @@ class StateView:
 
         class MyAgent(Agent):
             async def setup(self, **args):
-                self.register_state("tracker_count", 0)
+                self.state.register("tracker_count", 0)   # 缺省即写落盘（D4）
 
         async def on_something(agent, ctx):
             agent.state.tracker_count += 1   # 写透落盘（watch 不察觉 state，决策 5）
@@ -818,9 +819,11 @@ class StateView:
     - **无写闸门（D5）**：写透不设管线时序拦截——``setup()`` 中写
       state 合法且不被恢复重放覆盖（recover 管线重放先于 setup 完成，
       见 :meth:`Agent._restore` 时序；create 管线无重放）。
-    - **defaults 回退**：``register_state(key, default)`` 提供键的
-      默认值；**默认值不落盘**（不产生 ``state.jsonl`` 行）；读出时按
-      ``持久值 ?? default`` 回退；recover 时落盘值覆盖默认值。
+    - **键注册安全化（D4）**：``register(key, default)`` 幂等——键未
+      持久化时把 default **写落 ``_persisted``**（落盘，首次 register
+      冻结该值，不再随代码版本演化，S12）；已持久则跳过；返回当前
+      真正存在的值（已持久 → 持久值；未持久 → 写入的 default）。无
+      独立 defaults 表（S12 语义并入 ``_persisted``）。
     - **末行合并（归属 RecordStore 层，P1-20 裁决）**：同 key 连续
       set 的物理合并（就地重写末行 / 截尾）是**后端的内部策略**，
       由 store drain 任务执行，对本视图透明；本层只承诺「逻辑内容
@@ -837,11 +840,10 @@ class StateView:
       ``Agent._restore`` 收尾、``Agent.destroy`` 收尾（force）、
       ``__setitem__``/``__delitem__`` 的 append 计数超
       ``_compact_threshold``）；终态计算也归本类（仅 ``_persisted``
-      持久值——defaults 不落盘原则不变），经 ``_store.sync(
-      terminal_records)`` 提交；物理重写归后端 drain 任务（原子重写
-      统一规约见模块 docstring「内部策略」）。（术语约定：持久化侧
-      一律称「持久化状态」，「快照 / Snapshot」专指观测通道的只读
-      投影，两者无转换关系。）
+      持久值），经 ``_store.sync(terminal_records)`` 提交；物理重写归
+      后端 drain 任务（原子重写统一规约见模块 docstring「内部策略」）。
+      （术语约定：持久化侧一律称「持久化状态」，「快照 / Snapshot」
+      专指观测通道的只读投影，两者无转换关系。）
     - **契约**：只放恢复真正需要的状态；高频遥测数据属插件内存。
       **时间缓冲/消抖（debounce 批量写）明确不引入**——末行合并已
       覆盖单 key 高频场景，时间缓冲只会引入崩溃丢失窗口而换不到
@@ -898,25 +900,26 @@ class StateView:
       ``TypeError``，文件不产生新行。
     - 未声明键：``agent.state["typo"]`` → ``KeyError``；
       ``agent.typo`` → ``AttributeError``。
-    - 默认值不落盘：``register_state("n", 0)`` 后不做任何写入 →
-      期望：``state.jsonl`` 无对应行；读出 ``agent.state.n == 0``。
-    - recover 覆盖：崩溃前写入 ``n = 5``，声明 ``register_state("n", 0)``
-      → 操作：恢复 → 期望：``agent.state.n == 5``（落盘值覆盖默认值）。
+    - 键注册安全化：``register("n", 0)`` 缺省即写——期望：``state.jsonl``
+      出现 ``n=0`` 行；重复 ``register("n", 5)`` 幂等——期望：返回
+      当前真值 ``0``（已持久跳过）；先写 ``n=5`` 再 ``register("n", 0)``
+      → 期望：返回 ``5``（已持久值优先）。
+    - recover 覆盖：崩溃前写入 ``n = 5``，恢复后 ``register("n", 0)``
+      → 期望：``agent.state.n == 5``（已持久值优先，register 跳过）。
 
     .. rubric:: 调用关系（审计）
 
     - 调用：无（视图行为见各方法条目）
-    - 被调：``flowing.agent.Agent.register_state()``（时机：setup 中
-      逐键声明）、``flowing.agent.Agent.state`` property（时机：显式
+    - 被调：``flowing.agent.Agent.state.register``（时机：setup 中
+      逐键登记）、``flowing.agent.Agent.state`` property（时机：显式
       视图访问）、``flowing.agent.Agent.get`` / ``set`` / ``delete``
       （时机：动态键路由的状态域，``key in bag`` 判定）、
-      ``flowing.runtime.Runtime.register_state()`` /
-      ``Runtime.state(ns)``（Runtime 侧保留命名空间，返回同一个类；
-      时机：未见规约）
+      ``flowing.runtime.Runtime.register_state()``（开启全局命名空间，
+      创建即 replay）／``Runtime.states``（命名空间注册表）
     - 实例化方：``flowing.agent.Agent.__init__``（经 ``_open_stores()``，
-      Agent 侧单袋，P3-03）与
+      Agent 侧双袋，P3-03）与
       ``flowing.runtime.Runtime.register_state()``（Runtime 侧每命名
-      空间一个实例，时机：全局命名空间声明时）；内嵌
+      空间一个实例，时机：声明时）；内嵌
       :class:`RecordStore` 由构造方一并建好传入
 
     .. seealso:: :meth:`Agent.register_state`、:attr:`Agent.state`、
@@ -928,13 +931,10 @@ class StateView:
     侧 ``<namespace>.jsonl``，均 ``merge_last_line=True``）。
     内部 API，不属稳定契约。
     """
-    _defaults: dict[str, Any]
-    """``register_state`` 声明的键默认值表（不落盘，读出回退）。
-    内部 API。
-    """
     _persisted: dict[str, Any]
     """内存持久值表（写透时同步更新；``None`` 值与缺席需区分，
-    以键在不在表中为准）。内部 API。
+    以键在不在表中为准）。**唯一真值**（D4：``register`` 缺省即写落
+    本表，无独立 defaults 表）。内部 API。
     """
     _compact_threshold: int
     """state.jsonl 全量压缩的行数阈值（默认 256，构造参数可调）。
@@ -949,10 +949,9 @@ class StateView:
     def __init__(
         self,
         store: RecordStore,
-        defaults: dict[str, Any] | None = None,
         compact_threshold: int = 256,
     ) -> None:
-        """绑定落盘后端与默认值表（**内部 API，不属稳定契约**）。
+        """绑定落盘后端（**内部 API，不属稳定契约**）。
 
         构造点：Agent 侧在 ``Agent.__init__``（经 ``_open_stores``，
         P3-03），Runtime 侧在 ``Runtime.register_state``。``store``
@@ -972,7 +971,6 @@ class StateView:
         # 内部字段绕过状态通道（__setattr__ 拦截一切属性写，
         # 下划线前缀的内部字段必须走 object.__setattr__，否则自举死循环）
         object.__setattr__(self, "_store", store)
-        object.__setattr__(self, "_defaults", dict(defaults or {}))
         object.__setattr__(self, "_persisted", {})
         object.__setattr__(self, "_compact_threshold", compact_threshold)
         object.__setattr__(self, "_lines_since_compact", 0)
@@ -988,23 +986,34 @@ class StateView:
         """
         await self._store.close()
 
-    def _register(self, key: str, default: Any = None) -> None:
-        """登记一个状态键及其默认值（**内部 API，不属稳定契约**）。
+    def register(self, key: str, default: Any = None) -> Any:
+        """登记一个状态键并返回**当前真正存在的值**（D4 键注册安全化）。
 
-        声明期冲突检测的一部分：key 已在 ``_defaults`` 中 → 报错
-        （重复声明）。撞属主类属性 / 核心保留键的判定不在本方法——
-        那是属主侧 ``register_state`` 的职责（它持有类与核心键清单）。
+        **缺省即写**：键未持久化时把 ``default`` 写落 ``_persisted``
+        （落盘——首次 register 冻结该值，不再随代码版本演化，S12）；
+        键已持久化时跳过（幂等，重复声明无副作用、不报错——S3）。
+        返回值：已持久 → ``_persisted[key]``；未持久 → 写 default 落盘
+        并返回 default。
+
+        声明期冲突检测（撞属主类属性 / 核心保留键）不在本方法——那是
+        属主侧（``Agent`` / ``Runtime`` 的开启状态空间入口）的职责。
+
+        :param key: 状态键名。
+        :param default: 键未持久化时的初值（缺省 ``None``）。
+        :return: 当前真正存在的值（已持久值，或本次写入的 default）。
 
         .. rubric:: 调用关系（审计）
 
-        - 调用：无（写 ``_defaults`` 表；default 不落盘）
-        - 被调：``flowing.agent.Agent.register_state()``（时机：
-          setup 中逐键声明）；Runtime 侧逐键等价物是
-          ``Runtime.register_state`` 的 ``defaults`` 表（构造时给）
+        - 调用：:meth:`__setitem__`（时机：未持久化时写 default 落盘）
+        - 被调：``flowing.agent.Agent.state.register``（setup 中逐键
+          声明，缺省袋）；``Runtime.state.register``（default 袋）；
+          命名袋 ``bag.register``（扩展状态）
         """
-        if key in self._defaults:
-            raise ValueError(f"duplicate state key: {key}")
-        self._defaults[key] = default
+        persisted = object.__getattribute__(self, "_persisted")
+        if key in persisted:
+            return persisted[key]   # 已持久：幂等跳过，返回真值
+        self[key] = default   # 缺省即写：default 落盘（写透 + JSON 校验）
+        return default
 
     def _maybe_compact(self, *, force: bool = False) -> None:
         """state.jsonl 全量压缩的触发符号（内部 API；P3-13 裁决的承担
@@ -1021,7 +1030,7 @@ class StateView:
 
         .. rubric:: 行为规约
 
-        - 终态计算：仅 ``_persisted`` 持久值（defaults 不落盘原则
+        - 终态计算：仅 ``_persisted`` 持久值（D4 后无独立 defaults 表）
           不变）逐键生成 ``{"op": "set", "key", "value"}`` 行，经
           ``_store.sync(terminal_records)`` 提交；请求发出后
           ``_lines_since_compact`` 归零。
@@ -1039,7 +1048,7 @@ class StateView:
         """
         if not force and self._lines_since_compact < self._compact_threshold:
             return  # 未达阈值且非 force：热路径开销仅一次计数比较
-        # 终态计算：仅 _persisted 持久值（defaults 不落盘原则不变）
+        # 终态计算：仅 _persisted 持久值（D4 后无独立 defaults 表）
         terminal_records = [
             {"op": "set", "key": k, "value": v} for k, v in self._persisted.items()
         ]
@@ -1079,23 +1088,22 @@ class StateView:
         """
         del self[key]   # 语义同 __delitem__
     def __getitem__(self, key: str) -> Any:
-        """读出：``持久值 ?? defaults[key]``；两者皆无 → ``KeyError``。
+        """读出：``_persisted[key]``；未持久化（未写且未 register）→
+        ``KeyError``（D8 语义保持；属性式读的 AttributeError 见
+        :meth:`__getattr__`）。
 
         .. rubric:: 调用关系（审计）
 
         - 调用：无
         - 被调：无（运算符协议方法；``get()`` 为其不抛错形式）
         """
-        # 读：_persisted[key] ?? _defaults[key]；两者皆无 -> KeyError。
+        # 读：仅 _persisted（D4 后无独立 defaults 表——register 缺省即写）。
         # 内部字段访问一律走 object.__getattribute__（__getattr__ 拦截
         # 一切缺失属性，直接 self._persisted 在 __init__ 完成前会递归
         # 回本方法——自举死循环护栏）
         persisted = object.__getattribute__(self, "_persisted")
-        defaults = object.__getattribute__(self, "_defaults")
         if key in persisted:
             return persisted[key]
-        if key in defaults:
-            return defaults[key]
         raise KeyError(key)
     def __setitem__(self, key: str, value: Any) -> None:
         """写透落盘（见类 docstring 行为规约）。
@@ -1127,9 +1135,9 @@ class StateView:
         self._store.submit({"op": "delete", "key": key})
         object.__setattr__(self, "_lines_since_compact", self._lines_since_compact + 1)
         self._maybe_compact()
-        # 之后读回退到 _defaults（若有）
+        # 之后读未持久化键 → KeyError（register 的初值也被删——无 defaults 回退）
     def __contains__(self, key: str) -> bool:
-        """key 有持久值或注册默认值即视为存在。
+        """key 有持久值即视为存在。
 
         .. rubric:: 调用关系（审计）
 
@@ -1139,13 +1147,12 @@ class StateView:
           协议方法，由 ``in`` 表达式隐式触发
         """
         try:
-            self[key]   # 持久值或注册 default 命中即存在
+            self[key]   # 持久值命中即存在
         except KeyError:
             return False
         return True
     def get(self, key: str, default: Any = None) -> Any:
-        """``__getitem__`` 的不抛错形式（注意与注册默认值叠加：
-        注册 default 优先于本参数的 ``default``）。
+        """``__getitem__`` 的不抛错形式。
 
         .. rubric:: 调用关系（审计）
 

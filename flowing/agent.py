@@ -78,10 +78,12 @@ Agent 持有的
 :class:`flowing.persistence.FileRecordStore` 实例执行（write-behind：提交
 同步排队、drain 任务串行落盘；三条契约与末行合并 / 墓碑
 压缩策略见 :mod:`flowing.persistence` 模块规约），不经 Runtime 中转；
-**声明归 setup**——``register_state(key, default)``
-逐键声明（**一个 Agent 一袋**，无命名空间；插件键带注册名 underscore
-前缀约定，框架核心键裸名），setup 中写 state 合法（D5 删写闸门，重放
-先于 setup 完成不被覆盖）；**内容归插件/用户代码**——钩子 handler 里经
+**声明归 setup**——``agent.state.register(key, default)``
+逐键登记（D4 键注册安全化：缺省即写落盘、幂等、返回真值；插件键带
+注册名 underscore 前缀约定，框架核心键在 core 袋不进 default 袋），
+setup 中写 state 合法（D5 删写闸门，重放先于 setup 完成不被覆盖）；
+扩展状态空间经 ``register_state(name)`` 开启（D3，命名袋独立文件）；
+**内容归插件/用户代码**——钩子 handler 里经
 ``agent.state`` 视图写透（读写统一通道；watch 不察觉 state，决策 5）。
 Runtime 只保留全局视野职能：``set_persist_dir``、池扫描
 （目录 → 池 key）、管线编排；Runtime 自身的全局状态保留命名空间
@@ -253,11 +255,6 @@ T = TypeVar("T")
 _logger = logging.getLogger(__name__)
 """模块级 logger：工作循环回合异常等的记录点（规约只要求「记日志」，未具名
 logger 符号）。"""
-
-# R-12 落实：核心保留状态键清单——以 _open_stores 实际登记的键（child_ids）
-# 加「由框架写透语义承载的核心裸名」（current_head_id，见 register_state 的
-# 测试案例）为准；插件声明撞之报错。
-_CORE_STATE_KEYS = frozenset({"child_ids", "current_head_id"})
 
 
 class _LlmViewValidationError(FlowingError):
@@ -1481,6 +1478,7 @@ class Agent:
         self._extra = {}   # 实例级静默仓库；fya 装配层在生成 setup() 前置段合入未知字段
         self._open_stores(self._session_dir)   # 持久化后端（换装点，见 _open_stores；session 目录由管线预绑——create_agent(session_dir=...) 或默认 persist_dir/node_id，子类可于 super().__init__() 前覆写 self._session_dir）
         self._children = {}
+        self._state_bags: dict[str, StateView] = {}   # 命名状态空间注册表（D3：name → 视图；destroy 全关 + 幂等）
         self._provided = {}
         self.hooks = HookRegistry()
         self.prompt_blocks = PromptBlockList()
@@ -1718,106 +1716,92 @@ class Agent:
             FileRecordStore(session_dir / "core.jsonl", merge_last_line=True))
         self._state_bag = StateView(
             FileRecordStore(session_dir / "state.jsonl", merge_last_line=True))
-        # 框架核心键登记进核心袋（裸名保留，插件声明撞之报错）：
-        # child_ids = 语义名 -> agent_id 翻译表（S-34），默认空表不落盘；
-        # current_head_id = 消息级树游标（D7：写透落盘，恢复读袋为准）
-        self._core_state._register("child_ids", {})
-        self._core_state._register("current_head_id", None)
+        # 核心键初始槽（直写 _persisted 不落盘——create 首次写透才产生行；
+        # recover 由 _restore 重放覆盖；D4 后 register 缺省即写会落盘，
+        # 初始化语义不走 register 以避免恢复期产生脏行）
+        self._core_state._persisted.setdefault("child_ids", {})
+        self._core_state._persisted.setdefault("current_head_id", None)
 
-    def register_state(self, key: str, default: Any = None) -> StateView:
-        """声明一个持久化状态键（setup 中的「建表」动作；单袋化最终裁决）。
+    def register_state(self, name: str, backend: str = "file") -> StateView:
+        """开启/注册一个**命名状态空间**（D3），返回其 :class:`StateView`。
 
         .. rubric:: 功能介绍
 
-        声明「本 Agent 有一个叫 ``key`` 的状态量」及其默认值。**一个
-        Agent 一袋状态键**（无命名空间）；插件键名按约定带注册名
-        underscore 前缀（如 cron 插件的 ``cron_jobs``），框架核心键
-        裸名。声明后 ``agent.state.key`` 即刻可读
-        （default 回退），写透立即可用（无写闸门，D5）。**声明是
-        可选的**（P3-04 裁决：袋无 schema——直接 ``agent.state.x = v``
-        即写入，无需声明；声明的价值是 default、声明期冲突检测与
-        自我文档化）。
+        打开/注册本 Agent 的一个命名状态袋：``<session_dir>/<name>.jsonl``
+        （``'file'`` 后端细节——``.jsonl`` 是 file 后端专属；暂不支持任意
+        path）。与 :attr:`state`（default 袋）对称的扩展通道：命名袋是
+        插件/领域的独立状态空间（独立文件、独立压缩/崩溃边界），
+        **不挂载任何 agent 属性**——调用方自行持有返回的袋对象。
 
-        .. rubric:: 设计动机
-
-        「这个 agent 有哪些状态量」是**这个 agent 类的定义的一部分**，
-        与它的工具、钩子点同级，所以声明长在 ``setup()`` 里（两管线
-        都跑、都先于恢复重放，声明永远先于重放就位）。Runtime 不再有
-        全局注册表——每 agent 一个 state.jsonl、单 writer，无需跨
-        agent 协调。
-
-        .. rubric:: 使用示例
-
-        .. code-block:: python
-
-            async def setup(self, **args):
-                self.register_state("tracker_count", 0)
+        **幂等**：同 ``name`` 重复调用返回同一视图（同一文件一视图，
+        防双写队列）；``name`` 是逻辑身份，物理映射归 backend。
 
         .. rubric:: 行为规约
 
-        - **不支持重复声明**：同 key 再次声明 → 报错（setup 每实例只跑
-          一次——recover 管线在新实例上重跑 setup，注册表随实例重建，
-          天然无重复）。
-        - **声明期冲突检测**：key 撞 Agent 类属性 / 方法、``_extra``
-          键、已注册状态键 → 立即报错（同名歧义挡在声明期；运行期
-          读写唯一通道是 ``agent.state``）。
-        - 框架核心键裸名保留（如 ``current_head_id``），插件声明撞
-          核心键 → 报错。
-        - ``default`` **不落盘**（不产生 ``state.jsonl`` 行）；读出时
-          按 ``持久值 ?? default`` 回退；recover 时落盘值覆盖默认值。
-        - 调用时点约定为 ``setup()`` 内（default 在重放前就位）；管线
-          之外（after_create 之后）声明新键同样允许，无可见性缺口
-          （P3-04：重放无 schema 装袋，迟到声明不丢当次旧值）。
+        - ``backend`` 当前仅 ``'file'``（未来非文件后端换装点）；
+          其它值 → ``ValueError``。
+        - ``name`` 校验：合法文件名（不含路径分隔符 / ``..``）；
+          不与保留文件 ``state`` / ``core`` / ``tree`` / ``meta`` 重名
+          （保留名是 file 后端相关）→ 否则 ``ValueError``。
+        - **即时恢复**：打开即 ``replay`` 重放持久值进 ``_persisted``
+          （开空间即恢复——与 Runtime 侧对称；无 use() 后引导）。
+        - 键登记走 ``view.register(key, default)``（D4 公开 API）。
 
-        :param key: 状态键名（插件按约定带注册名 underscore 前缀）。
-        :param default: 默认值；不落盘，读出回退，recover 时被落盘值覆盖。
-        :return: 本 Agent 的 :class:`StateView`（单袋）。
-
-        .. rubric:: 测试案例
-
-        - 前置：setup 声明 ``"tracker_count"`` → 操作：同 key 再次
-          ``register_state`` → 期望：报错。
-        - 前置：声明与 Agent 方法同名的键（如 ``"message"``）→ 期望：
-          报错。
-        - 前置：声明撞框架核心键（如 ``"current_head_id"``）→ 期望：
-          报错。
+        :param name: 命名状态空间名。
+        :param backend: 后端（当前仅 ``'file'``）。
+        :return: 命名袋的 :class:`StateView`。
 
         .. rubric:: 调用关系（审计）
 
-        - 调用：无（``_state_bag`` 由 ``__init__`` 经 ``_open_stores``
-          建立，本方法仅向 defaults 表落声明）
-        - 被调：无框架内调用方（公共 API，约定在 ``setup()`` 中由用户/
-          插件调用；``flowing.plugins.cron.use_cron`` 于 setup 中经
-          ``self.register_state("cron_jobs", [])`` 调用，时机：插件启用）
+        - 调用：``flowing.persistence.StateView()`` /
+          ``flowing.persistence.FileRecordStore()``（时机：开启状态空间）；
+          ``RecordStore.replay()``（即时恢复）
+        - 被调：无框架内调用方（公共 API，插件/用户开启扩展状态空间；
+          幂等同 name 返回同视图）
 
-        .. seealso:: :attr:`state`、:class:`StateView`、:meth:`_restore`
+        .. seealso:: :attr:`state`、:class:`StateView`、
+            :meth:`flowing.runtime.Runtime.register_state`
         """
-        # 冲突检测：撞类属性/方法、_extra 键、已注册状态键、核心保留键 -> 报错
-        # （撞类属性/方法与核心键清单的判定在本方法；已注册状态键查
-        #   _state_bag._defaults）
-        # R-12 落实：类属性/方法用 hasattr(type(self), key) 探测；核心保留键
-        # 清单为模块级 _CORE_STATE_KEYS（与 _open_stores 实际登记对照）
-        if hasattr(type(self), key):
-            raise ValueError(f"状态键与类属性/方法同名: {key!r}")
-        if key in _CORE_STATE_KEYS:
-            raise ValueError(f"状态键撞框架核心保留键: {key!r}")
-        extra = self.__dict__.get("_extra")
-        if extra is not None and key in extra:
-            raise ValueError(f"状态键撞 _extra 键: {key!r}")
-        self._state_bag._register(key, default)   # 声明落进单袋 defaults 表（重复声明报错）
-        return self._state_bag
+        if backend != "file":
+            raise ValueError(f"register_state backend 仅支持 'file': {backend!r}")
+        existing = self._state_bags.get(name)
+        if existing is not None:
+            return existing   # 幂等：同 name → 同视图
+        # name 校验：合法文件名（无路径分隔符 / ..）；不与保留文件重名
+        if not name or name in ("state", "core", "tree", "meta"):
+            raise ValueError(
+                f"状态空间名不可用: {name!r}（空名 / 保留名 state/core/tree/meta）")
+        if "/" in name or "\\" in name or ".." in Path(name).parts:
+            raise ValueError(
+                f"状态空间名不得含路径分隔符或 ..: {name!r}")
+        view = StateView(FileRecordStore(
+            self._session_dir / f"{name}.jsonl", merge_last_line=True))
+        # 即时恢复：重放持久值进 _persisted（开空间即恢复）
+        persisted = view._persisted
+        for record in list(view._store.replay()):   # replay 是惰性生成器——显式消费
+            op = record.get("op")
+            if op == "set":
+                persisted[record["key"]] = record["value"]
+            elif op == "delete":
+                persisted.pop(record["key"], None)
+            # 未知行形态（meta 已被 replay 吸收）静默跳过
+        if persisted:
+            view._maybe_compact(force=True)
+        self._state_bags[name] = view
+        return view
 
     @property
     def state(self) -> StateView:
-        """本 Agent 唯一状态袋的视图（显式读写通道）。
+        """本 Agent **默认状态袋**的视图（显式读写通道）。
 
         .. rubric:: 功能介绍
 
         钩子 handler / 工具 / 插件代码里以 **agent 视角**读写持久化状态的
-        **唯一通道**（P3-03 配套裁决：读写统一走显式视图，不再经
+        **唯一默认通道**（P3-03 配套裁决：读写统一走显式视图，不再经
         ``agent.xxx`` 回退）：``agent.state.cron_jobs`` 属性式，
         ``agent.state["weird-key"]`` 字典式。写透不触发 watcher
-        （决策 5：watch 不再察觉 state）。
+        （决策 5：watch 不再察觉 state）。扩展状态空间经
+        :meth:`register_state` 开启（命名袋，独立文件，不挂载属性）。
 
         .. rubric:: 设计动机
 
@@ -1833,7 +1817,7 @@ class Agent:
 
         .. rubric:: 测试案例
 
-        - 前置：setup 声明 ``register_state("tracker_count", 0)`` →
+        - 前置：setup 中 ``agent.state.register("tracker_count", 0)`` →
           操作：钩子中 ``agent.state.tracker_count += 1`` → 期望：写透
           落盘，崩溃恢复后值在；写不触发 ``watch``（决策 5）。
         - 前置：未声明 ``"tracke"``（typo）→ 操作：``agent.state[
@@ -1865,7 +1849,9 @@ class Agent:
         bag = self.__dict__.get("_state_bag")
         if bag is None:
             return {}
-        keys = set(bag._defaults) | set(bag._persisted)
+        # D4 后无独立 defaults 表（register 缺省即写 _persisted）——键集 =
+        # 已持久键；阶段 E 随 parsable 取消隐式 state 整体删除本 property
+        keys = set(bag._persisted)
         return {k: bag[k] for k in keys}
 
     def get(self, key: str, default: Any = None) -> Any:
@@ -1893,7 +1879,7 @@ class Agent:
 
         .. rubric:: 测试案例
 
-        - 前置：声明 ``register_state("count", 0)`` 且实例属性
+        - 前置：``agent.state.register("count", 0)`` 且实例属性
           ``self.mode = "x"`` → 期望：``get("count") == 0``、
           ``get("mode") == "x"``、``get("nope", -1) == -1``。
 
@@ -2145,11 +2131,15 @@ class Agent:
             with contextlib.suppress(asyncio.CancelledError):
                 await loop_task   # 等循环 finally 落地后再关后端（防关库后提交）
         await self._tree_store.close()   # 2b. 排空屏障 + 停写任务（契约②钉死点）
-        # 2c. 压缩三时点②：destroy 收尾双袋全量压缩（请求随 _close 排空一并执行）
+        # 2c. 压缩三时点②：destroy 收尾双袋 + 全部已打开命名袋全量压缩
+        #     （请求随 _close 排空一并执行）
         self._core_state._maybe_compact(force=True)
         await self._core_state._close()
         self._state_bag._maybe_compact(force=True)
         await self._state_bag._close()
+        for view in self._state_bags.values():   # 命名袋（D3）：枚举全部逐个关闭
+            view._maybe_compact(force=True)
+            await view._close()
         await self.hooks.before_destroy.dispatch(self)   # 3.
         # 4. 深度优先递归（双来源收集：_children 生命周期子树 ∪ _nodes 按
         #    _parent_id 扫描——后者覆盖「destroy 后现场恢复」重新注册的同 id

@@ -126,7 +126,7 @@ async def test_t117_archive_agent_subtree(tmp_path):
         assert nid not in runtime._nodes
         assert nid not in runtime._agent_pool
         assert (runtime._persist_dir / nid).exists()   # session 目录保留（留档）
-    core_agents = runtime.state("core").get("agents", [])
+    core_agents = runtime.states["core"].get("agents", [])
     assert not ids & set(core_agents)   # core 名录不含三者
     assert await runtime.get_agent(b.node_id) is None
     with pytest.raises(KeyError):
@@ -198,13 +198,13 @@ async def test_bootstrap_materializes_persist_dir_for_plugin_state(tmp_path, mon
     runtime = make_runtime(tmp_path, persist=False, models=False,
                            register_default_type=False)
     assert runtime._persist_dir == tmp_path / ".flowing"
-    assert not runtime._persist_dir.exists()   # __init__ 只读引导不建目录
+    assert not runtime._persist_dir.exists()   # __init__ 只读（注册即 replay 不建目录）
     runtime.use(PluginStub(
-        "plug", on_install=lambda rt: rt.register_state("plug", defaults={})))
-    assert runtime._persist_dir.exists()   # use() 引导解锁新命名空间 → 建目录
-    runtime.state("plug").k = 1   # 闸门已开；写透不失败（此前这里会 drain poison）
-    await runtime.state("plug")._store.drain()
-    assert runtime.state("plug")._store._poisoned is None
+        "plug", on_install=lambda rt: rt.register_state("plug")))
+    assert runtime._persist_dir.exists()   # use() 有插件即建持久化根
+    runtime.states["plug"].k = 1   # 开启即 replay，写透不失败（此前这里会 drain poison）
+    await runtime.states["plug"]._store.drain()
+    assert runtime.states["plug"]._store._poisoned is None
     assert '"k"' in (runtime._persist_dir / "plug.jsonl").read_text(encoding="utf-8")
     await runtime.shutdown()
 
@@ -243,11 +243,11 @@ async def test_t121_shutdown_plugin_order_and_resilience(tmp_path, caplog):
     holder: dict = {}
 
     def _install_writer(rt):
-        rt.register_state("p1", defaults={})
+        rt.register_state("p1")
         holder["rt"] = rt
 
     def _shutdown_writer():
-        holder["rt"].state("p1").done = True   # 插件收尾中写全局状态（视图尚未关闭）
+        holder["rt"].states["p1"].done = True   # 插件收尾中写全局状态（视图尚未关闭）
         events.append("p1")
 
     def _shutdown_bad():
@@ -267,7 +267,7 @@ async def test_t121_shutdown_plugin_order_and_resilience(tmp_path, caplog):
         await runtime.shutdown()
     assert events == ["p1", "bad", "p2"]   # 按 install 顺序逐个收尾，异常后继续
     assert "收尾异常" in caplog.text   # 单插件异常记日志
-    assert runtime.state("p1").done is True   # 收尾中的全局状态写生效
+    assert runtime.states["p1"].done is True   # 收尾中的全局状态写生效
     # 持久化验证：p1.jsonl 落盘含 done=true
     text = (runtime._persist_dir / "p1.jsonl").read_text(encoding="utf-8")
     assert '"done"' in text and "true" in text
