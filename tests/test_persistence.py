@@ -300,26 +300,9 @@ class StubStore:
         self.synced.append(list(records))
 
 
-class StubHooks:
-    """watcher 通道记录器（真 _notify_watch 归 L1 hooks，S24 只验证调用点）。"""
-
-    def __init__(self):
-        self.calls: list[tuple] = []
-
-    def _notify_watch(self, owner, value) -> None:
-        self.calls.append((owner, value))
-
-
-class StubOwner:
-    def __init__(self):
-        self.hooks = StubHooks()
-
-
-def _open_view(store=None, defaults=None, owner=None, **kw) -> StateView:
-    """构造并解锁写闸门（解锁归管线完成点；测试经 object.__setattr__ 模拟）。"""
-    view = StateView(store or StubStore(), defaults=defaults, owner=owner, **kw)
-    object.__setattr__(view, "_write_gate_open", True)
-    return view
+def _open_view(store=None, defaults=None, **kw) -> StateView:
+    """构造视图（D5 删写闸门后无解锁步骤）。"""
+    return StateView(store or StubStore(), defaults=defaults, **kw)
 
 
 def test_s16_attr_and_dict_access_equivalent():
@@ -364,22 +347,15 @@ def test_s18_undeclared_key_and_contains():
     assert "typo" not in view
 
 
-def test_s19_write_gate():
-    """S19：写闸门——未解锁写抛 RuntimeError（X10）、读仅见 defaults；解锁后正常。"""
+def test_s19_no_write_gate():
+    """S19（翻转，D5）：无写闸门——写透直接成功、持久值直接可见；重放装袋值同键可见。"""
     store = StubStore()
     view = StateView(store, defaults={"n": 0})
-    view._persisted["hidden"] = 1  # 模拟 recover 重放装袋（闸门未开）
-    with pytest.raises(RuntimeError):
-        view["x"] = 1
-    with pytest.raises(RuntimeError):
-        view.n = 1
-    with pytest.raises(KeyError):
-        view["hidden"]  # 读仅见 defaults 不见持久值
-    assert view.n == 0
-    object.__setattr__(view, "_write_gate_open", True)  # 管线完成点解锁
-    view["x"] = 1
+    view._persisted["hidden"] = 1  # 模拟 recover 重放装袋
+    view["x"] = 1   # 写直接成功（无闸门拦截）
     assert view["x"] == 1
-    assert view["hidden"] == 1  # 解锁后可见持久值
+    assert view["hidden"] == 1   # 重放装袋的持久值直接可见
+    assert view.n == 0   # defaults 回退不受影响
 
 
 def test_s20_non_serializable_fails_fast():
@@ -429,33 +405,6 @@ def test_s23_maybe_compact():
     assert len(store.synced) == 1
     view._maybe_compact(force=True)  # force 立即触发
     assert len(store.synced) == 2
-
-
-async def test_s24_watcher_channel(tmp_path):
-    """S24：watcher 调用点预留——写透后 _notify_watch 一次、old 为写前读值。"""
-    owner = StubOwner()
-    view = _open_view(owner=owner)
-    view._register("n", 0)
-    view.n = 5
-    assert len(owner.hooks.calls) == 1
-    called_owner, fu = owner.hooks.calls[0]
-    assert called_owner is owner
-    assert (fu.name, fu.old, fu.new) == ("n", 0, 5)  # old 为写前读值
-    del view.n  # del 不触发
-    assert len(owner.hooks.calls) == 1
-
-
-def test_s24_watcher_skipped_without_owner_or_loop():
-    """S24：owner 为 None 或无运行中 loop → 静默跳过且写照常。"""
-    view = _open_view()  # owner=None
-    view["n"] = 1
-    assert view["n"] == 1
-    # 有 owner 但无运行中 loop（本测试为同步函数）
-    owner = StubOwner()
-    view2 = _open_view(owner=owner)
-    view2["n"] = 1
-    assert view2["n"] == 1
-    assert owner.hooks.calls == []  # 静默跳过
 
 
 async def test_state_view_close_delegates():

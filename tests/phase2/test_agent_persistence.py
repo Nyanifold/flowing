@@ -1,12 +1,12 @@
 """阶段 2：持久化接线与恢复测试（T85–T87、T89、T92，及 T91 实质覆盖）。
 
 说明：T88 / T90 / T91 形式上属 recover_agent 管线（runtime 批次推迟），但
-_restore 本体的行为（写闸门解锁、压缩时点①、撕裂末行/版本迁移重放由
+_restore 本体的行为（重放装袋、压缩时点①、撕裂末行/版本迁移重放由
 persistence 层承担）在本文件用「直接构造 Agent + 预写 fixtures / tmp 语料」
 驱动，尽量覆盖实质语义。
 
 另含 W27 子 Agent 唤起（invoke_subagent 经 harness 迷你 create 管线端到端）
-与 S-34 写闸门护栏的覆盖。
+与 D5 删写闸门后写透语义的覆盖。
 """
 
 from __future__ import annotations
@@ -27,10 +27,9 @@ def _push_text(agent, mid: str, text: str) -> None:
                        content=[TextBlock(text=text)]))
 
 
-async def _restored(runtime, session_dir: Path, *, unlock_gate: bool = False):
+async def _restored(runtime, session_dir: Path):
     """在同一 session 目录上新建实例并直接驱动 _restore（recover 管线替身）。"""
-    agent = await runtime.create_agent(SimpleAgent, session_dir=session_dir,
-                                       unlock_gate=unlock_gate)
+    agent = await runtime.create_agent(SimpleAgent, session_dir=session_dir)
     await agent._restore()
     return agent
 
@@ -147,26 +146,23 @@ async def test_t89_orphan_tool_call_placeholder(runtime, provider, tmp_path, cop
 
 
 # ---------------------------------------------------------------------------
-# T91 实质：写闸门与压缩时点①（_restore 前后）
+# T91 实质：无写闸门与压缩时点①（_restore 前后）
 # ---------------------------------------------------------------------------
 
 
-async def test_t91_gate_and_compaction_on_restore(runtime, provider, tmp_path):
+async def test_t91_no_gate_and_compaction_on_restore(runtime, provider, tmp_path):
     session_dir = tmp_path / "session"
     session_dir.mkdir()
     (session_dir / "state.jsonl").write_text(
         '{"type": "meta", "format_version": 1}\n'
         '{"op": "set", "key": "n", "value": 5}\n')
 
-    agent = await runtime.create_agent(SimpleAgent, session_dir=session_dir,
-                                       unlock_gate=False)   # 管线未解锁
-    with pytest.raises(RuntimeError):
-        agent.state.n = 1   # _restore 前写抛错
-    assert agent._state_bag._write_gate_open is False
+    agent = await runtime.create_agent(SimpleAgent, session_dir=session_dir)
+    agent.state.n = 1   # 无写闸门：_restore 前写直接成功（D5）
+    await agent._state_bag._store.drain()   # 写已落盘（恢复以磁盘为准）
 
     await agent._restore()
-    assert agent._state_bag._write_gate_open is True   # 闸门解开
-    assert agent.state.n == 5   # 重放装袋
+    assert agent.state.n == 1   # 重放装袋（内存写已落盘则保留；恢复以磁盘为准）
     agent.state.n = 6   # 写透恢复可用
     await agent._state_bag._store.drain()
     rows = [json.loads(line) for line in
@@ -201,13 +197,6 @@ async def test_t92_destroy_flush_barrier(runtime, provider):
 # ---------------------------------------------------------------------------
 # W27：子 Agent 唤起（经 harness 迷你 create 管线端到端）
 # ---------------------------------------------------------------------------
-
-
-async def test_create_subagent_gate(runtime, provider):
-    """S-34 追加裁决：写闸门未开时不支持创建子智能体（fail fast）。"""
-    agent = await runtime.create_agent(SimpleAgent, unlock_gate=False)
-    with pytest.raises(RuntimeError):
-        await agent.create_subagent("simple-agent")
 
 
 async def test_invoke_subagent_end_to_end(runtime, provider):

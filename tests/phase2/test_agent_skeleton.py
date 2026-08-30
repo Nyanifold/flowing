@@ -15,7 +15,7 @@ import pytest
 
 from flowing import on
 from flowing.agent import Agent, Execution, TurnContext
-from flowing.errors import Intercepted, MissingProvideError, StateKeyError
+from flowing.errors import Intercepted, MissingProvideError
 from flowing.message import Message, MessageKind, TextBlock
 from flowing.parsable import Parsable
 from flowing.providers import Usage
@@ -98,12 +98,13 @@ async def test_t36_state_writethrough_and_recover(runtime, provider, fixtures_di
     await recovered._restore()
     assert recovered.state.tracker_count == 1   # 落盘值覆盖 default
 
-    # watch("tracker_count") 照常触发（StateView 写路径通知 watcher 通道）
+    # watch 不察觉 state（决策 5）：状态写透不触发 watcher 通道
+    observed = []
     recovered.watch("tracker_count", lambda new, old: observed.append((new, old)))
     recovered.state.tracker_count = 7
     await asyncio.sleep(0)
     await asyncio.sleep(0)   # fire-and-forget watcher 任务让步两轮
-    assert observed == [(7, 1)]
+    assert observed == []
 
 
 # ---------------------------------------------------------------------------
@@ -132,7 +133,7 @@ async def test_t38_get_three_domains(agent):
     assert agent.get("nope", -1) == -1
 
 
-async def test_t39_set_and_state_key_guard(agent):
+async def test_t39_set_three_domains(agent):
     calls: list[tuple[Any, Any]] = []
     agent.register_state("count", 0)
     agent.watch("count", lambda new, old: calls.append(("state", new, old)))
@@ -144,13 +145,14 @@ async def test_t39_set_and_state_key_guard(agent):
     assert agent.mode == "y"
     await asyncio.sleep(0)
     await asyncio.sleep(0)
-    assert ("state", 5, 0) in calls   # 状态键写透走 StateView 的 watcher 通知
+    assert ("state", 5, 0) not in calls   # 状态键写透不触发 watcher（决策 5）
     assert ("attr", "y", None) in calls   # 实例属性路径 watcher 照常
 
-    with pytest.raises(StateKeyError):
-        agent.count = 9   # 状态键经实例属性语法直写 -> 防遮蔽 fail-fast
-    with pytest.raises(StateKeyError):
-        del agent.count
+    # D6：经实例属性语法写/删已注册状态键不再拦截（普通实例属性，与袋值并存）
+    agent.count = 9
+    assert agent.count == 9   # 实例属性
+    assert agent.state.count == 5   # 袋值未变
+    del agent.count   # 普通属性删除，无拦截
 
     agent.delete("count")   # 删持久值，读回退 default
     assert agent.state.count == 0

@@ -215,7 +215,7 @@ class RecordStore(Protocol):
 
         **没有内存事实的恢复路径**：进程重启后内存为空，文件是唯一
         事实来源——``replay()`` 按行序重建（撕裂末行丢弃），重建完成
-        前写闸门锁定、无新写产生，此刻文件与重建出的内存视图一致；
+        前无新写产生（恢复期约定不写），此刻文件与重建出的内存视图一致；
         恢复收尾的 sync（压缩三时点①）即以这份重建出的内存视图为
         终态导出，同时把撕裂末行的逻辑丢弃固化为物理清除。
 
@@ -779,11 +779,10 @@ class StateView:
         agent.state["weird-key"] = 1  # 字典式（任意字符串 key）
         del agent.state.jobs          # 删除持久值；之后读回退到 default（若有）
 
-    经 ``agent.count = 1`` / ``del agent.count`` 写删已注册状态键 →
-    :class:`flowing.errors.StateKeyError`（防遮蔽 fail-fast：同名实例
-    属性与状态键并存会造成两处真值静默漂移）。写透后 dispatch 属主
-    watcher 通道（``watch`` 对状态键照常生效，触发点在本类；``del``
-    不触发）。
+    **watch 不察觉 state**（决策 5）：状态写透不触发 watcher 通道——
+    watcher 只管普通实例属性（``Agent.__setattr__`` 通道）；经
+    ``agent.count = 1`` 写已注册状态键属普通实例属性赋值（不拦截，
+    与袋值并存由用户自担——声明期冲突检测挡在声明前，运行期不设防）。
 
     .. rubric:: 设计动机
 
@@ -792,9 +791,9 @@ class StateView:
     忘记做任何事都安全；「这个状态不需要恢复」（高频遥测等）才是插件
     的显式决策，其代价只是文件多几行（安全方向）。Agent 侧单袋
     （Pinia 式）：读写统一走 ``agent.state`` 显式视图——同名歧义由
-    **声明期冲突检测**挡在前面（撞 Agent 类属性 / 方法 / ``_extra``
-    键 / 已注册状态键 → ``register_state`` 立即报错），写侧另有
-    ``StateKeyError`` 防遮蔽护栏。Runtime 侧不拍平
+    **声明期冲突检测**挡在声明期（撞 Agent 类属性 / 方法 / ``_extra``
+    键 / 已注册状态键 → ``register_state`` 立即报错）；运行期经
+    ``agent.xxx`` 写已注册键不再拦截（普通实例属性，D6）。Runtime 侧不拍平
     （本体方法多、使用者为带前缀约定的插件、收益小），仍经
     ``runtime.state(ns)`` 显式访问。
 
@@ -807,7 +806,7 @@ class StateView:
                 self.register_state("tracker_count", 0)
 
         async def on_something(agent, ctx):
-            agent.state.tracker_count += 1   # 写透落盘，watch/watcher 照常触发
+            agent.state.tracker_count += 1   # 写透落盘（watch 不察觉 state，决策 5）
 
     .. rubric:: 行为规约
 
@@ -816,11 +815,9 @@ class StateView:
       物理 append / 末行合并由后端 drain 任务执行（RecordStore 层
       内部策略，P1-20 裁决）。值必须 JSON 可序列化，否则**写入时**
       报错（fail fast，不留到恢复时爆雷）。
-    - **写闸门**：视图在管线到位前锁定——create 管线在「池元数据 +
-      初始 state 写盘」后解锁；recover 管线在 :meth:`Agent._restore`
-      完成后解锁。闸门未开时**写**抛错（fail fast）；**读**只见
-      defaults 不见持久值（重放尚未执行）。因此 ``setup()`` 中禁写
-      state，初始值一律走 ``register_state`` 的 ``default``。
+    - **无写闸门（D5）**：写透不设管线时序拦截——``setup()`` 中写
+      state 合法且不被恢复重放覆盖（recover 管线重放先于 setup 完成，
+      见 :meth:`Agent._restore` 时序；create 管线无重放）。
     - **defaults 回退**：``register_state(key, default)`` 提供键的
       默认值；**默认值不落盘**（不产生 ``state.jsonl`` 行）；读出时按
       ``持久值 ?? default`` 回退；recover 时落盘值覆盖默认值。
@@ -878,10 +875,10 @@ class StateView:
        检测约束。
     6. **fail fast**：不可 JSON 序列化的值在**写入时**报错，不会
        留到恢复时爆雷；读从未写入且未声明的键 → ``KeyError``。
-    7. **无 schema（P3-04 裁决）**：写闸门开后，**直接赋值即写入**
-       ——不强制先 ``register_state``；声明只提供 default 与声明期
-       冲突检测。recover 重放把全部持久化键**直接装袋**（无论是否
-       声明过），不存在「未声明键」特例。
+     - 无 schema（P3-04 裁决）：**直接赋值即写入**——不强制先
+       ``register_state``；声明只提供 default 与声明期冲突检测。recover
+       重放把全部持久化键**直接装袋**（无论是否声明过），不存在
+       「未声明键」特例。
 
     .. rubric:: 测试案例
 
@@ -889,14 +886,9 @@ class StateView:
       再模拟进程崩溃（丢弃内存、直接重放文件）→ 期望：恢复后
       ``agent.state["n"] == 1``；提交后**未 drain** 即崩溃 → 尾部
       修改允许丢失（崩溃窗口，P1-19）。
-    - 显式视图读写：``agent.state.n += 1`` 与
-      ``agent.state["n"] += 1`` 产生相同落盘行与读出值；写后
-      ``watch("n")`` / watcher 通道照常触发（触发点在本类写路径）；
-      ``agent.n = 1``（``n`` 已注册）→ 期望：抛 ``StateKeyError``。
-    - 写闸门：create 管线 setup 中 ``agent.state.x = 1``
-      → 期望：抛错；recover 管线
-      ``_restore()`` 完成前写 → 期望：抛错；解锁前读 → 期望：仅见
-      defaults。
+     - 显式视图读写：``agent.state.n += 1`` 与
+       ``agent.state["n"] += 1`` 产生相同落盘行与读出值；写不触发
+       watcher（决策 5：watch 不再察觉 state）。
     - 末行合并：同 key 连续 set 1000 次 → 期望：文件中该 key 仅
       1 行，值为末次写入；文件总行数不随次数增长。
     - 截尾：``set k`` 后紧跟 ``del k`` → 期望：文件中无 ``k`` 的行。
@@ -916,9 +908,9 @@ class StateView:
     - 调用：无（视图行为见各方法条目）
     - 被调：``flowing.agent.Agent.register_state()``（时机：setup 中
       逐键声明）、``flowing.agent.Agent.state`` property（时机：显式
-      视图访问）、``flowing.agent.Agent.__setattr__`` /
-      ``__delattr__``（时机：状态键防遮蔽检查，撞键抛
-      ``StateKeyError``）、``flowing.runtime.Runtime.register_state()`` /
+      视图访问）、``flowing.agent.Agent.get`` / ``set`` / ``delete``
+      （时机：动态键路由的状态域，``key in bag`` 判定）、
+      ``flowing.runtime.Runtime.register_state()`` /
       ``Runtime.state(ns)``（Runtime 侧保留命名空间，返回同一个类；
       时机：未见规约）
     - 实例化方：``flowing.agent.Agent.__init__``（经 ``_open_stores()``，
@@ -944,11 +936,6 @@ class StateView:
     """内存持久值表（写透时同步更新；``None`` 值与缺席需区分，
     以键在不在表中为准）。内部 API。
     """
-    _write_gate_open: bool
-    """写闸门（``False`` = 锁定：写抛错、读只见 defaults）；
-    create 管线「初始 state 写盘」后 / recover 管线
-    ``Agent._restore`` 完成后 / Runtime 引导重放后解锁。内部 API。
-    """
     _compact_threshold: int
     """state.jsonl 全量压缩的行数阈值（默认 256，构造参数可调）。
     内部 API。
@@ -963,23 +950,16 @@ class StateView:
         self,
         store: RecordStore,
         defaults: dict[str, Any] | None = None,
-        owner: Any | None = None,
         compact_threshold: int = 256,
     ) -> None:
         """绑定落盘后端与默认值表（**内部 API，不属稳定契约**）。
 
-        构造即锁定写闸门（``_write_gate_open = False``）——解锁由管线
-        完成点负责（见类 docstring 写闸门条）。构造点：Agent 侧在
-        ``Agent.__init__``（经 ``_open_stores``，P3-03），Runtime 侧在
-        ``Runtime.register_state``。``store`` 标注契约形态
-        :class:`RecordStore`——本类只用五动词，不依赖文件后端内部策略
-        （构造点给具体实现，换装点见模块 docstring「后端演进缝」）。
+        构造点：Agent 侧在 ``Agent.__init__``（经 ``_open_stores``，
+        P3-03），Runtime 侧在 ``Runtime.register_state``。``store``
+        标注契约形态 :class:`RecordStore`——本类只用五动词，不依赖
+        文件后端内部策略（构造点给具体实现，换装点见模块 docstring
+        「后端演进缝」）。
 
-        :param owner: 属主 Agent（可选）。非 ``None`` 时 ``__setitem__``
-          写透后 fire-and-forget 通知属主的 watcher 通道——
-          ``watch`` 对状态键的触发点（P3-03 配套：写路径唯一化到
-          ``agent.state.xxx`` 后，触发责任随写路径搬进本类）。
-          Runtime 侧命名空间袋无属主（``None`` → 不 dispatch）。
         :param compact_threshold: state 全量压缩的行数阈值
           （默认 256，见 ``_compact_threshold``）。
 
@@ -994,11 +974,8 @@ class StateView:
         object.__setattr__(self, "_store", store)
         object.__setattr__(self, "_defaults", dict(defaults or {}))
         object.__setattr__(self, "_persisted", {})
-        object.__setattr__(self, "_owner", owner)
         object.__setattr__(self, "_compact_threshold", compact_threshold)
         object.__setattr__(self, "_lines_since_compact", 0)
-        # 构造即锁定写闸门；解锁归管线完成点
-        object.__setattr__(self, "_write_gate_open", False)
 
     async def _close(self) -> None:
         """随属主收尾：转调内嵌 store 的 ``close()``（内部 API）。
@@ -1081,7 +1058,7 @@ class StateView:
         """
         return self[key]   # 语义同 __getitem__
     def __setattr__(self, key: str, value: Any) -> None:
-        """属性式写（语义同 ``__setitem__``，受写闸门约束）。
+        """属性式写（语义同 ``__setitem__``）。
 
         下划线前缀的内部字段（``_store`` 等）不经本通道——以
         ``object.__setattr__`` 直写（见 :meth:`__init__`）。
@@ -1091,7 +1068,7 @@ class StateView:
         - 调用：无
         - 被调：无（运算符协议方法；写透落盘时序见类 docstring 行为规约）
         """
-        self[key] = value   # 语义同 __setitem__（受写闸门约束）
+        self[key] = value   # 语义同 __setitem__
     def __delattr__(self, key: str) -> None:
         """属性式删（语义同 ``__delitem__``）。
 
@@ -1115,8 +1092,7 @@ class StateView:
         # 回本方法——自举死循环护栏）
         persisted = object.__getattribute__(self, "_persisted")
         defaults = object.__getattribute__(self, "_defaults")
-        # 写闸门未开时读仅见 defaults 不见持久值（重放尚未执行，见写闸门条）
-        if object.__getattribute__(self, "_write_gate_open") and key in persisted:
+        if key in persisted:
             return persisted[key]
         if key in defaults:
             return defaults[key]
@@ -1124,48 +1100,20 @@ class StateView:
     def __setitem__(self, key: str, value: Any) -> None:
         """写透落盘（见类 docstring 行为规约）。
 
-        写透后若 ``_owner`` 非空，fire-and-forget 通知属主的
-        watcher 通道（FieldUpdate 快照，old 取写前读值）——``watch``
-        对状态键的触发点（P3-03 配套裁决）。``del`` 不触发（删除不是
-        赋值事件，与 ``Agent.__delattr__`` 同律）。
+        **watch 不察觉 state**（决策 5）：状态写透不触发 watcher 通道。
 
         .. rubric:: 调用关系（审计）
 
         - 调用：:meth:`RecordStore.submit`（时机：每次写透，同步排队；
-          末行合并等物理策略在 store 内部）；属主
-          ``hooks._notify_watch``（时机：写透后，
-          fire-and-forget 不 await）
-        - 被调：无（运算符协议方法；写闸门约束见类 docstring）
+          末行合并等物理策略在 store 内部）
+        - 被调：无（运算符协议方法）
         """
-        # 写闸门检查（X10：管线时序编程错误，内置 RuntimeError，无 spec 具名类型）
-        if not self._write_gate_open:
-            raise RuntimeError(
-                f"state view write gate is closed (key={key!r}): "
-                "writes are allowed only after the create/recover pipeline unlocks it"
-            )
         json.dumps(value)  # X11：JSON 可序列化校验 fail fast，原样抛 TypeError
-        old = self.get(key)  # watcher 快照的写前读值（持久值 ?? default ?? None）
         self._persisted[key] = value
         # 同步排队即返；末行合并等物理策略在 FileRecordStore 内部
         self._store.submit({"op": "set", "key": key, "value": value})
         object.__setattr__(self, "_lines_since_compact", self._lines_since_compact + 1)
         self._maybe_compact()  # 阈值判定，超阈即提交压缩请求
-        # watcher 通道调用点预留（真 dispatch 归 L1 hooks + L3 agent）：
-        # owner 非空且 owner.hooks 已建立（__dict__.get 护栏）时，
-        # fire-and-forget 通知属主 watcher 通道；无运行中 loop -> 静默跳过
-        owner = self._owner
-        hooks = owner.__dict__.get("hooks") if owner is not None else None
-        if hooks is not None:
-            try:
-                asyncio.get_running_loop()
-            except RuntimeError:
-                pass  # 无运行中 loop：静默跳过，写照常
-            else:
-                from flowing.agent import FieldUpdate  # 局部导入破环
-
-                hooks._notify_watch(
-                    owner, FieldUpdate(name=key, old=old, new=value)
-                )
     def __delitem__(self, key: str) -> None:
         """删除持久值；之后读回退到 default（若有）。
 
@@ -1174,28 +1122,21 @@ class StateView:
         - 调用：无
         - 被调：无（运算符协议方法，由 ``del`` 语句隐式触发）
         """
-        # 写闸门检查（同 __setitem__，X10）
-        if not self._write_gate_open:
-            raise RuntimeError(
-                f"state view write gate is closed (key={key!r}): "
-                "writes are allowed only after the create/recover pipeline unlocks it"
-            )
         self._persisted.pop(key, None)
         # 末行 set k 紧跟 delete k 时的截尾优化在 FileRecordStore 内部
         self._store.submit({"op": "delete", "key": key})
         object.__setattr__(self, "_lines_since_compact", self._lines_since_compact + 1)
         self._maybe_compact()
-        # 之后读回退到 _defaults（若有）；del 不触发 watcher（与
-        # Agent.__delattr__ 同律——删除不是赋值事件）
+        # 之后读回退到 _defaults（若有）
     def __contains__(self, key: str) -> bool:
         """key 有持久值或注册默认值即视为存在。
 
         .. rubric:: 调用关系（审计）
 
         - 调用：无
-        - 被调：``flowing.agent.Agent.__setattr__`` /
-          ``__delattr__``（时机：状态键防遮蔽检查，每次公开名
-          赋值/删除）；运算符协议方法，由 ``in`` 表达式隐式触发
+        - 被调：``flowing.agent.Agent.get`` / ``set`` / ``delete``
+          （时机：动态键路由的状态域判定，``key in bag``）；运算符
+          协议方法，由 ``in`` 表达式隐式触发
         """
         try:
             self[key]   # 持久值或注册 default 命中即存在

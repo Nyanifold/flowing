@@ -201,12 +201,12 @@ async def test_t125_full_chain(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# T126：写闸门全程（验收③）
+# T126（翻转，D5）：无写闸门全程（验收③）
 # ---------------------------------------------------------------------------
 
 
 class GateWriteAgent(Agent):
-    """setup 中写 state（闸门未开）→ 管线应失败。"""
+    """setup 中写 state（D5 删写闸门后合法）。"""
 
     system_prompt = Parsable("闸门测试。")
 
@@ -215,7 +215,7 @@ class GateWriteAgent(Agent):
 
 
 class SubInSetupAgent(Agent):
-    """setup 中创建子代（闸门未开，S-34）→ 管线应失败。"""
+    """setup 中创建子代（S-34 闸门删除后合法）。"""
 
     system_prompt = Parsable("子代闸门测试。")
 
@@ -224,7 +224,7 @@ class SubInSetupAgent(Agent):
 
 
 class RecoverGateAgent(Agent):
-    """recover 管线：before_recover（_restore 之前）写 state 被闸门拦下。"""
+    """recover 管线：before_recover（_restore 之前）写 state 不再被拦。"""
 
     system_prompt = Parsable("恢复闸门测试。")
     gate_blocked: list = []
@@ -241,30 +241,31 @@ class RecoverGateAgent(Agent):
         self.register_state("early", 0)
 
 
-async def test_t126_write_gate_whole_lifecycle(tmp_path):
-    """T126 / A3：setup 中写 state 抛错；create 管线第 7 步后可写；
-    recover 管线 _restore 前不可写、后可写；闸门未开 create_subagent 抛 RuntimeError。"""
+async def test_t126_no_write_gate_whole_lifecycle(tmp_path):
+    """T126（翻转，D5）：setup 中写 state / 创建子代合法；before_recover 写 state
+    不抛错（阶段 A 管线未重排，该写会被 _restore 重放覆盖——阶段 B 重排后可见）。"""
     runtime = make_runtime(tmp_path)
     add_fake_provider(runtime)
     runtime.register_agent_type("gate-write", GateWriteAgent)
     runtime.register_agent_type("sub-in-setup", SubInSetupAgent)
     runtime.register_agent_type("recover-gate", RecoverGateAgent)
-    # setup 中写 state → 抛错，管线中断无注册
-    with pytest.raises(RuntimeError, match="write gate"):
-        await runtime.create_agent("gate-write")
-    # 闸门未开时 create_subagent → RuntimeError（S-34）
-    with pytest.raises(RuntimeError, match="写闸门未开"):
-        await runtime.create_agent("sub-in-setup")
-    assert len(runtime._agent_pool) == 0
-    # create 管线第 7 步后可写
-    agent = await runtime.create_agent("recover-gate")
-    agent.state.early = 5
+    # setup 中写 state → 合法（写透落盘）
+    agent = await runtime.create_agent("gate-write")
+    assert agent.state.illegal == 1
     await agent.destroy()
-    # recover：_restore 之前（before_recover）写被拦；之后可写且值已重放
-    recovered = await runtime.recover_agent(agent.node_id)
-    assert RecoverGateAgent.gate_blocked == [True]
-    assert recovered.state.early == 5   # 重放值在
-    recovered.state.early = 6   # _restore 后闸门解开
+    # setup 中 create_subagent → 合法（S-34 闸门删除）
+    agent2 = await runtime.create_agent("sub-in-setup")
+    assert len(agent2._children) == 1
+    await agent2.destroy()
+    # recover：before_recover 写 state 不抛错（阶段 A 管线 setup 先于 _restore，
+    # 该写被重放覆盖——最终值以磁盘为准）
+    agent3 = await runtime.create_agent("recover-gate")
+    agent3.state.early = 5
+    await agent3.destroy()
+    recovered = await runtime.recover_agent(agent3.node_id)
+    assert RecoverGateAgent.gate_blocked == []
+    assert recovered.state.early == 5   # 重放值在（before_recover 的写被覆盖）
+    recovered.state.early = 6   # 写透恢复可用
     await runtime.shutdown()
 
 
@@ -422,7 +423,7 @@ async def test_t90_recover_state_replay_migration_corruption(tmp_path, copy_fixt
 
 
 async def test_t91_recover_gate_and_compaction(tmp_path):
-    """T91（补做）：recover 后写闸门解开（之前写抛错由 T126 覆盖）、
+    """T91（补做）：recover 后写透可用（无写闸门，D5）、
     state.jsonl 全量压缩请求发出（压缩三时点①——被删键不留痕）。"""
     runtime = make_runtime(tmp_path)
     add_fake_provider(runtime)
@@ -435,7 +436,7 @@ async def test_t91_recover_gate_and_compaction(tmp_path):
         agent.state["keep"] = i
     await agent.destroy()
     recovered = await runtime.recover_agent(agent.node_id)
-    # 写闸门已解开
+    # 写透恢复可用（无写闸门，D5）
     recovered.state["keep"] = 99
     await recovered._state_bag._store.drain()   # 排空压缩请求
     # 压缩时点①：state.jsonl 全量重写为终态——被删键不留行

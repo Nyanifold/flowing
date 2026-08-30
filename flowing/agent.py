@@ -63,8 +63,7 @@ kwargs）→ ``setup(**kwargs)`` → **PENDING 检查** → 池元数据 +
 初始 state 写盘 → ``_nodes`` 注册 → ``after_create`` → 工作循环 Task 启动。
 恢复管线对称：``before_recover``（可改写 args）→ ``setup(**args)``（args 为
 持久化值，可被 ``override_args`` 覆盖；触发的是 before/after_recover 钩子对）
-→ PENDING 检查 → ``instance._restore()``（消息级重建 +
-状态重放，完成后解开 :class:`flowing.persistence.StateView` 写闸门）→ ``_nodes``
+→ PENDING 检查 → ``instance._restore()``（消息级重建 + 状态重放）→ ``_nodes``
 注册 → ``after_recover`` → 工作循环启动；``node_id = agent_id``（身份连续、
 可重现）。两条管线在**各自的实例**上各跑一次 ``setup()``（recover 是新建
 实例，非同一实例重复执行），故 ``setup()`` 必须可重入（见
@@ -79,9 +78,9 @@ session 目录（``agent_id`` 命名，父子平级），内含 ``tree.jsonl`` /
 压缩策略见 :mod:`flowing.persistence` 模块规约），不经 Runtime 中转；
 **声明归 setup**——``register_state(key, default)``
 逐键声明（**一个 Agent 一袋**，无命名空间；插件键带注册名 underscore
-前缀约定，框架核心键裸名），setup 中**禁写** state（写闸门在管线到位前
-锁定，初始值走 default）；**内容归插件/用户代码**——钩子 handler 里经
-``agent.state`` 视图写透（读写统一通道，写透后触发 watcher 通道）。
+前缀约定，框架核心键裸名），setup 中写 state 合法（D5 删写闸门，重放
+先于 setup 完成不被覆盖）；**内容归插件/用户代码**——钩子 handler 里经
+``agent.state`` 视图写透（读写统一通道；watch 不察觉 state，决策 5）。
 Runtime 只保留全局视野职能：``set_persist_dir``、池扫描
 （目录 → 池 key）、管线编排；Runtime 自身的全局状态保留命名空间
 （``Runtime.state(ns)``）。
@@ -192,7 +191,6 @@ from flowing.errors import (
     FlowingError,
     FormatError,
     Intercepted,
-    StateKeyError,
     ToolNotFoundError,
     UnknownToolError,
 )
@@ -1404,8 +1402,7 @@ class Agent:
     """
     _state_bag: StateView
     """唯一状态袋（``state.jsonl`` 后端内嵌，``merge_last_line=True``）；
-    :attr:`state` property 的落点；``__setattr__`` / ``__delattr__``
-    的防遮蔽检查也查本袋（撞键抛 ``StateKeyError``）。构造点同为
+    :attr:`state` property 的落点。构造点同为
     ``__init__``（经 :meth:`_open_stores`）。内部 API。
     """
 
@@ -1443,7 +1440,7 @@ class Agent:
           ``persist_dir / node_id``）骨架期即可知（P3-03 裁决，
           「骨架阶段尚不可知」的旧表述作废）。
           两后端建立即完成，``register_state`` 在随后的 ``setup()`` 中
-          天然可用（写闸门仍锁，解锁归管线完成点）。
+          天然可用（无写闸门，D5）。
         - 注入 ``system_prompt`` 惰性引用块（``prompt_blocks[0]``，
           ``by="core"``）。
         - 调 ``_init_hooks()``（同步注册 ``@on()`` 声明的钩子）。
@@ -1642,8 +1639,7 @@ class Agent:
 
         - 调用时点固定：``__init__`` 首段（两管线同一骨架，各一次）。
         - 建立后 ``register_state`` 的声明落进 ``_state_bag`` 的
-          defaults 表；写闸门仍锁（解锁归管线完成点，见
-          :class:`flowing.persistence.StateView`）。
+          defaults 表（无写闸门，D5）。
         - 幂等性不要求（骨架保证单次）；重复调用属用法错误。
         - 本方法是后端**换装点**（模块 docstring「后端演进缝」）：
           未来非文件后端在此替换 ``FileRecordStore`` 构造（字段标注
@@ -1662,8 +1658,7 @@ class Agent:
         """
         self._tree_store = FileRecordStore(session_dir / "tree.jsonl")
         self._state_bag = StateView(
-            FileRecordStore(session_dir / "state.jsonl", merge_last_line=True),
-            owner=self)   # owner 回引用：写透后通知 watcher 通道
+            FileRecordStore(session_dir / "state.jsonl", merge_last_line=True))
         # 框架核心键登记（裸名保留，插件声明撞之报错）：child_ids =
         # 语义名 -> agent_id 翻译表（S-34），默认空表、不落盘
         self._state_bag._register("child_ids", {})
@@ -1677,11 +1672,10 @@ class Agent:
         Agent 一袋状态键**（无命名空间）；插件键名按约定带注册名
         underscore 前缀（如 cron 插件的 ``cron_jobs``），框架核心键
         裸名。声明后 ``agent.state.key`` 即刻可读
-        （default 回退），但**写闸门锁定**——create 管线在「初始
-        state 写盘」后解锁，recover 管线在 :meth:`_restore` 完成后
-        解锁。**声明是可选的**（P3-04 裁决：袋无 schema——闸门开后
-        直接 ``agent.state.x = v`` 即写入，无需声明；声明的价值是
-        default、声明期冲突检测与自我文档化）。
+        （default 回退），写透立即可用（无写闸门，D5）。**声明是
+        可选的**（P3-04 裁决：袋无 schema——直接 ``agent.state.x = v``
+        即写入，无需声明；声明的价值是 default、声明期冲突检测与
+        自我文档化）。
 
         .. rubric:: 设计动机
 
@@ -1716,7 +1710,7 @@ class Agent:
 
         :param key: 状态键名（插件按约定带注册名 underscore 前缀）。
         :param default: 默认值；不落盘，读出回退，recover 时被落盘值覆盖。
-        :return: 本 Agent 的 :class:`StateView`（单袋，写闸门状态随管线）。
+        :return: 本 Agent 的 :class:`StateView`（单袋）。
 
         .. rubric:: 测试案例
 
@@ -1761,8 +1755,8 @@ class Agent:
         钩子 handler / 工具 / 插件代码里以 **agent 视角**读写持久化状态的
         **唯一通道**（P3-03 配套裁决：读写统一走显式视图，不再经
         ``agent.xxx`` 回退）：``agent.state.cron_jobs`` 属性式，
-        ``agent.state["weird-key"]`` 字典式。写透后 dispatch 属主
-        watcher 通道（``watch`` 照常生效，触发点在 :class:`StateView`）。
+        ``agent.state["weird-key"]`` 字典式。写透不触发 watcher
+        （决策 5：watch 不再察觉 state）。
 
         .. rubric:: 设计动机
 
@@ -1773,14 +1767,14 @@ class Agent:
 
         .. rubric:: 行为规约
 
-        读写语义（写透、defaults 回退、写闸门、fail fast）全部继承
+        读写语义（写透、defaults 回退、fail fast）全部继承
         :class:`StateView` 的类级契约。本 property 自身无副作用。
 
         .. rubric:: 测试案例
 
         - 前置：setup 声明 ``register_state("tracker_count", 0)`` →
           操作：钩子中 ``agent.state.tracker_count += 1`` → 期望：写透
-          落盘，崩溃恢复后值在；``watch("tracker_count")`` 照常触发。
+          落盘，崩溃恢复后值在；写不触发 ``watch``（决策 5）。
         - 前置：未声明 ``"tracke"``（typo）→ 操作：``agent.state[
           "tracke"]`` → 期望：``KeyError``；``agent.tracke`` →
           ``AttributeError``。
@@ -1805,7 +1799,7 @@ class Agent:
         R-6 承接：``flowing.parsable.Parsable._do_resolve`` 摊平渲染上下文时
         经 ``getattr(agent, "_state", None)`` 读取状态键袋——本 property 是真
         Agent 侧的对齐落点（骨架期袋未建立时返回空表）。键集 = 已声明键 ∪
-        已持久键；写闸门未开时读仅见 defaults（StateView 读语义）。
+        已持久键。
         """
         bag = self.__dict__.get("_state_bag")
         if bag is None:
@@ -1854,9 +1848,8 @@ class Agent:
 
         .. rubric:: 行为规约
 
-        - 已注册状态键 → ``self.state[key] = value``（写透落盘 + 写闸门
-          + JSON 校验，写后由 :class:`StateView` dispatch
-          watcher 通道——watch 照常）。
+        - 已注册状态键 → ``self.state[key] = value``（写透落盘 + JSON
+          校验；写不触发 watcher——决策 5）。
         - ``key in _extra`` → 原地更新 ``_extra[key]``（静默仓库，不
           触发 watcher 通道）。
         - 否则 ``setattr(self, key, value)``——普通实例属性路径
@@ -1866,7 +1859,7 @@ class Agent:
         .. rubric:: 测试案例
 
         - 前置：声明 ``"count"`` → 操作：``set("count", 5)`` → 期望：
-          ``state.count == 5`` 且 ``watch("count")`` 触发；
+          ``state.count == 5`` 且 ``watch("count")`` **不**触发（决策 5）；
           ``set("mode", "y")`` → 实例属性，watcher 通知照常。
 
         .. seealso:: :meth:`get`、:meth:`delete`
@@ -1958,10 +1951,8 @@ class Agent:
           ② 普通实例属性赋值（``self.user_id = user_id``）是运行期配置，
           **不落盘、不加限制**；
           ③ 持久化 state 经 :meth:`register_state` 声明、:meth:`state`
-          访问；**setup 中禁写 state**——写闸门在管线到位前锁定（写则
-          抛错），初始值一律走 ``defaults``（不落盘、读出回退，
-          recover 时落盘值天然优先，从机制上不存在「setup 写入覆盖
-          未重放记录」的窗口）；
+          访问；**setup 中写 state 合法**（D5 删写闸门——create 无重放
+          不冲突；recover 重放先于 setup 完成，写入不被覆盖）；
           ④ 副作用操作（创建文件、操作外部对象）由用户自行做存在性校验，
           框架不兜底。
         - 期待行为：状态赋值、钩子注册、inject 读取、Composable 调用。
@@ -2000,9 +1991,8 @@ class Agent:
               （见 :mod:`flowing.parsable`）。
         """
         # 基类空实现（契约注释）：子类覆写承载装配逻辑——状态赋值、钩子注册、
-        # inject 读取、Composable 调用；**禁写 state**（写闸门在管线到位前
-        # 锁定）；可重入语义见上文「行为规约」（create 与 recover 各跑一次、
-        # 必为不同实例）。
+        # inject 读取、Composable 调用；setup 中写 state 合法（D5）；可重入
+        # 语义见上文「行为规约」（create 与 recover 各跑一次、必为不同实例）。
         ...
 
     async def destroy(self) -> None:
@@ -2126,8 +2116,8 @@ class Agent:
         ``state.jsonl`` 恢复框架核心键最小集（``current_head_id``
         指向最后持久化消息 + 队列待消费消息 + 池元数据）→ 将全部
         持久化行重放进单袋状态（逐键覆盖 default）。恢复边界 =
-        已持久化消息；进行中的逻辑 Turn 丢弃不续跑。完成后解开
-        :class:`StateView` 的写闸门。纯数据之外派生的运行时结构
+        已持久化消息；进行中的逻辑 Turn 丢弃不续跑。纯数据之外派生的
+        运行时结构
         （如 cron 的定时器）由随后的 ``after_recover`` 钩子重建——
         恢复回调不再是 ``register_state`` 的参数（单袋化最终裁决）。
 
@@ -2226,7 +2216,7 @@ class Agent:
                 # provider 消息本是分支尾：占位消息成为新尾，head 随之上移
                 self.current_head_id = placeholder.id
         # ②③ 读 state.jsonl（_state_bag._store.replay()）逐键重放进单袋
-        #    （写闸门未开，直写 _persisted 绕过写通道；无 schema：持久化键
+        #    （直写 _persisted 绕过写通道；无 schema：持久化键
         #    无论声明与否一律装袋，P3-04 裁决——逐键覆盖 register_state 的
         #    default 是读出回退序的天然结果）
         persisted = self._state_bag._persisted
@@ -2238,14 +2228,11 @@ class Agent:
                 persisted.pop(record["key"], None)
             # 未知行形态（meta 已被 replay 吸收）静默跳过
         # ③b S-34：重放出的 child_ids 直接装入 _child_ids 内存镜像
-        #    （S-34 追加裁决：闸门未开不支持创建子代 -> setup 阶段镜像
-        #    必为空，装入无合并冲突）
+        #    （setup 阶段无子代创建，装入无合并冲突）
         replayed_child_ids = persisted.get("child_ids")
         if isinstance(replayed_child_ids, dict):
             self._child_ids.update(replayed_child_ids)
-        # ④ 完成后解开 StateView 写闸门（_state_bag._write_gate_open = True）
-        object.__setattr__(self._state_bag, "_write_gate_open", True)
-        # ④b 压缩三时点①：恢复重放后请求 state.jsonl 全量压缩
+        # ④ 压缩三时点①：恢复重放后请求 state.jsonl 全量压缩
         #    （_state_bag._maybe_compact(force=True)；物理重写在 drain 任务）
         self._state_bag._maybe_compact(force=True)
         # ⑤ 派生运行时结构（cron 定时器等）由随后的 after_recover 钩子重建
@@ -3779,8 +3766,7 @@ class Agent:
         .. rubric:: 设计动机（与 :meth:`invoke_subagent` 的分工）
 
         - 谁调用：钩子回调、外部代码、回合内工具（要「创建并持有
-          实例」）。**``setup()`` 内不可调**（写闸门未开，见行为规约
-          前置约束）。
+          实例」）。setup 内亦可调（无写闸门，D5）。
         - 参数来源：调用方直接传完整 kwargs（``agent_type`` + 类型 args）；
           可选 ``name`` 为子代起语义名（登记进 ``_child_ids``，供
           ``invoke_subagent(resume=...)`` 按名续接；语义名只存在父侧
@@ -3809,11 +3795,6 @@ class Agent:
           ``_child_ids[name] = node_id`` 并同步
           写透核心键 ``child_ids``（整表覆写一行，末行合并防膨胀）。
           未命名子 Agent 不入表。
-        - **前置约束（S-34 追加裁决）**：写闸门未开（``setup()`` 执行
-          期间及之前）**不支持**创建子智能体——登记依赖写透通道，
-          闸门锁定时调用本方法 → 立即抛错（fail fast，不留半登记
-          状态）。setup 里需要的子代在 ``after_create`` /
-          ``after_recover`` 钩子或首个回合中创建。
         - 异常（类型名解析失败 / PENDING 检查失败等）原样上抛，父
           Agent 状态不变。
 
@@ -3830,11 +3811,6 @@ class Agent:
             - :meth:`flowing.runtime.Runtime.create_agent` —— 真正执行
               创建的唯一代码路径。
         """
-        # S-34 追加裁决：写闸门未开不支持创建子智能体（登记依赖写透通道）
-        if not self._state_bag._write_gate_open:
-            raise RuntimeError(
-                "create_subagent 不可用：写闸门未开（setup 期间及之前）"
-                "——请在 after_create / after_recover 钩子或首个回合中创建子代")
         child = await self.runtime.create_agent(
             agent_type, parent_id=self.node_id, **kwargs)   # 直接委托，仅提供 parent_id
         self._children[child.node_id] = child   # 进入生命周期子树（node_id 为 key；创建即注册由 create_agent 管线完成）
@@ -5014,8 +4990,11 @@ class Agent:
         return _wrap(handler)
 
     def __setattr__(self, name: str, value: Any) -> None:
-        """实例属性赋值拦截——watcher 通知的触发点（M-41 最终裁决）
-        兼状态键防遮蔽护栏（P3-03 配套裁决「B：检查并报错」）。
+        """实例属性赋值拦截——watcher 通知的触发点（M-41 最终裁决）。
+
+        **D6（删状态键拦截）**：不再拦截状态键——经 ``agent.xxx = v``
+        写已注册状态键落普通实例属性（与袋值并存由用户自担）；状态量
+        读写统一走 ``self.state.<key>`` 显式视图。
 
         .. rubric:: 行为规约
 
@@ -5023,29 +5002,22 @@ class Agent:
           快照）→ **fire-and-forget** 通知 watcher 通道
           （``hooks._notify_watch``，不 await）→ 执行写入。赋值
           语义不受 watcher 影响：无改写、无取消、异常不上抛。
-        - **状态键防遮蔽护栏**：``name`` 为已注册状态键时**抛**
-          :class:`flowing.errors.StateKeyError`——状态量读写统一走
-          ``self.state.<key>`` 显式视图（P3-03 配套裁决）；经实例属性
-          语法写会与状态键同名并存，造成两处真值静默漂移。状态键的
-          写透与 watcher 通知均在 :class:`StateView` 写路径完成。
+        - watcher 只管普通实例属性；state 写不触发（决策 5）。
         - handler 可为同步或 async（后台任务统一 await）；handler 异常
           终止本次 dispatch 链并记录日志，不影响赋值。
         - 无运行中的 event loop 时 dispatch **静默跳过**（赋值照常）。
         - 仅**实例属性赋值**触发；描述符 / 类属性 / ``_`` 前缀骨架字段
           的初始化不经过本机制。
-        - 骨架期护栏（P3-03）：``hooks`` / ``_state_bag`` 只经
-          ``__dict__.get`` 探查，未建立（管线第 2 步预绑 / 子类先于
-          ``super().__init__()`` 赋值）→ 跳过 dispatch / 状态键检查，
-          落普通实例属性。
+        - 骨架期护栏（P3-03）：``hooks`` 只经 ``__dict__.get`` 探查，
+          未建立（管线第 2 步预绑 / 子类先于 ``super().__init__()``
+          赋值）→ 跳过 dispatch，落普通实例属性。
         - 边缘情况：handler 内再次给同名字段赋值造成递归 dispatch——
           框架不做递归防护，属编程错误。
 
         .. rubric:: 调用关系（审计）
 
         - 调用：``flowing.agent.FieldUpdate`` 构造与
-          ``hooks._notify_watch``（时机：写入前，fire-and-forget）；
-          ``StateView.__contains__`` / ``StateView.__setitem__``
-          （时机：name 为已注册状态键时的写透落盘）
+          ``hooks._notify_watch``（时机：写入前，fire-and-forget）
         - 被调：无（Python 实例属性赋值机制触发）
 
         .. seealso::
@@ -5056,20 +5028,11 @@ class Agent:
             old: Any = getattr(self, name, None)   # 字段不存在时规约为 _UNSET 哨兵（flowing.parsable）
             fu = FieldUpdate(name=name, old=old, new=value)   # 写入前构造快照
             # 护栏（P3-03）：hooks 未建立（管线第 2 步预绑 node_id/runtime
-            # 早于 __init__）或袋未建立（子类在 super().__init__() 前赋值）
-            # 时一律只经 __dict__.get 探查，缺失即跳过对应机制——骨架期
+            # 早于 __init__）时只经 __dict__.get 探查，缺失即跳过——骨架期
             # 赋值本就不产生观测事件
             hooks = self.__dict__.get("hooks")
             if hooks is not None:
                 hooks._notify_watch(self, fu)   # watcher 通道：fire-and-forget，不 await
-            # 状态键防遮蔽护栏（P3-03 配套裁决「B：检查并报错」）：
-            # 已注册状态键经实例属性语法写会在 __dict__ 落一份普通实例
-            # 属性，与状态袋中的持久值形成两份真值静默漂移——fail-fast
-            # 指引显式视图。只经 __dict__.get 探袋：
-            # 袋未建立（子类在 super().__init__() 前赋值）时落普通实例属性
-            bag = self.__dict__.get("_state_bag")
-            if bag is not None and name in bag:
-                raise StateKeyError(name)
         object.__setattr__(self, name, value)   # 赋值语义不受 handler 影响
         if name == "model_tag":
             # model_tag 可变路径一（类属性 docstring 规约）：赋值即重新解析
@@ -5081,22 +5044,19 @@ class Agent:
                 object.__setattr__(self, "model", self._resolve_model_tag(value))
 
     def __delattr__(self, name: str) -> None:
-        """删除拦截——状态键防遮蔽护栏的删除侧（P3-03 配套裁决）。
+        """删除拦截——纯透传（D6：删状态键拦截，无状态域特判）。
 
         .. rubric:: 行为规约
 
-        ``name`` 为已注册状态键 → 抛 :class:`flowing.errors.StateKeyError`
-        （删持久值走 ``del self.state.<key>``）；否则走普通实例属性
-        删除。非行为：不触发 watcher（删除不是赋值事件）。
+        一律走普通实例属性删除（类属性 / 方法删不掉，
+        ``AttributeError`` 原样上抛）。非行为：不触发 watcher（删除
+        不是赋值事件）。删持久值走 ``del self.state.<key>``。
 
         .. rubric:: 调用关系（审计）
 
-        - 调用：``StateView.__delitem__``（时机：删除已注册状态键）
+        - 调用：无
         - 被调：无（Python ``del`` 语句机制触发）
         """
-        bag = self.__dict__.get("_state_bag")   # 护栏（P3-03）：同 __getattr__/__setattr__
-        if not name.startswith("_") and bag is not None and name in bag:
-            raise StateKeyError(name)
         object.__delattr__(self, name)
 
     def parsable(self, source: Any) -> Parsable:

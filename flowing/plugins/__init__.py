@@ -124,11 +124,12 @@ class Plugin:
     - **install 对持久化状态的可反复执行性（与 ``Agent.setup`` 同构的
       契约）**：每次进程启动 ``main()`` 都重跑 ``use()`` → ``install()``，
       install 因此对持久化状态**结构上无关**、天然可反复执行——全局状态
-      写闸门未开（写抛错）、引导重放未发生（读到的只是 defaults），
-      install 既不可写也读不到持久值；读持久值的派生重建一律放到
+      引导重放未发生（读到的只是 defaults）、install 期间写全局状态虽
+      不报错（D5 删写闸门）但约定不写（重放前的写会被引导重放覆盖）；
+      读持久值的派生重建一律放到
       ``after_recover``（agent 侧）或插件自择时机的懒重建（全局侧）。
-      这与 ``Agent.setup`` 的「不同实例上每次调用作用相同、禁写
-      state、重放前只见 defaults」是同一条逻辑的两端。
+      这与 ``Agent.setup`` 的「不同实例上每次调用作用相同、重放前只见
+      defaults」是同一条逻辑的两端。
     - 边缘情况：``dependencies`` 中的名字无对应已安装插件 → ``use()``
       时 ``warnings.warn`` 警告不抛；依赖成环 → ``use()`` 抛
       :class:`flowing.errors.DependencyError`。
@@ -216,7 +217,7 @@ class Plugin:
         ``runtime.provide()`` / ``runtime.register_config_namespace()`` /
         ``runtime.register_agent_type()`` / ``runtime.register_resource()`` /
         ``runtime.register_state()``（全局命名空间声明；只声明不读写——
-        写闸门在引导重放完成前锁定，加载/派生时机由插件内部管理）。
+        引导重放完成前读仅见 defaults，加载/派生时机由插件内部管理）。
         （观测面无注册通道——插件状态经插件自己的只读 API 暴露，如
         ``runtime.get_plugin("cron").jobs()``；per-agent 状态声明经
         ``Agent.register_state()`` 在各 Agent 的 ``setup()`` 中完成，

@@ -345,15 +345,16 @@ async def test_t103_global_state(tmp_path):
     runtime2.set_persist_dir(persist)
     assert runtime2.state("x").k == 1
     await runtime2.shutdown()
-    # install 中（闸门未开）写全局状态 → 抛错（R1 的持久化版）
+    # install 中（引导重放前）写全局状态 → 不抛错（D5 删写闸门；R1 约定 install
+    # 内不写——重放前的写若已落盘会被引导重放读回同一值，未落盘则保留内存写）
     runtime3 = make_runtime(tmp_path / "p3")
 
     def _install_writes(rt: Runtime) -> None:
         rt.register_state("gw", defaults={})
-        rt.state("gw").k = 1   # 引导重放未覆盖该命名空间 → 写闸门未开
+        rt.state("gw").k = 1   # 引导重放未覆盖该命名空间，但写不抛错（D5）
 
-    with pytest.raises(RuntimeError, match="write gate"):
-        runtime3.use(PluginStub("gate-writer", on_install=_install_writes))
+    runtime3.use(PluginStub("gate-writer", on_install=_install_writes))
+    assert runtime3.state("gw").k == 1
     await runtime3.shutdown()
 
 

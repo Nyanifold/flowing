@@ -734,8 +734,8 @@ class CronScheduler:
         """恢复入口：把某 Agent 的持久化任务重建进调度器并重新武装。
 
         内部 API，不属稳定契约。由 ``use_cron`` 注册的 ``after_recover``
-        handler 在 session 恢复（``Agent._restore()`` 重放完成、写闸门
-        解锁）后调用——单袋化最终裁决取消了 ``register_state`` 的
+        handler 在 session 恢复（``Agent._restore()`` 重放完成）后调用——
+        单袋化最终裁决取消了 ``register_state`` 的
         ``load`` 参数，派生运行时结构（定时器）的重建统一走
         ``after_recover`` 钩子。只重建定义与定时器；错过触发的合并交付
         由同一 handler 随后的 :meth:`_sweep` 完成，本方法不直接交付。

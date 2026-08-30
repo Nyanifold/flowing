@@ -7,7 +7,7 @@ ProvideNode 协议 / ``resolve_path`` / ``env`` / ``config`` /
 ``get_agent_class`` / ``create_agent`` 迷你管线 / ``_model_tags_path`` /
 ``_models_path``），``create_agent`` 承担 create 管线的最小步骤
 （``__new__`` 预绑 ``node_id`` / ``runtime`` / ``_parent_id`` /
-``_session_dir`` → ``__init__`` → ``setup()`` → 写闸门解锁 → 池/活体表
+``_session_dir`` → ``__init__`` → ``setup()`` → 池/活体表
 注册 → 工作循环 Task 启动）。runtime 批次落地后本 harness 可由真管线替换。
 """
 
@@ -88,7 +88,6 @@ class HarnessRuntime(FakeRuntime):
         parent_id: str | None = None,
         session_dir: str | Path | None = None,
         model: ModelConfig | None = None,
-        unlock_gate: bool = True,
         start_loop: bool = True,
         **setup_kwargs: Any,
     ) -> Agent:
@@ -104,9 +103,6 @@ class HarnessRuntime(FakeRuntime):
         inst._session_dir.mkdir(parents=True, exist_ok=True)
         inst.__init__()
         await inst.setup(**setup_kwargs)
-        if unlock_gate:
-            # create 管线「初始 state 写盘」后的解锁点（真身属 W35）
-            object.__setattr__(inst._state_bag, "_write_gate_open", True)
         inst.model = model or ModelConfig(
             model="fake-model", provider="fake",
             context_window=100000, max_output_tokens=4096)

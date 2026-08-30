@@ -411,8 +411,8 @@ def use_cron(agent: Agent) -> None:
 
     任务注册**按需**发生，不在 ``use_cron`` 内。声明式注册写在
     ``after_create`` handler 里（``after_create`` 只在 create 管线
-    触发一次——此刻 ``_nodes`` 已注册、state 写闸门已解开，
-    ``schedule(...)`` 可用）；recover 时任务表数据由 ``_restore`` 从
+    触发一次——此刻 ``_nodes`` 已注册、state 可直接写（无写闸门，
+    D5），``schedule(...)`` 可用）；recover 时任务表数据由 ``_restore`` 从
     ``state.jsonl`` 自动重放进单袋，``after_recover`` handler 再经
     ``_load_jobs`` 重建进中央调度器，
     **无需也不应重新注册**（重注册会撞 ``schedule`` 的 job_id
@@ -446,8 +446,8 @@ def use_cron(agent: Agent) -> None:
                 @self.hooks.after_create
                 def _(agent):
                     # after_create 只在 create 管线触发：此刻 _nodes 已
-                    # 注册、state 写闸门已解开，schedule 可用；recover
-                    # 时任务由 _restore 自动重建，不会走到这里
+                    # 注册、state 可直接写（无写闸门，D5），schedule 可用；
+                    # recover 时任务由 _restore 自动重建，不会走到这里
                     scheduler = agent.inject(cron_scheduler_key)
                     scheduler.schedule(
                         agent.node_id, "3 2 * * *",
