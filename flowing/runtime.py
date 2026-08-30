@@ -78,11 +78,14 @@
 
 ``create_agent`` 与 ``recover_agent`` 是**两个函数**，共用同一管线结构，
 差异仅收窄为两处：① ``node_id`` 来源（新 UUID vs 已有 id，身份连续）；
-② setup 后是否 ``instance._restore()``。**禁止合并**成带 ``resume`` flag 的单函数。
-两条管线在各自的新实例上各跑一次 ``setup()``（recover 无独立 ``recover()`` 方法），故
-``setup()`` 必须可重入（见 ``flowing.agent.Agent.setup``）。持久化状态的
-声明（``Agent.register_state``）发生在 setup 中——它先于恢复重放执行，
-声明永远先于重放就位。
+② 恢复管线多一步 ``instance._restore()``（双袋重放，**D2 重排**：在
+``before_recover`` 之前完成——重放是读/加载，放钩子前无碍；setup 是写，
+必须在钩子后：阻断时 setup 未跑、无新写入，一致）。**禁止合并**成带
+``resume`` flag 的单函数。两条管线在各自的新实例上各跑一次 ``setup()``
+（recover 无独立 ``recover()`` 方法），故 ``setup()`` 必须可重入（见
+``flowing.agent.Agent.setup``）。持久化状态的声明（``Agent.register_state``）
+发生在 setup 中——恢复管线重放**先于** setup 完成（无 schema 装袋，声明
+后 default 读出回退，不冲突）。
 
 .. code-block:: text
 
@@ -90,10 +93,13 @@
       get_agent_class(agent_type)      # 类型名 → 类（惰性解析）
       → __new__ + node_id / runtime / _parent_id 绑定
       → __init__（同步骨架，含 _open_stores 建立持久化后端与 _extra，P3-03）
+      → 身份四键整写 meta.json（D12：agent_type / parent_agent_id /
+        created_at / args，JSON 整写、非状态、Runtime 属主；before_create
+        对 kwargs 的改写不落盘——恢复时经 before_recover 重新表达）
       → before_create 钩子（create 管线专属——recover 不触发；可改写 kwargs）
       → setup(**kwargs)
       → PENDING 检查（固定步骤，非钩子）
-      → 池元数据 + 初始 state 写盘（agent_type / parent_agent_id / created_at / args）
+      → 池注册（core 名录 + _agent_pool 内存条目）
       → _nodes 注册（创建即注册，结构保证「不可能创建而不注册」）
       → after_create 钩子
       → 常驻工作循环 Task 启动
@@ -104,12 +110,13 @@
       → args = 持久化 args，override_args 覆盖（override 覆盖持久化值）
       → __new__ + node_id = agent_id（已有 id，身份连续）
       → __init__（同步骨架，含 _open_stores，P3-03）
+      → instance._restore()（只有 recover 有这一步；Agent 双袋重放
+        core.jsonl / state.jsonl——D2 前移到 before_recover 之前）
       → before_recover（可改写 args）
       → setup(**args)（触发 before/after_recover 钩子对，
-        **不再触发** before_create/after_create）
+        **不再触发** before_create/after_create；setup 写 state 不再被
+        重放覆盖）
       → PENDING 检查
-      → instance._restore()（只有 recover 有这一步；Agent 重放自己
-        session 目录的 tree.jsonl / state.jsonl）
       → _nodes 注册
       → after_recover
       → 常驻工作循环 Task 启动
@@ -400,9 +407,10 @@ _FRAMEWORK_CONFIG_DEFAULTS: dict[str, Any] = {
 _POOL_META_KEYS: tuple[str, ...] = (
     "agent_type", "parent_agent_id", "created_at", "args",
 )
-"""池元数据在 agent 自己 ``state.jsonl`` 中的框架核心裸名键（模块 docstring
-§9「元数据持久化」的落点；create 管线第 7 步写入，池扫描 / 恢复据此重建
-``_agent_pool`` 条目）。内部 API，不属稳定契约。
+"""身份四键（D12）：create 管线第 3b 步整写进 agent 自己 session 目录的
+``meta.json``（JSON 整写、非状态、Runtime 属主）；池扫描 / 跨进程恢复
+经 ``_read_pool_meta`` 读回重建 ``_agent_pool`` 条目。内部 API，
+不属稳定契约。
 """
 
 _current_project_root: ContextVar[Path | None] = ContextVar(
@@ -1225,6 +1233,11 @@ class Runtime:
            ``KeyError``，R9 节归档留档态）。
         3. ``instance.__init__(...)``（同步骨架，**含** ``_open_stores``
            建立持久化后端与 ``_extra``，P3-03 裁决）。
+        3b. **身份四键整写 ``meta.json``**（D2/D12）：``agent_type`` /
+            ``parent_agent_id`` / ``created_at`` / ``args``，JSON 整写、
+            非状态、Runtime 属主。前置条件全部在 setup 前已知（args 来自
+            调用方；before_create 对 kwargs 的改写不落盘——恢复时经
+            ``before_recover`` 重新表达）。
         4. ``kwargs = await hooks.before_create.dispatch(instance, kwargs)``
            —— 可改写 kwargs。**定位**：``setup()`` 刻意不区分 create /
            recover（两管线各跑一次、作用相同），「只应在创建时做、恢复时
@@ -1247,12 +1260,12 @@ class Runtime:
            ``flowing.errors.UnknownHookPointError``，消息列出未消费的
            hook_name 与方法名。
         7. 池注册：全局 ``core`` 名录写入新 ``agent_id``（``state("core")
-           ["agents"]`` 追加，写透）+ 池元数据 + 初始 state 写盘：
-           ``_agent_pool[node_id]``（``agent_type`` /
-           ``parent_agent_id`` / ``created_at`` / ``args=kwargs``）——**args 是
-           Agent 身份的一部分**，作为框架核心裸名键持久化到 state.jsonl
-           （单袋，无命名空间），恢复时
-           自动读取；因此 ``**kwargs`` 应可 JSON 序列化（不可序列化值初版仅约定
+        7. 池注册：全局 ``core`` 名录写入新 ``agent_id``（``state("core")
+           ["agents"]`` 追加，写透）+ ``_agent_pool[node_id]``（``agent_type`` /
+           ``parent_agent_id`` / ``created_at`` / ``args``）——**args 是
+           Agent 身份的一部分**（身份四键已在第 3b 步整写进 ``meta.json``，
+           D12；本步仅构建内存池条目，args 用 before_create 改写后的最终值）。
+           因此 ``**kwargs`` 应可 JSON 序列化（不可序列化值初版仅约定
            为不被持久化，恢复时缺失）。
         8. ``_nodes[node_id] = instance``（创建即注册，结构保证「不可能创建而
            不注册」）。
@@ -1361,6 +1374,24 @@ class Runtime:
         # 目录存在性检查已过，此处 mkdir 即「创建即注册」的物理侧）
         resolved_session.mkdir(parents=True, exist_ok=True)
         instance.__init__()   # 第 3 步：同步骨架
+        # 第 3b 步（D2/D12）：身份四键整写 meta.json（JSON 整写、非状态、
+        # Runtime 属主）。前置条件核对：agent_type/parent_agent_id/args
+        # 来自调用方、created_at 现取、session_dir 由管线预绑——全部在
+        # setup 前已知，可行；before_create 对 kwargs 的改写不落盘（恢复
+        # 时经 before_recover 重新表达，两条路径自洽）
+        created_at = datetime.now(timezone.utc).isoformat()
+        try:
+            json.dumps(kwargs)   # args 应可 JSON 序列化；不可序列化值初版不被持久化（恢复时缺失）
+            persisted_args = kwargs
+        except TypeError:
+            _logger.warning("agent %s 的 args 不可 JSON 序列化，meta.json 按空 args 持久化", node_id)
+            persisted_args = {}
+        (resolved_session / "meta.json").write_text(json.dumps({
+            "agent_type": agent_type,
+            "parent_agent_id": instance._parent_id,
+            "created_at": created_at,
+            "args": dict(persisted_args),
+        }, ensure_ascii=False, indent=2), encoding="utf-8")
         kwargs = await instance.hooks.before_create.dispatch(instance, kwargs)   # 第 4 步：可改写 kwargs
         await instance.setup(**kwargs)   # 第 5 步
         # 第 6 步：PENDING 检查（固定步骤，非钩子；R-05 落实为模块级
@@ -1381,33 +1412,13 @@ class Runtime:
             **core.get("session_dirs", {}),
             node_id: self._store_session_dir(instance._session_dir),
         }   # 名录平行映射：agent_id → session 目录（根内相对 / 根外绝对；池扫描与恢复据此定位）
-        created_at = datetime.now(timezone.utc).isoformat()
-        try:
-            json.dumps(kwargs)   # args 应可 JSON 序列化；不可序列化值初版不被持久化（恢复时缺失）
-            persisted_args = kwargs
-        except TypeError:
-            _logger.warning("agent %s 的 args 不可 JSON 序列化，池元数据按空 args 持久化", node_id)
-            persisted_args = {}
         self._agent_pool[node_id] = {
             "agent_type": agent_type,
             "parent_agent_id": instance._parent_id,   # 存翻译后的实际值，recover 直接回绑
             "created_at": created_at,
             "session_dir": self._store_session_dir(instance._session_dir),   # 自定义 session 目录（None 时为默认路径的存储形式）
-            "args": dict(persisted_args),     # args 是 Agent 身份的一部分
+            "args": dict(kwargs),     # args 是 Agent 身份的一部分；内存条目用 before_create 改写后的最终值（与 meta.json 的原始值对应，恢复时经 before_recover 再改写）
         }
-        # 第 7 步（续）：池元数据作为框架核心裸名键持久化到该 agent 自己的
-        # state.jsonl（单袋，无命名空间——池扫描 / 跨进程恢复据此重建
-        # _agent_pool 条目；恢复时经 _restore 无 schema 装袋自动读回）；
-        # 直写 _persisted + store.submit（管线专属写径，不经 __setitem__）
-        bag = instance._state_bag
-        for meta_key, meta_value in (
-            ("agent_type", agent_type),
-            ("parent_agent_id", instance._parent_id),
-            ("created_at", created_at),
-            ("args", dict(persisted_args)),
-        ):
-            bag._persisted[meta_key] = meta_value
-            bag._store.submit({"op": "set", "key": meta_key, "value": meta_value})
         self._nodes[node_id] = instance   # 第 8 步：创建即注册
         await instance.hooks.after_create.dispatch(instance)   # 第 9 步
         instance._loop_task = asyncio.create_task(instance._work_loop())   # 第 10 步：常驻工作循环 Task 启动（具名句柄，destroy 第 2 步的取消落点）
@@ -1419,9 +1430,10 @@ class Runtime:
         .. rubric:: 功能介绍
 
         框架核心层方法。从 agent 池元数据 + 该 agent 自己的 session 目录
-        （``tree.jsonl`` / ``state.jsonl``）重建实例。与 ``create_agent`` 共用
-        管线结构，差异仅两处：``node_id`` 用已有 id；setup 后多一步
-        ``instance._restore()``。
+        （``tree.jsonl`` / ``core.jsonl`` / ``state.jsonl`` / ``meta.json``）
+        重建实例。与 ``create_agent`` 共用
+        管线结构，差异仅两处：``node_id`` 用已有 id；恢复多一步
+        ``instance._restore()``（D2 重排：位于 ``before_recover`` 之前）。
 
         .. rubric:: 设计动机
 
@@ -1461,18 +1473,23 @@ class Runtime:
            ``_session_dir``（``meta["session_dir"]`` 回绑；缺省
            ``persist_dir / agent_id``，兼容旧数据）。
         5. ``__init__``（同步骨架，含 ``_open_stores`` 建立持久化后端与
-           ``_extra``，P3-03 裁决）→ ``args = await hooks.before_recover.dispatch(instance,
-           args)``（可改写）→ ``await instance.setup(**args)``（触发
-           before/after_recover 钩子对，**不再触发** before_create/after_create）。
-        6. **PENDING 检查**（固定步骤，非钩子；含 S-29 扩展——
+           ``_extra``，P3-03 裁决）。
+        6. ``await instance._restore()`` —— **只有 recover 有这一步**；
+           Agent 双袋重放自己 session 目录的 ``tree.jsonl`` /
+           ``core.jsonl`` / ``state.jsonl``（**D2 重排**：前移到
+           ``before_recover`` 之前——重放是读/加载，放钩子前无碍）。
+        7. ``args = await hooks.before_recover.dispatch(instance, args)``
+           （可改写）→ ``await instance.setup(**args)``（触发
+           before/after_recover 钩子对，**不再触发** before_create/
+           after_create；setup 中写 state 合法且不被重放覆盖——先重放
+           后 setup，见规格 §3.3）。
+        8. **PENDING 检查**（固定步骤，非钩子；含 S-29 扩展——
            ``hooks._pending_on`` 非空 → ``UnknownHookPointError``，
            同 create 管线第 6 步）。
-        7. ``await instance._restore()`` —— **只有 recover 有这一步**；
-           Agent 重放自己 session 目录的 ``tree.jsonl`` / ``state.jsonl``
-           （setup 中 ``register_state`` 声明的状态键此刻已就位）。
-        8. ``_nodes`` 注册。
-        9. ``await hooks.after_recover.dispatch(instance)``。
-        10. 常驻工作循环 Task 启动，返回 instance。
+        9. ``_nodes`` 注册。
+        10. ``await hooks.after_recover.dispatch(instance)`` —— 语义从
+            「恢复完成」变「setup 完成后的恢复后钩子」。
+        11. 常驻工作循环 Task 启动，返回 instance。
 
         - 恢复后不变量：已持久化消息全部在（可继续对话）；``current_head_id``
           指向消息树中最后持久化的消息；队列待消费消息在，恢复后作为新逻辑 Turn
@@ -1504,7 +1521,7 @@ class Runtime:
 
         .. rubric:: 调用关系（审计）
 
-        - 调用：``self.get_agent_class()``（管线第 2 步）；``flowing.hooks.HookList.dispatch``（before_recover / after_recover）；``instance.setup()``（管线第 5 步）；``instance._restore()``（管线第 7 步，仅 recover，见 ``flowing.agent.Agent._restore``）
+        - 调用：``self.get_agent_class()``（管线第 2 步）；``flowing.hooks.HookList.dispatch``（before_recover / after_recover）；``instance.setup()``（管线第 7 步）；``instance._restore()``（管线第 6 步，仅 recover，见 ``flowing.agent.Agent._restore``）
         - 被调：``flowing.runtime.Runtime.get_agent``（「有 key 无 value → 现场恢复」，每次触发）；子项目 ``main()`` 恢复策略（用户代码）
 
         .. seealso:: :meth:`flowing.runtime.Runtime.create_agent`、
@@ -1547,15 +1564,18 @@ class Runtime:
                 f"（{instance._session_dir}）——按空 session 恢复")
             instance._session_dir.mkdir(parents=True, exist_ok=True)
         instance.__init__()   # 第 5 步：同步骨架
+        # 第 6 步（D2 重排）：_restore 前移到 setup 前——双袋重放（core +
+        # default）先做完，setup 中写 state 不再被重放覆盖、读 state 可见
+        # 持久值（闸门职责由「先重放后 setup」结构性替代，见规格 §3.3）
+        await instance._restore()   # 仅 recover 有；重放 tree.jsonl / core.jsonl / state.jsonl（后端已在 __init__ 建立，P3-03）
         args = await instance.hooks.before_recover.dispatch(instance, args)   # 可改写 args
         await instance.setup(**args)   # 触发 before/after_recover 钩子对（不触发 before/after_create）
-        # 第 6 步：PENDING 检查（同 create 管线——R-05 落实为模块级
+        # 第 7 步：PENDING 检查（同 create 管线——R-05 落实为模块级
         # _check_pending，含 S-29 的 _pending_on 结算检查）
         _check_pending(instance, meta["agent_type"])
         # 模型初始解析（同 create 管线落点；setup 已直接赋 self.model 则跳过）
         if "model" not in instance.__dict__:
             instance.model = instance._resolve_model_tag(instance.model_tag)
-        await instance._restore()   # 第 7 步：仅 recover 有；重放 tree.jsonl / state.jsonl（后端已在 __init__ 建立，P3-03）
         self._nodes[agent_id] = instance   # 第 8 步：创建即注册
         await instance.hooks.after_recover.dispatch(instance)   # 第 9 步
         instance._loop_task = asyncio.create_task(instance._work_loop())   # 第 10 步：常驻工作循环 Task 启动（具名句柄，destroy 第 2 步的取消落点）
@@ -1637,8 +1657,9 @@ class Runtime:
 
         .. rubric:: 行为规约
 
-        - 现场恢复流程：查池 → 见 key 无 value → 读子 agent 的 ``tree.jsonl`` +
-          ``state.jsonl``（按元数据 ``agent_type`` 重建实例）→ 重建消息级树/状态
+        - 现场恢复流程：查池 → 见 key 无 value → 读子 agent 的 ``meta.json``
+          （身份）+ ``tree.jsonl`` / ``core.jsonl`` / ``state.jsonl``
+          （按元数据 ``agent_type`` 重建实例）→ 重建消息级树/状态
           → 绑定 session → 返回实例。
         - 因可能触发异步恢复管线，本方法是协程。
         - 非行为：不递归恢复子 agent 的子 agent（逐层惰性）；不做模糊匹配。
@@ -1691,7 +1712,8 @@ class Runtime:
         ``_nodes``（活体表，经 ``destroy()`` 摘除）、``_agent_pool``
         （池注册表，仅 Agent 有条目）、全局 ``core`` 名录（``state("core")
         ["agents"]``，写透）。**保留文件**：各 session 目录（``tree.jsonl`` /
-        ``state.jsonl``）原样留档——归档 ≠ 删除记录。``node_id`` 可为任意
+        ``core.jsonl`` / ``state.jsonl`` / ``meta.json``）原样留档——归档 ≠
+        删除记录。``node_id`` 可为任意
         ``_nodes`` / 池成员（Agent 或 Workflow——二者都注册 ``_nodes``、都有
         ``_parent_id`` 与 ``destroy()``，本方法不区分类型）。
 
@@ -1770,7 +1792,8 @@ class Runtime:
                 if nid not in to_archive and getattr(node, "_parent_id", None) == cur:
                     stack.append(nid)
         # 2. 清理父侧 _child_ids（父为活 Agent 时，写透整表）——archive 是显式
-        #    遗忘通道，对「_child_ids 只增不改」的受控例外
+        #    遗忘通道，对「_child_ids 只增不改」的受控例外；child_ids 核心键
+        #    在 core 袋（D1），写透目标为 _core_state
         for aid in to_archive:
             meta = self._agent_pool.get(aid)
             parent_id: str | None = (
@@ -1781,7 +1804,7 @@ class Runtime:
                 for name, cid in list(parent._child_ids.items()):
                     if cid == aid:
                         del parent._child_ids[name]
-                parent._state_bag["child_ids"] = dict(parent._child_ids)
+                parent._core_state["child_ids"] = dict(parent._child_ids)
         # 3. destroy 仍存活的节点（多态分派：Agent.destroy / Workflow.destroy——
         #    后者级联归档其子；已归档子跳过，互调幂等）
         for aid in to_archive:
@@ -2496,10 +2519,11 @@ class Runtime:
         """设置持久化目录（可选初始化步骤，``mount()`` 之前调用）。
 
         功能与动机：目录内两类条目并列——① 每 agent 一 session 目录
-        （``agent_id == session_id``，父子平级），内含两文件：
-        ``tree.jsonl``（一行一个 Message + tombstone 等变更记录行）
-        与 ``state.jsonl``（单袋 set/delete 行——一个 Agent 一袋、无命名空间，
-        框架核心键裸名、插件键带注册名前缀）；
+        （``agent_id == session_id``，父子平级），内含文件：
+        ``tree.jsonl``（一行一个 Message + tombstone 等变更记录行）、
+        ``core.jsonl``（核心袋，框架私有）+ ``state.jsonl``（默认袋
+        set/delete 行——框架核心键裸名、插件键带注册名前缀）与
+        ``meta.json``（身份四键，JSON 整写，D12）；
         ② **全局命名空间文件**：``<namespace>.jsonl`` 一空间一文件
         （Runtime/插件级状态，``core`` 含已注册 agent id 名录——池 key 的
         唯一权威来源；显式删除 = 删 session 目录 + 删名录项的一次操作）。
@@ -2774,41 +2798,22 @@ class Runtime:
             self._agent_pool[agent_id] = self._read_pool_meta(session_dir, agent_id)
 
     def _read_pool_meta(self, session_dir: Path, agent_id: str) -> dict[str, Any]:
-        """从 session 目录的 ``state.jsonl`` 解析池元数据（扫描专用；内部 API）。
+        """从 session 目录的 ``meta.json`` 解析池元数据（扫描专用；内部 API）。
 
-        手解而非走 ``FileRecordStore.replay``——扫描是纯读巡检，不应产生
-        迁移回写等副作用；容错口径与重放一致（撕裂末行截断），损坏行只
-        告警跳过（权威重放归 ``Agent._restore`` 的 CorruptionError 路径）。
-        元数据键 = ``_POOL_META_KEYS``（create 管线第 7 步写入）。
+        ``meta.json`` 是身份四键（agent_type / parent_agent_id / created_at
+        / args）的 JSON 整写文件（create 管线第 3b 步写入，D12）。**决策 7**：
+        ``meta.json`` 缺失即失败（FileNotFoundError），不回退读旧
+        ``state.jsonl``——历史 session（无 meta.json）无效。
         """
-        meta: dict[str, Any] = {
-            "agent_type": "",
-            "parent_agent_id": self.node_id,
-            "created_at": "",
-            "session_dir": self._store_session_dir(session_dir),
-            "args": {},
-        }
-        path = session_dir / "state.jsonl"
+        path = session_dir / "meta.json"
         if not path.exists():
-            warnings.warn(
-                f"池扫描：名录中 {agent_id} 对应的 state.jsonl 缺失（{path}）"
-                "——按缺省元数据登记（可诊断告警，不按空 session 静默处理）")
-            return meta
-        segments = path.read_bytes().split(b"\n")
-        segments.pop()   # 撕裂末行截断（与 FileRecordStore 同口径）
-        for lineno, seg in enumerate(segments, start=1):
-            if not seg:
-                continue
-            try:
-                record = json.loads(seg)
-            except json.JSONDecodeError:
-                _logger.warning("池扫描跳过损坏行 %s:%d", path, lineno)
-                continue
-            if not isinstance(record, dict) or record.get("op") != "set":
-                continue
-            key = record.get("key")
-            if key in _POOL_META_KEYS:
-                meta[key] = record.get("value")
+            raise FileNotFoundError(
+                f"池扫描：名录中 {agent_id} 对应的 meta.json 缺失（{path}）"
+                "——身份元数据不兼容（决策 7：历史 session 无效，不回退读旧 state.jsonl）")
+        meta = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(meta, dict) or not isinstance(meta.get("args"), dict):
+            raise ValueError(f"池扫描：{agent_id} 的 meta.json 形态损坏: {path}")
+        meta["session_dir"] = self._store_session_dir(session_dir)   # 目录在 core 名录平行映射，meta.json 不含
         return meta
 
     def _ensure_persist_ready(self) -> None:

@@ -151,13 +151,13 @@ async def test_t118_archive_cleans_parent_child_ids(tmp_path):
     parent = await runtime.create_agent("test-agent")
     child = await parent.create_subagent("test-agent", name="bee")
     assert parent._child_ids["bee"] == child.node_id
-    await parent._state_bag._store.drain()
+    await parent._core_state._store.drain()
     await runtime.archive_agent(child.node_id)
     assert "bee" not in parent._child_ids
-    assert parent._state_bag["child_ids"] == {}   # 写透整表
-    await parent._state_bag._store.drain()
-    # 落盘验证：state.jsonl 末条 child_ids 记录为空表
-    lines = (parent._session_dir / "state.jsonl").read_text(encoding="utf-8").splitlines()
+    assert parent._core_state["child_ids"] == {}   # 写透整表（core 袋，D1）
+    await parent._core_state._store.drain()
+    # 落盘验证：core.jsonl 末条 child_ids 记录为空表
+    lines = (parent._session_dir / "core.jsonl").read_text(encoding="utf-8").splitlines()
     child_ids_records = [
         json.loads(line) for line in lines
         if '"child_ids"' in line and json.loads(line).get("key") == "child_ids"

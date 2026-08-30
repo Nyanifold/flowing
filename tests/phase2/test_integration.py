@@ -257,14 +257,14 @@ async def test_t126_no_write_gate_whole_lifecycle(tmp_path):
     agent2 = await runtime.create_agent("sub-in-setup")
     assert len(agent2._children) == 1
     await agent2.destroy()
-    # recover：before_recover 写 state 不抛错（阶段 A 管线 setup 先于 _restore，
-    # 该写被重放覆盖——最终值以磁盘为准）
+    # recover：before_recover（_restore 之后，D2 重排）写 state 不抛错且保留
+    # ——重放先于钩子完成，钩子写不再被覆盖（规格 §3.3）
     agent3 = await runtime.create_agent("recover-gate")
     agent3.state.early = 5
     await agent3.destroy()
     recovered = await runtime.recover_agent(agent3.node_id)
     assert RecoverGateAgent.gate_blocked == []
-    assert recovered.state.early == 5   # 重放值在（before_recover 的写被覆盖）
+    assert recovered.state.early == 1   # before_recover 的写保留（重放已完成）
     recovered.state.early = 6   # 写透恢复可用
     await runtime.shutdown()
 
@@ -483,3 +483,98 @@ async def test_a8_credential_boundary(tmp_path):
     agent_blob = json.dumps(dataclasses.asdict(agent.snapshot()), default=str)
     assert secret not in agent_blob
     await runtime.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# 双袋结构（D1）与管线重排（D2/D12）
+# ---------------------------------------------------------------------------
+
+
+async def test_dual_bags_structure(tmp_path):
+    """D1：core/default 双袋建立、独立文件；agent.state = default 袋；
+    child_ids 登记在 core 袋（default 袋不含核心键）。"""
+    runtime = make_runtime(tmp_path)
+    add_fake_provider(runtime)
+    agent = await runtime.create_agent("test-agent")
+    # 双袋文件路径独立（FileRecordStore 惰性建文件——写透后实体文件才出现）
+    assert agent._core_state._store._path.name == "core.jsonl"
+    assert agent._state_bag._store._path.name == "state.jsonl"
+    assert agent.state is agent._state_bag   # state property = default 袋
+    assert agent._core_state is not agent._state_bag
+    # child_ids 在 core 袋（defaults 表登记），default 袋无核心键
+    assert "child_ids" in agent._core_state
+    assert agent._core_state["child_ids"] == {}
+    assert "child_ids" not in agent._state_bag
+    await runtime.shutdown()
+
+
+async def test_meta_json_written_before_setup(tmp_path):
+    """D2/D12：身份四键整写 meta.json——before_create 时已可读、setup 前
+    完成；身份键不进状态袋（state.jsonl 无 agent_type 行）。"""
+    runtime = make_runtime(tmp_path)
+    add_fake_provider(runtime)
+    seen: dict = {}
+
+    class MetaAgent(Agent):
+        system_prompt = Parsable("身份写盘。")
+
+        @on("before_create")
+        def _peek(self, kwargs):
+            meta = json.loads(
+                (self._session_dir / "meta.json").read_text(encoding="utf-8"))
+            seen["meta"] = meta
+            return kwargs
+
+        async def setup(self, **kwargs):
+            pass
+
+    runtime.register_agent_type("meta-agent", MetaAgent)
+    agent = await runtime.create_agent("meta-agent", order_id="x")
+    assert set(seen["meta"]) == {"agent_type", "parent_agent_id", "created_at", "args"}
+    assert seen["meta"]["agent_type"] == "meta-agent"
+    assert seen["meta"]["parent_agent_id"] == runtime.node_id
+    assert seen["meta"]["args"]["order_id"] == "x"
+    agent.state["probe"] = 1   # 触发 state.jsonl 实体化（惰性建文件）
+    await agent._state_bag._store.drain()
+    text = (agent._session_dir / "state.jsonl").read_text(encoding="utf-8")
+    assert '"agent_type"' not in text
+    await runtime.shutdown()
+
+
+async def test_recover_restore_before_setup(tmp_path):
+    """D2：recover 管线 restore 先于 setup——setup 中读 state 见持久值。"""
+    runtime = make_runtime(tmp_path)
+    add_fake_provider(runtime)
+    seen: list = []
+
+    class RestoreFirstAgent(Agent):
+        system_prompt = Parsable("恢复时序。")
+
+        async def setup(self, **kwargs):
+            seen.append(("setup", self.state.get("n")))
+
+    runtime.register_agent_type("restore-first", RestoreFirstAgent)
+    agent = await runtime.create_agent("restore-first")
+    agent.state.n = 5
+    await agent.destroy()
+    recovered = await runtime.recover_agent(agent.node_id)
+    assert seen[0] == ("setup", None)   # create 的 setup：无持久值
+    assert seen[1] == ("setup", 5)      # recover 的 setup：重放已完成（D2 重排）
+    assert recovered.state.n == 5
+    await runtime.shutdown()
+
+
+async def test_pool_scan_meta_missing_fails(tmp_path):
+    """决策 7：meta.json 缺失即失败（池扫描抛 FileNotFoundError），
+    不回退读旧 state.jsonl——历史 session 无效。"""
+    runtime = make_runtime(tmp_path)
+    add_fake_provider(runtime)
+    agent = await runtime.create_agent("test-agent")
+    await agent.destroy()
+    (agent._session_dir / "meta.json").unlink()   # 模拟历史 session（无 meta.json）
+    # 新 Runtime 同持久化根：set_persist_dir 引导重放 core 名录 → 池扫描 →
+    # 身份读取失败（fail fast）
+    runtime2 = make_runtime(tmp_path / "p2", persist=False, models=False)
+    with pytest.raises(FileNotFoundError):
+        runtime2.set_persist_dir(tmp_path / ".flowing")
+    await runtime2.shutdown()

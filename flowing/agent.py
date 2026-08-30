@@ -72,7 +72,9 @@ kwargs）→ ``setup(**kwargs)`` → **PENDING 检查** → 池元数据 +
 
 **持久化状态的职责三方分立**（最终裁决）：**机制归 Agent**——每 agent 一个
 session 目录（``agent_id`` 命名，父子平级），内含 ``tree.jsonl`` /
-``state.jsonl`` 两文件，物理读写由 Agent 持有的
+``core.jsonl``（核心袋，框架私有）/ ``state.jsonl``（默认袋）三文件与
+``meta.json``（身份四键，JSON 整写，Runtime 属主，D12），物理读写由
+Agent 持有的
 :class:`flowing.persistence.FileRecordStore` 实例执行（write-behind：提交
 同步排队、drain 任务串行落盘；三条契约与末行合并 / 墓碑
 压缩策略见 :mod:`flowing.persistence` 模块规约），不经 Runtime 中转；
@@ -1385,7 +1387,8 @@ class Agent:
     # ─────────────────── 实例属性：持久化（内部，S-31 裁决） ──────────────
 
     _session_dir: Path
-    """本 Agent 的 session 持久化目录（``tree.jsonl`` / ``state.jsonl`` 所在目录）。
+    """本 Agent 的 session 持久化目录（``tree.jsonl`` / ``core.jsonl`` /
+    ``state.jsonl`` / ``meta.json`` 所在目录）。
 
     **管线预绑**：``Runtime.create_agent(session_dir=...)`` 指定（绝对路径原样 /
     相对 ``runtime._persist_dir``），缺省 ``persist_dir / node_id``；恢复路径从池
@@ -1400,9 +1403,17 @@ class Agent:
     session 目录由管线第 2 步预绑的 ``runtime`` / ``node_id``（或
     ``create_agent(session_dir=...)``）给出，骨架期即可知）。内部 API，不属稳定契约。
     """
+    _core_state: StateView
+    """核心状态袋（``core.jsonl`` 后端内嵌，``merge_last_line=True``）；
+    框架私有——真状态 2 键（child_ids + current_head_id，阶段 C 起
+    property 透传）；不对外暴露（用户经 :attr:`state` 或
+    :meth:`register_state` 开新袋，不碰 core）。构造点同为
+    ``__init__``（经 :meth:`_open_stores`）。内部 API。
+    """
     _state_bag: StateView
-    """唯一状态袋（``state.jsonl`` 后端内嵌，``merge_last_line=True``）；
-    :attr:`state` property 的落点。构造点同为
+    """默认状态袋（``state.jsonl`` 后端内嵌，``merge_last_line=True``）；
+    :attr:`state` property 的落点；业务/插件状态键（``state.register``
+    缺省落点，阶段 D）。构造点同为
     ``__init__``（经 :meth:`_open_stores`）。内部 API。
     """
 
@@ -1621,25 +1632,33 @@ class Agent:
     # ────────────────────────── 生命周期 ──────────────────────────────────
 
     def _open_stores(self, session_dir: Path) -> None:
-        """建立本 Agent 的两个持久化后端（**内部 API，不属稳定契约**）。
+        """建立本 Agent 的持久化后端（**内部 API，不属稳定契约**）。
 
         .. rubric:: 功能介绍
 
         构造点为 ``__init__``（P3-03 裁决：管线第 2 步已绑 ``node_id`` /
         ``runtime`` 与 ``_session_dir``——经 ``create_agent(session_dir=...)``
         指定或默认 ``persist_dir / node_id``，session 目录骨架期即可知，故
-        后端随骨架建立，不再独立成管线阶段）：
+        后端随骨架建立，不再独立成管线阶段）。**双内建袋（D1）**：
 
         - ``_tree_store = FileRecordStore(session_dir / "tree.jsonl")``
           （``session_dir`` 即管线预绑的 :attr:`_session_dir`）；
+        - ``_core_state = StateView(FileRecordStore(session_dir /
+          "core.jsonl", merge_last_line=True))`` —— **核心状态袋**（框架
+          私有：child_ids / current_head_id，property 透传，阶段 C）；
         - ``_state_bag = StateView(FileRecordStore(session_dir /
-          "state.jsonl", merge_last_line=True))``。
+          "state.jsonl", merge_last_line=True))`` —— **默认状态袋**
+          （业务/插件状态，:attr:`state` property 返回）。
+
+        身份四键（agent_type / parent_agent_id / created_at / args）**不在
+        本方法**——独立 ``meta.json`` 由 Runtime 管线整写（D12，见
+        :meth:`flowing.runtime.Runtime.create_agent`）。
 
         .. rubric:: 行为规约
 
         - 调用时点固定：``__init__`` 首段（两管线同一骨架，各一次）。
         - 建立后 ``register_state`` 的声明落进 ``_state_bag`` 的
-          defaults 表（无写闸门，D5）。
+          defaults 表（无写闸门，D5）；框架核心键登记进 ``_core_state``。
         - 幂等性不要求（骨架保证单次）；重复调用属用法错误。
         - 本方法是后端**换装点**（模块 docstring「后端演进缝」）：
           未来非文件后端在此替换 ``FileRecordStore`` 构造（字段标注
@@ -1647,8 +1666,8 @@ class Agent:
 
         .. rubric:: 调用关系（审计）
 
-        - 调用：``flowing.persistence.FileRecordStore()`` 两次与
-          ``flowing.persistence.StateView()``（时机：两后端建立）
+        - 调用：``flowing.persistence.FileRecordStore()`` 三次与
+          ``flowing.persistence.StateView()``（时机：两袋建立）
         - 被调：``Agent.__init__``（时机：骨架首段，session 目录由
           管线第 2 步预绑的 :attr:`_session_dir` 给出——``create_agent(
           session_dir=...)`` 指定或默认 ``persist_dir / node_id``）
@@ -1657,11 +1676,13 @@ class Agent:
             :class:`flowing.persistence.FileRecordStore`
         """
         self._tree_store = FileRecordStore(session_dir / "tree.jsonl")
+        self._core_state = StateView(
+            FileRecordStore(session_dir / "core.jsonl", merge_last_line=True))
         self._state_bag = StateView(
             FileRecordStore(session_dir / "state.jsonl", merge_last_line=True))
-        # 框架核心键登记（裸名保留，插件声明撞之报错）：child_ids =
+        # 框架核心键登记进核心袋（裸名保留，插件声明撞之报错）：child_ids =
         # 语义名 -> agent_id 翻译表（S-34），默认空表、不落盘
-        self._state_bag._register("child_ids", {})
+        self._core_state._register("child_ids", {})
 
     def register_state(self, key: str, default: Any = None) -> StateView:
         """声明一个持久化状态键（setup 中的「建表」动作；单袋化最终裁决）。
@@ -2004,10 +2025,10 @@ class Agent:
 
         1. resolve 所有 ``_pending_turns``（``TurnResult(status="cancelled")``）
            ——调用方不挂起；
-        2. 取消工作循环 Task → **关闭两个持久化后端**（``_tree_store`` 与
-           ``_state_bag`` 的 ``close()`` = drain 排空 + 停写任务——
-           write-behind 契约②钉死的排空屏障点，不排空即销毁会静默丢
-           尾部记录）；
+        2. 取消工作循环 Task → **关闭持久化后端**（``_tree_store`` 与
+           双袋 ``_core_state`` / ``_state_bag`` 的 ``close()`` = drain
+           排空 + 停写任务——write-behind 契约②钉死的排空屏障点，
+           不排空即销毁会静默丢尾部记录）；
         3. dispatch ``before_destroy``；
         4. 深度优先递归 ``child.destroy()``（子树收集双来源：``_children``
            ∪ ``_nodes`` 按 ``_parent_id`` 扫描——覆盖「destroy 后现场
@@ -2084,7 +2105,10 @@ class Agent:
             with contextlib.suppress(asyncio.CancelledError):
                 await loop_task   # 等循环 finally 落地后再关后端（防关库后提交）
         await self._tree_store.close()   # 2b. 排空屏障 + 停写任务（契约②钉死点）
-        self._state_bag._maybe_compact(force=True)   # 2c. 压缩三时点②：destroy 收尾（请求随 _close 排空一并执行）
+        # 2c. 压缩三时点②：destroy 收尾双袋全量压缩（请求随 _close 排空一并执行）
+        self._core_state._maybe_compact(force=True)
+        await self._core_state._close()
+        self._state_bag._maybe_compact(force=True)
         await self._state_bag._close()
         await self.hooks.before_destroy.dispatch(self)   # 3.
         # 4. 深度优先递归（双来源收集：_children 生命周期子树 ∪ _nodes 按
@@ -2113,16 +2137,18 @@ class Agent:
         按首行 ``format_version`` 判读版本，低版本经
         :data:`flowing.persistence.MIGRATIONS` 迁移链升级并回写，
         见 :mod:`flowing.persistence`「格式版本与迁移」）→ 读
-        ``state.jsonl`` 恢复框架核心键最小集（``current_head_id``
-        指向最后持久化消息 + 队列待消费消息 + 池元数据）→ 将全部
-        持久化行重放进单袋状态（逐键覆盖 default）。恢复边界 =
+        ``core.jsonl`` 恢复核心袋（``child_ids`` 等框架私有键；
+        ``current_head_id`` 阶段 C 起落盘此袋并以袋为准）→ 读
+        ``state.jsonl`` 将全部持久化行重放进默认袋（逐键覆盖
+        default）。**双袋重放（D1）**。恢复边界 =
         已持久化消息；进行中的逻辑 Turn 丢弃不续跑。纯数据之外派生的
         运行时结构
         （如 cron 的定时器）由随后的 ``after_recover`` 钩子重建——
         恢复回调不再是 ``register_state`` 的参数（单袋化最终裁决）。
 
-        行为边界：调用时点固定在 recover 管线的 ``setup()`` / PENDING
-        检查之后、``after_recover`` 与 ``_nodes`` 注册之前；session 目录
+        行为边界：调用时点固定在 recover 管线的 ``__init__`` 之后、
+        ``before_recover`` 之前（D2 重排：restore 是读/加载，放钩子前
+        无碍——阻断只丢内存重建，磁盘状态未动）；session 目录
         不存在（池元数据与目录不一致）时按空 session 处理并报出可诊断
         错误。物理格式逻辑（行结构 / 末行合并）在内部
         persistence 模块，本方法只是驱动者。
@@ -2130,11 +2156,11 @@ class Agent:
         .. rubric:: 调用关系（审计）
 
         - 调用：``flowing.persistence.RecordStore.replay()``（时机：
-          tree.jsonl 与 state.jsonl 两路重放，经 ``_tree_store`` 与
-          ``_state_bag._store``）
+          tree.jsonl / core.jsonl / state.jsonl 三路重放，经
+          ``_tree_store`` / ``_core_state._store`` / ``_state_bag._store``）
         - 被调：``flowing.runtime.Runtime.recover_agent`` 管线（时机：
-          ``setup()`` / PENDING 检查之后、``after_recover`` 与
-          ``_nodes`` 注册之前——只有 recover 管线调用）
+          ``__init__`` 之后、``before_recover`` 之前——只有 recover
+          管线调用）
 
         .. seealso:: :meth:`flowing.runtime.Runtime.recover_agent`、
             :meth:`register_state`、:class:`StateView`、
@@ -2215,7 +2241,24 @@ class Agent:
             if self.current_head_id == provider_id:
                 # provider 消息本是分支尾：占位消息成为新尾，head 随之上移
                 self.current_head_id = placeholder.id
-        # ②③ 读 state.jsonl（_state_bag._store.replay()）逐键重放进单袋
+        # ② 读 core.jsonl（_core_state._store.replay()）逐键重放进核心袋
+        #    （直写 _persisted 绕过写通道；current_head_id 阶段 C 起落盘
+        #    此袋并以袋为准——本阶段仍树推导，见 ①）
+        core_persisted = self._core_state._persisted
+        for record in list(self._core_state._store.replay()):
+            op = record.get("op")
+            if op == "set":
+                core_persisted[record["key"]] = record["value"]
+            elif op == "delete":
+                core_persisted.pop(record["key"], None)
+            # 未知行形态（meta 已被 replay 吸收）静默跳过
+        # ②b S-34：重放出的 child_ids 直接装入 _child_ids 内存镜像
+        #    （setup 阶段无子代创建，装入无合并冲突；阶段 C property 化后
+        #    镜像删除，改读 core 袋）
+        replayed_child_ids = core_persisted.get("child_ids")
+        if isinstance(replayed_child_ids, dict):
+            self._child_ids.update(replayed_child_ids)
+        # ③ 读 state.jsonl（_state_bag._store.replay()）逐键重放进默认袋
         #    （直写 _persisted 绕过写通道；无 schema：持久化键
         #    无论声明与否一律装袋，P3-04 裁决——逐键覆盖 register_state 的
         #    default 是读出回退序的天然结果）
@@ -2227,13 +2270,9 @@ class Agent:
             elif op == "delete":
                 persisted.pop(record["key"], None)
             # 未知行形态（meta 已被 replay 吸收）静默跳过
-        # ③b S-34：重放出的 child_ids 直接装入 _child_ids 内存镜像
-        #    （setup 阶段无子代创建，装入无合并冲突）
-        replayed_child_ids = persisted.get("child_ids")
-        if isinstance(replayed_child_ids, dict):
-            self._child_ids.update(replayed_child_ids)
-        # ④ 压缩三时点①：恢复重放后请求 state.jsonl 全量压缩
-        #    （_state_bag._maybe_compact(force=True)；物理重写在 drain 任务）
+        # ④ 压缩三时点①：恢复重放后请求双袋全量压缩
+        #    （_maybe_compact(force=True)；物理重写在 drain 任务）
+        self._core_state._maybe_compact(force=True)
         self._state_bag._maybe_compact(force=True)
         # ⑤ 派生运行时结构（cron 定时器等）由随后的 after_recover 钩子重建
 
@@ -3816,7 +3855,7 @@ class Agent:
         self._children[child.node_id] = child   # 进入生命周期子树（node_id 为 key；创建即注册由 create_agent 管线完成）
         if name is not None:   # S-34：语义名 -> agent_id 登记并写透（未命名子 Agent 不入表；语义名只存在父侧本表，子实例不自持）
             self._child_ids[name] = child.node_id
-            self._state_bag["child_ids"] = dict(self._child_ids)   # 写透整表（末行合并防膨胀）
+            self._core_state["child_ids"] = dict(self._child_ids)   # 写透整表进核心袋（末行合并防膨胀；D1）
         return child
 
     async def invoke_subagent(
