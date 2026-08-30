@@ -140,10 +140,11 @@ P1-15/P1-18 裁决）；``source_dir`` 缺省时只查注册表。形态判别�
     │           │ 方法——它们经 ``agent.``/``self.``    │                │
     │           │ 前缀访问）                           │                │
     ├───────────┼──────────────────────────────────────┼────────────────┤
-    │ 状态键    │ register_state 声明键的现场值        │ Agent .fya     │
-    ├───────────┼──────────────────────────────────────┼────────────────┤
     │ _extra    │ ``_extra`` 原值                      │ Agent .fya     │
     └───────────┴──────────────────────────────────────┴────────────────┘
+
+（状态键行已随 D10 取消——状态量不再自动暴露进模板上下文；需进模板走
+``env`` / ``config`` / ``_extra`` 等显式通道。）
 
 - ``env`` / ``config`` / ``agent`` / ``self`` 是**保留名**：Agent 实例属性禁止同名，
   框架检测到抛 ``ReservedAttributeError``——否则摊平会覆盖框架
@@ -1159,10 +1160,6 @@ class Parsable(Generic[T]):
         - 上下文构建等价于（键优先级从低到高，后者覆盖前者）::
 
               ctx = {
-                  **state_keys,              # 已注册状态键的现场值（模板
-                                             # 自动暴露状态量的唯一通道——
-                                             # P3-03 配套后 __getattr__ 无
-                                             # 状态回退）
                   **agent._extra,            # .fya 扩展字段（原值并入；
                                              # Parsable 经 .resolved 惰性触发）
                   **agent.__dict__,          # 实例属性摊平（不含类属性/方法——
@@ -1173,12 +1170,14 @@ class Parsable(Generic[T]):
                   "config": agent.runtime.config,
               }
 
+          **D10**：状态量不再自动暴露进模板上下文（R-6 状态键注入取消）；
+          状态量若需进模板，走 ``env`` / ``config`` / ``_extra`` 等既有
+          显式通道。
           ``env``/``config`` 在摊平之后写入——实例属性占用保留名时会被
           框架检测并抛 ``ReservedAttributeError``，而不是静默互相覆盖。
-          状态键 / ``_extra`` 键与实例属性的重名在 ``register_state`` /
-          解析期检测，运行期不撞车。
+          ``_extra`` 键与实例属性的重名在解析期检测，运行期不撞车。
         - 时序约束：每次调用现场构建上下文（``env``/``config``/实例属性
-          /状态键均取当前值），构建结果不跨调用复用。
+          均取当前值），构建结果不跨调用复用。
         - ``FILE_REF`` 的路径解析需要运行时与 ``source_dir`` 基准
           （由 ``agent.source_dir`` 属性统一供给，P3-11），经
           ``Runtime.resolve_path(path, *, source_dir)`` 完成；
@@ -1196,15 +1195,14 @@ class Parsable(Generic[T]):
         .. seealso:: :meth:`resolve`、:meth:`_render`、
             ``flowing.runtime.Runtime.resolve_path``
         """
-        state_keys: dict[str, Any] = dict(getattr(agent, "_state", None) or {})
-        # R-6 落实：状态袋最小接口约定为 agent._state: dict 直读
+        # D10：模板上下文不再自动暴露状态量（取消 R-6 状态键注入）——
+        # 状态量若需进模板，走 env / config / _extra 等既有显式通道
         # 保留名检测（摊平构建前检测 agent.__dict__）——
         # 实例属性占用 env/config/agent/self 会覆盖框架注入值，fail fast
         for reserved in ("env", "config", "agent", "self"):
             if reserved in agent.__dict__:
                 raise ReservedAttributeError(reserved)
         ctx: dict[str, Any] = {
-            **state_keys,   # 状态键（优先级最低；模板自动暴露状态量的唯一通道）
             **agent._extra,
             **agent.__dict__,
             "agent": agent,   # 实例自身入口（Jinja 属性解析走 getattr，描述符 __get__ 正常触发）

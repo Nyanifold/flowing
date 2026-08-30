@@ -83,9 +83,9 @@
 必须在钩子后：阻断时 setup 未跑、无新写入，一致）。**禁止合并**成带
 ``resume`` flag 的单函数。两条管线在各自的新实例上各跑一次 ``setup()``
 （recover 无独立 ``recover()`` 方法），故 ``setup()`` 必须可重入（见
-``flowing.agent.Agent.setup``）。持久化状态的声明（``Agent.register_state``）
-发生在 setup 中——恢复管线重放**先于** setup 完成（无 schema 装袋，声明
-后 default 读出回退，不冲突）。
+``flowing.agent.Agent.setup``）。持久化状态的键登记（``agent.state.
+register``，D4）发生在 setup 中——恢复管线重放**先于** setup 完成（无
+schema 装袋，登记后已持久值优先，不冲突）。
 
 .. code-block:: text
 

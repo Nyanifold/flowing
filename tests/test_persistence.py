@@ -337,11 +337,14 @@ def test_s17_register_writes_default():
 
 
 def test_s18_undeclared_key_and_contains():
-    """S18：未注册未写键 → KeyError / get 回退；__contains__ 持久值命中。"""
+    """S18：未注册未写键 → KeyError（[]）/ AttributeError（属性式，决策 6）；
+    get 回退；__contains__ 持久值命中。"""
     view = _open_view()
     view.register("n", 0)
     with pytest.raises(KeyError):
         view["typo"]
+    with pytest.raises(AttributeError):
+        view.typo   # 属性式读未注册键 → AttributeError（决策 6）
     assert view.get("typo", "d") == "d"
     assert view.get("typo") is None
     assert "n" in view  # register 缺省即写 → 持久值命中

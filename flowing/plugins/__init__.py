@@ -219,8 +219,8 @@ class Plugin:
         ``runtime.register_state()``（全局命名空间开启；创建即 replay，
         加载/派生时机由插件内部管理）。
         （观测面无注册通道——插件状态经插件自己的只读 API 暴露，如
-        ``runtime.get_plugin("cron").jobs()``；per-agent 状态声明经
-        ``Agent.register_state()`` 在各 Agent 的 ``setup()`` 中完成，
+        ``runtime.get_plugin("cron").jobs()``；per-agent 状态键登记经
+        ``agent.state.register()`` 在各 Agent 的 ``setup()`` 中完成，
         不在本阶段。）
 
         .. rubric:: 设计动机

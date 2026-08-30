@@ -24,7 +24,6 @@ from flowing.errors import (
     RateLimitedError,
     SignalDeliveryError,
     SignalTimeoutError,
-    StateKeyError,
 )
 
 # 每个具名类型的最小合法构造（E1 遍历用；中间层无字段，直接无参构造）
@@ -68,7 +67,6 @@ _FACTORIES = {
     "SignalDeliveryError": lambda: SignalDeliveryError("ui", "perm"),
     "SignalTimeoutError": lambda: SignalTimeoutError("ui", 0.05),
     "EntryNameConflictError": lambda: EntryNameConflictError("pay", "skill"),
-    "StateKeyError": lambda: StateKeyError("count"),
     "FormatError": lambda: errors.FormatError("x"),
     "MissingFieldError": lambda: MissingFieldError("system_prompt", "Foo"),
     "MissingContextError": lambda: errors.MissingContextError(),
@@ -86,19 +84,20 @@ _FACTORIES = {
 def test_e8_all_names_importable_and_expected():
     """E8：__all__ 全部名字可导入且为预期类（spec 46 个 + X6/X7 新增 2 个）。
 
-    注：``EntryNameConflictError`` / ``StateKeyError`` 按 py-spec 原样不在
-    ``__all__`` 中（直挂根的两个跨正交类），仍可显式导入。简报 E8 原文
-    「44 个」与实际规约计数（46）不符，以 py-spec 为准。
+    注：``EntryNameConflictError`` 按 py-spec 原样不在 ``__all__`` 中（直挂根
+    的跨正交类），仍可显式导入；``StateKeyError`` 已退役删除（D6/D8）。
+    简报 E8 原文「44 个」与实际规约计数（46）不符，以 py-spec 为准。
     """
     assert len(errors.__all__) == 48
-    excluded = {"EntryNameConflictError", "StateKeyError"}
+    excluded = {"EntryNameConflictError"}
     assert set(errors.__all__) == set(_FACTORIES) - excluded
     for name in errors.__all__:
         obj = getattr(errors, name)
         assert isinstance(obj, type), name
-    # 不在 __all__ 但按 spec 存在的两个直挂根类
+    # 不在 __all__ 但按 spec 存在的直挂根类
     assert issubclass(errors.EntryNameConflictError, FlowingError)
-    assert issubclass(errors.StateKeyError, FlowingError)
+    # StateKeyError 退役（D6 删拦截 + D8 读回 KeyError/AttributeError 后无触发点）
+    assert not hasattr(errors, "StateKeyError")
 
 
 def test_e1_all_named_errors_are_flowing_errors_except_intercepted():
@@ -178,13 +177,6 @@ def test_e6_leaf_fields():
     assert (e.path, e.found, e.supported) == (Path("f.jsonl"), 99, 1)
     e = errors.CorruptionError(Path("f.jsonl"), 3)
     assert (e.path, e.lineno) == (Path("f.jsonl"), 3)
-
-
-def test_e7_state_key_error_message_template():
-    """E7：StateKeyError 消息含键名与 self.state.<key> 正确写法提示（spec 模板）。"""
-    e = StateKeyError("count")
-    assert "count" in str(e)
-    assert "self.state.count" in str(e)
 
 
 def test_leaf_messages_carry_natural_language_hints():

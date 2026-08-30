@@ -1066,12 +1066,12 @@ async def _load_skill(
     if skill.on_load is not None:  # 第 5 步：不拦截、不返回值；抛异常则加载失败上抛
         skill.on_load(agent, ctx.args)
     # 第 6 步：上下文 = agent 局部变量 + 合并 args（spec 未具名合成细节——
-    # 落实口径：复刻 Parsable._do_resolve 的摊平顺序（状态键 < _extra <
-    # 实例属性 < agent/self 入口），合并 args 置最高优先级；经
+    # 落实口径：复刻 Parsable._do_resolve 的摊平顺序（_extra < 实例属性 <
+    # agent/self 入口；D10 后状态键不再自动暴露，需进模板走显式通道），
+    # 合并 args 置最高优先级；经
     # agent.parsable 重绑定到调用方实例后走 Mapping 分支，env/config 注入
     # 与 include/FILE_REF 的 source_dir 基准随之自动就位）
     render_context = {
-        **dict(getattr(agent, "_state", None) or {}),   # 与 _do_resolve 同口径的状态键读取
         **agent._extra,
         **agent.__dict__,
         "agent": agent,

@@ -5,7 +5,8 @@
 本模块定义 Flowing 框架的**全部具名异常类型**，是框架核心层（非扩展、非应用层）
 的公共契约：``FlowingError`` 为统一根，向下按职责分为配置、注入、钩子、工具、
 子 Agent 与资源、Provider、依赖、通信、文件格式、编译十个类别（另有
-``EntryNameConflictError`` 与 ``StateKeyError`` 跨正交直接挂根）；外加一个刻意游离于
+``EntryNameConflictError`` 跨正交直接挂根；``StateKeyError`` 已退役——
+D6 删拦截 + D8 读回 KeyError/AttributeError 后无触发点）；外加一个刻意游离于
 普通错误语义之外的信号类——``Intercepted``（钩子 handler 的有意硬阻断）。
 （M-07 裁决：原 ``TurnAborted`` 内部信号类已删除——终止决策点与收尾点同在
 ``_run_turn`` 一个函数内，``break`` + ``finally`` 即可表达，无需异常载体。）
@@ -58,7 +59,6 @@
         │   ├── SignalDeliveryError
         │   └── SignalTimeoutError
         ├── EntryNameConflictError       # Agent 绑定层同 alias 冲突（直接挂根）
-        ├── StateKeyError                # 已注册状态键的裸属性写/删防遮蔽（直接挂根，P3-03 配套）
         ├── FormatVersionError           # jsonl 持久化文件格式版本不受支持（直接挂根，X6 澄清新增）
         ├── CorruptionError              # jsonl 持久化文件中间行损坏（直接挂根，X7 澄清新增）
         ├── FormatError                  # 声明式文件格式 / Parsable 求值 / 保留属性
@@ -269,8 +269,9 @@ __all__ = [
     "CorruptionError",
     "Intercepted",
 ]
-# 注：EntryNameConflictError 与 StateKeyError 刻意不在 __all__（py-spec 原样，
-# 44 个名字）；二者仍可经 flowing.errors.StateKeyError 显式导入。
+# 注：EntryNameConflictError 刻意不在 __all__（py-spec 原样，44 个名字；
+# StateKeyError 已退役删除）；仍可经 flowing.errors.EntryNameConflictError
+# 显式导入。
 
 
 class FlowingError(Exception):
@@ -2558,45 +2559,6 @@ class FormatError(FlowingError):
         :class:`flowing.parsable.Parsable`
         :meth:`flowing.runtime.Runtime.create_agent`
     """
-
-
-class StateKeyError(FlowingError):
-    """经 ``agent.xxx = v`` / ``del agent.xxx`` 写已注册状态键。
-
-    .. rubric:: 功能介绍
-
-    状态键的写路径唯一化到显式视图后的防遮蔽护栏（P3-03 配套裁决
-    「B：检查并报错」）：状态量的读写只走 ``agent.state.xxx``；
-    经实例属性语法写已注册状态键会在 ``__dict__`` 落一份普通实例
-    属性，与状态袋中的持久值形成**两份真值静默漂移**，故在发生点
-    fail-fast。读侧不涉状态——``agent.xxx`` 只命中实例属性与
-    ``_extra``，**不回退状态袋**（P3-03：显式视图唯一通道）。
-
-    .. rubric:: 行为规约
-
-    - 期待行为：消息含键名，并提示正确写法 ``self.state.<key>``。
-    - 骨架期护栏不触发本异常：袋未建立（``__dict__.get`` 探不到）
-      时赋任意名都落普通实例属性。
-    - 测试案例：前置：setup 声明 ``"count"`` → 操作：
-      ``agent.count = 1`` → 期望：抛本异常；``agent.state.count = 1``
-      → 期望：写透成功并触发 watcher 通道。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``无``（框架内无按本类捕获点；冒泡给调用方）
-    - 实例化方：``flowing.agent.Agent.__setattr__`` /
-      ``__delattr__``（时机：name 为已注册状态键）
-
-    .. seealso:: :class:`flowing.persistence.StateView`、
-        :meth:`flowing.agent.Agent.register_state`
-    """
-
-    def __init__(self, key: str) -> None:
-        self.key = key
-        super().__init__(
-            f"{key!r} 是已注册状态键：状态量读写统一走显式视图 "
-            f"self.state.{key}"
-        )
 
 
 class MissingFieldError(FormatError):

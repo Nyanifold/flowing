@@ -149,7 +149,7 @@
     ``flowing.agent.TurnContext``（逻辑 turn 执行期对象，``TurnContextInfo`` 的被投影对象）
     ``flowing.agent.Execution``（执行条目，``ExecutionInfo`` 的被投影对象）
     ``flowing.hooks.HookRegistry``（订阅通道的机制基座）
-    ``flowing.agent.Agent.register_state``（插件持久化声明，与观测正交）
+    ``flowing.agent.Agent.state``（持久化状态袋，与观测正交）
     ``flowing.runtime.Runtime.get_plugin``（插件状态的只读查询入口）
 """
 

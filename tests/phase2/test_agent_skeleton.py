@@ -1,8 +1,8 @@
 """阶段 2：Agent 骨架与状态族测试（T27–T29、T34–T39、T42–T43、T123 等）。
 
-覆盖：骨架期护栏（__setattr__/__getattr__）、register_state 冲突检测、
-state 视图读写与写透、get/set/delete 三域路由、watch 通道、provide/inject、
-destroy 的 pending 兜底与子树递归、snapshot 观测面。
+覆盖：骨架期护栏（__setattr__/__getattr__）、键注册安全化（D4）与命名
+状态空间（D3）、state 视图读写与写透、get/set/delete 三域路由、watch
+通道、provide/inject、destroy 的 pending 兜底与子树递归、snapshot 观测面。
 """
 
 from __future__ import annotations

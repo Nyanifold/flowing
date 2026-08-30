@@ -11,9 +11,7 @@
   ``ProvideNode`` 协议（``node_id`` / ``_provided`` / ``runtime`` 自指
   / ``provide`` / ``inject``），自注册为 ``_nodes`` 首条目（S-12）。
 - 假 Agent：``runtime`` / ``_extra`` / ``source_dir`` / ``__dict__``（普通
-  实例）/ 状态键袋 ``_state: dict``（R-6 推测：与
-  ``flowing.parsable._do_resolve`` 约定的最小状态袋接口，阶段 2 接真
-  Agent 的 ``register_state`` 存储符号时对齐）/ ``ProvideNode`` 协议面
+  实例）/ ``ProvideNode`` 协议面
   / ``parsable()`` 绑定工厂（对应阶段 2 的 ``Agent.parsable``，此处为
   最小替身：构造后置 ``_instance``）。
 """
@@ -78,7 +76,7 @@ class FakeAgent:
         self.runtime = runtime
         self.source_dir = None if source_dir is None else Path(source_dir)
         self._extra = {} if extra is None else extra
-        self._state = {} if state is None else state  # R-6：状态键袋最小接口
+        # D10：parsable 不再读 agent._state——无状态袋接口（R-6 取消）
         # ProvideNode 协议面
         self.node_id = node_id
         self._provided: dict[str, Any] = {}

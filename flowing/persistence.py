@@ -112,10 +112,10 @@ append-only 模型下首行天然稳定（sync 原子重写时元数据记录原
 
 - Agent 代码只见：``_persist_message`` / ``_persist_tree_record``
   （提交）、``_restore``（重放驱动）、``destroy``（收尾）；
-- Runtime 代码只见：``register_state`` / ``state(ns)`` /
+- Runtime 代码只见：``register_state`` / ``states`` /
   ``shutdown`` 收尾；
 - 插件**完全接触不到** ``RecordStore``——Agent 作用域走
-  ``agent.register_state`` / ``agent.state``（显式视图唯一通道，
+  ``agent.state.register`` / ``agent.state``（显式视图唯一通道，
   P3-03），全局走
   ``runtime.register_state`` / ``runtime.states``；超出 jsonl
   状态袋的持久化需求（自有格式文件、数据库）由插件自管文件。
@@ -871,16 +871,16 @@ class StateView:
     4. **透明性**：末行合并与压缩不改变任何逻辑内容——插件观察到
        的字典永远等于「全部操作的顺序重放结果」。
     5. **隔离性（约定级）**：插件键名按约定带注册名 underscore 前缀
-       （如 cron 插件的 ``cron_jobs``）；框架核心键裸名保留（如
-       ``current_head_id``），插件声明撞核心键 → ``register_state``
-       报错。插件间互写在单袋内无机制阻止，靠前缀约定与声明期冲突
-       检测约束。
+       （如 cron 插件的 ``cron_jobs``）；框架核心键在 core 袋（D1，
+       default 袋无核心键，用户不碰 core——决策 2）。插件间互写在
+       default 袋内无机制阻止，靠前缀约定约束。
     6. **fail fast**：不可 JSON 序列化的值在**写入时**报错，不会
-       留到恢复时爆雷；读从未写入且未声明的键 → ``KeyError``。
-     - 无 schema（P3-04 裁决）：**直接赋值即写入**——不强制先
-       ``register_state``；声明只提供 default 与声明期冲突检测。recover
-       重放把全部持久化键**直接装袋**（无论是否声明过），不存在
-       「未声明键」特例。
+       留到恢复时爆雷；读从未写入且未 register 的键 → ``KeyError``
+       （``[]``）/ ``AttributeError``（属性式，决策 6）。
+    - 无 schema（P3-04 裁决）：**直接赋值即写入**——不强制先
+      ``register``；register 只提供初值（缺省即写，D4）与冻结语义。
+      recover 重放把全部持久化键**直接装袋**（无论是否登记过），
+      不存在「未登记键」特例。
 
     .. rubric:: 测试案例
 
@@ -1058,14 +1058,21 @@ class StateView:
         object.__setattr__(self, "_lines_since_compact", 0)
 
     def __getattr__(self, key: str) -> Any:
-        """属性式读（key 须为合法标识符；语义同 ``__getitem__``）。
+        """属性式读（key 须为合法标识符）。
+
+        语义：``self[key]`` 抛 ``KeyError`` 时改抛 **``AttributeError``**
+        （决策 6：属性式读未注册键 → AttributeError，内省安全——与
+        ``agent.xxx`` 的 AttributeError 语义对齐）。
 
         .. rubric:: 调用关系（审计）
 
         - 调用：无
         - 被调：无（运算符协议方法，由属性访问语法隐式触发）
         """
-        return self[key]   # 语义同 __getitem__
+        try:
+            return self[key]
+        except KeyError as exc:
+            raise AttributeError(key) from None   # 属性式读未注册键（决策 6）
     def __setattr__(self, key: str, value: Any) -> None:
         """属性式写（语义同 ``__setitem__``）。
 

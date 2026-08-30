@@ -1693,8 +1693,10 @@ class Agent:
         .. rubric:: 行为规约
 
         - 调用时点固定：``__init__`` 首段（两管线同一骨架，各一次）。
-        - 建立后 ``register_state`` 的声明落进 ``_state_bag`` 的
-          defaults 表（无写闸门，D5）；框架核心键登记进 ``_core_state``。
+        - 建立后 ``register_state`` 开启的命名袋不在此（D3：独立文件、
+          即时 replay）；default 袋键登记经 ``agent.state.register``
+          （D4，缺省即写）；框架核心键在 ``_core_state``（初始槽直写
+          _persisted）。
         - 幂等性不要求（骨架保证单次）；重复调用属用法错误。
         - 本方法是后端**换装点**（模块 docstring「后端演进缝」）：
           未来非文件后端在此替换 ``FileRecordStore`` 构造（字段标注
@@ -1837,23 +1839,6 @@ class Agent:
         """
         return self._state_bag   # 单袋视图（_open_stores 建立，无副作用）
 
-    @property
-    def _state(self) -> dict[str, Any]:
-        """已注册状态键 → 现场值的字典视图（**内部 API，不属稳定契约**）。
-
-        R-6 承接：``flowing.parsable.Parsable._do_resolve`` 摊平渲染上下文时
-        经 ``getattr(agent, "_state", None)`` 读取状态键袋——本 property 是真
-        Agent 侧的对齐落点（骨架期袋未建立时返回空表）。键集 = 已声明键 ∪
-        已持久键。
-        """
-        bag = self.__dict__.get("_state_bag")
-        if bag is None:
-            return {}
-        # D4 后无独立 defaults 表（register 缺省即写 _persisted）——键集 =
-        # 已持久键；阶段 E 随 parsable 取消隐式 state 整体删除本 property
-        keys = set(bag._persisted)
-        return {k: bag[k] for k in keys}
-
     def get(self, key: str, default: Any = None) -> Any:
         """动态键统一读——状态键 / 实例与类属性 / ``_extra`` 三域兼容。
 
@@ -1867,8 +1852,8 @@ class Agent:
 
         .. rubric:: 行为规约
 
-        - 三域互斥由 ``register_state`` 声明期冲突检测保证（状态键撞
-          类属性 / 方法 / ``_extra`` 键 → 声明即报错），查找序无歧义。
+        - 查找序无歧义（状态域 → 属性域）；状态域 = default 袋
+          （``_state_bag``，决策 8）。
         - 骨架期护栏（P3-03）：``_state_bag`` 只经 ``__dict__.get``
           探查，未建立 → 跳过状态域。
         - 读``_extra`` 原值返回，不做隐式 Parsable 解包（同
@@ -1997,7 +1982,7 @@ class Agent:
           （如 ``use_retry``）同参数重复调用去重；
           ② 普通实例属性赋值（``self.user_id = user_id``）是运行期配置，
           **不落盘、不加限制**；
-          ③ 持久化 state 经 :meth:`register_state` 声明、:meth:`state`
+          ③ 持久化 state 经 ``agent.state.register`` 键登记、:meth:`state`
           访问；**setup 中写 state 合法**（D5 删写闸门——create 无重放
           不冲突；recover 重放先于 setup 完成，写入不被覆盖）；
           ④ 副作用操作（创建文件、操作外部对象）由用户自行做存在性校验，
@@ -2281,9 +2266,9 @@ class Agent:
                 self._core_state["current_head_id"] = placeholder.id
         # ③ 读 state.jsonl（_state_bag._store.replay()）逐键重放进默认袋
         #    （直写 _persisted 绕过写通道；无 schema：持久化键
-        #    无论声明与否一律装袋，P3-04 裁决——逐键覆盖 register_state 的
-        #    default 是读出回退序的天然结果；child_ids 已在 core 袋重放中
-        #    装袋——core 袋唯一真值，无内存镜像）
+        #    无论登记与否一律装袋，P3-04 裁决——逐键覆盖 register 的初值
+        #    是「已持久值优先」语义的天然结果（D4）；child_ids 已在 core 袋
+        #    重放中装袋——core 袋唯一真值，无内存镜像）
         persisted = self._state_bag._persisted
         for record in list(self._state_bag._store.replay()):
             op = record.get("op")
