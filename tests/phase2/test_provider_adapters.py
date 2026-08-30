@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from flowing.context import Context, PromptSegment
-from flowing.message import Message, MessageKind, TextBlock
+from flowing.message import Message, MessageKind, TextBlock, ToolCallBlock
 from flowing.model import ModelConfig
 from flowing.providers import ProviderConfig
 from flowing.providers.anthropic import AnthropicMessagesProvider
@@ -101,3 +101,52 @@ async def test_t20_anthropic_cache_control_mapping():
     assert usage.input == 12 and usage.total_tokens == 13 and usage.output == 1
     assert response.finish is True
     assert response.provider_data["stop_reason"] == "end_turn"
+
+
+async def test_anthropic_parallel_tool_results_merged():
+    """并行工具批：同一连续段的多条 TOOL 消息归并为一条 user 消息的多
+    tool_result 块（Anthropic 对并行 tool_use 的配对要求）；孤立单条
+    TOOL 消息与非 TOOL 断段语义不变。"""
+    canned = {
+        "model": "claude-sonnet-4-6",
+        "content": [{"type": "text", "text": "ok"}],
+        "stop_reason": "end_turn",
+        "usage": {"input_tokens": 5, "output_tokens": 1},
+    }
+    provider = _MockAnthropic(canned)
+    ctx = Context(system_prompt=[], tools=[], messages=[
+        Message(kind=MessageKind.USER, content=[TextBlock(text="并行查两个")]),
+        Message(kind=MessageKind.PROVIDER, content=[
+            ToolCallBlock(id="tu_1", name="search", args={"q": "a"}),
+            ToolCallBlock(id="tu_2", name="search", args={"q": "b"}),
+        ]),
+        # 连续段：两个并行 tool_use 的结果
+        Message(kind=MessageKind.TOOL, tool_call_id="tu_1",
+                tool_status="completed",
+                content=[TextBlock(text="结果一")]),
+        Message(kind=MessageKind.TOOL, tool_call_id="tu_2",
+                tool_status="error",
+                content=[TextBlock(text="结果二失败")]),
+        Message(kind=MessageKind.USER, content=[TextBlock(text="再查一个")]),
+        # 孤立单条（前一条非 TOOL，断段后独立映射）
+        Message(kind=MessageKind.TOOL, tool_call_id="tu_3",
+                tool_status="completed",
+                content=[TextBlock(text="结果三")]),
+    ])
+    await provider.generate(ctx, _model())
+    msgs = provider.sent[0]["messages"]
+    assert [m["role"] for m in msgs] == [
+        "user", "assistant", "user", "user", "user"]
+    # 连续段归并：一条 user 消息含两个 tool_result 块，顺序与配对锚保持
+    merged = msgs[2]["content"]
+    assert [b["type"] for b in merged] == ["tool_result", "tool_result"]
+    assert [b["tool_use_id"] for b in merged] == ["tu_1", "tu_2"]
+    assert merged[0]["content"] == [{"type": "text", "text": "结果一"}]
+    assert "is_error" not in merged[0]
+    assert merged[1]["is_error"] is True   # tool_status="error" 映射保留
+    # 断段：中间 USER 消息原样；孤立 TOOL 仍为一条 user 消息单块
+    assert msgs[3]["content"] == [{"type": "text", "text": "再查一个"}]
+    single = msgs[4]["content"]
+    assert len(single) == 1
+    assert single[0]["type"] == "tool_result"
+    assert single[0]["tool_use_id"] == "tu_3"

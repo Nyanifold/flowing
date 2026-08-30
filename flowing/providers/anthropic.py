@@ -12,6 +12,9 @@ docstring。
 ``tool_use_id``，``tool_status="error"`` → ``is_error: true``；媒体块
 原生内嵌于 ``tool_result.content``（image/document），无需转移；
 ``StructBlock`` 恒投影为 ``json.dumps(ensure_ascii=False)`` 文本。
+同一连续段的多条 TOOL 消息归并为**一条** user 消息的多
+``tool_result`` 块（Anthropic 对并行 tool_use 的配对要求），遇到非
+TOOL 消息即断段。
 
 响应侧事实：``thinking`` 块的 ``signature`` 为不透明签名字符串，
 多轮回放必须原样带回；``tool_use`` 的 ``input`` 为已解析 JSON 对象，
@@ -190,8 +193,7 @@ class AnthropicMessagesProvider(Provider):
                     if seg.cache == "static" else {})}
                 for seg in context.system_prompt
             ],
-            "messages": [m for msg in context.messages
-                         for m in self._map_message(msg)],
+            "messages": self._map_messages(context.messages),
             "max_tokens": model.max_output_tokens or 8192,   # Anthropic 必填
         }
         if context.tools:
@@ -233,6 +235,44 @@ class AnthropicMessagesProvider(Provider):
                 out.append({"type": "text", "text": block.text})
         return out
 
+    def _map_messages(self, messages) -> list[dict[str, Any]]:
+        """消息序列 → Anthropic messages 数组（连续 TOOL 段归并为一条 user 消息）。
+
+        Anthropic 要求同一 assistant 回合的并行 tool_use 的全部 tool_result
+        收进紧随的**一条** user 消息；框架的并行工具批会产生连续多条 TOOL
+        消息，逐条各出 user 消息会被 API 拒绝。本方法把同一连续段的 TOOL
+        消息按序聚合成一条 user 消息的多 ``tool_result`` 块（配对锚
+        ``tool_use_id`` 与块的对应按消息顺序保持，不打乱）；遇到非 TOOL
+        消息即断段，孤立单条 TOOL 消息的映射与既有口径一致。
+        """
+        out: list[dict[str, Any]] = []
+        tool_results: list[dict[str, Any]] = []
+        for msg in messages:
+            if msg.kind is MessageKind.TOOL:
+                tool_results.append(self._map_tool_result(msg))
+                continue
+            if tool_results:
+                out.append({"role": "user", "content": tool_results})
+                tool_results = []
+            out.extend(self._map_message(msg))
+        if tool_results:
+            out.append({"role": "user", "content": tool_results})
+        return out
+
+    def _map_tool_result(self, msg: Message) -> dict[str, Any]:
+        """单条 TOOL 消息 → 一个 ``tool_result`` 块（归并段与孤立形态共用）。
+
+        消息级 ``tool_call_id`` → ``tool_use_id``；``tool_status="error"``
+        → ``is_error: true``；空 content 兜底（pending 收据等）。
+        """
+        return {
+            "type": "tool_result",
+            "tool_use_id": msg.tool_call_id,
+            "content": self._map_plain_blocks(msg) or [
+                {"type": "text", "text": ""}],
+            **({"is_error": True} if msg.tool_status == "error" else {}),
+        }
+
     def _map_message(self, msg: Message) -> list[dict[str, Any]]:
         """单条消息 → Anthropic messages 数组元素。"""
         if msg.kind is MessageKind.PROVIDER:
@@ -252,15 +292,9 @@ class AnthropicMessagesProvider(Provider):
                     content.append({"type": "text", "text": block.text})
             return [{"role": "assistant", "content": content}]
         if msg.kind is MessageKind.TOOL:
-            # TOOL 消息块直接映射进 user 消息内的 tool_result 块：
-            # tool_call_id → tool_use_id；tool_status="error" → is_error
-            return [{"role": "user", "content": [{
-                "type": "tool_result",
-                "tool_use_id": msg.tool_call_id,
-                "content": self._map_plain_blocks(msg) or [
-                    {"type": "text", "text": ""}],   # 空 content 兜底（pending 收据等）
-                **({"is_error": True} if msg.tool_status == "error" else {}),
-            }]}]
+            # 孤立单条 TOOL 消息：一条 user 消息含单 tool_result 块；
+            # 连续段的归并在 _map_messages 完成（共用 _map_tool_result）
+            return [{"role": "user", "content": [self._map_tool_result(msg)]}]
         return [{"role": "user", "content": self._map_plain_blocks(msg)}]
 
     # ── 响应映射 ─────────────────────────────────────────────────────────
