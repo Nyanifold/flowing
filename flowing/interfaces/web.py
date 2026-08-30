@@ -1,4 +1,4 @@
-"""Flowing Web 暴露层规约（``flowing.interfaces.web``）。
+"""Flowing Web 暴露层（``flowing.interfaces.web``）。
 
 本模块定义 ``web`` 子命令与 Web 暴露层的唯一交接点：
 :func:`get_frontend_assets`。
@@ -36,7 +36,7 @@
   Agent 的 SSE 订阅，渲染 delta 流至 ``turn_end``。
 - 项目级自定义前端（由 Web 暴露层扩展注册/替换资产来源的开放机制）
   **初版不实现**；初版仅约定 :func:`get_frontend_assets` 的签名与
-  返回结构是稳定契约，未来的扩展机制在不改变本签名的前提下接入。
+  返回结构是稳定契约，未来的扩展机制在不改变签名的前提下接入。
 - 流式推送由 serve 的 SSE 端点承载（``GET /agents/<id>/stream``，
   见 ``flowing.interfaces.serve``）——本模块前端是它的消费方；
   WebSocket 不引入。
@@ -63,13 +63,19 @@ web 形态下同样成立。
         前端赖以交互的 HTTP API 封闭集。
 """
 
+import sys
 from collections.abc import Mapping
+from dataclasses import dataclass
+from types import MappingProxyType
 
+from aiohttp import web
 from flowing.runtime import launch
 
-from flowing.interfaces import EXIT_OK, _install_signal_handlers
+from flowing.interfaces import EXIT_OK, EXIT_RUNTIME_ERROR, _install_signal_handlers
+from flowing.interfaces.serve import _build_app, _serve_runtime
 
 
+@dataclass(frozen=True)
 class FrontendAssets:
     """前端资产包：入口页 HTML + 静态资源表。
 
@@ -119,24 +125,220 @@ class FrontendAssets:
     """前端入口页 HTML 文档（功能 + 动机合并：``GET /`` 的唯一响应
     内容；自包含完整文档，浏览器打开即可加载 :attr:`assets` 中的
     静态资源）。
-    
+
     行为边界：非空 ``str``；引用的静态资源路径必须以 ``/assets/``
     为前缀，且每个被引用的路径（去掉 ``/assets/`` 前缀后）必须
     能在 :attr:`assets` 中命中——不满足即视为资产包损坏。
-    
+
     .. seealso:: :attr:`assets`
     """
 
     assets: Mapping[str, bytes]
     """静态资源表（功能 + 动机合并：``GET /assets/*`` 的查找来源；
     以内存表形式承载使 web 层无需访问文件系统）。
-    
+
     行为边界：键为 ``/assets/`` 下的相对路径（不含前导斜杠、
     不含 ``..`` 段）；值为资源字节流；表在构造后不可变。键的
     查找是精确匹配，不做目录列举。
-    
+
     .. seealso:: :attr:`index_html`
     """
+
+
+# ---------------------------------------------------------------------------
+# 内置默认前端资产本体（模块内常量：随包发布即就绪、零构建零打包）
+# ---------------------------------------------------------------------------
+
+_INDEX_HTML = """\
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flowing</title>
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<header>
+  <span class="brand">Flowing</span>
+  <select id="agent-select" title="切换 Agent"></select>
+  <span id="current-id" class="mono"></span>
+  <button id="btn-new">新建 Agent</button>
+  <button id="btn-snapshot">快照</button>
+</header>
+<main id="conversation"></main>
+<div id="empty-state" hidden>
+  <p>暂无 Agent 记录。</p>
+  <button id="btn-new-empty">新建 Agent</button>
+</div>
+<pre id="snapshot-view" hidden></pre>
+<footer>
+  <input id="input" type="text" placeholder="输入消息，回车发送" autofocus>
+  <button id="btn-send">发送</button>
+</footer>
+<script src="/assets/app.js"></script>
+</body>
+</html>
+"""
+
+_APP_JS = """\
+"use strict";
+// Flowing 内置默认前端：对话页（serve 封闭端点集的唯一消费方）。
+// 通道：POST /agents/<id>/message 投递、GET /agents/<id>/stream（SSE）
+// 流式显示、GET /agents 列举/切换、POST /agents 新建、GET /snapshot 查看。
+const $ = (sel) => document.querySelector(sel);
+const state = { current: null, es: null, generating: null };
+
+function bubble(kind, text) {
+  const div = document.createElement("div");
+  div.className = "msg " + kind;
+  div.textContent = text;
+  $("#conversation").appendChild(div);
+  div.scrollIntoView();
+  return div;
+}
+
+function closeStream() {
+  if (state.es) { state.es.close(); state.es = null; }
+}
+
+function openStream(agentId) {
+  // 建立/复用该 Agent 的 SSE 订阅（两段式：delta 流 → turn_end 收尾）
+  closeStream();
+  const es = new EventSource(`/agents/${encodeURIComponent(agentId)}/stream`);
+  es.addEventListener("delta", (e) => {
+    if (!state.generating) state.generating = bubble("provider", "");
+    state.generating.textContent += JSON.parse(e.data);
+  });
+  es.addEventListener("message", (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.kind === "tool" || msg.priority === 4) {
+      const text = (msg.content || []).map((b) => b.text || "").join("");
+      bubble("meta", `[${msg.kind}] ${text.slice(0, 80)}`);
+    }
+  });
+  es.addEventListener("turn_end", () => { state.generating = null; });
+  state.es = es;
+}
+
+async function loadHistory(agentId) {
+  $("#conversation").innerHTML = "";
+  const resp = await fetch(`/agents/${encodeURIComponent(agentId)}/messages`);
+  if (!resp.ok) return;
+  for (const msg of await resp.json()) {
+    const text = (msg.content || []).map((b) => b.text || "").join("");
+    if (msg.kind === "user" || msg.kind === "provider") bubble(msg.kind, text);
+  }
+}
+
+function selectAgent(agentId) {
+  state.current = agentId;
+  $("#current-id").textContent = agentId || "";
+  $("#empty-state").hidden = true;
+  openStream(agentId);
+  loadHistory(agentId);
+}
+
+async function refreshAgents() {
+  const resp = await fetch("/agents");
+  const agents = await resp.json();
+  const select = $("#agent-select");
+  select.innerHTML = "";
+  for (const a of agents) {
+    const opt = document.createElement("option");
+    opt.value = a.agent_id;
+    opt.textContent = `${a.agent_id}  "${a.last_reply || ""}"`;
+    select.appendChild(opt);
+  }
+  if (agents.length === 0) {
+    // 零根空态：显示新建入口
+    closeStream();
+    state.current = null;
+    $("#current-id").textContent = "";
+    $("#empty-state").hidden = false;
+    return;
+  }
+  // 多根默认选中最后修改时间最新的根；已有选中且仍在名录则保持
+  const keep = agents.some((a) => a.agent_id === state.current);
+  const chosen = keep ? state.current
+    : agents.slice().sort((a, b) =>
+        (b.modified_at || "").localeCompare(a.modified_at || ""))[0].agent_id;
+  select.value = chosen;
+  selectAgent(chosen);
+}
+
+async function createAgent() {
+  const resp = await fetch("/agents", { method: "POST",
+    headers: { "Content-Type": "application/json" }, body: "{}" });
+  if (!resp.ok) { bubble("meta", `创建失败：${resp.status}`); return; }
+  const { agent_id } = await resp.json();
+  await refreshAgents();
+  selectAgent(agent_id);
+  $("#agent-select").value = agent_id;
+}
+
+async function send() {
+  const input = $("#input");
+  const text = input.value.trim();
+  if (!text || !state.current) return;
+  input.value = "";
+  bubble("user", text);
+  if (!state.es) openStream(state.current);   // 发送后立即建立/复用 SSE 订阅
+  state.generating = bubble("provider", "正在生成…");
+  const resp = await fetch(`/agents/${encodeURIComponent(state.current)}/message`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+  const body = await resp.json();
+  // 完整生成段：POST 响应的最终文本覆盖流式气泡（无流式时直接呈现）
+  if (state.generating) {
+    state.generating.textContent = body.final_text || "";
+    state.generating = null;
+  } else {
+    bubble("provider", body.final_text || "");
+  }
+}
+
+async function showSnapshot() {
+  const view = $("#snapshot-view");
+  if (!view.hidden) { view.hidden = true; return; }
+  const resp = await fetch("/snapshot");
+  view.textContent = JSON.stringify(await resp.json(), null, 2);
+  view.hidden = false;
+}
+
+$("#agent-select").addEventListener("change", (e) => selectAgent(e.target.value));
+$("#btn-new").addEventListener("click", createAgent);
+$("#btn-new-empty").addEventListener("click", createAgent);
+$("#btn-snapshot").addEventListener("click", showSnapshot);
+$("#btn-send").addEventListener("click", send);
+$("#input").addEventListener("keydown", (e) => { if (e.key === "Enter") send(); });
+refreshAgents();
+"""
+
+_STYLE_CSS = """\
+body { font-family: system-ui, sans-serif; margin: 0; display: flex;
+       flex-direction: column; height: 100vh; }
+header { display: flex; gap: .5rem; align-items: center; padding: .5rem 1rem;
+         border-bottom: 1px solid #ddd; }
+.brand { font-weight: 600; }
+.mono { font-family: ui-monospace, monospace; color: #666; font-size: .85em; }
+main { flex: 1; overflow-y: auto; padding: 1rem; }
+.msg { max-width: 70%; margin: .4rem 0; padding: .5rem .8rem;
+       border-radius: .6rem; white-space: pre-wrap; }
+.msg.user { margin-left: auto; background: #d7ebff; }
+.msg.provider { margin-right: auto; background: #f0f0f0; }
+.msg.meta { margin: .2rem auto; background: none; color: #888;
+            font-size: .8em; padding: 0; }
+footer { display: flex; gap: .5rem; padding: .5rem 1rem;
+         border-top: 1px solid #ddd; }
+footer input { flex: 1; padding: .5rem; }
+#empty-state { text-align: center; margin-top: 4rem; color: #666; }
+#snapshot-view { overflow: auto; max-height: 50vh; margin: 0;
+                 padding: 1rem; background: #fafafa; border-top: 1px solid #ddd; }
+"""
+
+_ASSETS_CACHE: FrontendAssets | None = None
 
 
 def get_frontend_assets() -> FrontendAssets:
@@ -188,8 +390,7 @@ def get_frontend_assets() -> FrontendAssets:
     .. rubric:: 调用关系（审计）
 
     - 调用：``flowing.interfaces.web.FrontendAssets``（构造/返回资产包；时机：
-      每次调用；docstring 规约「无副作用、无网络活动」，允许返回
-      同一缓存实例）
+      首次调用，随后返回同一缓存实例）
     - 被调：``flowing.interfaces.web.cmd_web()``（时机：``web`` 子命令挂载
       ``GET /`` 与 ``GET /assets/*`` 增量端点时，前端资产的唯一来源）
 
@@ -202,9 +403,19 @@ def get_frontend_assets() -> FrontendAssets:
         :data:`flowing.interfaces.web.WEB_EXTRA_ENDPOINTS`
             web 相对 serve 的增量端点封闭集（本文件 :data:`WEB_EXTRA_ENDPOINTS`）。
     """
-    # 内置默认前端资产随包发布即就绪：同步、无副作用、无网络活动；
-    # 资产的具体装载方式规约未具名符号（不虚构加载函数），允许返回同一缓存实例
-    return FrontendAssets(index_html="...", assets={})
+    # 内置资产为模块内常量：import 即就绪、同步无副作用；资产表经
+    # MappingProxyType 包装保证只读值对象语义；首次调用构造后缓存复用
+    global _ASSETS_CACHE
+    if _ASSETS_CACHE is None:
+        _ASSETS_CACHE = FrontendAssets(
+            index_html=_INDEX_HTML,
+            assets=MappingProxyType({
+                "app.js": _APP_JS.encode("utf-8"),
+                "style.css": _STYLE_CSS.encode("utf-8"),
+            }),
+        )
+    return _ASSETS_CACHE
+
 
 WEB_EXTRA_ENDPOINTS: tuple[str, ...] = ("GET /", "GET /assets/*")
 """``web`` 相对 ``serve`` 的增量端点封闭集（功能 + 动机合并：web 就是
@@ -224,6 +435,16 @@ serve 的 HTTP API 另开消息通道。
 
 .. seealso:: :func:`cmd_web`、:func:`flowing.interfaces.web.get_frontend_assets`
 """
+
+
+def _asset_content_type(name: str) -> str:
+    """静态资源的 Content-Type 推断（按键名后缀；未知后缀回退二进制流）。"""
+    if name.endswith(".js"):
+        return "text/javascript"
+    if name.endswith(".css"):
+        return "text/css"
+    return "application/octet-stream"
+
 
 async def cmd_web(
     path: str,
@@ -284,8 +505,10 @@ async def cmd_web(
     .. rubric:: 调用关系（审计）
 
     - 调用：``flowing.interfaces.web.get_frontend_assets()``（时机：``GET /``
-      与 ``GET /assets/*`` 每次请求；web.pyi 称其为本函数的唯一
-      消费者）；其余调用完全继承 ``flowing.interfaces.serve.cmd_serve``
+      与 ``GET /assets/*`` 每次请求；本函数为前端资产的唯一消费者）；
+      其余调用完全继承 ``flowing.interfaces.serve.cmd_serve``（HTTP 骨架
+      复用私有 :func:`flowing.interfaces.serve._build_app` +
+      :func:`flowing.interfaces.serve._serve_runtime`）
     - 被调：``flowing.interfaces.cli.main``（时机：子命令 ``web`` 分发）
 
     .. seealso::
@@ -294,11 +517,28 @@ async def cmd_web(
         :func:`flowing.interfaces.web.get_frontend_assets` —— 前端资产的唯一来源。
     """
     # 时序与端点契约完全继承 cmd_serve（同一 HTTP 骨架）
-    runtime = await launch(path, main_file=main_file, **kwargs)
+    try:
+        runtime = await launch(path, main_file=main_file, **kwargs)
+    except Exception as exc:
+        print(f"launch 阶段失败：{exc}", file=sys.stderr)
+        return EXIT_RUNTIME_ERROR
     _install_signal_handlers(runtime)
     assets = get_frontend_assets()
-    # GET /          每次请求 → 200 assets.index_html（Content-Type: text/html）
-    # GET /assets/<name> 每次请求 → assets.assets 按键查找，命中 200 字节流、
-    #   未命中 404（资产缺键按未命中处理，不报错退出）
-    await runtime
-    return EXIT_OK
+
+    async def _index(request: web.Request) -> web.Response:
+        return web.Response(text=assets.index_html, content_type="text/html")
+
+    async def _asset(request: web.Request) -> web.Response:
+        name = request.match_info["name"]
+        blob = assets.assets.get(name)   # 按键精确匹配，不做目录列举
+        if blob is None:
+            return web.Response(status=404)   # 未命中（含资产缺键）：404 不报错退出
+        return web.Response(body=blob, content_type=_asset_content_type(name))
+
+    extra_routes = (
+        ("GET", "/", _index),
+        ("GET", "/assets/{name}", _asset),
+    )
+    # 增量注册表与 WEB_EXTRA_ENDPOINTS 一一对应（封闭集断言）
+    assert tuple(f"{m} {p.replace('/{name}', '/*')}" for m, p, _ in extra_routes) == WEB_EXTRA_ENDPOINTS
+    return await _serve_runtime(runtime, _build_app(runtime, extra_routes), host, port)
