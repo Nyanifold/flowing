@@ -130,7 +130,12 @@ def _eval_agent(agent: Agent, expr: str) -> tuple[bool, Any]:
 def _eval_runtime(runtime: Runtime, expr: str) -> tuple[bool, Any]:
     """以 Runtime 为上下文求值（``self = runtime``）。"""
     try:
-        return True, Parsable(_wrap_expr(expr)).resolve({"self": runtime})
+        # 渲染上下文同时放 "self" 与 "agent" 两键：框架 Jinja 环境在 AST 级
+        # 把名字 self 改写为 agent（见 flowing.parsable._SelfToAgentTransformer
+        # ——Jinja2 代码生成器劫持根作用域 self 为 TemplateReference），Mapping
+        # 上下文里只放 "self" 时改写后的 agent 名义不可达；两键同值保证
+        # {{ self.snapshot() }} 与 {{ agent.snapshot() }} 都能求值
+        return True, Parsable(_wrap_expr(expr)).resolve({"self": runtime, "agent": runtime})
     except Exception as exc:
         return False, exc
 
