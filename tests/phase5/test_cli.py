@@ -61,20 +61,25 @@ def test_t53_nonexistent_path(capsys):
 
 
 def _stub_cmds(monkeypatch) -> dict:
-    """把 cli 模块内的 cmd_* 引用换成替身协程，记录调用入参。"""
-    calls: dict = {}
+    """把 cli 模块内的 cmd_* 引用换成替身协程，逐次记录调用入参。"""
+    calls: dict[str, list[dict]] = {}
 
     def _make(name):
         async def _stub(path, main_file=None, **kwargs):
-            calls[name] = {"path": path, "main_file": main_file, **kwargs}
+            calls.setdefault(name, []).append(
+                {"path": path, "main_file": main_file, **kwargs})
             return 0
         return _stub
 
     for name in ("cmd_run", "cmd_repl", "cmd_repl_debug", "cmd_serve",
                  "cmd_web", "cmd_test"):
         monkeypatch.setattr(cli_mod, name, _make(name))
-    monkeypatch.setattr(cli_mod, "cmd_compile",
-                        lambda path: calls.setdefault("cmd_compile", {"path": path}) or 0)
+
+    def _compile_stub(path):
+        calls.setdefault("cmd_compile", []).append({"path": path})
+        return 0
+
+    monkeypatch.setattr(cli_mod, "cmd_compile", _compile_stub)
     return calls
 
 
@@ -85,7 +90,7 @@ def test_t55_arg_stripping(monkeypatch, tmp_path):
     rc = main(["serve", str(tmp_path), "-m", "alt_main.py", "-a", "0.0.0.0",
                "-p", "9000", "--workspace-root", "/ws", "--debug"])
     assert rc == 0
-    call = calls["cmd_serve"]
+    call = calls["cmd_serve"][0]
     assert call["main_file"] == "alt_main.py"
     assert call["host"] == "0.0.0.0"
     assert call["port"] == 9000
@@ -100,7 +105,7 @@ def test_t55b_repl_has_no_host_port(monkeypatch, tmp_path):
     """repl/test 等非 serve/web 子命令不收 host/port 显式参数。"""
     calls = _stub_cmds(monkeypatch)
     assert main(["test", str(tmp_path), "-m", "t.py", "--key", "val"]) == 0
-    call = calls["cmd_test"]
+    call = calls["cmd_test"][0]
     assert call["main_file"] == "t.py"
     assert call["key"] == "val"
     assert "host" not in call and "port" not in call
@@ -148,17 +153,18 @@ def test_t54_cli_alias_same_path(monkeypatch, tmp_path):
     calls = _stub_cmds(monkeypatch)
     assert main(["cli", str(tmp_path), "--k", "v"]) == 0
     assert main(["repl", str(tmp_path), "--k", "v"]) == 0
-    assert "cmd_repl" in calls
-    # 两次调用入参完全一致（同一代码路径）
-    assert list(calls.values()).count(calls["cmd_repl"]) >= 1
-    assert calls["cmd_repl"] == {"path": str(tmp_path), "main_file": None, "k": "v"}
+    # 两次调用都进同一 cmd_repl 且入参完全一致（同一代码路径）
+    assert calls["cmd_repl"] == [
+        {"path": str(tmp_path), "main_file": None, "k": "v"},
+        {"path": str(tmp_path), "main_file": None, "k": "v"},
+    ]
 
 
 def test_default_path_is_cwd(monkeypatch, tmp_path):
     """<path> 缺省 "."（flowing test --key val 等价 flowing test . ...）。"""
     calls = _stub_cmds(monkeypatch)
     assert main(["test", "--key", "val"]) == 0
-    assert calls["cmd_test"]["path"] == "."
+    assert calls["cmd_test"][0]["path"] == "."
 
 
 # ---------------------------------------------------------------------------
