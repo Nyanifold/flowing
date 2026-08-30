@@ -2941,9 +2941,12 @@ class Agent:
                 # 流式（R-11 落实）：list[ContentBlock] 累积器按
                 # content_index 归位——text/thinking delta 逐段拼接进对应块；
                 # 结构化内容（工具调用等）由 adapter 在末段以完整块
-                # （delta.block）交付，直接归位；usage 由末帧附着进组装消息。
+                # （delta.block）交付，直接归位；usage 由末帧附着进组装消息；
+                # R-09 落实：末帧 provider_data（含原始 stop_reason）并入组装
+                # 响应，使 completed 结局的 finish_reason 口径在流式主路径生效。
                 accumulated: dict[int, ContentBlock] = {}
                 final_usage: Usage | None = None
+                final_provider_data: dict[str, Any] = {}
                 interrupted = False
                 async for delta in provider.generate_stream(context, model):
                     # 取消点起不再 dispatch delta（abort/cancel 均为协作式信号）
@@ -2966,6 +2969,8 @@ class Agent:
                         accumulated[delta.content_index] = TextBlock(text=text)
                     if delta.usage is not None:
                         final_usage = delta.usage   # 仅末帧携带
+                    if delta.provider_data is not None:
+                        final_provider_data = delta.provider_data   # 仅末帧携带
                     await self.hooks.on_provider_delta.dispatch(self, delta)   # 纯观察，返回值丢弃不回写
                 message = Message(
                     kind=MessageKind.PROVIDER,
@@ -2981,6 +2986,7 @@ class Agent:
                         for b in message.content),
                     cancelled=interrupted,
                     model=model.model if isinstance(model.model, str) else "",
+                    provider_data=final_provider_data,   # R-09：末帧 stop_reason 通道
                 )
         finally:
             self._executions.pop(execution.id, None)   # finally 清理（不变量：不捕获异常）

@@ -209,6 +209,18 @@ class ProviderDelta:
     按 ``content_index`` 归位进组装消息）。携带本字段的 delta 其
     ``text`` 为空字符串。
     """
+    provider_data: dict[str, Any] | None = None
+    """本次响应的 provider 特有元信息（至少含原始 ``stop_reason``；
+    **仅末帧**携带，其余帧为 ``None``）。
+
+    spec 未写清处的落实（R-09 补充，与 ``usage`` / ``block`` 同形态）：
+    ``TurnResult.finish_reason`` 的口径是「completed 时取末次
+    ``provider_gen`` 响应的 ``provider_data.stop_reason``」，而流式路径的
+    完整响应由 ``provider_gen()`` 组装——``provider_data`` 需要一个随
+    delta 的传输通道，本字段即该通道（末帧附着，``provider_gen()``
+    并入组装响应）。非流式路径不经过本字段（``generate()`` 响应直接
+    携带 ``provider_data``）。
+    """
 
 
 @dataclass
@@ -827,12 +839,15 @@ class Provider(ABC):
                 )  # 非文本类 block 允许为空字符串贡献
                 # R-11 补充落实：usage 与非文本块经末帧字段透传给
                 # provider_gen() 的流式组装——纯文本响应仍恰好一条 delta
-                # （usage 附着其上），含结构化块时逐块补发 block delta
+                # （usage 附着其上），含结构化块时逐块补发 block delta；
+                # R-09 补充落实：provider_data（含原始 stop_reason）同样
+                # 经末帧透传，使流式组装响应的 provider_data 与非流式一致
                 nontext = [b for b in message.content
                            if getattr(b, "text", None) is None]
                 if not nontext:
                     yield ProviderDelta(kind="text", text=text, content_index=0,
-                                        usage=message.usage)
+                                        usage=message.usage,
+                                        provider_data=response.provider_data)
                 else:
                     yield ProviderDelta(kind="text", text=text, content_index=0)
                     for i, block in enumerate(message.content):
@@ -841,7 +856,8 @@ class Provider(ABC):
                                                 content_index=i, block=block)
                     yield ProviderDelta(kind="text", text="",
                                         content_index=len(message.content),
-                                        usage=message.usage)
+                                        usage=message.usage,
+                                        provider_data=response.provider_data)
             # abort 路径（message=None）：不产生 delta，由 provider_gen() 组装完整响应
 
         return _default_stream()

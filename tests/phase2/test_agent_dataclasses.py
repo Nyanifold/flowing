@@ -208,8 +208,9 @@ async def test_t32_completed_aggregation(agent, provider):
     assert result.token_usage is not None
     assert result.token_usage.total_tokens == 100
     assert result.token_usage.raw == {}   # raw 不聚合
-    assert result.finish_reason == ""   # 流式路径无 stop_reason 载体（R-09 落实：
-    # provider_data 不经 delta 透传，组装响应 provider_data={}）
+    assert result.finish_reason == "end_turn"   # 流式路径经末帧 provider_data
+    # 通道携带 stop_reason（R-09 落实：generate() 响应的 provider_data 随
+    # 末帧 delta 透传，组装响应并入，completed 结局取末次 stop_reason）
 
     # R-09 补断言：completed 结局填末次响应的 stop_reason（非流式路径经
     # provider_data 传入，由 _run_turn 显式传参）——直接驱动 build_turn_result
@@ -240,3 +241,56 @@ async def test_t33_uncaught_inner_exception(agent, provider):
     assert result.status == "error"
     assert result.final_text == ""
     assert result.finish_reason == "error"
+
+
+# ---------------------------------------------------------------------------
+# R-09 收尾：流式路径 finish_reason 的 stop_reason 通道（ProviderDelta 末帧）
+# ---------------------------------------------------------------------------
+
+
+async def test_finish_reason_stream_fn_last_frame(agent, provider):
+    """stream_fn 注入路径：末帧 delta 携带 provider_data → 组装响应并入，
+    completed 结局的 finish_reason 取注入的 stop_reason。"""
+    from flowing.providers import ProviderDelta
+
+    async def _stream(context, model):
+        yield ProviderDelta(kind="text", text="你", content_index=0)
+        yield ProviderDelta(kind="text", text="好", content_index=0,
+                            provider_data={"stop_reason": "max_tokens"})
+
+    provider.stream_fn = _stream
+    result = await agent.query("hi")   # 默认 stream=True
+    assert result.status == "completed"
+    assert result.final_text == "你好"
+    assert result.finish_reason == "max_tokens"
+
+
+async def test_finish_reason_stream_fn_without_channel(agent, provider):
+    """stream_fn 注入路径：无任何帧携带 provider_data → finish_reason 恒 ""
+    （通道缺省 None，向后兼容）。"""
+    from flowing.providers import ProviderDelta
+
+    async def _stream(context, model):
+        yield ProviderDelta(kind="text", text="完", content_index=0)
+
+    provider.stream_fn = _stream
+    result = await agent.query("hi")
+    assert result.status == "completed"
+    assert result.finish_reason == ""
+
+
+async def test_finish_reason_cancelled_literal_unchanged(agent, provider):
+    """cancelled 结局的字面量口径不变：abort 于流式途中 → "cancelled"，
+    不被末帧通道影响（abort 起不再消费后续 delta）。"""
+    from flowing.providers import ProviderDelta
+
+    async def _stream(context, model):
+        yield ProviderDelta(kind="text", text="半", content_index=0,
+                            provider_data={"stop_reason": "end_turn"})
+        agent.abort_turn()
+        yield ProviderDelta(kind="text", text="截", content_index=0)
+
+    provider.stream_fn = _stream
+    result = await agent.query("hi")
+    assert result.status == "cancelled"
+    assert result.finish_reason == "cancelled"
