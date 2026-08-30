@@ -1,0 +1,4 @@
+/watch current_mode
+你好
+你好
+/exit

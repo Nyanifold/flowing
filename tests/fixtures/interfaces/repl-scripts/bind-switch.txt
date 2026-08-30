@@ -1,0 +1,10 @@
+/messages
+/use root-a
+/use root-a
+/use ghost
+你好
+/use root-b
+你好
+/use root-a
+/messages
+/exit

@@ -1,0 +1,5 @@
+/use root-a
+你好
+/use root-b
+你好
+/exit

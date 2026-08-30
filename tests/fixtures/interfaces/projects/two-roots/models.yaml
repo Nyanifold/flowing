@@ -1,0 +1,10 @@
+fake-a:
+  provider: fake-a
+  model: fake-model-a
+  context_window: 100000
+  max_output_tokens: 4096
+fake-b:
+  provider: fake-b
+  model: fake-model-b
+  context_window: 100000
+  max_output_tokens: 4096

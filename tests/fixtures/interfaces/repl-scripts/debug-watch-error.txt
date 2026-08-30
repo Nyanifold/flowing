@@ -1,0 +1,5 @@
+/watch self.fragile()
+你好
+/eval self.fragile()
+你好
+/exit

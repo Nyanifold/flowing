@@ -1,0 +1,5 @@
+/use root-a
+/watch node_id
+/watch-runtime self.node_id
+/use root-b
+/exit

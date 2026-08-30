@@ -3,9 +3,13 @@
 统一原则与退出码约定见 ``flowing.interfaces`` 包 docstring。
 """
 
+import dataclasses
+import json
+import sys
+
 from flowing.runtime import launch
 
-from flowing.interfaces import EXIT_OK, _install_signal_handlers
+from flowing.interfaces import EXIT_OK, EXIT_RUNTIME_ERROR, _install_signal_handlers
 
 
 async def cmd_run(
@@ -92,7 +96,13 @@ async def cmd_run(
         :func:`flowing.runtime.launch`、:meth:`flowing.runtime.Runtime.shutdown`
         :func:`_install_signal_handlers` —— 信号到 shutdown 的桥接。
     """
-    runtime = await launch(path, main_file=main_file, **kwargs)
+    # launch 抛异常：异常摘要打印到 stderr，返回 EXIT_RUNTIME_ERROR，
+    # 进程不再等待信号（包 docstring 退出码约定：launch 失败 = 运行时错误）
+    try:
+        runtime = await launch(path, main_file=main_file, **kwargs)
+    except Exception as exc:
+        print(f"launch 阶段失败：{exc}", file=sys.stderr)
+        return EXIT_RUNTIME_ERROR
     _install_signal_handlers(runtime)
     await runtime
     # 唤醒后（shutdown 完成）
@@ -179,9 +189,26 @@ async def cmd_test(
         :meth:`flowing.runtime.Runtime.snapshot`、
         :meth:`flowing.agent.Agent.query`
     """
-    runtime = await launch(path, main_file=main_file, **kwargs)
-    snap = runtime.snapshot()
-    # 冒烟断言：快照结构完整、不含异常（失败 → EXIT_RUNTIME_ERROR，
-    # 且仍尝试 shutdown 后再退出）
+    try:
+        runtime = await launch(path, main_file=main_file, **kwargs)
+    except Exception as exc:
+        # main 抛异常 / 项目不可 import / PENDING 检查失败等：stderr 指明
+        # 失败发生在 launch 阶段，返回 EXIT_RUNTIME_ERROR
+        print(f"launch 阶段失败：{exc}", file=sys.stderr)
+        return EXIT_RUNTIME_ERROR
+    try:
+        snap = runtime.snapshot()
+        # 冒烟断言口径：快照调用不抛 + 结果可 JSON 序列化即通过；
+        # 不断言业务字段（项目级断言归用户自写测试）。dataclasses.asdict
+        # 展开嵌套快照结构，datetime 等经 default=str 兜底
+        json.dumps(dataclasses.asdict(snap), default=str)
+    except Exception as exc:
+        print(f"快照冒烟断言失败：{exc}", file=sys.stderr)
+        # 失败路径仍尝试完整 shutdown 后再退出
+        try:
+            await runtime.shutdown()
+        except Exception as shutdown_exc:
+            print(f"shutdown 失败：{shutdown_exc}", file=sys.stderr)
+        return EXIT_RUNTIME_ERROR
     await runtime.shutdown()
     return EXIT_OK

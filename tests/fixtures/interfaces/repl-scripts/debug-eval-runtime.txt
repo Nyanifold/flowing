@@ -1,0 +1,2 @@
+/eval-runtime self.snapshot().plugins
+/exit
