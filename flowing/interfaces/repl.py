@@ -22,6 +22,7 @@ from flowing.runtime import Runtime, launch
 from flowing.interfaces import (
     EXIT_OK,
     EXIT_RUNTIME_ERROR,
+    _default_agent_type,
     _install_signal_handlers,
     _list_agent_records,
 )
@@ -479,18 +480,15 @@ async def cmd_repl(
         else:
             if agent is None:
                 # 未绑定收到消息 → 先创建新 Agent：agent_type 取池中根条目
-                # created_at 最新者（mount 根的 agent_type 即 fya 路径字符串，
-                # 可再解析）；池无根条目 → 打印「无法确定 Agent 类型」，不创建
-                roots = [
-                    meta for meta in runtime._agent_pool.values()
-                    if meta.get("parent_agent_id") == runtime.node_id
-                ]
-                if not roots:
+                # created_at 最新者（共享辅助 _default_agent_type，与 serve
+                # POST /agents 缺省类型同口径）；池无根条目 → 打印
+                # 「无法确定 Agent 类型」，不创建
+                agent_type = _default_agent_type(runtime)
+                if agent_type is None:
                     print("无法确定 Agent 类型（池无根记录），请先在 main 中 mount / 创建根 Agent")
                     continue
-                latest = max(roots, key=lambda m: m.get("created_at") or "")
                 try:
-                    _bind(await runtime.create_agent(latest["agent_type"]))  # parent_id=None 缺省即根
+                    _bind(await runtime.create_agent(agent_type))  # parent_id=None 缺省即根
                 except Exception as exc:
                     # 创建失败（如 agent_type 已不可解析）：打印错误，保持未绑定
                     print(f"创建 Agent 失败：{exc}")

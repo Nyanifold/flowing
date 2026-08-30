@@ -300,6 +300,27 @@ def _install_signal_handlers(runtime: Runtime) -> None:
         pass
 
 
+def _default_agent_type(runtime: Runtime) -> str | None:
+    """「项目默认主 Agent 类型」判定共享辅助：repl 未绑定态隐式创建与
+    serve ``POST /agents`` 缺省类型同口径（内部 API，不属稳定契约）。
+
+    .. rubric:: 行为规约
+
+    取池名录中根条目（``parent_agent_id == runtime.node_id``）里
+    ``created_at`` 最新者的 ``agent_type``（mount 进来的根其 agent_type
+    即 fya 路径字符串，可再解析；项目策略产物都在池里，无需 main 额外
+    声明默认类型）；池无根条目 → ``None``（调用方各自映射：repl 打印
+    「无法确定 Agent 类型」，serve 映射 ``400``）。
+    """
+    roots = [
+        meta for meta in runtime._agent_pool.values()
+        if meta.get("parent_agent_id") == runtime.node_id
+    ]
+    if not roots:
+        return None
+    return max(roots, key=lambda m: m.get("created_at") or "")["agent_type"]
+
+
 def _last_reply_prefix(session_dir: Path, *, limit: int = 40) -> str:
     """懒读 session 目录 ``tree.jsonl`` 尾部最后一条 PROVIDER 消息的文本前缀。
 

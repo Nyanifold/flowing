@@ -109,3 +109,79 @@ def spy_recover_agent(monkeypatch) -> list:
 
     monkeypatch.setattr(Runtime, "recover_agent", _wrap)
     return recovered
+
+
+# ---------------------------------------------------------------------------
+# serve / web 测试的 HTTP 助手（真回环端口 + httpx 客户端）
+# ---------------------------------------------------------------------------
+
+import asyncio
+import socket
+from dataclasses import dataclass
+from typing import Any
+
+import httpx
+
+
+def free_port() -> int:
+    """向内核申请一个空闲回环端口（bind 0 后立即释放，小竞争窗口在
+    127.0.0.1 上可接受）。"""
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+@dataclass
+class HttpHandle:
+    """一次 cmd_serve / cmd_web 拉起的测试句柄。"""
+
+    task: asyncio.Task
+    client: httpx.AsyncClient
+    runtime: Any
+    port: int
+
+
+async def wait_until(cond, timeout: float = 10.0) -> None:
+    """轮询等待条件成立（事件序列驱动断言的就绪同步点）。"""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    while not cond():
+        if loop.time() > deadline:
+            raise AssertionError("wait_until 超时")
+        await asyncio.sleep(0.02)
+
+
+async def start_http(monkeypatch, mod, cmd, project, persist_dir,
+                     port: int | None = None, **kwargs) -> HttpHandle:
+    """以真回环端口拉起 cmd_serve / cmd_web：spy launch 捕获 Runtime，
+    轮询 ``/healthz`` 就绪后返回句柄。"""
+    captured = spy_launch(monkeypatch, mod)
+    port = port or free_port()
+    task = asyncio.create_task(
+        cmd(str(project), persist=str(persist_dir), port=port, **kwargs))
+    client = httpx.AsyncClient(
+        base_url=f"http://127.0.0.1:{port}", timeout=httpx.Timeout(15.0))
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + 10
+    while True:
+        if task.done():
+            raise AssertionError(f"HTTP 子命令提前退出：rc={task.result()}")
+        if "runtime" in captured:
+            try:
+                if (await client.get("/healthz")).status_code == 200:
+                    break
+            except httpx.ConnectError:
+                pass
+        if loop.time() > deadline:
+            raise AssertionError("HTTP 服务未及时就绪")
+        await asyncio.sleep(0.02)
+    return HttpHandle(task=task, client=client, runtime=captured["runtime"], port=port)
+
+
+async def stop_http(handle: HttpHandle, expected_rc: int = 0) -> int:
+    """shutdown Runtime → cmd 任务应以预期退出码收尾；客户端随后关闭。"""
+    await handle.runtime.shutdown()
+    rc = await asyncio.wait_for(handle.task, timeout=10)
+    assert rc == expected_rc
+    await handle.client.aclose()
+    return rc
