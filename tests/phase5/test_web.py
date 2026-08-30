@@ -9,9 +9,11 @@ from flowing.interfaces import web as web_mod
 from flowing.interfaces.web import (
     WEB_EXTRA_ENDPOINTS,
     FrontendAssets,
+    _APP_JS,
     cmd_web,
     get_frontend_assets,
 )
+from flowing.message import MessagePriority
 
 from .support import start_http, stop_http
 
@@ -38,6 +40,15 @@ def test_t48_asset_reference_key_consistency():
         assert not key.startswith("/")
         assert ".." not in key.split("/")
         assert isinstance(assets.assets[key], bytes)
+
+
+def test_t48b_steer_priority_constant_locked():
+    """前端 SSE message 监听的 steer 分支引用的优先级常量与
+    MessagePriority.STEER 一致（无浏览器条件下的文本级锁：防常量写错导致
+    steer 摘要分支永不触发 / LOW 消息误渲染）。"""
+    assert f"msg.priority === {int(MessagePriority.STEER)}" in _APP_JS
+    # 低优先级常量不得出现在 message 监听分支（历史回归：曾误写为 LOW）
+    assert f"msg.priority === {int(MessagePriority.LOW)}" not in _APP_JS
 
 
 async def test_t49_web_index_and_assets(project_ok, persist_dir, monkeypatch):

@@ -401,8 +401,9 @@ async def cmd_repl(
         _bind(found)
     elif any(meta.get("parent_agent_id") == runtime.node_id
              for meta in runtime._agent_pool.values()):
-        # 多根（激活或休眠）不再报错退出：进未绑定态并提示选择路径
-        print("存在多个根 Agent 记录：/agents 查看，/use <id> 选择")
+        # 多根不再报错退出、唯一休眠根恢复失败同样落到此处：进未绑定态并
+        # 提示选择路径（记录数不定，措辞保持中性）
+        print("存在根 Agent 记录：/agents 查看，/use <id> 选择")
 
     # 第 3 步：读行循环；提示符 = 已绑定 (agent_id)>>> / 未绑定 (new agent)>>>
     while True:

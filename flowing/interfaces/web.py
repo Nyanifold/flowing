@@ -212,7 +212,8 @@ function openStream(agentId) {
   });
   es.addEventListener("message", (e) => {
     const msg = JSON.parse(e.data);
-    if (msg.kind === "tool" || msg.priority === 4) {
+    // 工具结果与 steer 注入渲染为 meta 摘要行（MessagePriority.STEER = 1）
+    if (msg.kind === "tool" || msg.priority === 1) {
       const text = (msg.content || []).map((b) => b.text || "").join("");
       bubble("meta", `[${msg.kind}] ${text.slice(0, 80)}`);
     }
