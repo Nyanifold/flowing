@@ -3,12 +3,28 @@
 统一原则与封闭观察窗口原则见 ``flowing.interfaces`` 包 docstring。
 """
 
+import sys
+import time
 from collections.abc import Awaitable, Callable
 
-from flowing.agent import Agent, TurnResult
+from flowing.agent import Agent, TurnContext, TurnResult, build_turn_result
+from flowing.message import (
+    Message,
+    MessageKind,
+    MessagePriority,
+    TextBlock,
+    ThinkingBlock,
+    ToolCallBlock,
+)
+from flowing.providers import ProviderDelta
 from flowing.runtime import Runtime, launch
 
-from flowing.interfaces import EXIT_OK, _install_signal_handlers
+from flowing.interfaces import (
+    EXIT_OK,
+    EXIT_RUNTIME_ERROR,
+    _install_signal_handlers,
+    _list_agent_records,
+)
 
 
 SLASH_COMMANDS: tuple[str, ...] = (
@@ -39,6 +55,73 @@ SLASH_COMMANDS: tuple[str, ...] = (
 
 .. seealso:: :func:`cmd_repl`、:meth:`flowing.runtime.Runtime.snapshot`
 """
+
+_HELP_LINES: tuple[str, ...] = (
+    "/help                列出全部命令（本说明）",
+    "/exit  /quit         退出 repl（优雅 shutdown 后以退出码 0 退出）",
+    "/snapshot            打印当前 Runtime 只读快照",
+    "/messages            打印当前绑定 Agent 的消息链概览",
+    "/agents              列出有记录的 Agent（含休眠记录）",
+    "/use <agent_id>      切换绑定目标（休眠 id 经 get_agent 现场恢复）",
+)
+"""``/help`` 的全部命令一句话说明（与 :data:`SLASH_COMMANDS` 一一对应）。"""
+
+
+def _fold(text: str, limit: int = 60) -> str:
+    """折叠为单行并截断（过程显示摘要行共用）。"""
+    folded = " ".join(text.split())
+    return folded[:limit] + ("…" if len(folded) > limit else "")
+
+
+def _summarize_message(host: Agent, msg: Message) -> str | None:
+    """新挂树消息的一行摘要（``after_turn_append`` 观察 handler 的渲染，X3）。
+
+    TOOL 消息（工具结果）/ STEER 注入消息 / 含 ThinkingBlock 或
+    ToolCallBlock 的 PROVIDER 消息（多轮推理与工具调用可见）返回一行
+    摘要，正文默认折叠；纯文本 PROVIDER 消息已由 ``on_provider_delta``
+    流式显示，不重复摘要；其余 kind 不摘要（返回 ``None``）。
+    """
+    if msg.kind is MessageKind.TOOL:
+        name = msg.tool_call_id or ""
+        for other in host._messages.values():   # 经配对锚反查工具名
+            if other.kind is MessageKind.PROVIDER:
+                for b in other.content:
+                    if isinstance(b, ToolCallBlock) and b.id == msg.tool_call_id:
+                        name = b.name
+                        break
+        text = "".join(b.text for b in msg.content if isinstance(b, TextBlock))
+        return f"[tool:{msg.tool_status}] {name} -> {_fold(text)}"
+    if msg.priority == MessagePriority.STEER:
+        text = "".join(b.text for b in msg.content if isinstance(b, TextBlock))
+        return f"[steer] {_fold(text)}"
+    if msg.kind is MessageKind.PROVIDER:
+        parts: list[str] = []
+        thinking = "".join(b.text for b in msg.content if isinstance(b, ThinkingBlock))
+        if thinking:
+            parts.append(f"[thinking] {_fold(thinking)}")
+        calls = [b.name for b in msg.content if isinstance(b, ToolCallBlock)]
+        if calls:
+            parts.append(f"[tool_call] {', '.join(calls)}")
+        return "; ".join(parts) if parts else None
+    return None
+
+
+def _print_message_chain(agent: Agent) -> None:
+    """沿 ``current_head_id`` 上溯打印消息链概览（``/messages`` 的渲染）。"""
+    chain: list[Message] = []
+    mid = agent.current_head_id
+    while mid is not None:
+        msg = agent._messages.get(mid)
+        if msg is None:
+            break   # 孤儿链断点：到断点即终止（与 _assemble_context 同口径）
+        chain.append(msg)
+        mid = msg.parent_id
+    if not chain:
+        print("（无消息）")
+        return
+    for msg in reversed(chain):
+        text = _fold("".join(b.text for b in msg.content if isinstance(b, TextBlock)))
+        print(f"{msg.id[:12]}  {msg.kind.value:<9} {text}")
 
 async def cmd_repl(
     path: str,
@@ -176,6 +259,11 @@ async def cmd_repl(
       打印错误文本，repl 不因此退出。
     - ``/use`` 的 id 在名录中但 session 目录损坏：``get_agent`` /
       recover 管线的原生异常上抛，repl 打印错误，绑定不变。
+    - 启动绑定的池回退恢复失败（记录损坏）：同 ``/use`` 口径——打印
+      错误并进未绑定态（可再经 ``/agents`` + ``/use`` 现场选择）。
+    - ``launch`` 抛异常：同 :func:`cmd_run`——异常摘要打印到 stderr，
+      返回 ``EXIT_RUNTIME_ERROR``（包 docstring 退出码约定）。
+    - 空行输入：跳过不投递（空 USER 消息节点无意义），继续循环。
 
     .. rubric:: 测试案例
 
@@ -223,22 +311,98 @@ async def cmd_repl(
         :meth:`flowing.runtime.Runtime.get_agent`
             已激活直接返回、未激活走 recover 管线现场恢复。
     """
-    # 第 1 步：同 cmd_run——launch 拿 Runtime 并安装信号处理器
-    runtime = await launch(path, main_file=main_file, **kwargs)
+    # 第 1 步：同 cmd_run——launch 拿 Runtime 并安装信号处理器；
+    # launch 失败按包 docstring 退出码约定走 EXIT_RUNTIME_ERROR
+    try:
+        runtime = await launch(path, main_file=main_file, **kwargs)
+    except Exception as exc:
+        print(f"launch 阶段失败：{exc}", file=sys.stderr)
+        return EXIT_RUNTIME_ERROR
     _install_signal_handlers(runtime)
+
+    # ---- 过程显示（X3）的共享状态与观察 handler -------------------------
+    # mid_line：屏幕上有未换行的流式输出（delta 就地追加，摘要做换行补偿——
+    # 终端交错策略为简单换行打印，不做光标控制）；
+    # query_active：当前回合由 repl 自己的 query 驱动（其最终文本由 query
+    # 返回路径打印，after_turn handler 不重复打印）
+    flags = {"mid_line": False, "query_active": False}
+    _HOOK_OWNER = "repl"   # 观察 handler 的统一 owner（/use 迁移时按 owner 摘除）
+
+    def _print_line(text: str) -> None:
+        if flags["mid_line"]:
+            print()   # 流式行未收尾：先换行再独占一行
+            flags["mid_line"] = False
+        print(text)
+
+    def _on_delta(host: Agent, delta: ProviderDelta) -> ProviderDelta:
+        # 流式打印生成中的文本（纯观察；携带 value 的钩子点要求返回 value）
+        if delta.kind == "text" and delta.text:
+            print(delta.text, end="", flush=True)
+            flags["mid_line"] = True
+        return delta
+
+    def _on_append(host: Agent, msg: Message) -> Message:
+        line = _summarize_message(host, msg)
+        if line is not None:
+            _print_line(line)
+        return msg
+
+    def _after_turn(host: Agent, turn: TurnContext) -> TurnContext:
+        # 后台回合（cron / comm 等无 repl 等待者的触发源）收尾后打印最终
+        # 文本，保证观察窗口可见；repl 自己 query 驱动的回合由 query 返回
+        # 路径打印，不重复。build_turn_result 在 after_turn 之后才组装
+        # TurnResult，此处复用同一聚合函数现场取文本
+        if not flags["query_active"]:
+            result = build_turn_result(turn, host)
+            if result.final_text:
+                _print_line(result.final_text)
+        return turn
+
+    def _subscribe(a: Agent) -> None:
+        # 绑定期间订阅三件套（X3）；delta 经 pattern 过滤只看主 Turn
+        # （"_turn"），副线（side_query，by="_side"）不进 repl 主流式显示
+        a.hooks.on_provider_delta["_turn"](_on_delta, by=_HOOK_OWNER)
+        a.hooks.after_turn_append(_on_append, by=_HOOK_OWNER)
+        a.hooks.after_turn(_after_turn, by=_HOOK_OWNER)
+
+    def _unsubscribe(a: Agent) -> None:
+        a.hooks.on_provider_delta.remove_by_owner(_HOOK_OWNER)
+        a.hooks.after_turn_append.remove_by_owner(_HOOK_OWNER)
+        a.hooks.after_turn.remove_by_owner(_HOOK_OWNER)
+
+    agent: Agent | None = None
+
+    def _bind(target: Agent) -> None:
+        nonlocal agent
+        if agent is target:
+            return   # 重复绑定同一对象：订阅已就位，不重复注册
+        if agent is not None:
+            _unsubscribe(agent)   # /use 切换：订阅随之迁移（X3）
+        agent = target
+        _subscribe(target)
+
     # 第 2 步：启动绑定——先扫已激活实例（同步），返回 None 时回退查池
-    agent: Agent | None = _default_agent(runtime)
-    if agent is None:
+    found: Agent | None = _default_agent(runtime)
+    if found is None:
         pool_roots = [
             aid for aid, meta in runtime._agent_pool.items()
-            if meta["parent_agent_id"] == runtime.node_id and aid not in runtime._nodes
+            if meta.get("parent_agent_id") == runtime.node_id and aid not in runtime._nodes
         ]
         if len(pool_roots) == 1:
             # 池恰好一个未激活根：现场恢复并绑定（身份连续，node_id = 已有 agent_id）
-            agent = await runtime.get_agent(pool_roots[0])
-        elif pool_roots:
-            # 多个池根：未绑定，提示 /agents 选择（多根不再报错退出）
-            print("多个根 Agent：/agents 查看，/use <id> 选择")
+            try:
+                found = await runtime.get_agent(pool_roots[0])
+            except Exception as exc:
+                # 记录损坏导致启动恢复失败：与 /use 同口径——打印错误，
+                # 进未绑定态（用户可 /agents + /use 现场选择其他记录）
+                print(f"恢复 Agent 失败：{exc}")
+    if found is not None:
+        _bind(found)
+    elif any(meta.get("parent_agent_id") == runtime.node_id
+             for meta in runtime._agent_pool.values()):
+        # 多根（激活或休眠）不再报错退出：进未绑定态并提示选择路径
+        print("存在多个根 Agent 记录：/agents 查看，/use <id> 选择")
+
     # 第 3 步：读行循环；提示符 = 已绑定 (agent_id)>>> / 未绑定 (new agent)>>>
     while True:
         if pre_prompt_hook is not None:
@@ -249,31 +413,51 @@ async def cmd_repl(
         except EOFError:
             # EOF（Ctrl-D）：与 /exit 同路径
             break
+        if not line.strip():
+            continue   # 空行不投递（空 USER 消息节点无意义），继续循环
         if line.startswith("/"):
             # slash-command 按 SLASH_COMMANDS 解释，不进消息流；带参命令按第一个空格分流
             cmd, _, arg = line.partition(" ")
+            arg = arg.strip()
             if cmd in ("/exit", "/quit"):
                 break  # 第 4 步：shutdown 后返回 EXIT_OK
             if cmd == "/help":
                 # 打印 SLASH_COMMANDS 全部命令及一句话说明
-                print("/help /exit /quit /snapshot /messages /agents /use <id>")
+                for help_line in _HELP_LINES:
+                    print(help_line)
                 if extra_help_text:
                     print(extra_help_text)
-            elif extra_slash_handlers is not None and cmd in extra_slash_handlers:
-                await extra_slash_handlers[cmd](arg, agent, runtime)
             elif cmd == "/agents":
                 # 列池名录：每行 agent_id + 最后回复前缀 + 最后修改时间。
-                # 前缀懒读各 session 目录（_persist_dir / agent_id）tree.jsonl
-                # 尾部最后一条 ASSISTANT 消息（未激活 Agent 只能读盘；前缀不
-                # 回写池元数据——每回合回写中央名录是跨对象写放大，否决）；
-                # 最后修改时间取 session 目录内文件 mtime
-                pass
+                # 数据源与懒读规则由共享辅助 _list_agent_records 承载
+                # （与 serve GET /agents 同口径；前缀懒读盘、不回写池元数据）
+                records = _list_agent_records(runtime)
+                if not records:
+                    print("（无 Agent 记录）")
+                for rec in records:
+                    mtime_str = (
+                        time.strftime("%Y-%m-%d %H:%M", time.localtime(rec["mtime"]))
+                        if rec["mtime"] is not None else "-"
+                    )
+                    print(f'{rec["agent_id"]}  "{rec["last_reply"]}"  {mtime_str}')
             elif cmd == "/use":
                 # 切换绑定：命中激活实例或池名录 → get_agent（已激活直接返回，
                 # 未激活走 recover 管线现场恢复）；未知 id → 打印提示，绑定
                 # 不变；只换投递目标，不 destroy 原 Agent（保持激活）
-                if arg and (arg in runtime._agent_pool or arg in runtime._nodes):
-                    agent = await runtime.get_agent(arg)
+                if not arg:
+                    print("用法：/use <agent_id>")
+                elif arg in runtime._nodes or arg in runtime._agent_pool:
+                    try:
+                        target = await runtime.get_agent(arg)
+                    except Exception as exc:
+                        # 名录中但 session 目录损坏：recover 管线原生异常
+                        # 上抛，打印错误，绑定不变，不退出
+                        print(f"恢复 Agent 失败：{exc}")
+                    else:
+                        if isinstance(target, Agent):
+                            _bind(target)
+                        else:
+                            print(f"{arg!r} 不是 Agent，无法绑定")
                 else:
                     print(f"未知 Agent：{arg!r}，/agents 查看有记录的 id")
             elif cmd == "/snapshot":
@@ -281,10 +465,17 @@ async def cmd_repl(
             elif cmd == "/messages":
                 # 未绑定：打印提示（无会话可看）；已绑定：沿
                 # agent.current_head_id 上溯的消息链概览
-                pass
+                if agent is None:
+                    print("未绑定 Agent：无会话可看（/agents 查看，/use <id> 选择）")
+                else:
+                    _print_message_chain(agent)
+            elif extra_slash_handlers is not None and cmd in extra_slash_handlers:
+                # 扩展注入点（repl-debug 等继承者；默认 repl 不启用）：
+                # 在已识别 slash-command 之后、未知命令之前调用
+                await extra_slash_handlers[cmd](arg, agent, runtime)
             else:
-                # 未识别 /xxx：打印「未知命令，/help 查看可用命令」，不退出
-                pass
+                # 未识别 /xxx：打印提示，不进消息流、不退出
+                print(f"未知命令：{cmd}，/help 查看可用命令")
         else:
             if agent is None:
                 # 未绑定收到消息 → 先创建新 Agent：agent_type 取池中根条目
@@ -292,16 +483,32 @@ async def cmd_repl(
                 # 可再解析）；池无根条目 → 打印「无法确定 Agent 类型」，不创建
                 roots = [
                     meta for meta in runtime._agent_pool.values()
-                    if meta["parent_agent_id"] == runtime.node_id
+                    if meta.get("parent_agent_id") == runtime.node_id
                 ]
                 if not roots:
-                    print("无法确定 Agent 类型（池无根记录），请先在 main 中 mount")
+                    print("无法确定 Agent 类型（池无根记录），请先在 main 中 mount / 创建根 Agent")
                     continue
-                latest = max(roots, key=lambda m: m["created_at"])
-                agent = await runtime.create_agent(latest["agent_type"])  # parent_id=None 缺省即根
-            # 以 str 调 message()（打包 USER 消息在其内部完成），等待回合结果
-            result: TurnResult = await agent.query(line)     # 返回 TurnResult；repl 不走副线
-            print(result.final_text)  # status="error" 时照常打印错误文本，不退出
+                latest = max(roots, key=lambda m: m.get("created_at") or "")
+                try:
+                    _bind(await runtime.create_agent(latest["agent_type"]))  # parent_id=None 缺省即根
+                except Exception as exc:
+                    # 创建失败（如 agent_type 已不可解析）：打印错误，保持未绑定
+                    print(f"创建 Agent 失败：{exc}")
+                    continue
+            # 以 str 调 query()（打包 USER 消息在其内部完成），等待回合结果
+            flags["query_active"] = True
+            try:
+                result: TurnResult = await agent.query(line)     # 返回 TurnResult；repl 不走副线
+            finally:
+                flags["query_active"] = False
+            if flags["mid_line"]:
+                # 流式输出已在屏：换行收尾，不再重复打印最终文本
+                print()
+                flags["mid_line"] = False
+            else:
+                # 无流式文本（error / blocked / 空回复）：照常打印最终文本，
+                # status="error" 时照常打印（可能为空串），不因此退出
+                print(result.final_text)
     await runtime.shutdown()
     return EXIT_OK
 

@@ -120,6 +120,11 @@ destroy 与插件收尾，留下未落盘状态与未关闭连接）。
         ``web`` 子命令的前端资产来源。
 """
 
+import json
+from pathlib import Path
+from typing import Any
+
+from flowing.message import MessageKind, TextBlock, from_record
 from flowing.runtime import Runtime
 
 
@@ -293,3 +298,113 @@ def _install_signal_handlers(runtime: Runtime) -> None:
     except (ValueError, OSError, RuntimeError):
         # 非主线程 / 不支持信号的平台：no-op，不抛异常
         pass
+
+
+def _last_reply_prefix(session_dir: Path, *, limit: int = 40) -> str:
+    """懒读 session 目录 ``tree.jsonl`` 尾部最后一条 PROVIDER 消息的文本前缀。
+
+    .. rubric:: 功能介绍与动机
+
+    repl ``/agents`` 与 serve ``GET /agents`` 名录行的「最后一次回复前缀」
+    数据源。未激活 Agent 没有内存对象，只能读盘；前缀**不回写**池元数据
+    （每回合回写中央名录是跨对象写放大，否决）。
+
+    .. rubric:: 行为规约
+
+    - 手解 jsonl 的容错口径与 ``Runtime._read_pool_meta`` 一致：撕裂末行
+      截断、损坏行跳过（名录行是提示性信息，损坏不阻断名录本身）。
+    - 消息行复用 :func:`flowing.message.from_record` 解析（接口层不自带
+      第二份序列化逻辑）；墓碑行移除对应消息；``update`` / ``move`` 变更
+      行不跟踪（前缀是提示信息而非权威内容）。
+    - ``tree.jsonl`` 缺失 / 无存活 PROVIDER 消息 → 空串。
+    - 前缀折叠为单行（空白归一），超长截断加 ``…``。
+    """
+    path = session_dir / "tree.jsonl"
+    if not path.is_file():
+        return ""
+    alive: dict[str, str] = {}   # message id → 折叠前文本（仅 PROVIDER）
+    order: list[str] = []        # PROVIDER 消息行序（尾部 = 最后一条）
+    segments = path.read_bytes().split(b"\n")
+    segments.pop()   # 撕裂末行截断（与 FileRecordStore 同口径）
+    for seg in segments:
+        if not seg:
+            continue
+        try:
+            record = json.loads(seg)
+        except json.JSONDecodeError:
+            continue   # 损坏行跳过（名录提示不阻断）
+        if not isinstance(record, dict):
+            continue
+        rtype = record.get("type")
+        if rtype == "message" and record.get("kind") == MessageKind.PROVIDER.value:
+            try:
+                msg = from_record(record)   # 复用既有解析，不自带第二份序列化逻辑
+            except Exception:
+                continue
+            text = "".join(b.text for b in msg.content if isinstance(b, TextBlock))
+            alive[msg.id] = text
+            order.append(msg.id)
+        elif rtype == "tombstone":
+            rid = record.get("id")
+            alive.pop(rid, None)
+            if rid in order:
+                order.remove(rid)
+    text = ""
+    for mid in reversed(order):
+        if mid in alive:
+            text = alive[mid]
+            break
+    folded = " ".join(text.split())   # 折叠为单行
+    return folded[:limit] + ("…" if len(folded) > limit else "")
+
+
+def _session_mtime(session_dir: Path) -> float | None:
+    """session 目录的最后修改时间：目录内文件 mtime 的最大值。
+
+    目录不存在 / 无文件时回退目录自身 mtime；均不可得 → ``None``。
+    """
+    try:
+        mtimes = [f.stat().st_mtime for f in session_dir.iterdir() if f.is_file()]
+    except OSError:
+        return None
+    if mtimes:
+        return max(mtimes)
+    try:
+        return session_dir.stat().st_mtime
+    except OSError:
+        return None
+
+
+def _list_agent_records(runtime: Runtime) -> list[dict[str, Any]]:
+    """池名录懒读共享辅助：repl ``/agents`` 与 serve ``GET /agents`` 同口径
+    （内部 API，不属稳定契约）。
+
+    .. rubric:: 功能介绍与动机
+
+    两处名录输出的口径完全一致（同一份实现，避免漂移）：名录来自
+    ``runtime._agent_pool``（core 命名空间写透的池注册表投影），最后回复
+    前缀与最后修改时间**懒读**各 session 目录（前缀不回写池元数据）。
+
+    .. rubric:: 行为规约
+
+    - 返回池名录全部条目（含未激活的休眠记录），顺序即池插入序。
+    - 每条记录字段：``agent_id`` / ``agent_type`` / ``parent_agent_id`` /
+      ``created_at`` / ``active``（是否在 ``_nodes`` 活体表）/
+      ``last_reply``（最后一条 PROVIDER 文本前缀，见
+      :func:`_last_reply_prefix`）/ ``mtime``（session 目录最后修改时间，
+      秒级时间戳，不可得为 ``None``，见 :func:`_session_mtime`）。
+    - 纯读操作，无副作用；session 目录损坏不影响名录其余条目。
+    """
+    records: list[dict[str, Any]] = []
+    for agent_id, meta in runtime._agent_pool.items():
+        session_dir = runtime._load_session_dir(meta.get("session_dir"), agent_id)
+        records.append({
+            "agent_id": agent_id,
+            "agent_type": meta.get("agent_type", ""),
+            "parent_agent_id": meta.get("parent_agent_id", ""),
+            "created_at": meta.get("created_at", ""),
+            "active": agent_id in runtime._nodes,
+            "last_reply": _last_reply_prefix(session_dir),
+            "mtime": _session_mtime(session_dir),
+        })
+    return records
