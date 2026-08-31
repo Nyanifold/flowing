@@ -109,9 +109,10 @@
 前缀集合的唯一权威表是 :data:`flowing.paths.PATH_PREFIXES`；实际解析
 委托 ``Runtime.resolve_path(path, *, source_dir)``，``source_dir`` 基准
 由 ``Agent.source_dir`` 统一供给。裸名（如 ``payment``）不是路径形态，
-但在资源查找口径下可以命中当前目录（``get(name_or_path, *, source_dir)``
-在 ``source_dir`` 可用时先走文件链——当前目录下的同名文件覆盖
-``default::`` / ``builtin::`` 注册项；``source_dir`` 缺省时只查注册表）。形态判别见 :func:`flowing.paths.classify_ref`。
+但在资源查找口径下可以命中当前目录。判定规则：
+``ToolRegistry.get`` 在 ``source_dir`` 可用时先走文件链，当前目录下的
+同名文件覆盖 ``default::`` / ``builtin::`` 注册项；``source_dir``
+缺省时只查注册表。形态判别见 :func:`flowing.paths.classify_ref`。
 
 两条边界约定：
 
@@ -497,9 +498,9 @@ PENDING: Final[_MissingType] = _MissingType()
 .. code-block:: python
 
     # setup() 中兑现
-    if agent.description is PENDING:
+    if self.description is PENDING:
         ...   # 尚未兑现
-    agent.description = self.parsable("处理订单查询")
+    self.description = self.parsable("处理订单查询")
 
 .. rubric:: 行为要点
 

@@ -341,7 +341,7 @@ class PromptBlockList(ManagedList[PromptBlock]):
     跳过已停用条目；分组操作无匹配不报错。
 
     ``[0]`` 惰性引用块：指向类属性 ``system_prompt`` 的引用块（内容是
-    ``Parsable("{{ system_prompt }}")``，不是内容副本）。``system_prompt``
+    ``Parsable("{{ self.system_prompt }}")``，不是内容副本）。``system_prompt``
     是 system prompt 内容的唯一数据源：``setup()`` 中改它，下次组装自动
     反映，引用块无需感知变化。``[0]`` 由框架注入（``by="core"``），应用与
     扩展不得移除、替换或在它之前插入元素；``remove_by_owner("core")`` 会
@@ -381,7 +381,8 @@ class PromptBlockList(ManagedList[PromptBlock]):
       引用自然拿到最新值，不需要增删 block。高频更新值（如当前时间）不应
       进 prompt 块——prompt 变动会破坏 provider 侧前缀缓存；这类信息应走
       消息通道（``before_turn`` 附加式注入，见
-      ``flowing.agent.TurnContext.pending_messages``）。
+      ``flowing.agent.TurnContext.pending_messages``；现成实现见
+      :func:`flowing.composables.reminder.use_system_reminder`）。
     - 分组操作（``*_by_tag`` / ``*_by_owner``）无匹配元素时不报错、无操作；
       对已处于目标状态的元素重复操作不产生任何变化。
     - ``remove_*`` 物理删除后后续元素前移——依赖固定下标（除 ``[0]`` 约定
