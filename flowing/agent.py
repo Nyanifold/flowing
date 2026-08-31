@@ -5586,26 +5586,39 @@ class Agent:
             # 前移（空 turn 无 append 自然不动），回合末无结算写入；
             # 钩子抛异常只影响交付段，不再楔死 agent
             self.current_turn = None   # 回合物质终结
+
+            def _finish() -> None:
+                # 5c. 交付（独立小函数：正常路径与 after_turn 异常路径共用，
+                # 保证 waiters 永不因收尾钩子异常而挂起——已知边界修复）
+                turn.finished_at = datetime.now()
+                result = build_turn_result(turn, self, intercepted=intercepted,
+                                           error=error,
+                                           finish_reason=last_stop_reason)   # S-28：信号显式传参（R-09：completed 结局的 stop_reason 同通道）
+                # last_result 统一写入（在 resolve waiters 之前）：finish 置位 →
+                # finish_output dict；否则 final_text（无产出 → None）。abort /
+                # cancel / error 同样覆写——载荷已置位照返；有完整 PROVIDER
+                # 消息取其文本；皆无 → None（取消/异常信息走
+                # SubagentResult.subagent_status，不进内容位）
+                self.last_result = (turn.finish_output
+                                    if turn.finish_output is not None
+                                    else result.final_text or None)
+                for fut in waiters:
+                    if fut is not None and not fut.done():
+                        fut.set_result(result)   # drain 合并共享同一 TurnResult
+
             # 5b. 观察钩子：turn 对象作为 value 照常传入（身份释放 ≠ 产物消失；
             # handler 契约 (agent, value) 不受影响；此期间 agent.current_turn
             # 已为 None，绕开 value 读它的写法会看到空闲）
-            await self.hooks.after_turn.dispatch(self, turn)   # 所有路径唯一收尾观察点；handler 读 turn.aborted 分流
-            # 5c. 交付
-            turn.finished_at = datetime.now()
-            result = build_turn_result(turn, self, intercepted=intercepted,
-                                       error=error,
-                                       finish_reason=last_stop_reason)   # S-28：信号显式传参（R-09：completed 结局的 stop_reason 同通道）
-            # last_result 统一写入（在 resolve waiters 之前）：finish 置位 →
-            # finish_output dict；否则 final_text（无产出 → None）。abort /
-            # cancel / error 同样覆写——载荷已置位照返；有完整 PROVIDER
-            # 消息取其文本；皆无 → None（取消/异常信息走
-            # SubagentResult.subagent_status，不进内容位）
-            self.last_result = (turn.finish_output
-                                if turn.finish_output is not None
-                                else result.final_text or None)
-            for fut in waiters:
-                if fut is not None and not fut.done():
-                    fut.set_result(result)   # drain 合并共享同一 TurnResult
+            # 已知边界修复（2026-08-31 裁决）：after_turn handler 异常不得
+            # 中断 waiters 交付——捕获后先喂饱再**原样上抛**（except 块内裸
+            # raise 保留 handler 内层 traceback；普通异常落 _work_loop 的
+            # turn crashed 日志，CancelledError 照常传播）
+            try:
+                await self.hooks.after_turn.dispatch(self, turn)   # 所有路径唯一收尾观察点；handler 读 turn.aborted 分流
+            except BaseException:
+                _finish()
+                raise
+            _finish()
 
     async def _append_message(self, msg: Message, turn: TurnContext) -> None:
         """消息级持久化统一入口：turn 钩子 + :meth:`push` + turn 记账。
