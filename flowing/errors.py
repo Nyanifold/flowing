@@ -2,21 +2,23 @@
 
 .. rubric:: 功能介绍
 
-本模块定义 Flowing 框架的**全部具名异常类型**，是框架核心层（非扩展、非应用层）
-的公共契约：``FlowingError`` 为统一根，向下按职责分为配置、注入、钩子、工具、
-子 Agent 与资源、Provider、依赖、通信、文件格式、编译十个类别（另有
-``EntryNameConflictError`` 跨正交直接挂根；``StateKeyError`` 已退役——
-D6 删拦截 + D8 读回 KeyError/AttributeError 后无触发点）；外加一个刻意游离于
-普通错误语义之外的信号类——``Intercepted``（钩子 handler 的有意硬阻断）。
-（M-07 裁决：原 ``TurnAborted`` 内部信号类已删除——终止决策点与收尾点同在
-``_run_turn`` 一个函数内，``break`` + ``finally`` 即可表达，无需异常载体。）
+本模块定义 Flowing 框架的全部具名异常类型，是框架核心层（非扩展、非应用层）
+的公共契约。``FlowingError`` 是统一根，向下按职责分为十个类别：配置、注入、
+钩子、工具、资源、Provider、依赖、通信、格式、编译；另有三个异常直接挂根、
+不属任何类别——``EntryNameConflictError``（Agent 绑定层别名冲突）、
+``FormatVersionError`` 与 ``CorruptionError``（jsonl 持久化文件；与声明式
+文件格式的 ``FormatError`` 分层，持久化层不专设中间层）。外加一个刻意游离
+于普通错误语义之外的信号类 ``Intercepted``（钩子 handler 的有意硬阻断信号，
+刻意不继承 ``FlowingError``）。
 
-豁免声明（P3-14 裁决）：**import 期作者笔误刻意用内置 ``ValueError``，不入
-具名层次**——如 ``register_provider`` 装饰到非 ``Provider`` 子类 / 缺非空
-``name`` 类属性的对象。这类错误是装饰器用错对象（编程错误），不该被任何
-恢复逻辑捕获；可恢复的冲突情形另有具名类型（``ProviderNameConflictError``）。
+import 期作者笔误刻意用内置 ``ValueError``，不入本层次——如
+``register_provider`` 装饰到非 ``Provider`` 子类或缺少非空 ``name`` 类属性
+的对象。这类错误是装饰器用错对象（编程错误），不该被任何恢复逻辑捕获；
+可恢复的冲突情形另有具名类型（``ProviderNameConflictError``）。
 
-异常层次树（定稿）::
+异常层次树（示意图，非表格——仅展示继承关系）:
+
+.. code-block:: text
 
     Exception
     ├── Intercepted                      # 有意硬阻断信号（刻意不挂在 FlowingError 下）
@@ -40,180 +42,111 @@ D6 删拦截 + D8 读回 KeyError/AttributeError 后无触发点）；外加一�
         ├── ResourceError                # Resource 注册与访问
         │   ├── ResourceNameConflictError
         │   └── ResourceNotFoundError
-        ├── ProviderError                # Provider 加载与调用（核心机制，不可替换）
+        ├── ProviderError                # Provider 加载与调用
         │   ├── ContextLengthError       # 不可重试；不经 on_provider_error，直接上抛
-        │   ├── RequestTooLargeError     # 不可重试（413 字节超限；M-06 新增）
-        │   ├── RateLimitedError         # 可重试类（429 瞬时限流）
-        │   ├── QuotaExhaustedError      # 不可重试（429 配额耗尽；M-06 新增）
-        │   ├── ServerError              # 可重试类（5xx）
-        │   ├── NetworkError             # 可重试类
-        │   ├── ProviderTimeoutError     # 可重试类（原 TimeoutError，M-02 裁决改名）
+        │   ├── RequestTooLargeError     # 不可重试（HTTP 413 字节超限）
+        │   ├── RateLimitedError         # 可重试（HTTP 429 瞬时限流）
+        │   ├── QuotaExhaustedError      # 不可重试（429 配额耗尽）
+        │   ├── ServerError              # 可重试（5xx）
+        │   ├── NetworkError             # 可重试
+        │   ├── ProviderTimeoutError     # 可重试
         │   ├── AuthenticationError      # 不可重试（401/403）
         │   ├── InvalidRequestError      # 不可重试（400）
         │   ├── ContentPolicyError       # 不可重试
         │   ├── MissingEnvironmentVariableError  # 条目加载时 {{env.X}} 缺失
-        │   └── ProviderNameConflictError  # adapter 规范名重名注册（import 期，P3-14）
-        ├── DependencyError              # 插件依赖校验（mount 单点）
+        │   └── ProviderNameConflictError        # adapter 规范名重名注册（import 期）
+        ├── DependencyError              # 插件依赖校验（use() 时增量）
         ├── CommError                    # 通信扩展（CommPlugin 总线）
         │   ├── DuplicateEndpointError
         │   ├── SignalDeliveryError
         │   └── SignalTimeoutError
-        ├── EntryNameConflictError       # Agent 绑定层同 alias 冲突（直接挂根）
-        ├── FormatVersionError           # jsonl 持久化文件格式版本不受支持（直接挂根，X6 澄清新增）
-        ├── CorruptionError              # jsonl 持久化文件中间行损坏（直接挂根，X7 澄清新增）
+        ├── EntryNameConflictError       # Agent 绑定层同 alias 冲突
+        ├── FormatVersionError           # jsonl 持久化文件格式版本不受支持
+        ├── CorruptionError              # jsonl 持久化文件中间行损坏
         ├── FormatError                  # 声明式文件格式 / Parsable 求值 / 保留属性
         │   ├── MissingFieldError
         │   ├── MissingContextError
         │   ├── NameMismatchError        # 声明 name 与推断名不符（一致性断言）
         │   └── ReservedAttributeError
-        └── CompileError                 # .fya 显式编译（flowing.compiler 构建期）
-            └── ArtifactModifiedError    # 产物 py_hash 不匹配，报错中止不覆盖
-
-.. rubric:: 设计动机
-
-- **统一根 + 分类中间层**：应用层与 Composable 可以按类别（``except ProviderError``）
-  或按具体类型（``except RateLimitedError``）捕获；分类层只承载归属，不附加行为。
-  每个错误类型有唯一归属分类，正文中散见的错误引用都能索引到本模块。
-- **机制 vs 策略**：框架核心只定义「错误类型是什么、在哪抛出、谁能捕获」（机制）；
-  「该不该重试、重试几次、审批什么」（策略）由扩展 / Composable / 应用层决定。
-  十个 Provider 调用期错误类型是 Provider adapter 互操作标准，**不允许替代**；
-  重试策略不在核心，由可选的 ``use_retry()`` Composable 提供。
-- **``Intercepted`` 刻意不继承 ``FlowingError``**：它表达「有意的阻止」（审批拒绝、
-  安全阻断、权限检查），是正常业务流而非意外错误；dispatch 对它 catch 后**重抛**，
-  不当作错误处理。若挂在 ``FlowingError`` 下，泛化的 ``except FlowingError`` 会
-  误吞阻断信号，因此保持为 ``Exception`` 的直接子类。
-- **已废弃类型不进入本模块**：``InjectionError``（改名 ``MissingProvideError``）、
-  ``QueryErrorAction``（被 ``ProviderErrorContext.can_continue`` 取代）、
-  ``MissingPluginError``（被「依赖声明 + mount 校验」体系覆盖）、
-  ``InterceptResult``（v1 返回值包装）。错误钩子仅 ``on_provider_error``；
-  ``on_tool_error`` / ``on_subagent_error`` / ``on_error`` / ``before_error``
-  均不存在——工具业务错误是 ``ToolResult(status="error")`` 正常产物，工具代码
-  崩溃与子 Agent 调用异常**直接上抛**，无错误钩子兜底。
-
-.. rubric:: 错误处理决策树（逻辑 Turn 内）
-
-Turn 是逻辑执行阶段（载体为 ``flowing.agent.TurnContext`` 执行期临时对象），
-同时是故障边界。决策树如下::
-
-    provider_gen() 内 Provider 调用抛异常
-    ├── ContextLengthError
-    │     → 不经 on_provider_error，直接上抛出 Turn 循环（收尾钩子照常，见下）
-    └── 其它 Exception
-          → 构造 ProviderErrorContext(error, provider, model, can_continue=False)
-          → dispatch on_provider_error
-          ├── handler 写 can_continue=True（内部已 sleep / 改 self.model）
-          │     → continue 重试（改模型后重试自动用新模型）
-          ├── handler 调 agent.abort_turn()
-          │     → continue 后下一次 provider_gen() 开头检测标志 → 回合按取消路径结束
-          └── 无 handler / 未写 / False
-                → break 终止内层循环（决策点与收尾点同在 ``_run_turn``
-                一个函数内）→ 逻辑 Turn 静默终止，Agent 存活
-
-    收尾不变量（所有路径，含异常路径）：
-    物质收尾先行（TurnContext 置空 current_turn = None——head 随每条消息
-    挂树即时前移，回合末无结算写入；此后钩子抛异常不再
-    楔死 Agent）；随后 after_turn 钩子
-    照常触发；已产生的消息已逐条持久化（消息级树 append-only）；
-    交付段 resolve 全部 waiters 后 Agent 回到空闲等待下一条消息。
-
-    工具 execute() 崩溃 / 子 Agent 调用异常 / 模板渲染异常
-    → 直接上抛，无错误钩子（ToolResult(status="error") 是业务错误正常产物，
-      LLM 可见，不触发任何错误钩子）。
-
-    钩子 handler 普通异常 → 直接上抛（dispatch 不捕获、不通知、不继续后续
-    handler，无兜底钩子）。handler 不 return value 视为错误，dispatch 检测并报告。
-
-    Intercepted → dispatch catch 后原样重抛；tool_call() 路径转换为
-    ToolResult.blocked(...)（LLM 可见 TOOL 消息 content=[TextBlock(reason)]、
-    tool_status="blocked"），对应 after_ 钩子不触发（整个操作标记无效）。
-
-**三条路径区分**（框架只区分「有意的阻止」与「意外错误」）：
-
-- ``Intercepted``：INFO 级日志；不触发错误钩子；LLM 收到 blocked 结果。
-- 普通异常：ERROR 级日志；直接上抛；工具错误经 ``ToolResult`` 让 LLM 感知，
-  Provider 错误 LLM 不可见（LLM 不参与基础设施故障诊断）。
-- ``shortcut`` 短路（value 上的通用字段）：替代默认路径，``after_`` 钩子照常触发；
-  不是异常，与本模块无交集。
+        └── CompileError                 # .fya 显式编译（构建期）
+            └── ArtifactModifiedError    # 编译产物被外部修改，报错中止不覆盖
 
 .. rubric:: 使用示例
 
 .. code-block:: python
 
     from flowing.errors import (
-        FlowingError, ProviderError, RateLimitedError, AuthenticationError,
-        Intercepted, MissingProvideError,
+        AuthenticationError, Intercepted, RateLimitedError,
     )
 
-    # 应用层按类别兜底（例如在嵌入场景的 main() 外层）
-    try:
-        runtime = await flowing.launch("@/")
-        await runtime
-    except ProviderError as e:
-        logger.error("Provider 调用失败: %s", e)
-
-    # use_retry 风格的 on_provider_error handler（策略层，可选、非默认）
-    async def retry_handler(agent, ctx):
-        if isinstance(ctx.error, AuthenticationError):
-            return ctx                      # 凭证错误不重试
-        if isinstance(ctx.error, RateLimitedError):
+    # 策略层：on_provider_error handler 按错误分类决定是否重试
+    async def retry_policy(agent, ctx):
+        if isinstance(ctx.error, RateLimitedError):     # 可重试类（限流）
             await asyncio.sleep(ctx.error.retry_after or 1.0)
-            ctx.can_continue = True
+            ctx.can_continue = True                     # 写 True → 同一回合内重试
         return ctx
 
-    # 工具审批 handler：拒绝时硬阻断
-    async def approval_handler(agent, tool_call):
-        response = await approval_service.request(tool_call)
-        if response.action == "deny":
+    # 安全层：before_tool_call handler 用 Intercepted 硬阻断（审批 / 权限）
+    async def approval_policy(agent, tool_call):
+        if not (await approval_service.approve(tool_call)):
             raise Intercepted("用户拒绝", payload={"tool": tool_call.name})
         return tool_call
 
-对应的 ``.fya`` 声明（工具声明非保留字段 ``requires_approval``，框架不解析，
-由审批 handler 自行读取；``$script`` 中注册 handler）::
+    async def setup(self):
+        self.hooks.on_provider_error(retry_policy, by="retry-policy")
+        self.hooks.before_tool_call(approval_policy, by="approval-policy")
 
-    # tools/delete-file.tool.fya
-    type: script
-    callable: ./ops.py::delete_file
-    requires_approval: true        # 非保留字段 → tool.requires_approval == True
+.. rubric:: 行为要点
 
-.. rubric:: 行为规约
-
-- 本模块所有类型**跨版本稳定**（属稳定契约清单）。
-- 所有具名字段在构造时必填（除显式标注默认值者），异常消息字符串由框架格式化，
-  调用方应读取结构化字段而非解析消息文本。
-- 非行为：框架不提供错误→动作映射表、不内置重试次数与退避参数、不把基础设施
-  错误转为 EVENT 消息让 LLM 感知、不在 dispatch 层做任何兜底捕获。
-- 边缘情况：``ContextLengthError`` 是唯一绕过 ``on_provider_error`` 的调用期异常
-  （不可重试是事实而非策略）；``MissingEnvironmentVariableError`` 在 Provider
-  条目**加载时**抛出，与调用期异常不在同一时序；内置 ``KeyError`` /
-  ``asyncio.CancelledError`` / ``RuntimeError`` 按 Python 语义使用，
-  不包装进本层次。
-
-.. rubric:: 测试案例
-
-- 前置：无任何 ``on_provider_error`` handler 的 Agent；操作：Provider 抛
-  ``RateLimitedError``；期望：逻辑 Turn 静默终止，Agent 存活可继续消费队列，
-  异常不上抛到 Runtime。
-- 前置：handler 写 ``can_continue=True``；操作：同上；期望：回合内重试。
-- 前置：Provider 抛 ``ContextLengthError``；操作：同上；期望：``on_provider_error``
-  未被触发，异常直接上抛出 Turn 循环。
-- 前置：``before_tool_call`` handler ``raise Intercepted("用户拒绝")``；操作：
-  LLM 发起该工具调用；期望：后续 handler 不执行，``after_tool_call`` 不触发，
-  LLM 收到 ``ToolResult.blocked`` 结果。
+- 错误分类与捕获：框架异常统一挂 ``FlowingError``，``except FlowingError``
+  可一网打尽框架错误，不误捕 Python 内置异常与第三方库异常。分类中间层
+  （``ProviderError`` / ``ToolError`` 等）只承载归属、不附加行为：按类别
+  捕获用 ``except ProviderError``，精确捕获用具体子类。
+- ``Intercepted`` 刻意不是 ``FlowingError`` 的子类：它是钩子 handler 的
+  有意硬阻断信号（审批拒绝 / 安全阻断 / 权限检查等正常业务分支），捕获
+  框架错误时不会误捕它。
+- import 期作者笔误（如 ``register_provider`` 装饰到非 ``Provider`` 子类）
+  刻意用内置 ``ValueError``：编程错误，不该被任何恢复逻辑捕获。
+- Provider 调用期错误的可重试分类：``RateLimitedError`` / ``ServerError`` /
+  ``NetworkError`` / ``ProviderTimeoutError`` 属可重试类；
+  ``ContextLengthError`` / ``RequestTooLargeError`` / ``QuotaExhaustedError`` /
+  ``AuthenticationError`` / ``InvalidRequestError`` / ``ContentPolicyError``
+  不可重试。可重试性只是分类事实：框架核心不内置重试，是否重试、退避多久
+  由 ``on_provider_error`` handler（如 ``use_retry()``）决定。
+- ``ContextLengthError`` 是唯一绕过 ``on_provider_error`` 的调用期异常：
+  不可重试是事实而非策略，逻辑 Turn 层直接上抛。其余 Provider 调用期错误
+  经 ``on_provider_error`` 分发：handler 写 ``can_continue=True`` 则同一
+  回合内重试，否则回合以 error 结局终止、Agent 存活；``after_turn`` 收尾
+  钩子在所有路径（含异常路径）照常触发，已产生的消息照常持久化。
+- ``MissingEnvironmentVariableError`` 在 Provider 条目加载时抛出（fail-fast：
+  出错即刻抛异常、不静默降级），与调用期异常不在同一时序。
+- 错误钩子只有 ``on_provider_error``：``on_tool_error`` /
+  ``on_subagent_error`` / ``on_error`` / ``before_error`` 均不存在。工具
+  业务错误是 ``ToolResult(status="error")`` 正常产物（LLM 可见、不触发任何
+  错误钩子）；工具代码崩溃与子 Agent 调用异常直接上抛，无错误钩子兜底；
+  钩子 handler 的普通异常同样直接上抛（dispatch 不捕获、不继续后续
+  handler）。
+- 消息与字段：本模块所有异常的消息文本面向人读（日志 / 提示，不回喂
+  LLM）；机器可读信息以结构化字段为权威，调用方不要解析消息文本。具名
+  字段在构造时由参数确定（除显式标注默认值者）。
+- 内置 ``KeyError`` / ``asyncio.CancelledError`` / ``RuntimeError`` 按
+  Python 语义使用，不包装进本层次。
+- 本模块的全部公开类型属跨版本稳定契约。
 
 .. seealso::
 
     :class:`flowing.agent.TurnContext`
-        逻辑 Turn 的执行期临时对象；``aborted`` 标记供收尾钩子区分正常结束与
-        异常终止。
+        逻辑 Turn 的执行期载体；``after_turn`` 收尾钩子在所有路径照常触发。
     :class:`flowing.hooks.HookRegistry`
-        ``on_provider_error`` 钩子点的声明与 dispatch；``Intercepted`` 的重抛规则
-        在 dispatch 算法中定义。
+        ``on_provider_error`` 钩子点的声明与 dispatch；``Intercepted`` 的
+        重抛规则在 dispatch 算法中定义。
     :class:`flowing.tool.ToolResult`
-        ``blocked`` / ``error`` 状态的结果载体；工具业务错误是正常产物而非异常。
+        ``blocked`` / ``error`` 状态的结果载体；工具业务错误是正常产物而
+        非异常。
     :class:`flowing.providers.Provider`
         Provider adapter 的异常抛出契约（十个调用期错误类型为互操作标准）。
     :mod:`flowing.composables.retry`
-        可选的 ``use_retry()`` Composable——重试策略的唯一内置（非默认）提供方。
+        可选的 ``use_retry()``——重试策略的唯一内置（非默认）提供方。
 """
 
 from pathlib import Path
@@ -269,9 +202,8 @@ __all__ = [
     "CorruptionError",
     "Intercepted",
 ]
-# 注：EntryNameConflictError 刻意不在 __all__（py-spec 原样，44 个名字；
-# StateKeyError 已退役删除）；仍可经 flowing.errors.EntryNameConflictError
-# 显式导入。
+# 注：EntryNameConflictError 刻意不列入 __all__；仍可经
+# flowing.errors.EntryNameConflictError 显式导入。
 
 
 class FlowingError(Exception):
@@ -279,48 +211,21 @@ class FlowingError(Exception):
 
     .. rubric:: 功能介绍
 
-    Flowing 框架抛出的全部具名异常（``Intercepted`` 除外）的共同基类。
-    应用层可用 ``except FlowingError`` 一网打尽框架异常，而不误捕
-    Python 内置异常与第三方库异常。
+    Flowing 框架抛出的全部具名异常（``Intercepted`` 除外）的共同基类。应用层用
+    ``except FlowingError`` 可以一网打尽框架错误，而不会误捕 Python 内置异常与
+    第三方库异常。
 
-    .. rubric:: 设计动机
+    .. rubric:: 行为要点
 
-    统一根使「框架错误」与「环境错误」在类型层面可分；分类中间层
-    （``ProviderError`` 等）挂在它之下，只承载归属、不附加行为。
-    ``Intercepted`` 刻意不在此层次内（见模块 docstring）。
-
-    .. rubric:: 使用示例
-
-    .. code-block:: python
-
-        from flowing.errors import FlowingError
-
-        try:
-            await agent.query("你好")
-        except FlowingError as e:
-            logger.error("框架错误: %s", e)
-
-    .. rubric:: 行为规约
-
-    - 不自定义构造签名与字段；子类各自定义结构化字段。
-    - 非行为：框架不会把第三方库异常静默包装为 ``FlowingError`` 后重抛；
-      Provider adapter 必须显式归类为 ``ProviderError`` 子类后抛出。
-    - 测试案例：前置：任一框架具名异常实例 ``e``；操作：
-      ``isinstance(e, FlowingError)``；期望：``True``（``Intercepted`` 除外）。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``无``（框架内无捕获点；``except FlowingError`` 兜底属应用层
-      用法，时机：未见规约）
-    - 实例化方：``flowing.plugins.workflow`` 的 ``resolve_workflow`` 路径
-      （时机：Workflow 定义路径缺失或形态不合法，plugins/workflow.pyi:748）；
-      ``flowing.plugins.skills`` 技能条目解析路径（时机：按 name 查找失败
-      或条目非法，plugins/skills.pyi:533/858）；基类本体主要由各子类承载
+    - 本类不定义构造参数与字段；各子类自行定义结构化字段。
+    - 框架不会把第三方库异常静默包装为本类后重抛：Provider adapter 必须显式
+      归类为 ``ProviderError`` 的具体子类后抛出。
+    - ``Intercepted`` 刻意不继承本类——它是钩子 handler 的有意硬阻断信号，
+      捕获框架错误时不会误捕它。
 
     .. seealso::
 
         :class:`flowing.errors.Intercepted`
-            有意硬阻断信号，刻意不继承本类。
     """
 
 
@@ -409,7 +314,7 @@ class ConfigNotReadyError(ConfigError):
     """
 
     def __init__(self) -> None:
-        # 无字段叶子：固定英文提示消息（X14 澄清）
+        # 无字段叶子：固定英文提示消息
         super().__init__(
             "Configuration is not ready: read config only in setup() "
             "or hook callbacks, not at module top level"
@@ -472,7 +377,7 @@ class ConfigNamespaceConflictError(ConfigError):
         - 被调：``flowing.runtime.Runtime.register_config_namespace`` 的
           raise（时机：命名空间重复注册时，runtime.pyi:1328）
         """
-        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Config namespace conflict: {namespace!r} is already registered")
         self.namespace = namespace
 
@@ -589,7 +494,7 @@ class MissingProvideError(ProvideError):
           ``flowing.agent.Agent.inject`` 等路径的 raise（时机：链上溯
           未命中且无 default，runtime.pyi:526、agent.pyi:2460）
         """
-        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Missing provide value for key: {key!r}")
         self.key = key
 
@@ -691,7 +596,7 @@ class UnknownHookPointError(HookError):
         - 被调：``flowing.hooks.HookRegistry.__getattr__`` 的 raise
           （时机：访问未声明钩子点，hooks.pyi:1005）
         """
-        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Unknown hook point: {name!r} (not declared)")
         self.name = name
 
@@ -764,7 +669,7 @@ class DuplicateHookPointError(HookError):
         - 被调：``flowing.hooks.HookRegistry.declare`` 的 raise（时机：
           同名钩子点声明冲突，hooks.pyi:978）
         """
-        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Duplicate hook point declaration: {name!r} (existing by={existing_by!r}, new by={new_by!r})")
         self.name = name
         self.existing_by = existing_by
@@ -876,7 +781,7 @@ class MissingSchemaError(ToolError):
         - 被调：``flowing.tool`` 工具定义加载 / 注册路径的 raise（时机：
           schema 缺失且无法推断，tool.pyi:866/1034/1113/1331/1348）
         """
-        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(
             f"Missing params schema for tool {name!r}"
             + (f" (param {param!r})" if param is not None else "")
@@ -940,7 +845,7 @@ class ToolNotFoundError(ToolError):
         - 被调：``flowing.tool.ToolRegistry.get`` 的 raise（时机：规范名
           未注册，tool.pyi:1289）
         """
-        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Tool not found in registry: {name!r}")
         self.name = name
 
@@ -1004,7 +909,7 @@ class ToolNameConflictError(ToolError):
         - 被调：``flowing.tool.ToolRegistry.register`` 的 raise（时机：
           规范名重名注册，tool.pyi:1276）
         """
-        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Tool name conflict: {name!r} is already registered")
         self.name = name
 
@@ -1090,7 +995,7 @@ class EntryNameConflictError(FlowingError):
         - 调用：``无``（仅平行字段赋值）
         - 被调：``Agent.add_tool`` 与 ``.fya`` 三列表解析路径的 raise
         """
-        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Entry alias conflict: {alias!r} (kind={kind!r})")
         self.alias = alias
         self.kind = kind
@@ -1158,7 +1063,7 @@ class UnknownToolError(ToolError):
         - 被调：``flowing.agent.Agent.tool_call`` 的 raise（时机：别名
           在 ``_tool_entries`` 未命中，agent.pyi:2340）
         """
-        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Unknown tool alias: {name!r}")
         self.name = name
 
@@ -1226,7 +1131,7 @@ class AmbiguousToolError(ToolError):
         - 被调：``flowing.tool`` script 工具定向查找路径的 raise（时机：
           同一 ``.py`` 同时含同名裸函数与 Tool 子类，tool.pyi:868/1349）
         """
-        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Ambiguous tool definitions in file: {path}")
         self.path = path
 
@@ -1287,7 +1192,7 @@ class AmbiguousMcpSourceError(ToolError):
         - 被调：``flowing.tool`` MCP 工具定义加载路径的 raise（时机：
           ``command`` 与 ``url`` 同时声明，tool.pyi:986）
         """
-        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"MCP tool {name!r} declares both command and url")
         self.name = name
 
@@ -1337,7 +1242,7 @@ class MissingMcpSourceError(ToolError):
         - 被调：``flowing.tool`` MCP 工具定义加载路径的 raise（时机：
           ``command`` 与 ``url`` 均未声明，tool.pyi:987）
         """
-        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"MCP tool {name!r} declares neither command nor url")
         self.name = name
 
@@ -1438,7 +1343,7 @@ class ResourceNameConflictError(ResourceError):
         - 被调：``flowing.runtime.Runtime.register_resource`` 的 raise
           （时机：同名 Resource 再注册，runtime.pyi:1345）
         """
-        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Resource name conflict: {name!r} is already registered")
         self.name = name
 
@@ -1500,7 +1405,7 @@ class ResourceNotFoundError(ResourceError):
           ``flowing.agent.Agent.get_resource`` 委托）的 raise（时机：
           name 未注册，runtime.pyi:1256、agent.pyi:2500）
         """
-        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Resource not found: {name!r}")
         self.name = name
 
@@ -2121,7 +2026,7 @@ class MissingEnvironmentVariableError(ProviderError):
           （:func:`flowing.providers.provider.load_provider_candidates`）
           的 raise（时机：``{{env.VAR}}`` 替换时变量缺失）
         """
-        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Missing environment variable {var_name!r} referenced by provider entry {entry!r}")
         self.var_name = var_name
         self.entry = entry
@@ -2189,7 +2094,7 @@ class ProviderNameConflictError(ProviderError):
         - 被调：``register_provider`` 的内部 ``_register``（时机：同名
           冲突且未 override）
         """
-        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(
             f"Provider adapter name conflict: {name!r} "
             "(use override=True to replace)"
@@ -2271,7 +2176,7 @@ class DependencyError(FlowingError):
           raise（时机：``mount()`` 开头校验发现依赖缺失或成环，
           runtime.pyi:1732-1739）
         """
-        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Plugin {plugin!r} has unresolved dependencies: {missing}")
         self.plugin = plugin
         self.missing = missing
@@ -2374,7 +2279,7 @@ class DuplicateEndpointError(CommError):
           / ``CommHandle`` 构造的 raise（时机：端点 ID 已存在，
           plugins/comm.pyi:366/442）
         """
-        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Duplicate endpoint id: {endpoint_id!r}")
         self.endpoint_id = endpoint_id
 
@@ -2437,7 +2342,7 @@ class SignalDeliveryError(CommError):
           与 ``CommHandle.send`` / ``request`` 的 raise（时机：target
           端点不存在，plugins/comm.pyi:485/553/823/873）
         """
-        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Signal delivery failed: target endpoint {target!r} not found (type={signal_type!r})")
         self.target = target
         self.signal_type = signal_type
@@ -2514,7 +2419,7 @@ class SignalTimeoutError(CommError):
           ``CommHandle.request`` 的 raise（时机：等待回复超过
           ``timeout``，plugins/comm.pyi:554/874）
         """
-        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Signal request to {target!r} timed out after {timeout}s")
         self.target = target
         self.timeout = timeout
@@ -2631,7 +2536,7 @@ class MissingFieldError(FormatError):
           结束后、``after_create`` 前仍有 ``PENDING`` 字段，
           agent.pyi:1514/1520、parsable.pyi:452）
         """
-        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Required field {field!r} of agent type {agent_type!r} is still PENDING")
         self.field = field
         self.agent_type = agent_type
@@ -2688,7 +2593,7 @@ class MissingContextError(FormatError):
     """
 
     def __init__(self) -> None:
-        # 无字段叶子：固定英文提示消息（X14 澄清）
+        # 无字段叶子：固定英文提示消息
         super().__init__(
             "Parsable is not bound to an instance: call resolve(context) "
             "with an explicit context instead"
@@ -2746,7 +2651,7 @@ class ReservedAttributeError(FormatError):
           （时机：实例属性占用 ``env`` / ``config`` 保留名，
           parsable.pyi:743/766/922）
         """
-        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Reserved attribute name occupied: {name!r}")
         self.name = name
 
@@ -2812,7 +2717,7 @@ class NameMismatchError(FormatError):
         - 调用：``无``（仅平行字段赋值）
         - 被调：``.fya`` 解析层 / 手写子类定义期校验路径的 raise
         """
-        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Declared name {declared!r} does not match inferred name {inferred!r} (source: {source})")
         self.declared = declared
         self.inferred = inferred
@@ -2820,7 +2725,7 @@ class NameMismatchError(FormatError):
 
 
 # ---------------------------------------------------------------------------
-# 编译类（.fya 显式编译，构建期；S-04 裁决新增）
+# 编译类（.fya 显式编译，构建期）
 # ---------------------------------------------------------------------------
 
 
@@ -2879,7 +2784,7 @@ class ArtifactModifiedError(CompileError):
 
 
 # ---------------------------------------------------------------------------
-# 持久化类（X6 / X7 澄清新增；persistence 为内部模块，不专设中间层，直挂根）
+# 持久化类（persistence 为内部模块，不专设中间层，直挂根）
 # ---------------------------------------------------------------------------
 
 
@@ -2926,7 +2831,7 @@ class FormatVersionError(FlowingError):
         - 调用：``Exception.__init__``（传递面向人读的消息）
         - 被调：``FileRecordStore.replay`` 版本判读的 raise
         """
-        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(
             f"Unsupported format version {found} in {path} "
             f"(this framework supports up to {supported})"
@@ -2977,7 +2882,7 @@ class CorruptionError(FlowingError):
         - 调用：``Exception.__init__``（传递面向人读的消息）
         - 被调：``FileRecordStore.replay`` 逐行解析的 raise
         """
-        # 消息为自然语言关键提示（X14 澄清：英文短语），结构化字段为权威
+        # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Corrupted record line at {path}:{lineno}")
         self.path = path
         self.lineno = lineno
@@ -2989,36 +2894,20 @@ class CorruptionError(FlowingError):
 
 
 class Intercepted(Exception):
-    """钩子 handler 的有意硬阻断信号。**刻意不继承 ``FlowingError``。**
+    """钩子 handler 的有意硬阻断信号（刻意不继承 ``FlowingError``）。
 
     .. rubric:: 功能介绍
 
-    handler 三种合法出口之一（返回 value / 设 ``shortcut`` 短路 /
-    ``raise Intercepted``）。dispatch 对本信号 catch 后**原样重抛**：
-    链停止、后续 handler 不执行、对应 ``after_`` 钩子不触发（整个操作
-    标记无效）；不当作错误处理（INFO 级日志，非 ERROR）。
+    handler 的三种合法出口之一（另两种：返回 value、设置 ``shortcut`` 字段
+    短路）。``raise Intercepted`` 表示「有意的阻止」——审批拒绝、安全阻断、权限
+    检查等正常业务分支，而不是意外错误。dispatch 层捕获本信号后原样重抛：处理
+    链停止、后续 handler 不执行、对应的 ``after_`` 钩子不触发（整个操作标记为
+    无效）；不当作错误处理（INFO 级日志，非 ERROR）。``tool_call()`` 路径把本
+    信号转换为 ``ToolResult.blocked(reason)``——LLM 收到
+    ``tool_status="blocked"``、内容为 ``[TextBlock(reason)]`` 的 TOOL 消息。
 
-    .. rubric:: 设计动机
-
-    框架只区分「有意的阻止」（审批拒绝 / 安全阻断 / 权限检查——正常业务流）
-    与「意外错误」（普通异常，直接上抛）。``Intercepted`` 承载前者；刻意
-    不挂在 ``FlowingError`` 下，避免泛化的 ``except FlowingError`` 误吞
-    阻断信号。与 ``shortcut`` 的边界：shortcut 是协商式替代（``after_``
-    照常触发），``Intercepted`` 是硬阻断（``after_`` 不触发）。
-
-    .. rubric:: 三个使用场景
-
-    1. **安全扫描（``before_turn``）**：Guardrail 扫描用户消息发现威胁，
-       阻断整个逻辑 Turn 的启动。
-    2. **工具审批（``before_tool_call``）**：``await approval.request(...)``
-       在 handler 内暂停等待用户；用户拒绝时抛出——审批策略在 handler 内
-       实现，不需要框架级 interrupt 机制。
-    3. **权限检查（``before_tool_call``）**：RBAC 判定当前身份无权调用
-       该工具，阻断执行。
-
-    扩展声明的钩子点同理可用（如 SkillPlugin 的 ``before_skill_load``
-    阻止 Skill 加载；``before_cancel`` 中抛出可阻止取消——「支付已提交」
-    类关键事务保护）。
+    与 ``shortcut`` 字段的边界：shortcut 是协商式替代（``after_`` 钩子照常
+    触发），本信号是硬阻断（``after_`` 钩子不触发）。
 
     .. rubric:: 使用示例
 
@@ -3026,85 +2915,45 @@ class Intercepted(Exception):
 
         from flowing.errors import Intercepted
 
-        async def request_approval(agent, tool_call):
-            entry = agent._tool_entries[tool_call.name]      # 仅按别名查找
-            tool = agent.runtime.tool_registry.get(entry.name_ori)
-            if not getattr(tool, "requires_approval", False):
-                return tool_call
-            response = await approval.request(tool_call)
-            if response.action == "deny":
-                raise Intercepted(
-                    "用户拒绝",
-                    payload={"tool": tool_call.name, "denied_by": approval.current_user},
-                )
-            return response.modified_tool_call
+        async def approval(agent, tool_call):
+            if not (await approval_service.approve(tool_call)):
+                raise Intercepted("用户拒绝", payload={"tool": tool_call.name})
+            return tool_call
 
         async def setup(self):
-            self.hooks.before_tool_call(request_approval, by="approval", tags=["security"])
+            self.hooks.before_tool_call(approval, by="approval")
 
-    对应的 ``.tool.fya``（``requires_approval`` 为非保留字段，框架不解析，
-    直接成为 tool 对象属性，由上面的 handler 读取）::
+    .. rubric:: 行为要点
 
-        type: script
-        callable: ./ops.py::delete_file
-        requires_approval: true
-
-    .. rubric:: 行为规约
-
-    - 五要素：字段 ``reason`` / ``payload``；抛出时机为任意钩子 handler 内
-      （含 ``await`` 暂停后的判定分支）；调用方：dispatch 层 catch 后重抛，
-      ``tool_call()`` 路径将其转换为 ``ToolResult.blocked(...)``（LLM 可见
-      TOOL 消息 ``content=[TextBlock(reason)]``、``tool_status="blocked"``）；
-      与重试无关（正常业务流）；
-      机制（信号语义与 dispatch 规则）属核心，**什么该被阻断**的策略不内置。
-    - 非行为：不触发任何错误钩子；不进入 ``on_provider_error`` 决策树；
-      ``payload`` 内容框架不解释（给审计 / 日志消费）。
-    - 边缘情况：在「无对应工具调用」的钩子点（如 ``before_turn``）抛出时，
-      由该操作的发起路径决定如何呈现，框架不保证统一的 LLM 可见形式。
-    - 测试案例：前置：两个 ``before_tool_call`` handler，前者抛
-      ``Intercepted``；操作：发起工具调用；期望：后者未执行、
-      ``after_tool_call`` 未触发、LLM 收到 blocked 结果且 ``reason`` 一致。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``flowing.hooks.HookList.dispatch``（时机：每次
-      dispatch——catch 后原样重抛，链停止、后续 handler 不执行，
-      hooks.pyi:813）；``flowing.agent.Agent.tool_call`` 路径（时机：
-      转换为 ``ToolResult.blocked(...)``，LLM 可见 blocked 结果，
-      agent.pyi:2342，tool.pyi:303-323）
-    - 实例化方：钩子 handler（审批 / 安全 / 权限策略代码——属用户与
-      扩展代码；框架内仅示例性出现：plugins/comm.pyi:533/860/863、
-      plugins/skills.pyi:575）
+    - ``reason`` 为阻断原因（面向人读）；``tool_call()`` 路径下进入 LLM 可见的
+      blocked 结果。
+    - ``payload`` 为结构化附加信息，框架不解释其内容，供审计 / 日志消费；默认
+      ``None``。
+    - 刻意不继承 ``FlowingError``：泛化的 ``except FlowingError`` 不会误吞阻断
+      信号。
+    - 本信号不触发任何错误钩子，也不进入 ``on_provider_error`` 决策树；与重试
+      无关。
+    - 在「没有对应工具调用」的钩子点（如 ``before_turn``）抛出时，由该操作的
+      发起路径决定如何呈现，框架不保证统一的 LLM 可见形式。
 
     .. seealso::
 
         :class:`flowing.hooks.HookList`
-            dispatch 算法（改写链 / shortcut / Intercepted 重抛）。
+            处理链的 dispatch 语义（改写链 / shortcut / 本信号重抛）。
         :class:`flowing.tool.ToolResult`
             ``ToolResult.blocked(...)`` 的载体。
     """
 
     reason: str
-    """阻断原因（面向人读；``tool_call()`` 路径下进入 LLM 可见的 blocked 结果）。
-    
-    .. seealso:: :class:`flowing.errors.Intercepted`
-    """
+    """阻断原因（面向人读）；``tool_call()`` 路径下进入 LLM 可见的 blocked 结果。"""
     payload: Any
-    """结构化附加信息（如 ``{"tool": ..., "denied_by": ...}``），供审计 / 日志
-    消费；框架不解释其内容。默认 ``None``。
-    
-    .. seealso:: :class:`flowing.errors.Intercepted`
-    """
+    """结构化附加信息（如 ``{"tool": ...}``），供审计 / 日志消费；框架不解释其内容。默认 ``None``。"""
 
     def __init__(self, reason: str, payload: Any = None) -> None:
-        """
-        .. rubric:: 调用关系（审计）
+        """构造阻断信号实例。
 
-        - 调用：``Exception.__init__``（时机：每次构造，传递面向人读的
-          ``reason``——``tool_call()`` 路径下进入 LLM 可见的 blocked
-          结果）
-        - 被调：钩子 handler 内的 raise（时机：handler 判定硬阻断时——
-          属用户 / 扩展代码；框架内仅示例性出现，plugins/comm.pyi:533/860）
+        :param reason: 阻断原因（面向人读）；同时作为 ``str(exception)`` 的内容。
+        :param payload: 结构化附加信息，框架不解释其内容；默认 ``None``。
         """
         super().__init__(reason)
         self.reason = reason
