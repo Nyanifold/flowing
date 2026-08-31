@@ -70,10 +70,11 @@ calling 传给 LLM，因此只接受 JSON 兼容值（``str`` / ``int`` / ``floa
 ``InjectionKey[str]`` inject）不会被框架拦截——需要运行期校验的场景走
 参数声明（Pydantic 模型校验），而非 provide / inject。
 
-本模块的公开面为无下划线前缀的符号（常量 ``ARG_SHORTHAND`` /
-``TYPE_ALIASES``，函数 ``expand_args_schema`` / ``schema_to_model`` /
-``apply_param_overrides``，类 :class:`InjectionKey` / :class:`ConfigKey`），
-属跨版本稳定契约；下划线前缀符号为内部实现。
+本模块的公开面为下列符号：常量 ``ARG_SHORTHAND`` / ``TYPE_ALIASES`` /
+``SCHEMA_KEYWORDS``，函数 ``expand_args_schema`` / ``schema_to_model`` /
+``apply_param_overrides``，类 :class:`InjectionKey` / :class:`ConfigKey`
+——属跨版本稳定契约；其余符号（类型变量 ``T`` 与下划线前缀符号）为内部
+实现。
 
 .. seealso::
 
