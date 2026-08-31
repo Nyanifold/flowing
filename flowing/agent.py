@@ -3382,43 +3382,28 @@ class Agent:
         alias: str | None = None,
         body: dict[str, Any] | None = None,
     ) -> ToolEntry:
-        """向本 Agent 添加一条工具用法条目（``_tool_entries`` 的公开写入入口）。
+        """向本 Agent 添加一条工具绑定条目（``_tool_entries`` 的公开写入入口）。
 
         .. rubric:: 功能介绍
 
         按引用（``name`` 为字符串时）或现成的 :class:`flowing.parser.EntryRef`
         找到工具，判别覆写体（``body``）并构造 :class:`flowing.tool.ToolEntry`，
         以别名（``alias`` / ``ref.alias``，缺省 = 规范名）为 key 写入
-        ``self._tool_entries``。从此该工具进入本 Agent 的
-        可见集（``enabled=True`` 时经 ``_assemble_context()`` 对 LLM 可见）
-        与可调用集（``tool_call()`` 仅按别名查本表）。
+        ``self._tool_entries``。从此该工具进入本 Agent 的可见集
+        （``enabled=True`` 时对 LLM 可见）与可调用集（``tool_call()`` 仅按
+        别名查本表）。
 
-        **两种调用形态**（内部统一归一为 EntryRef 后走同一条管线）：
+        两种调用形态（内部统一归一为 EntryRef 后走同一条管线）：
 
-        - **``.fya`` 装配层**（主调用方）：``parse_fya`` 产出的
-          ``EntryRef`` 直接透传——``add_tool(ref)``，此时 ``alias`` /
-          ``body`` 必须缺省（与 ``ref`` 自带字段重复 →
-          :class:`flowing.errors.FormatError`）；
-        - **程序化**（``setup()`` / 运行期）：``add_tool(name, alias=...,
-          body=...)``，``body`` 与 ``.fya`` 单键映射项的覆写映射**同构**
-          （键集 ``description`` / ``args`` / ``output`` / ``enabled``——
-          R-4：``inject`` 键已删除，注入写 args 里的
+        - ``.fya`` 装配层（主调用方）：``parse_fya`` 产出的 ``EntryRef``
+          直接透传——``add_tool(ref)``，此时 ``alias`` / ``body`` 必须缺省
+          （与 ``ref`` 自带字段重复 → :class:`flowing.errors.FormatError`）；
+        - 程序化（``setup()`` / 运行期）：``add_tool(name, alias=...,
+          body=...)``，``body`` 与 ``.fya`` 单键映射项的覆写映射同构
+          （键集 ``description`` / ``args`` / ``output`` / ``enabled``；
+          旧 ``inject`` 键已删除，注入写 args 里的
           ``"{{ self.inject('key') }}"`` 表达式）；内部经
-          :func:`flowing.parser.normalize_entries` 构造 EntryRef
-          （保持「唯一构造通道」声明）。
-
-        .. rubric:: 设计动机
-
-        ``_tool_entries`` 有两条填充路径：``.fya`` ``tools:`` 声明（解析期）
-        与本方法（运行期/``setup()`` 期，C-02 裁决补声明）。
-
-        **S-01 裁决：工具绑定不经任何 use composable**——「启用某能力」
-        （``use_skill()`` / ``use_cron()`` 等 Composable 的钩子、状态、
-        prompt block 装配）与「该能力的工具对 LLM 可见」（``.fya``
-        ``tools:`` 或显式 ``add_tool``）是两个独立动作；工具本体
-        的 Runtime 级注册在 .fya 解析收集或插件 ``install()``（如
-        ``CronPlugin`` 注册 schedule-cron 系列）或核心（``subagent-invoke``
-        / ``finish`` 随 ``Runtime.__init__``）完成。
+          :func:`flowing.parser.normalize_entries` 构造 EntryRef。
 
         .. rubric:: 使用示例
 
@@ -3427,12 +3412,7 @@ class Agent:
             # 插件 setup 期的典型形态（裸名，无覆写）
             self.add_tool("schedule-cron")
 
-            # 程序化带覆写——body 与 .fya 单键映射项的覆写映射同构：
-            #   - make-payment as pay:
-            #       args:
-            #         amount:                        # 稀疏补丁（覆写端零糖）
-            #           description: 支付金额（元）
-            #         user_id: "{{ self.inject('user_id') }}"   # 注入表达式（R-4）
+            # 程序化带覆写——body 与 .fya 单键映射项的覆写映射同构
             self.add_tool(
                 "make-payment", alias="pay",
                 body={"args": {"amount": {"description": "支付金额（元）"},
@@ -3442,105 +3422,57 @@ class Agent:
             # .fya 装配层：parse_fya 产出的 EntryRef 直接透传
             self.add_tool(entry_ref)
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
-        - 同步、立即生效：下一次 ``_assemble_context()`` 即可见。
-        - **同 alias 重复添加 → :class:`flowing.errors.EntryNameConflictError`**。
+        - 同步、立即生效：下一次上下文组装即可见。
+        - 同 alias 重复添加 → :class:`flowing.errors.EntryNameConflictError`。
           每次生命周期（create / recover）都从 ``__init__`` 的空
-          ``_tool_entries`` 开始重放 ``setup()``，恢复不感知上一次的
-          效果；同一生命周期内重复添加同 alias 是笔误，快速失败
-          （tool / skill / subagent 绑定层统一语义，「都报错不覆盖」）。
-        - **glob 显式优先**：``tools:`` 装配层展开 glob 时，与已显式声明
-          条目**规范名相同**的同一资源跳过（先解析显式条目，再展开
-          glob；与 skills/subagents 同构）。只有**不同资源**得到同一
-          alias 时，才按上一条报 ``EntryNameConflictError``。
-        - **body 判别（本方法体内，单点维护）**：键集固定为
-          ``description`` / ``args`` / ``output`` / ``enabled``；
-          **未知键 → :class:`flowing.errors.FormatError`**（含旧
-          ``inject`` 键——R-4 已删除，注入写 args 里的注入表达式）
-          （与 args 级「非法子属性 fail-fast」同口径——笔误不静默吞）。
-          各键去向：
+          ``_tool_entries`` 开始重放 ``setup()``；同一生命周期内重复添加
+          同 alias 是笔误，快速失败（tool / skill / subagent 绑定层统一
+          语义，「都报错不覆盖」）。
+        - glob 显式优先：``tools:`` 装配层展开 glob 时，与已显式声明条目
+          规范名相同的同一资源跳过；只有不同资源得到同一 alias 时，才按
+          上一条报 ``EntryNameConflictError``。
+        - body 判别（本方法体内，单点维护）：键集固定为 ``description`` /
+          ``args`` / ``output`` / ``enabled``；未知键 →
+          :class:`flowing.errors.FormatError`（含旧 ``inject`` 键——已
+          删除，注入写 args 里的注入表达式）。各键去向：
 
-          - ``description`` → ``override_description``；``str`` 构造时
-            包装为 :class:`flowing.parsable.Parsable` 常量，
-            ``Parsable`` 原样透传（P1-17：求值面内，
-            ``llm_definition()`` 时以本 Agent 为上下文自动求值）；
-            ``_``（PENDING）→ 空补丁，视为无覆写（``None``）；
-          - ``args`` → 逐参数判别（规则本体见
-            :class:`flowing.tool.ToolEntry` 行为规约）：dict 值 →
-            ``override_params`` 稀疏补丁（JSON Schema 关键字，零糖——
-            类型必须写 ``type:``）；键含 ``as`` → ``param_aliases``；
-            ``_`` → 空补丁；其它值 → ``specified``，包装为
-            ``Parsable``（惰性求值；``"{{ self.inject('key') }}"``
-            注入表达式在此落入 specified——R-4）；
-          - ``output`` → **独立判别分支**（B 方案：承认差异而非伪装成
-            args 补丁）：值是「字段名 → JSON Schema 定义」映射，逐字段
-            并入 ``override_params``，不经过 args 的关键字校验
-            （``type`` 等键在此合法）；「省略字段 = 移除」语义见
+          - ``description`` → ``override_description``；``str`` 构造时包装
+            为 :class:`flowing.parsable.Parsable` 常量，``Parsable`` 原样
+            透传，``_``（PENDING）→ 空补丁（视为无覆写）；
+          - ``args`` → 逐参数判别：dict 值 → ``override_params`` 稀疏补丁
+            （JSON Schema 关键字）；键含 ``as`` → ``param_aliases``；
+            ``_`` → 空补丁；其它值 → ``specified``（包装 ``Parsable``，
+            惰性求值；注入表达式在此落入）；
+          - ``output`` → 独立判别分支：值是「字段名 → JSON Schema 定义」
+            映射，逐字段并入 ``override_params``，不经过 args 的关键字
+            校验（``type`` 等键在此合法）；「省略字段 = 移除」语义见
             ``FinishTool`` 规约；
           - ``enabled`` → 布尔原样。
-        - 深层块（``$tools.<alias>.args.<param>.description:``）的填回
-          **先于**本方法调用（装配层时序约束：先 merge 具名块，再逐条目
-          调本方法）——本方法看到的 ``body`` 是已合并的最终形态。
-        - 非行为：执行时按 ``name_ori`` 现场查注册表，entry 不持有 Tool
-          实例引用；不写持久化状态（entry 表由声明/``setup()`` 重建，
-          不落盘）。（声明期的文件链命中会实例化并注册 Tool——一次性
-          声明期行为，与本条不冲突。）
-        - 边缘情况：``name``/``ref.raw`` 未注册 → 经 :meth:`get_tool`
+        - 深层块（``$tools.<alias>.args.<param>.description:``）的填回先于
+          本方法调用（装配层时序约束：先 merge 具名块，再逐条目调本方法）
+          ——本方法看到的 ``body`` 是已合并的最终形态。
+        - 执行时按 ``name_ori`` 现场查注册表，entry 不持有 Tool 实例引用；
+          不写持久化状态（entry 表由声明 / ``setup()`` 重建，不落盘）。
+        - 边缘情况：``name`` / ``ref.raw`` 未注册 → 经 :meth:`get_tool`
           （携带本 Agent 的 ``source_dir``）先走定向文件查找链惰性解析
-          ——文件覆盖 ``default::``/``builtin::``（插件工具在阶段一
-          ``install`` 注册，``setup()`` 时必已存在；文件形态工具此时被
-          发现并注册）；查找链仍不命中才抛
-          :class:`flowing.errors.ToolNotFoundError`（笔误，快速失败）。
+          ——文件覆盖 ``default::`` / ``builtin::``；查找链仍不命中才抛
+          :class:`flowing.errors.ToolNotFoundError`。
 
-        :param name: 规范名 / 路径 / ``ns::name`` 引用串，或
-            ``.fya`` 解析产出的 ``EntryRef``（此时 ``alias``/``body``
-            必须缺省）。
-        :param alias: LLM 看到的别名；缺省按 ``normalize_entries`` 推断
-            （裸名 = 裸名本身等）。
+        :param name: 规范名 / 路径 / ``ns::name`` 引用串，或 ``.fya`` 解析
+            产出的 ``EntryRef``（此时 ``alias`` / ``body`` 必须缺省）。
+        :param alias: LLM 看到的别名；缺省按 ``normalize_entries`` 推断。
         :param body: 覆写映射，与 ``.fya`` 单键映射项的值同构；``None``
             为无覆写。
         :returns: 新创建的 ``ToolEntry``（便于链式修改，如置 ``enabled``）。
-        :raises flowing.errors.ToolNotFoundError: 引用未在注册表/查找链。
+        :raises flowing.errors.ToolNotFoundError: 引用未在注册表 / 查找链。
         :raises flowing.errors.EntryNameConflictError: 同 alias 条目已存在。
-        :raises flowing.errors.FormatError: EntryRef 与 ``alias``/``body``
+        :raises flowing.errors.FormatError: EntryRef 与 ``alias`` / ``body``
             重复给值；``body`` 含未知键或非法形态。
 
-        .. rubric:: 测试案例
-
-        - 前置：``runtime.tool_registry`` 已注册 ``finish`` → 操作：
-          ``add_tool("finish")`` → 期望：``_tool_entries["finish"]``
-          的 ``name_ori == "finish"``；再次同名调用 → ``EntryNameConflictError``。
-        - 前置：未注册 ``"ghost"`` → 期望：``ToolNotFoundError``，
-          ``_tool_entries`` 不变。
-        - 前置：``add_tool("make-payment", alias="pay", body={"args":
-          {"currency": "USD", "working_dir as cwd": _},
-          "inject": ["user_id"]})`` → 期望：条目 ``specified`` 含
-          ``Parsable("USD")``，``param_aliases == {"cwd": "working_dir"}``
-          且 ``override_params["working_dir"] == {}``（空补丁），
-          ``inject == ["user_id"]``。
-        - 前置：``body={"descripton": "..."}``（笔误键）→ 期望：
-          ``FormatError``。
-        - 前置：EntryRef 与 ``alias=`` 同传 → 期望：``FormatError``。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.tool.ToolEntry`` 构造（每次调用一次）；
-          :func:`flowing.parser.normalize_entries` / :func:`flowing.parser.split_as`
-          （程序化形态的 EntryRef 归一与 args 键 ``as`` 切分）；
-          :meth:`get_tool`（存在性解析）；``flowing.parsable.Parsable``
-          构造（``description`` 与 ``specified`` 的包装——**本方法即
-          「理解 args 语义的手动包装点」**，见
-          :mod:`flowing.parsable` 求值面内字段集合）
-        - 被调：``.fya`` ``tools:`` 条目装配（声明路径，EntryRef 透传）
-          与运行期/``setup()`` 期的显式调用（如 cron 示例 ``setup()``
-          中的 ``add_tool("schedule-cron")`` / ``add_tool("manage-cron")``）。
-          S-01 裁决后 Composable 体内不再调用本方法
-
         .. seealso:: :class:`flowing.tool.ToolEntry`、
-            :meth:`flowing.agent.Agent.tool_call`、
-            :meth:`flowing.tool.ToolRegistry.register`、
-            :class:`flowing.parser.EntryRef`
+            :meth:`tool_call`、:class:`flowing.parser.EntryRef`
         """
         # 第 0 步：归一为 EntryRef（唯一构造通道 = normalize_entries）
         if isinstance(name, EntryRef):
@@ -3560,20 +3492,14 @@ class Agent:
         key = ref.alias
         if key in self._tool_entries:   # 同 alias 重复添加 = 笔误（绑定层统一 fail-fast，见行为规约）
             raise EntryNameConflictError(key, kind="tool")
-        # 第 1 步：body 判别（键集校验 + 逐键去向，规则见行为规约；未知键 -> FormatError）
-        #   description -> override_description（PENDING->None；str->Parsable 包装；Parsable 透传）
-        #   args -> 逐参数 split_as 判别：dict->override_params / as->param_aliases /
-        #           PENDING->空补丁 / 其它->specified（Parsable 包装）
-        #   output -> 独立分支：逐字段以 {"schema": 定义} 并入 override_params
-        #   inject -> 原样（PENDING->[]）；enabled -> 原样
-        override_description, override_params, specified = None, {}, {}
-        param_aliases, enabled = {}, True
-        # body 判别（键集校验 + 逐键去向，规则见行为规约；未知键 -> FormatError）
+        # 第 1 步：body 判别（键集校验 + 逐键去向，规则见 docstring；未知键 -> FormatError）
         #   description -> override_description（PENDING->None；str->Parsable 包装；Parsable 透传）
         #   args -> 逐参数 split_as 判别：dict->override_params / as->param_aliases /
         #           PENDING->空补丁 / 其它->specified（Parsable 包装）
         #   output -> 独立分支：逐字段并入 override_params（不经 args 关键字校验）
-        #   inject -> 原样（PENDING->[]）；enabled -> 原样
+        #   inject -> FormatError（已删除：注入写 args 里的注入表达式）；enabled -> 原样
+        override_description, override_params, specified = None, {}, {}
+        param_aliases, enabled = {}, True
         for body_key, body_val in ref.body.items():
             if body_key == "description":
                 override_description = _as_parsable_patch(body_val)
@@ -3622,113 +3548,76 @@ class Agent:
         """向本 Agent 添加一条子 Agent 绑定条目（``_subagent_entries``
         的公开写入入口）——与 :meth:`add_tool` 同构。
 
-        **命名注意**：本方法添加的是**类型绑定条目**（Agent 类 + LLM 可见
-        声明 + 覆写），不是 Agent 实例——实例创建走 :meth:`create_subagent`
-        / :meth:`invoke_subagent`。「add」的对象是「这个 Agent 如何使用
-        某子 Agent 类型」的声明。
-
         .. rubric:: 功能介绍
 
-        按引用找到子 Agent 类型，判别覆写体并构造
+        命名注意：本方法添加的是类型绑定条目（Agent 类 + LLM 可见声明 +
+        覆写），不是 Agent 实例——实例创建走 :meth:`create_subagent` /
+        :meth:`invoke_subagent`。「add」的对象是「这个 Agent 如何使用某子
+        Agent 类型」的声明。按引用找到子 Agent 类型，判别覆写体并构造
         :class:`flowing.subagents.SubagentEntry`，以别名为 key 写入
         ``self._subagent_entries``。从此该类型进入本 Agent 的 catalog
         （``enabled=True`` 时对 LLM 可见）与可唤起集
         （``invoke_subagent()`` 仅按别名查本表）。
 
-        **两种调用形态**（与 ``add_tool`` 同一管线）：
+        两种调用形态（与 ``add_tool`` 同一管线）：
 
-        - **``.fya`` 装配层**（主调用方）：``subagents:`` 条目解析产出的
+        - ``.fya`` 装配层（主调用方）：``subagents:`` 条目解析产出的
           ``EntryRef`` 直接透传——``add_agent(ref)``，此时 ``alias`` /
           ``body`` 必须缺省（与 ``ref`` 自带字段重复 →
           :class:`flowing.errors.FormatError`）；
-        - **程序化**（``setup()`` / 运行期）：``add_agent(name, alias=...,
-          body=...)``，``body`` 与 ``.fya`` 单键映射项的覆写映射**同构**
+        - 程序化（``setup()`` / 运行期）：``add_agent(name, alias=...,
+          body=...)``，``body`` 与 ``.fya`` 单键映射项的覆写映射同构
           （键集 ``system_prompt`` / ``description`` / ``args`` /
-          ``enabled``——**无 ``output``**：输出 schema 覆写是 Tool 面
-          概念；R-4：无 ``inject`` 键，注入写 args 里的
+          ``enabled``——无 ``output``：输出 schema 覆写是 Tool 面概念；
+          无 ``inject`` 键，注入写 args 里的
           ``"{{ self.inject('key') }}"`` 表达式）；内部经
           :func:`flowing.parser.normalize_entries` 构造 EntryRef。
 
         ``name`` 接受全部引用形态，与 ``.fya`` 声明完全一致：裸名 /
         ``ns::name`` / 相对路径（``./`` ``../``，相对本 Agent 的
-        ``source_dir``）/ 绝对路径 / ``@/`` 锚定路径 / 路径带裸名
-        （目录形态按候选链探测）。
+        ``source_dir``）/ 绝对路径 / ``@/`` 锚定路径。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
-        - 同步、立即生效：下一次 ``_assemble_context()`` 即渲染进 catalog。
-        - **同 alias 重复添加 →
-          :class:`flowing.errors.EntryNameConflictError`**（绑定层统一
-          fail-fast，与 tool / skill 同口径）。
-        - **body 判别（本方法体内，单点维护）**：键集固定为
-          ``system_prompt`` / ``description`` / ``args`` / ``enabled``；
-          **未知键 → :class:`flowing.errors.FormatError`**（含旧
-          ``inject`` 键，R-4 已删除）。
+        - 同步、立即生效：下一次上下文组装即渲染进 catalog。
+        - 同 alias 重复添加 → :class:`flowing.errors.EntryNameConflictError`
+          （绑定层统一 fail-fast，与 tool / skill 同口径）。
+        - body 判别（本方法体内，单点维护）：键集固定为 ``system_prompt`` /
+          ``description`` / ``args`` / ``enabled``；未知键 →
+          :class:`flowing.errors.FormatError`（含旧 ``inject`` 键，已删除）。
           各键去向：
 
-          - ``system_prompt`` → ``override_system_prompt``；``str``
-            包装为 :class:`flowing.parsable.Parsable`，``Parsable``
-            透传；``_``（PENDING）→ 空补丁，视为无覆写（``None``）。
-            求值时机：子 Agent 创建时一次，上下文为父 Agent 实例；
-          - ``description`` → ``override_description``，同上包装；
-            求值时机：父 Agent 路由决策 / catalog 渲染时，上下文为
-            父 Agent 实例；
-          - ``args`` → 逐参数判别（规则本体见
-            :class:`flowing.tool.ToolEntry` 行为规约，与本方法同一套
-            代码路径）：dict 值 → ``override_params``；键含 ``as`` →
-            ``param_aliases``；``_`` → 空补丁；其它值 → ``specified``
-            （包装 Parsable，``invoke_subagent()`` 内以父 Agent 实例
-            上下文求值）。**差异**（SubagentEntry 行为规约）：
-            ``inject`` 目标是子 Agent **初始化参数**而非 ``execute()``
-            参数；
-          - ``inject`` → ``list[str]`` 原样；``_`` → 空列表；
+          - ``system_prompt`` → ``override_system_prompt``；``str`` 包装为
+            :class:`flowing.parsable.Parsable`，``Parsable`` 透传，``_``
+            （PENDING）→ 空补丁（视为无覆写）。求值时机：子 Agent 创建时
+            一次，上下文为父 Agent 实例；
+          - ``description`` → ``override_description``，同上包装；求值
+            时机：父 Agent 路由决策 / catalog 渲染时，上下文为父 Agent
+            实例；
+          - ``args`` → 逐参数判别（规则同 ``add_tool``）：dict 值 →
+            ``override_params``；键含 ``as`` → ``param_aliases``；``_`` →
+            空补丁；其它值 → ``specified``（包装 Parsable，
+            ``invoke_subagent()`` 内以父 Agent 实例上下文求值）。差异：
+            ``inject`` 目标是子 Agent 初始化参数而非 ``execute()`` 参数；
           - ``enabled`` → 布尔原样。
-        - 深层块（``$subagents.<alias>.xxx:``）填回**先于**本方法调用
-          （装配层时序约束，与 tool 侧同律）；导航规则见
-          :class:`SubagentEntry` 行为规约（含 as 的键仅以别名段寻址）。
-        - 边缘情况：``name``/``ref.raw`` 未命中 → 经 :meth:`get_agent_class`
+        - 深层块（``$subagents.<alias>.xxx:``）填回先于本方法调用（装配层
+          时序约束，与 tool 侧同律）。
+        - 边缘情况：``name`` / ``ref.raw`` 未命中 → 经 :meth:`get_agent_class`
           （携带 ``source_dir``）走文件链惰性解析——文件覆盖
-          ``default::``/``builtin::``；仍不命中抛 ``KeyError``
-          （``get_agent_class`` 的失败形态）。
-        - 非行为：entry 不持有子 Agent 类引用以外的任何实例状态；不写
-          持久化（条目表由声明/``setup()`` 重建）。
+          ``default::`` / ``builtin::``；仍不命中抛 ``KeyError``。
+        - entry 不持有子 Agent 类引用以外的任何实例状态；不写持久化
+          （条目表由声明 / ``setup()`` 重建）。
 
         :param name: 引用串（全形态，见上）或 ``.fya`` 解析产出的
-            ``EntryRef``（此时 ``alias``/``body`` 必须缺省）。
+            ``EntryRef``（此时 ``alias`` / ``body`` 必须缺省）。
         :param alias: catalog 与 ``invoke_subagent`` 用的别名；缺省按
-            ``normalize_entries`` 推断（路径形态经 ``infer_name``
-            / ``AGENT_NAMING``）。
+            ``normalize_entries`` 推断。
         :param body: 覆写映射，与 ``.fya`` 单键映射项的值同构。
         :returns: 新创建的 ``SubagentEntry``。
         :raises flowing.errors.EntryNameConflictError: 同 alias 条目已存在。
-        :raises flowing.errors.FormatError: EntryRef 与 ``alias``/``body``
+        :raises flowing.errors.FormatError: EntryRef 与 ``alias`` / ``body``
             重复给值；``body`` 含未知键或非法形态。
         :raises KeyError: 引用在注册表与文件链均不命中。
-
-        .. rubric:: 测试案例
-
-        - 前置：``runtime.register_agent_type("payment", PaymentAgent)``
-          → 操作：``add_agent("payment", alias="pay")`` → 期望：
-          ``_subagent_entries["pay"].name_ori == "payment"``；再次同名
-          → ``EntryNameConflictError``。
-        - 前置：``body={"system_prompt": "你是收款员", "args":
-          {"user_id": _, "trace_id": "{{ self.inject('trace_id') }}"}}``
-          → 期望：``override_system_prompt`` 为 Parsable；
-          ``override_params`` 含 ``user_id`` 空补丁；``specified`` 含
-          ``trace_id`` 的注入表达式（R-4：无独立 inject 通道）。
-        - 前置：``body={"output": {...}}``（Tool 面键）→ 期望：
-          ``FormatError``（未知键）。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.subagents.SubagentEntry`` 构造；
-          :func:`flowing.parser.normalize_entries` /
-          :func:`flowing.parser.split_as`；:meth:`get_agent_class`；
-          ``flowing.parsable.Parsable`` 构造（包装点，与 ``add_tool``
-          同律）
-        - 被调：``.fya`` ``subagents:`` 条目装配（声明路径，EntryRef
-          透传——**本方法即 agent 装配层对 subagents 列表的具名落点**）
-          与运行期/``setup()`` 期的显式调用
 
         .. seealso:: :class:`flowing.subagents.SubagentEntry`、
             :meth:`invoke_subagent`、:meth:`add_tool`（同构管线）
@@ -3755,7 +3644,7 @@ class Agent:
         if key in self._subagent_entries:   # 同 alias 重复添加 = 笔误（绑定层统一 fail-fast）
             raise EntryNameConflictError(key, kind="subagent")
         # 第 1 步：body 判别（键集 system_prompt/description/args/enabled——
-        # R-4：无 inject 键；未知键 -> FormatError；args 判别与 add_tool 同规则、
+        # 无 inject 键；未知键 -> FormatError；args 判别与 add_tool 同规则、
         # 无 output 分支；system_prompt/description 包装 Parsable，PENDING -> 空补丁 None）
         override_system_prompt, override_description = None, None
         override_params, specified, param_aliases = {}, {}, {}
@@ -3797,10 +3686,8 @@ class Agent:
         .. rubric:: 功能介绍
 
         ProvideNode 协议实现（Runtime / Workflow / Agent 同一套模式）。
-        同名 key 覆盖写——实例运行期覆盖是合法的动态更新（spec-draft
-        §13.4；``inject`` 实时查找不缓存即刻可见，S-37 裁决统一
-        「覆盖、无冲突异常」口径，防插件静默覆盖靠 ``InjectionKey``
-        前缀约定）。
+        同名 key 覆盖写——实例运行期覆盖是合法的动态更新（``inject``
+        实时查找不缓存，更新即刻可见）。
 
         .. rubric:: 使用示例
 
@@ -3809,19 +3696,13 @@ class Agent:
             async def setup(self, user_id: str):
                 self.provide("user_id", user_id)   # 敏感信息走注入通道
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
-        - 敏感信息（身份 / 工作区 / 凭证派生值）的正确通道：**不进消息
-          流、不进 LLM 上下文、不经网络传输、不落盘**。
-        - 非行为：不做深拷贝、不做序列化——存的是对象引用。
+        - 敏感信息（身份 / 工作区 / 凭证派生值）的正确通道：不进消息流、
+          不进 LLM 上下文、不经网络传输、不落盘。
+        - 不做深拷贝、不做序列化——存的是对象引用。
 
-        .. rubric:: 调用关系（审计）
-
-        - 调用：无（写入 ``_provided``）
-        - 被调：无框架内调用方（公共 API，setup / 钩子中由用户与插件
-          调用）
-
-        .. seealso:: :meth:`inject`、:class:`flowing.runtime.ProvideNode`
+        .. seealso:: :meth:`inject`、:class:`flowing.params.InjectionKey`
         """
         self._provided[key] = value   # 同名覆盖写；存对象引用（不深拷贝、不序列化）
 
@@ -3834,38 +3715,22 @@ class Agent:
 
         .. rubric:: 功能介绍
 
-        统一算法见 ``inject_from(runtime, node, key)``：当前节点
+        统一算法见 :func:`flowing.provide.inject_from`：当前节点
         ``_provided`` → 父节点 → … → ``Runtime._provided``；都找不到
         → ``MissingProvideError(key)``。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         - 上溯沿 UID 链（``runtime.get_node(parent_id)``），节点间不持
           对象引用；父已销毁 / 摘除时链断 → 按找不到处理。
         - 跨层共享的正确机制（args 只向下传一层，inject 沿链自动穿透）。
-        - :raises flowing.errors.MissingProvideError: 链上溯到底仍无
-          key。
         - 类型信息不跨节点：``InjectionKey[T]`` 的 ``T`` 是声明侧约定，
           框架不做运行时校验。
+        - :raises flowing.errors.MissingProvideError: 链上溯到底仍无
+          key。
 
-        .. rubric:: 测试案例
-
-        - 前置：祖父 Agent provide ``workspace_root``，中间层未 provide
-          → 操作：孙 Agent ``inject("workspace_root")`` → 期望：穿透
-          中间层命中祖父的值。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.runtime.inject_from()``（时机：每次调用，
-          统一上溯算法）
-        - 被调：``flowing.subagents.SubagentEntry.resolve``（时机：inject
-          参数沿 provide 链上溯）、``flowing.agent.Agent._normalize``
-          （时机：聚合需 provide 链，见其 docstring 归属说明）
-
-        .. seealso::
-
-            - :meth:`provide`、:func:`flowing.runtime.inject_from`
-            - :class:`flowing.params.InjectionKey` —— 类型安全键。
+        .. seealso:: :meth:`provide`、:func:`flowing.provide.inject_from`、
+            :class:`flowing.params.InjectionKey` —— 类型安全键。
         """
         # 统一上溯算法 = flowing.provide.inject_from（S-43 裁决①后 canonical home；
         # 经 flowing.runtime 再导出亦有效）
@@ -3881,7 +3746,8 @@ class Agent:
         .. rubric:: 功能介绍
 
         委托 ``Runtime.get_resource``；``setup()`` 轻量约束下，重资源
-        （渲染器 / 连接池 / 缓存）经此按需获取而非在声明层构造。
+        （渲染器 / 连接池 / 缓存）经此按需获取而非在声明层构造。资源是
+        跨任务复用的对象（区别于 Agent 实例不跨任务复用）。
 
         .. rubric:: 使用示例
 
@@ -3890,16 +3756,9 @@ class Agent:
             async def setup(self):
                 self._ui = self.get_resource("ui_renderer", UiRenderer)
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
-        - 资源是**跨任务复用**的对象（区别于 Agent 实例不跨任务复用）。
         - :raises flowing.errors.ResourceNotFoundError: 名称未注册。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.runtime.Runtime.get_resource()``（时机：每次
-          调用委托）
-        - 被调：无框架内调用方（公共 API，setup / 按需阶段由用户调用）
 
         .. seealso:: :meth:`flowing.runtime.Runtime.register_resource`
         """
@@ -3910,44 +3769,30 @@ class Agent:
     # ────────────────────────── watch / parsable ──────────────────────────
 
     def watch(self, name: str, handler: WatchHandler | None = None) -> WatchHandler:
-        """监听实例属性**赋值**事件——watcher 通道的 ``(new, old)`` 糖。
+        """监听实例属性赋值事件——watcher 通道的 ``(new, old)`` 糖。
 
         .. rubric:: 功能介绍
 
-        回调签名 ``(new_value, old_value) -> None``，**返回值忽略**；
-        同步或 async 均可。内部把回调包成 watcher handler
-        ``(agent, fu)``，经 ``self.hooks.watch(name, wrapped)`` 注册到
-        **watcher 通道**——它不是普通钩子点，不参与改写 /
-        ``Intercepted`` / ``shortcut``，永远 fire-and-forget。
+        回调签名 ``(new_value, old_value) -> None``，返回值忽略；同步或
+        async 均可。内部把回调包成 watcher handler ``(agent, fu)``，经
+        ``self.hooks.watch(name, wrapped)`` 注册到 watcher 通道——它不是
+        普通钩子点，不参与改写 / ``Intercepted`` / ``shortcut``，永远
+        fire-and-forget。
 
-        .. rubric:: 设计动机（响应式边界）
+        .. rubric:: 行为要点
 
-        Flowing 无响应式系统——惰性求值 + 正确求值时机。``watch`` 只
-        监听**赋值**，不监听解析值变化：``self.c = Parsable("{{ a == b }}")``
-        后改 ``a`` 不触发 ``watch("c")``；重新赋值（换 Parsable、赋非
-        Parsable 值、赋 ``_``）才触发。「a 变导致 c 重算」两条路径：
-        ① 放进求值面让框架自动 resolve；② 自己 watch 显式联动。
-
-        回调不携带 ``agent`` 与 :class:`FieldUpdate`；需要完整值对象时，
-        直接经 ``self.hooks.watch`` 注册 ``(agent, fu)`` 形态的 watcher。
-
-        .. rubric:: 行为规约
-
-        - ``name`` 按 ``fnmatch`` pattern 匹配 :class:`FieldUpdate` 的
-          ``name`` 字段：字面量即精确匹配；通配符（``"*"`` 等）按
-          fnmatch 规则生效。
-        - **纯观察 + fire-and-forget**：watcher 在后台任务中执行，
-          不阻塞赋值；多次赋值的 watcher 执行顺序不保证；无运行中
-          event loop 时 watcher 不触发（赋值照常）。
-        - ``handler=None`` 时返回装饰器（``@self.watch("x")``
-          写法）；否则注册并原样返回 handler。
-        - 语义属外部触发：赋值来源不一定是 Agent 内部；多个 watcher
-          被动响应、互不干扰。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``self.hooks.watch(name, wrapped)``（时机：注册时）
-        - 被调：无框架内调用方（公共 watcher 糖，用户 / Composable 调用）
+        - ``name`` 按 ``fnmatch`` pattern 匹配赋值事件的字段名：字面量
+          即精确匹配；通配符（``"*"`` 等）按 fnmatch 规则生效。
+        - 纯观察 + fire-and-forget：watcher 在后台任务中执行，不阻塞
+          赋值；多次赋值的 watcher 执行顺序不保证；无运行中 event loop
+          时 watcher 不触发（赋值照常）。
+        - ``handler=None`` 时返回装饰器（``@self.watch("x")`` 写法）；
+          否则注册并原样返回 handler。
+        - 监听的是赋值事件本身，不监听解析值变化：``self.c =
+          Parsable("{{ a == b }}")`` 后改 ``a`` 不触发 ``watch("c")``；
+          重新赋值（换 Parsable、赋非 Parsable 值、赋 ``_``）才触发。
+        - 需要完整值对象时，直接经 ``self.hooks.watch`` 注册
+          ``(agent, fu)`` 形态的 watcher。
 
         .. seealso::
 
@@ -3967,39 +3812,31 @@ class Agent:
         return _wrap(handler)
 
     def __setattr__(self, name: str, value: Any) -> None:
-        """实例属性赋值拦截——watcher 通知的触发点（M-41 最终裁决）。
+        """实例属性赋值拦截——watcher 通知的触发点。
 
-        **D6（删状态键拦截）**：不再拦截状态键——经 ``agent.xxx = v``
-        写已注册状态键落普通实例属性（与袋值并存由用户自担）；状态量
-        读写统一走 ``self.state.<key>`` 显式视图。
-
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         - 顺序：构造 :class:`FieldUpdate`（``name`` / ``old`` / ``new``
-          快照）→ **fire-and-forget** 通知 watcher 通道
-          （``hooks._notify_watch``，不 await）→ 执行写入。赋值
-          语义不受 watcher 影响：无改写、无取消、异常不上抛。
-        - watcher 只管普通实例属性；state 写不触发（决策 5）。
+          快照）→ fire-and-forget 通知 watcher 通道（不 await）→ 执行
+          写入。赋值语义不受 watcher 影响：无改写、无取消、异常不上抛。
+        - 不再拦截状态键：经 ``agent.xxx = v`` 写已注册状态键落普通实例
+          属性（与袋值并存由用户自担）；状态量读写统一走
+          ``self.state.<key>`` 显式视图。
+        - watcher 只管普通实例属性；state 写不触发（watch 不察觉 state）。
         - handler 可为同步或 async（后台任务统一 await）；handler 异常
           终止本次 dispatch 链并记录日志，不影响赋值。
-        - 无运行中的 event loop 时 dispatch **静默跳过**（赋值照常）。
-        - 仅**实例属性赋值**触发；描述符 / 类属性 / ``_`` 前缀骨架字段
-          的初始化不经过本机制。
-        - 骨架期护栏（P3-03）：``hooks`` 只经 ``__dict__.get`` 探查，
-          未建立（管线第 2 步预绑 / 子类先于 ``super().__init__()``
-          赋值）→ 跳过 dispatch，落普通实例属性。
+        - 无运行中的 event loop 时 dispatch 静默跳过（赋值照常）。
+        - 仅实例属性赋值触发；描述符 / 类属性 / ``_`` 前缀骨架字段的
+          初始化不经过本机制。
+        - 骨架期护栏：``hooks`` 未建立（管线预绑 / 子类先于
+          ``super().__init__()`` 赋值）→ 跳过 dispatch，落普通实例属性。
         - 边缘情况：handler 内再次给同名字段赋值造成递归 dispatch——
           框架不做递归防护，属编程错误。
+        - ``model_tag`` 赋值会触发重新解析并覆盖 ``self.model``（只能
+          指向配置已定义模型）；改标签触发的换模型不再二次触发 model
+          字段的 watcher（一次语义事件 = 改标签）。
 
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.agent.FieldUpdate`` 构造与
-          ``hooks._notify_watch``（时机：写入前，fire-and-forget）
-        - 被调：无（Python 实例属性赋值机制触发）
-
-        .. seealso::
-
-            :class:`FieldUpdate`、:meth:`watch`、:class:`StateView`
+        .. seealso:: :class:`FieldUpdate`、:meth:`watch`
         """
         if not name.startswith("_"):   # 仅实例属性赋值触发；_ 前缀骨架字段初始化不经过本机制
             old: Any = getattr(self, name, None)   # 字段不存在时规约为 _UNSET 哨兵（flowing.parsable）
@@ -4021,18 +3858,13 @@ class Agent:
                 object.__setattr__(self, "model", self._resolve_model_tag(value))
 
     def __delattr__(self, name: str) -> None:
-        """删除拦截——纯透传（D6：删状态键拦截，无状态域特判）。
+        """删除拦截——纯透传。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
-        一律走普通实例属性删除（类属性 / 方法删不掉，
-        ``AttributeError`` 原样上抛）。非行为：不触发 watcher（删除
-        不是赋值事件）。删持久值走 ``del self.state.<key>``。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：无
-        - 被调：无（Python ``del`` 语句机制触发）
+        一律走普通实例属性删除（类属性 / 方法删不掉，``AttributeError``
+        原样上抛）。不触发 watcher（删除不是赋值事件）。删持久值走
+        ``del self.state.<key>``。
         """
         object.__delattr__(self, name)
 
@@ -4041,9 +3873,9 @@ class Agent:
 
         .. rubric:: 功能介绍
 
-        不走 ``__setattr__`` 拦截的手动通道：产物已绑定 ``_instance=self``，
-        ``str()`` / ``resolve()`` 默认以本实例为渲染上下文（合并 ``env``
-        / ``config`` 顶层变量）。
+        不走 ``__setattr__`` 拦截的手动通道：产物已绑定本实例，``str()``
+        / ``resolve()`` 默认以本实例为渲染上下文（合并 ``env`` /
+        ``config`` 顶层变量）。
 
         .. rubric:: 使用示例
 
@@ -4051,18 +3883,11 @@ class Agent:
 
             self.greeting = self.parsable("你好 {{ user_id }}")
             self.greeting.resolved      # "你好 Alice" —— 已绑定，现场求值
-            # （str() 只展示模板源不求值——定稿，见 parsable.Parsable.__str__）
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
-        非行为：框架不为 Parsable 做隐式解包——``_extra`` / entry 覆写
-        等求值面外位置拿到的 Parsable 需手动 ``.resolve(context)``。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.parsable.Parsable`` 构造（时机：每次调用，
-          绑定 ``_instance=self``）
-        - 被调：无框架内调用方（公共手动通道，用户代码调用）
+        框架不为 Parsable 做隐式解包——``_extra`` / entry 覆写等求值面外
+        位置拿到的 Parsable 需手动 ``.resolve(context)``。
 
         .. seealso:: :class:`flowing.parsable.Parsable`（五形式与两步渲染）
         """
@@ -4076,17 +3901,11 @@ class Agent:
         .. rubric:: 功能介绍
 
         返回 :class:`flowing.snapshot.AgentSnapshot`——``node_id`` /
-        ``parent_id`` / 消息树摘要 / ``current_head_id`` /
-        当前逻辑 Turn 视图 / ``executions`` / 队列摘要 / 模型视图 /
-        工具与子 Agent 绑定条目 / 上下文占用估计（``context_usage``，
-        :meth:`estimate_context_tokens` 的快照时刻取值）的一次性只读
-        视图。供测试断言、repl ``/snapshot``、观测扩展使用。
-
-        .. rubric:: 设计动机
-
-        观测走只读 Info 视图而非直接读内部结构：``_executions`` 的控制
-        信号（``cancel`` / ``pause`` Event）、``_pending_turns`` 的
-        Future、``_provided`` 的值内容（凭证等敏感值）均不暴露。
+        ``parent_id`` / 消息树摘要 / ``current_head_id`` / 当前逻辑 Turn
+        视图 / ``executions`` / 队列摘要 / 模型视图 / 工具与子 Agent 绑定
+        条目 / 上下文占用估计（``context_usage``，:meth:`estimate_context_tokens`
+        的快照时刻取值）的一次性只读视图。供测试断言、repl ``/snapshot``、
+        观测扩展使用。
 
         .. rubric:: 使用示例
 
@@ -4096,29 +3915,19 @@ class Agent:
             assert snap.current_turn is None
             assert snap.message_queue.size == 0
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         - 只读：修改返回对象不影响 Agent；字段为拷贝或 Info 视图。
         - 一致性：单次调用内各字段取同一时刻的读值。
-        - ``keys``（S3）：``None``（默认）收集全部切面；指定时只收集
-          指定字段（其余为 ``None``——如不需要 ``context_usage`` 的
-          锚点扫描开销，可不收它）。需要多切面同一时刻一致 → 同一次
-          调用传入全部所需 key。
-        - **可序列化**：全部字段 JSON 可序列化（与
-          ``Runtime.snapshot`` 同一总括不变量，见 :mod:`flowing.snapshot`）。
+        - ``keys``：``None``（默认）收集全部切面；指定时只收集指定字段
+          （其余为 ``None``——如不需要 ``context_usage`` 的锚点扫描开销，
+          可不收它）。需要多切面同一时刻一致 → 同一次调用传入全部所需
+          key。
+        - 可序列化：全部字段 JSON 可序列化。
         - ``current_turn`` 为 ``None`` 表示空闲（无活跃逻辑 Turn）。
         - 完整字段契约见 :mod:`flowing.snapshot` 模块级 docstring。
 
-        .. rubric:: 测试案例
-
-        - 前置：新建 Agent 未投递消息 → 操作：``snapshot()`` → 期望：
-          ``current_turn is None``、``messages.count == 0``。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：无（只读组装 ``AgentSnapshot`` 与 Info 视图）
-        - 被调：无框架内调用方（观测入口；契约定稿见
-          :mod:`flowing.snapshot` 模块级 docstring）
+        :param keys: 要收集的切面字段名集合；``None`` 表示全部。
 
         .. seealso:: :meth:`flowing.runtime.Runtime.snapshot`、
             :class:`flowing.snapshot.AgentSnapshot`
