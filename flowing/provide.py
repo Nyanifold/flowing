@@ -134,7 +134,7 @@ def inject_from(runtime: "Runtime", node: ProvideNode, key: str) -> Any:
     ``Workflow.inject`` / ``Runtime.inject`` 都委托本函数实现；应用代码
     一般直接调用 ``node.inject(key)``，不需要直接使用本函数。
 
-    :param runtime: 链终点所在的 Runtime，提供按节点 ID 查回节点的能力。
+    :param runtime: 链终点所在的 Runtime，提供按节点 ID 查找节点的能力。
     :param node: 查找起点节点。
     :param key: 注入值的键（字符串）。
     :return: 找到的注入值。
@@ -146,8 +146,8 @@ def inject_from(runtime: "Runtime", node: ProvideNode, key: str) -> Any:
       值时，取近处的值。
     - 查找实时进行、不做缓存：``provide`` 更新后，下一次查找立即可见。
     - 父链断裂按未命中处理：中间节点的父节点已销毁、无法继续上溯时，
-      最终抛 :exc:`flowing.errors.MissingProvideError`；断裂链上本节点
-      自身的值不受影响，仍可命中。
+      最终抛 :exc:`flowing.errors.MissingProvideError`；即使上方链断裂，
+      本节点自身已注册的值仍可命中。
 
     .. seealso:: :class:`ProvideNode`、
         :exc:`flowing.errors.MissingProvideError`、
