@@ -858,19 +858,17 @@ class Agent:
     # ────────────────────────── 类属性（.fya 元信息即类属性） ──────────────
 
     class_name: ClassVar[str]
-    """Python 类名（PascalCase）。``.fya`` 可显式声明 ``class_name:``；缺省
-    从**身份名**推断——格式转换经 :func:`flowing.paths.kebab_to_pascal`，
-    其后由装配层叠加**后缀策略**：**始终保证以一个 ``Agent`` 结尾**
-    （已结尾则原样（``pay-agent`` → ``PayAgent``），否则补上
-    （``pay`` → ``PayAgent``））。手写子类即 ``__name__``，无需声明。
+    """Python 类名（PascalCase）。``.fya`` 可显式声明 ``class_name:``；
+    缺省从身份名推断——格式转换经 :func:`flowing.paths.kebab_to_pascal`，
+    并始终保证以 ``Agent`` 结尾（已结尾则原样，否则补上）。手写子类即
+    ``__name__``，无需声明。
 
     .. rubric:: 身份名的推断（``name`` 非机制字段）
 
     Agent 的身份名（注册表 key、``agent_type`` 裸名、引用别名缺省、
-    ``class_name`` 推断的输入）**一律由推断产生**，框架不存在 ``name``
-    机制字段。路径形态的身份名推断机制本体在
-    :func:`flowing.paths.infer_name`（去后缀、通用名取目录名、
-    snake→kebab；规则表 ``AGENT_NAMING`` 见 ``flowing.runtime``）：
+    ``class_name`` 推断的输入）一律由推断产生，框架不存在 ``name``
+    机制字段。推断规则本体在 :func:`flowing.paths.infer_name`
+    （去后缀、通用名取目录名、snake → kebab）：
 
     - 路径形态 ``.fya`` / 手写 ``.py``：文件名去 ``.agent.fya`` /
       ``.fya`` / ``.py`` 后缀；文件名是 ``agent.fya`` / ``AGENT.fya``
@@ -879,85 +877,80 @@ class Agent:
     - 手写子类：类名 kebab 化（``OrderAgent`` → ``order-agent``，经
       :func:`flowing.paths.pascal_to_kebab`）。
 
-    ``.fya`` 与手写子类中**不禁止**写 ``name``，但仅作一致性断言：与
-    推断值不符抛 :class:`flowing.errors.NameMismatchError`（消息含声明
-    值 / 推断值 / 来源）；一致时无任何效果。
+    ``.fya`` 与手写子类中不禁止写 ``name``，但仅作一致性断言：与推断值
+    不符抛 :class:`flowing.errors.NameMismatchError`（消息含声明值 /
+    推断值 / 来源）；一致时无任何效果。
     """
     description: ClassVar[Parsable]
-    """Parsable；**实例创建前**由父 Agent 读取（路由决策），渲染上下文为
-    父 Agent 实例。可选；缺失 / ``null`` 落 ``None``。
+    """Agent 的一句话介绍（Parsable），供父 Agent 路由决策与 catalog
+    渲染读取；渲染上下文为父 Agent 实例。可选：缺失 / ``null`` 落
+    ``None``（消费方按空串处理）。普通字符串赋值同样可用（消费方原样
+    取文本）。
     """
     metadata: ClassVar[dict[str, Any]]
     """任意静态键值对，框架不解释，透传 ``self.metadata``，供扩展 /
     Composable 读取。
     """
     system_prompt: ClassVar[Parsable]
-    """**唯一必填**类属性；实例化后进入 ``prompt_blocks[0]`` 的惰性引用块
-    （``by="core"``，``content=Parsable("{{ self.system_prompt }}")``——
-    类属性不在实例 ``__dict__`` 摊平里，经渲染上下文的 ``self`` 入口
-    访问；EXPRESSION
-    求值得到本属性（描述符 ``__get__`` 已绑定实例的 Parsable），按
-    ``EXPRESSION`` 的结果收尾规则经 ``.resolved`` 渲染一层，内层模板
-    随之渲染——单一数据源，``setup()`` 中改它下次 provider_gen 自动
-    反映）。创建管线 PENDING 检查点仍为 PENDING → ``MissingFieldError``。
+    """唯一必填类属性：系统提示词。实例化后进入 ``prompt_blocks[0]``
+    的惰性引用块（``by="core"``，内容为 ``{{ self.system_prompt }}``
+    模板），每次组装上下文时现场求值——``setup()`` 中改它，下一次
+    ``provider_gen()`` 自动反映。创建管线在 ``setup()`` 后检查本属性
+    仍为 PENDING（未赋值）→ ``MissingFieldError``。
     """
     model_tag: str = "default"
-    """声明层模型意图（``"fast" / "high" / "default"`` 是语义约定非枚举），
-    与 Provider 完全解耦；支持 Jinja2 模板（惰性求值，每次 ``provider_gen()``
-    前重新求值）；运行时可变（``agent.model_tag = "high"`` → 重新解析
-    覆盖 ``self.model``，只能指向配置已定义模型）。标签未定义回退
-    ``default``；``default`` 也未定义 → 报错（不静默回退）。
+    """声明层模型意图（``"fast" / "high" / "default"`` 是语义约定、非
+    枚举），与 Provider 完全解耦；支持 Jinja2 模板（惰性求值，每次
+    ``provider_gen()`` 前重新求值）。运行时可变：``agent.model_tag =
+    "high"`` 会重新解析并覆盖 ``self.model``，只能指向配置已定义模型。
+    标签未定义回退 ``default``；``default`` 也未定义 → 报错（不静默
+    回退）。
     """
     args_model: ClassVar[type[BaseModel] | None]
-    """实例化参数声明（B1 裁决：Pydantic BaseModel 子类，声明即模型——
-    同时是 ``subagent-invoke`` 工具 LLM 可见 schema 与执行层校验的来源）。
+    """实例化参数声明（Pydantic BaseModel 子类，声明即模型——同时是
+    ``subagent-invoke`` 工具 LLM 可见 schema 与执行层校验的来源）。
     三种来源形态：
 
-    - ``.fya`` 显式写 ``args:``（纯 JSON Schema 展开式，糖见
-      :mod:`flowing.params`）→ 经 :func:`flowing.params.schema_to_model`
-      桥接成模型，以其为准（YAML 优先），``setup()`` 签名仅作校验
-      对照（参数必须有对应字段、类型标注必须兼容）；
+    - ``.fya`` 显式写 ``args:``（纯 JSON Schema 展开式）→ 经
+      :func:`flowing.params.schema_to_model` 桥接成模型，以其为准
+      （YAML 优先），``setup()`` 签名仅作校验对照（参数必须有对应字段、
+      类型标注必须兼容）；
     - 手写子类显式声明 ``args_model = MyArgs``（BaseModel 子类）→
-      直接使用（声明即模型）；
-    - 两者皆无 → **类创建时从 ``setup()`` 签名推导**（装配层 /
-      ``__init_subclass__`` 执行）：逐参数 ``inspect`` 签名，类型标注 →
-      字段类型（标注缺失 → 构造期抛 ``ValueError``）；带默认值 →
-      字段默认值（可选）；无默认值 → 必填。``setup(**kwargs)`` 全
-      kwarg 吸收形态 → 推导产物为 ``None``（空模型不接受构造参数）。
+      直接使用；
+    - 两者皆无 → 类创建时从 ``setup()`` 签名推导：类型标注 → 字段类型
+      （标注缺失 → 构造期抛 ``ValueError``）；带默认值 → 字段默认值
+      （可选）；无默认值 → 必填。``setup(**kwargs)`` 全 kwarg 吸收形态
+      → 推导产物为 ``None``（空模型不接受构造参数）。
 
-    推导发生在类创建期而非实例化期：产物是确定的类属性，运行时无
-    重复推导。
+    推导发生在类创建期而非实例化期：产物是确定的类属性，运行时无重复
+    推导。
     """
     _extra: dict[str, Any]
     """``.fya`` 中框架不认识的字段（如 ``skills:`` / ``modes:``）的静默
-    仓库；``__getattr__`` 回退查找。**实例属性**（非 ClassVar）：
-    ``__init__`` 建立为空表，``.fya`` 装配层在生成 ``setup()`` 的前置段
-    合入未知字段。框架不解析其中 Parsable——扩展自行
-    ``.resolve(render_context)``。
+    仓库；``__getattr__`` 回退查找。实例属性（非 ClassVar）：``__init__``
+    建立为空表，``.fya`` 装配层在生成 ``setup()`` 的前置段合入未知字段。
+    框架不解析其中的 Parsable——扩展自行 ``.resolve(render_context)``。
     """
     source_file: ClassVar[str | None]
-    """``@/`` 格式源文件路径；类创建时经 ``__init_subclass__`` 从
-    ``__module__.__file__`` 推算；``.fya`` 来源的类由**装配层（编译
-    管线）在生成类时显式注入**——值为该 ``.fya`` 文件的 ``@/`` 路径，
-    优先级最高（不走 ``__module__`` 推算，生成代码的模块路径没有
-    意义）；显式写 ``None`` 或推算失败 → ``None``。只读，实例化后
-    不可变。
+    """``@/`` 格式源文件路径。类创建时经 ``__init_subclass__`` 从
+    ``__module__.__file__`` 推算；``.fya`` 来源的类由装配层在生成类时
+    显式注入（值为该 ``.fya`` 文件的 ``@/`` 路径，优先级最高，不走
+    ``__module__`` 推算）。显式写 ``None`` 或推算失败 → ``None``。
+    只读，实例化后不可变。
     """
     registry_key: ClassVar[str | None] = None
     """注册表键回写——``Runtime`` 注册本类时写入（``register_agent_type``
     与文件派生注册两处）：``ns::name`` 全限定键；从未注册的手写子类为
     ``None``。与 ``Tool.registry_key`` / ``Skill.registry_key`` 同构，
-    供 ``add_agent`` 落账 ``name_ori``（文件派生记派生限定键，热路径
-    精确命中）。内部 API，不属稳定契约。
+    供 ``add_agent`` 落账 ``name_ori``。内部 API，不属稳定契约。
     """
     subagent_catalog_template: ClassVar[str | None] = None
     """Agent 级 catalog 模板覆写槽位（``<available_subagents>`` 块）。
 
-    **Agent 对象自己有该属性则用其值，否则用
-    :data:`flowing.subagents.DEFAULT_SUBAGENT_CATALOG_TEMPLATE`**（用户
-    原话裁决）；``.fya`` 中同名字段亦可（落入实例属性 / ``_extra``，
-    ``getattr`` 同样命中）。值是 Jinja2 模板源字符串（含
-    ``$./file.j2`` FILE_REF 形式），上下文变量表见
+    Agent 对象自己有该属性则用其值，否则用
+    :data:`flowing.subagents.DEFAULT_SUBAGENT_CATALOG_TEMPLATE`；
+    ``.fya`` 中同名字段亦可（落入实例属性或 ``_extra``，``getattr``
+    同样命中）。值是 Jinja2 模板源字符串，上下文变量表见
     :data:`flowing.subagents.DEFAULT_SUBAGENT_CATALOG_TEMPLATE`。
     """
     _id_prefix: ClassVar[str] = "agent"
@@ -976,62 +969,50 @@ class Agent:
     遍历销毁子树。内部 API，不属稳定契约。
     """
     _parent_id: str
-    """父节点 ID **字符串**（非对象引用）。双重用途：① 销毁时父→子
-    定位；② provide 链子→父上溯（``inject_from``）。创建时绑定、终身
-    不变的历史事实——根 Agent 指向 Runtime 的 ``node_id``
-    （``"runtime-0"``）；id 不分死活，节点存活与否由 ``_nodes`` 在册
-    与否表达，不由本字段（S-12 衍生裁决）。内部 API。
+    """父节点 ID 字符串（非对象引用）。双重用途：① 销毁时父 → 子定位；
+    ② provide 链子 → 父上溯（``inject_from``）。创建时绑定、终身不变的
+    历史事实——根 Agent 指向 Runtime 的 ``node_id``（``"runtime-0"``）；
+    节点存活与否由 ``_nodes`` 在册与否表达，不由本字段。内部 API。
     """
     _children: dict[str, Agent]
-    """生命周期子树（``node_id → 子 Agent 实例``），**静态结构**：创建加入、
-    销毁移除；回答「谁该随我销毁」。与 ``_executions`` / provide 链
-    正交，不可合并。内部 API。
+    """生命周期子树（``node_id → 子 Agent 实例``）：创建加入、销毁移除；
+    回答「谁该随我销毁」。与 ``_executions`` / provide 链正交，不可合并。
+    内部 API。
     """
     child_ids: dict[str, str]
-    """语义名 → agent_id 翻译表（S-34 裁决）：``invoke_subagent(
-    resume=...)`` 的按名查找载体——**语义名只存在于唤起方（父 Agent）
-    的这张表里**（simplename 字段已删除，子实例不自持名字；A15 裁决）。
-    与 ``_children`` 的分工：``_children`` 只装**活着的**实例（生命周期，
-    以 node_id 为 key），本表装**历史事实**
-    （创建登记、destroy 不删——destroy ≠ 删除，记录保留，带记忆续接
-    依赖它）。**core 袋唯一真值（D7 property 透传）**：读经
-    :attr:`child_ids` property（= ``_core_state["child_ids"]``，写透整表
-    落盘 core.jsonl）；getter-only（S10：用户写 → ``AttributeError``），
-    框架内部写经 ``_core_state["child_ids"] = 整表``。
-    未命名子 Agent（创建时 ``name=None``）不入表（无法按名续接，
-    语义自洽）。**只增不改**（destroy 路径）：不提供删除通道（彻底遗忘
-    一个子代 = 删除其 session 目录的外部运维动作）；显式遗忘经
-    ``Runtime.archive_agent`` 受控清理——父存活时同步移除指向被归档
-    子代的条目并写透（对「只增不改」的唯一例外）。内部 API。
+    """语义名 → agent_id 翻译表：``invoke_subagent(resume=...)`` 的按名
+    查找载体——语义名只存在于唤起方（父 Agent）的这张表里，子实例不自
+    持名字。只读 property（用户写 → ``AttributeError``）；框架内部写经
+    ``_core_state["child_ids"]`` 整表写透落盘。未命名子 Agent（创建时
+    ``name=None``）不入表。destroy 不删表项（记录保留，带记忆续接依赖
+    它）；显式遗忘经 ``Runtime.archive_agent`` 受控清理。内部 API。
     """
     _provided: dict[str, Any]
     """provide 存储；``inject(key)`` 沿 ``_parent_id`` 链上溯至此（终点
-    为 ``Runtime._provided``）。敏感信息（``user_id`` / 凭证派生值）
-    走本通道——不进消息流、不进 LLM 上下文、不落盘。内部 API。
+    为 ``Runtime._provided``）。敏感信息（``user_id`` / 凭证派生值）走
+    本通道——不进消息流、不进 LLM 上下文、不落盘。内部 API。
     """
 
     # ────────────────────────── 实例属性：核心结构 ────────────────────────
 
     hooks: HookRegistry
     """实例级钩子注册表——全部钩子只对当前实例生效；预填核心钩子点 +
-    ``declare()`` 扩展点。``@on()`` 声明在 ``_init_hooks()``
-    （``__init__`` 阶段）注册，``setup()`` 中 ``self.hooks.<point>(...)``
-    注册的在其后。
+    ``declare()`` 扩展点。``@on()`` 声明在 ``__init__`` 阶段注册，
+    ``setup()`` 中 ``self.hooks.<point>(...)`` 注册的在其后。
     """
     prompt_blocks: PromptBlockList
     """system prompt 分层组装列表（ManagedList 语义）；注册顺序即拼接
     顺序；``[0]`` 是 ``system_prompt`` 的惰性引用块（``by="core"``）。
-    动态内容的正确做法是块内模板引用（惰性求值保证最新），而非每
-    回合 append + remove_by_tag。
+    动态内容的正确做法是块内模板引用（惰性求值保证最新），而非每回合
+    append + remove_by_tag。
     """
     _message_queue: MessageQueue
     """每实例独立的消息队列；按 ``priority`` 排序、同级 FIFO 消费；
-    ``dequeue()`` 阻塞。内部 API。
+    出队阻塞。内部 API。
     """
     _messages: dict[str, Message]
-    """消息级树的内存索引（``id → Message``）——**唯一权威**；持久化
-    文件是它的 append 投影。fork 目标合法性（``in self._messages``）
-    与 ``_assemble_context`` 的 ``parent_id`` 上溯都经它。内部 API。
+    """消息级树的内存索引（``id → Message``）；持久化文件是它的 append
+    投影。fork 目标合法性与上下文组装的上溯都经它。内部 API。
     """
     chain: MessageChain
     """消息级树手术入口（``insert`` / ``branch`` / ``remove`` / ``update`` /
@@ -1039,90 +1020,77 @@ class Agent:
     记录，压缩期重写。
     """
     current_head_id: str | None
-    """消息级树游标——指向**某条消息的 id**，即「添加节点的位置」：
-    ``_append_message`` 把新消息链到它并随即将它前移（``_assemble_context``
-    从它沿 ``parent_id`` 上溯，回合内新消息当轮可见）；fork 即切换它。
-    空树（新 Agent）为 ``None``。
+    """消息级树游标——指向某条消息的 id，即「添加节点的位置」：新消息
+    链到它并随即将它前移；fork 即切换它。空树（新 Agent）为 ``None``。
 
-    **core 袋真值（D7）**：本字段是 getter-only property——读
-    ``_core_state["current_head_id"]``（写透落盘 core.jsonl，恢复读袋为准、
-    不树校验——决策 9）；框架内部写经 ``_core_state["current_head_id"] = x``；
-    用户写 → ``AttributeError``（S10）。
+    只读 property（用户写 → ``AttributeError``）；框架内部写透落盘
+    core.jsonl，恢复时以袋值为准、不校验树。
     """
     current_turn: TurnContext | None
-    """当前活跃逻辑 Turn 的执行期临时对象；``_run_turn`` 入口赋值、
-    **finally 开头**（``after_turn`` 钩子之前）置 ``None``。
-    ``None`` 语义 = 回合物质上不存活（不再产生消息）；快照投影
-    （``TurnContextInfo``）只在执行期间可见。destroy 不以它为守卫
-    （见 :meth:`destroy`）。
+    """当前活跃逻辑 Turn 的执行期临时对象；回合收尾（``after_turn``
+    钩子之前）置 ``None``。``None`` 语义 = 回合物质上不存活（不再产生
+    消息）；快照投影只在执行期间可见。
     """
     last_result: Any
     """最近一次逻辑 Turn 的最终产出（文本或 finish 结构化输出）；父
-    Agent 侧由 ``invoke_subagent`` 运行段读取它构造
-    ``SubagentResult.result``。未产生过结果为 ``None``。
+    Agent 侧由 ``invoke_subagent`` 读取它构造 ``SubagentResult.result``。
+    未产生过结果为 ``None``。
 
-    填充规则（``_run_turn`` 统一收尾段，resolve waiters **之前**写入，
-    等待方醒来即见本轮产物）：``turn.finish_output`` 非 None → 该 dict
-    （finish 结构化交卷）；否则 → ``TurnResult.final_text``（本轮最后一
-    条 PROVIDER 消息的 TextBlock 拼接），为空串则写 ``None``。abort /
-    cancel / error 路径同样覆写——已置位 finish_output → 载荷照返；
-    有完整本轮 PROVIDER 消息 → 其文本；皆无 → ``None``（取消/异常信息
-    由 ``SubagentResult.subagent_status`` 承载，不进内容位）。
-    ``side_query`` 不写本字段（:meth:`side_query`）。
+    填充规则（回合收尾时、resolve 等待者之前写入）：``turn.finish_output``
+    非 ``None`` → 该 dict（finish 结构化交卷）；否则 → 本轮最后一条
+    PROVIDER 消息的文本，为空串则写 ``None``。abort / cancel / error
+    路径同样覆写。``side_query`` 不写本字段。
     """
     _executions: dict[str, Execution]
-    """执行追踪注册表（**动态结构**：仅「有正在运行的异步操作」时有
-    条目）；注册/清理 finally 成对；``cancel`` / ``stop`` 族遍历它
-    置位信号。回答「谁在运行、谁可取消」。内部 API。
+    """执行追踪注册表（动态结构：仅「有正在运行的异步操作」时有条目）；
+    注册 / 清理 finally 成对；``cancel`` / ``stop`` 族遍历它置位信号。
+    回答「谁在运行、谁可取消」。内部 API。
     """
     _pending_turns: dict[str, asyncio.Future[TurnResult]]
-    """``message_id → Future`` 等待句柄，**纯运行时不持久化**（future
-    不可序列化；恢复后的回合没有等待者）；命名沿用历史，与物理
-    turn 无关——key 是消息 id。出队绑定 / 收尾 resolve 规则见模块
-    docstring。内部 API。
+    """``message_id → Future`` 等待句柄，纯运行时不持久化（future 不可
+    序列化；恢复后的回合没有等待者）。内部 API。
     """
     _measured_tool_names: set[str]
-    """本进程内已被实测覆盖过的工具规范名集——``provider_gen()`` 每次收到带
-    ``usage`` 的响应时，把当时 ``Context.tools`` 的名字并入。仅服务于
-    :meth:`estimate_context_tokens` 的「锚点后新增工具补估 schema」
-    规则；**不持久化**（重启后清空，首次估计把全部工具算进
-    ``estimated`` 而暂时偏高，下一次带实测的 provider_gen 自愈）；纯内存、
-    不进快照。内部 API。
+    """本进程内已被实测覆盖过的工具规范名集——``provider_gen()`` 每次
+    收到带 ``usage`` 的响应时，把当时 ``Context.tools`` 的名字并入。
+    仅服务于 :meth:`estimate_context_tokens` 的「锚点后新增工具补估」
+    规则；不持久化（重启后清空，首次估计把全部工具算进 ``estimated``
+    而暂时偏高，下一次带实测的 ``provider_gen`` 自愈）；纯内存、不进
+    快照。内部 API。
     """
 
     # ────────────────────────── 实例属性：资源绑定与模型 ──────────────────
 
     _tool_entries: dict[str, ToolEntry]
-    """工具绑定条目（key 为**别名**）；``tool_call()`` 仅按别名查找。
+    """工具绑定条目（key 为别名）；``tool_call()`` 仅按别名查找。
     内部 API。
     """
     _subagent_entries: dict[str, SubagentEntry]
-    """子 Agent 绑定条目（key 为**别名**）；catalog 渲染与
+    """子 Agent 绑定条目（key 为别名）；catalog 渲染与
     ``invoke_subagent`` 的 resolve 依据。内部 API。
     """
     model: ModelConfig
     """模型结构体（运行时成员，可解析、可变）；实例化时由 ``model_tag``
-    解析填充初始值。两条动态修改路径：① 改 ``model_tag``（只能指向
-    配置已定义模型）；② 直接赋 ``ModelConfig(...)``（任意模型）。
-    「换模型」= 换一份完整规格，无中间态。
+    解析填充初始值。两条动态修改路径：① 改 ``model_tag``（只能指向配置
+    已定义模型）；② 直接赋 ``ModelConfig(...)``（任意模型）。「换模型」
+    = 换一份完整规格，无中间态。
     """
 
     # ────────────────────────── 实例属性：控制信号（内部） ────────────────
 
     _pause_gate: asyncio.Event
-    """工作循环协作式 gate，初始 set（放行）；``pause()`` clear /
-    ``resume()`` set。三个检查点（dequeue / provider_gen / toolcall 前）
-    均 ``await`` 它，且每处 pause 在前、abort 在后。内部 API。
+    """工作循环协作式 gate，初始放行；``pause()`` clear / ``resume()``
+    set。三个检查点（dequeue / provider_gen / toolcall 前）均等待它，
+    且每处 pause 在前、abort 在后。内部 API。
     """
     _turn_abort: asyncio.Event
-    """每个逻辑 Turn 独立的退出信号（``_run_turn`` 入口新建）；置位后
-    由三检查点 / ``provider_gen()`` 开头 / 工具包装层检测。内部 API。
+    """每个逻辑 Turn 独立的退出信号（回合执行体入口新建）；置位后由三
+    检查点 / ``provider_gen()`` 开头 / 工具包装层检测。内部 API。
     """
     _loop_task: asyncio.Task
-    """常驻工作循环 Task 的具名句柄。**构造不在 ``__init__``**——由
-    create / recover 管线第 10 步赋值（``instance._loop_task =
-    asyncio.create_task(instance._work_loop())``）；``destroy()``
-    第 2 步经本句柄 ``cancel()`` 它。内部 API。
+    """常驻工作循环 Task 的具名句柄。创建 / 恢复管线在 ``after_create`` /
+    ``after_recover`` 完成后赋值；``destroy()`` 经本句柄取消它。内部
+    API。
     """
 
     # ─────────────────── 实例属性：持久化（内部，S-31 裁决） ──────────────
@@ -1131,31 +1099,28 @@ class Agent:
     """本 Agent 的 session 持久化目录（``tree.jsonl`` / ``core.jsonl`` /
     ``state.jsonl`` / ``meta.json`` 所在目录）。
 
-    **管线预绑**：``Runtime.create_agent(session_dir=...)`` 指定（绝对路径原样 /
-    相对 ``runtime._persist_dir``），缺省 ``persist_dir / node_id``；恢复路径从池
-    元数据 ``session_dir`` 字段回绑。``__init__`` 的 :meth:`_open_stores` 使用；
-    子类可在 ``super().__init__()`` 之前覆写本字段实现「初始化时指定」。
-    内部 API，不属稳定契约。
+    创建管线预绑：``Runtime.create_agent(session_dir=...)`` 指定（绝对
+    路径原样 / 相对 ``runtime._persist_dir``），缺省 ``persist_dir /
+    node_id``；恢复路径从池元数据回绑。子类可在 ``super().__init__()``
+    之前覆写本字段实现「初始化时指定」。内部 API，不属稳定契约。
     """
     _tree_store: RecordStore
-    """``tree.jsonl`` 的落盘后端（write-behind：``submit`` 同步排队、
-    drain 任务串行落盘；墓碑压缩在 store 内部自主
-    触发）。构造在 ``__init__``（经 :meth:`_open_stores`，P3-03：
-    session 目录由管线第 2 步预绑的 ``runtime`` / ``node_id``（或
-    ``create_agent(session_dir=...)``）给出，骨架期即可知）。内部 API，不属稳定契约。
+    """``tree.jsonl`` 的落盘后端（write-behind：提交同步排队、drain
+    任务串行落盘；墓碑压缩在 store 内部自主触发）。构造在
+    ``__init__``（经 :meth:`_open_stores`）。内部 API，不属稳定契约。
     """
     _core_state: StateView
     """核心状态袋（``core.jsonl`` 后端内嵌，``merge_last_line=True``）；
-    框架私有——真状态 2 键（child_ids + current_head_id，阶段 C 起
-    property 透传）；不对外暴露（用户经 :attr:`state` 或
-    :meth:`register_state` 开新袋，不碰 core）。构造点同为
-    ``__init__``（经 :meth:`_open_stores`）。内部 API。
+    框架私有——真状态 2 键（child_ids + current_head_id，property
+    透传）。不对外暴露（用户经 :attr:`state` 或 :meth:`register_state`
+    开新袋，不碰 core）。构造点同为 ``__init__``（经
+    :meth:`_open_stores`）。内部 API。
     """
     _state_bag: StateView
     """默认状态袋（``state.jsonl`` 后端内嵌，``merge_last_line=True``）；
-    :attr:`state` property 的落点；业务/插件状态键（``state.register``
-    缺省落点，阶段 D）。构造点同为
-    ``__init__``（经 :meth:`_open_stores`）。内部 API。
+    :attr:`state` property 的落点；业务 / 插件状态键（``state.register``
+    缺省落点）。构造点同为 ``__init__``（经 :meth:`_open_stores`）。
+    内部 API。
     """
 
     # ────────────────────────── 构造与内部初始化 ──────────────────────────
