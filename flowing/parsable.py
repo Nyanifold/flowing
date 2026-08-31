@@ -5,8 +5,8 @@
 本模块是 ``.fya`` 文件层与运行时对象模型之间的桥梁：``.fya`` 中所有
 「可解析字段」（``system_prompt``、``description`` 及各类具名块的内容）
 在解析后统一表示为 :class:`Parsable`，运行时在使用方决定的时机现场求值。
-本模块同时承载两个模块级单例哨兵：:data:`PENDING`（延迟定义承诺）与
-``_UNSET``（未设置）。
+本模块同时承载两个模块级单例哨兵：:data:`PENDING` （延迟定义承诺）与
+``_UNSET`` （未设置）。
 
 本模块只定义「存储求值指令 + 现场求值」的机制，不定义任何使用方的求值
 策略（何时求值、用什么上下文）——求值时机由各使用方各自决定，见下文
@@ -57,7 +57,7 @@
   非字符串 ``source`` 只会出现在 Python API 层手动 ``Parsable(123)``
   的场景。
 - 延迟定义不构造 Parsable：``.fya`` 中的 ``field: _`` 在解析阶段直接
-  映射为模块级哨兵 :data:`PENDING`（见 :data:`PENDING`）；``$"_"`` 是
+  映射为模块级哨兵 :data:`PENDING` （见 :data:`PENDING`）；``$"_"`` 是
   ``RAW`` 形式，结果为普通字符串 ``"_"``，不触发 PENDING 语义。位置
   分流（字段位 / 覆写位 / 资源列表项位）见 :data:`PENDING` 的 docstring。
 - YAML 引号约束：双花括号表达式在 ``.fya`` 中必须写在引号内
@@ -109,15 +109,14 @@
 前缀集合的唯一权威表是 :data:`flowing.paths.PATH_PREFIXES`；实际解析
 委托 ``Runtime.resolve_path(path, *, source_dir)``，``source_dir`` 基准
 由 ``Agent.source_dir`` 统一供给。裸名（如 ``payment``）不是路径形态，
-但在资源查找口径下可以命中当前目录（``get(name_or_path, *,
-source_dir)`` 在 ``source_dir`` 可用时先走文件链——当前目录下的同名
-文件覆盖 ``default::`` / ``builtin::`` 注册项；``source_dir`` 缺省时只
-查注册表）。形态判别见 :func:`flowing.paths.classify_ref`。
+但在资源查找口径下可以命中当前目录（``get(name_or_path, *, source_dir)``
+在 ``source_dir`` 可用时先走文件链——当前目录下的同名文件覆盖
+``default::`` / ``builtin::`` 注册项；``source_dir`` 缺省时只查注册表）。形态判别见 :func:`flowing.paths.classify_ref`。
 
 两条边界约定：
 
 - ``{% include %}`` 的路径基准与 ``$`` 引用同源：经同一个
-  ``resolve_path``、同一个 ``source_dir``（绑定实例的
+  ``resolve_path``、同一个 ``source_dir`` （绑定实例的
   ``Agent.source_dir``）。内联模板（无文件身份的 ``source`` 字符串）中
   的 include 亦然——不存在「相对于包含者文件」的解析，基准永远来自
   绑定实例。
@@ -157,7 +156,7 @@ source_dir)`` 在 ``source_dir`` 可用时先走文件链——当前目录下�
 - ``env`` / ``config`` / ``agent`` / ``self`` 是保留名：Agent 实例属性
   禁止同名，框架检测到抛 ``ReservedAttributeError``——否则摊平会覆盖
   框架注入的对应值。
-- 非 Agent 的 ``.fya``（Tool / Skill 定义的 content）渲染上下文中可能
+- 非 Agent 的 ``.fya`` （Tool / Skill 定义的 content）渲染上下文中可能
   没有 Agent 实例；可用字段由使用方（扩展或核心模块）在调用求值时
   决定。
 - 框架不注册任何模板全局函数 / 包（无 ``now()``、无 ``datetime``）。
@@ -199,8 +198,8 @@ source_dir)`` 在 ``source_dir`` 可用时先走文件链——当前目录下�
             text = greeting.resolved   # 已绑定，现场求值
             # str(greeting) 只展示模板原文，不求值
 
-    ``.fya`` 声明式入口（五种形式）与模板内 ``{{ x.resolved }}`` 引用见
-    :class:`Parsable` 类 docstring。
+``.fya`` 声明式入口（五种形式）与模板内 ``{{ x.resolved }}`` 引用见
+:class:`Parsable` 类 docstring。
 
 .. rubric:: 各使用方求值时机
 
@@ -209,10 +208,10 @@ source_dir)`` 在 ``source_dir`` 可用时先走文件链——当前目录下�
 
    * - 使用方
      - 求值时机
-   * - ``PromptBlock.content``（含 ``system_prompt`` 惰性引用块）
+   * - ``PromptBlock.content`` （含 ``system_prompt`` 惰性引用块）
      - 上下文组装（``Agent._assemble_context()``）每次调用时现场渲染，
        每轮 ``provider_gen`` 重新求值，天然反映最新实例属性
-   * - ``model_tag``（若为模板）
+   * - ``model_tag`` （若为模板）
      - 每轮 ``provider_gen`` 前求值
    * - ``ToolEntry.specified`` 与子 Agent 的 ``specified`` 参数
      - ``tool_call()`` / ``invoke_subagent()`` 内，调用方 Agent 实例
@@ -238,7 +237,7 @@ source_dir)`` 在 ``source_dir`` 可用时先走文件链——当前目录下�
   的 ``.fya`` 解析结果创建的 :class:`Parsable` 对象」——框架解析层不为
   插件字段自动包装，包装动作显式发生在启用时。
 - 求值同样由插件负责：重赋值后的 Parsable 由插件在需要时手动
-  ``resolve(context)``（见下「求值面内 vs 求值面外」）。
+  ``resolve(context)`` （见下「求值面内 vs 求值面外」）。
 
 .. rubric:: 求值面内 vs 求值面外
 
@@ -275,8 +274,8 @@ source_dir)`` 在 ``source_dir`` 可用时先走文件链——当前目录下�
   直接赋值。
 - 不监听运行期文件变更（无文件系统 watcher）：``FILE_REF`` 的「文件
   修改后下次求值反映新内容」仅指进程内再次求值。
-- 双哨兵不混用：:data:`PENDING`（延迟定义承诺，``.fya`` 中
-  ``field: _`` 的解析结果）与 ``_UNSET``（未设置，现仅用于
+- 双哨兵不混用：:data:`PENDING` （延迟定义承诺，``.fya`` 中
+  ``field: _`` 的解析结果）与 ``_UNSET`` （未设置，现仅用于
   ``Agent.source_file`` 的自动推算触发条件）语义不同、不可混用。
   ``PENDING`` 等待的是用户代码赋值；``_UNSET`` 表示「该位置从无默认 /
   显式值」。创建管线 ``setup()`` 返回后、``after_create`` 前检查仍为
@@ -330,7 +329,7 @@ LITERAL: Final[str] = "LITERAL"
   docstring）；``LITERAL`` 的非字符串 ``source`` 其余只会出现在 Python
   API 层手动构造的场景（如 ``Parsable(123)``）。
 - 不做任何 Jinja2 解析：若字面量文本恰好含 ``{{ }}``，判定会先命中
-  ``TEMPLATE``；要保留原始文本须使用 ``$"..."``（``RAW``）。
+  ``TEMPLATE``；要保留原始文本须使用 ``$"..."`` （``RAW``）。
 
 .. seealso:: :class:`Parsable`、:data:`RAW`、:data:`TEMPLATE`
 """
@@ -353,7 +352,7 @@ FILE_REF: Final[str] = "FILE_REF"
   ``Agent.source_dir`` 统一供给。先剥 ``$`` 再进 ``resolve_path``：
   ``$`` 只是形式标记而非路径成分。
 - 边缘情况：想让结果字符串本身以 ``$`` 开头（如 ``"$200.00"``），必须
-  写 ``$"$200.00"``（``RAW`` 形式），否则会被当作文件引用。
+  写 ``$"$200.00"`` （``RAW`` 形式），否则会被当作文件引用。
 
 .. seealso:: :class:`Parsable`、:data:`RAW`、
     ``flowing.runtime.Runtime.resolve_path``
@@ -362,7 +361,7 @@ FILE_REF: Final[str] = "FILE_REF"
 EXPRESSION: Final[str] = "EXPRESSION"
 """纯表达式形式标记。
 
-``strip(source)`` 恰好是一个完整的 ``{{ expr }}``（无任何其它内容）时的
+``strip(source)`` 恰好是一个完整的 ``{{ expr }}`` （无任何其它内容）时的
 ``Parsable.type`` 取值；``resolve()`` 返回表达式的原生类型值（``int`` /
 ``bool`` / ``dict`` 等），不做字符串化——这是 Parsable 结果类型「不一定
 是 ``str``」的唯一来源。
@@ -440,7 +439,7 @@ RAW: Final[str] = "RAW"
 .. rubric:: 行为要点
 
 - 边缘情况一：``$"含有 "引号" 的原始文本"`` 的值为
-  ``含有 "引号" 的原始文本``（贪婪匹配到最后一个引号）。
+  ``含有 "引号" 的原始文本`` （贪婪匹配到最后一个引号）。
 - 边缘情况二：``$"_"`` 的值是普通字符串 ``"_"``，不触发 PENDING 语义。
 - 边缘情况三：``$"$200.00"`` 的值是字符串 ``$200.00``，不会被当作文件
   引用。
@@ -505,8 +504,8 @@ PENDING: Final[_MissingType] = _MissingType()
 .. rubric:: 行为要点
 
 - 写法映射：``field: _`` → ``PENDING``；字段缺失或 ``field: null`` →
-  可选字段 ``None``、必填字段视同 ``_``（``PENDING``）；``field: $"_"``
-  → 字符串 ``"_"``（RAW 形式，不触发 PENDING）。
+  可选字段 ``None``、必填字段视同 ``_`` （``PENDING``）；``field: $"_"``
+  → 字符串 ``"_"`` （RAW 形式，不触发 PENDING）。
 - 位置分流：字段位 ``_`` = 「必须兑现的承诺」（创建管线检查点）；覆写位
   （entry 覆写 / ``args`` 覆写）``_`` = 空补丁（装配层解析为空、可从
   基底回填，不报错）；资源列表项位禁止 ``_``
@@ -517,7 +516,7 @@ PENDING: Final[_MissingType] = _MissingType()
 - 检查时机：不在解析时（解析只标记），而在创建管线 ``setup()`` 返回后、
   ``after_create`` 前——此时 ``before_create`` 钩子与 Composable 已有
   充分赋值机会，而 ``after_create`` 观察者能保证看到完整字段。字段位
-  检查点抛 :class:`flowing.errors.MissingFieldError`（覆写位 PENDING 无
+  检查点抛 :class:`flowing.errors.MissingFieldError` （覆写位 PENDING 无
   检查点——空补丁语义）。
 - 替换语义：多层具名块（如 ``$subagents.pay.system_prompt:``）赋值时，
   源字段为 ``PENDING`` → 合法替换；源字段已有实际值 → 报冲突。即
@@ -702,17 +701,17 @@ class Parsable(Generic[T]):
           ``a.p.source is A.p.source``。
         - 本类不实现 ``__set__`` / ``__delete__``，是非数据描述符：
           ``self.p = ...`` 走普通实例属性赋值，遮蔽类级声明，同时触发
-          ``watch("p")``（赋值事件）。
+          ``watch("p")`` （赋值事件）。
         - 不在 ``__get__`` 中触发任何求值——绑定不等于 resolve。
 
-        .. seealso:: :meth:`resolve`、``flowing.agent.Agent.parsable`、
-            ``flowing.agent.Agent.watch`
+        .. seealso:: :meth:`resolve`、:meth:`flowing.agent.Agent.parsable`、
+            :meth:`flowing.agent.Agent.watch`
         """
         if instance is None:
             # 类级别访问：返回自身（未绑定）
             return self
-        # 实例访问：返回绑定浅拷贝（共享 source/type）。S-16 裁决：
-        # copy.copy 浅拷贝（不重跑 __init__/_infer_type），仅翻转 _instance
+        # 实例访问：返回绑定浅拷贝（共享 source/type）：copy.copy 浅拷贝，
+        # 不重跑 __init__/_infer_type，仅重设 _instance
         import copy   # 模块级 import 冻结，函数内局部引入（同 tool.py 先例）
         bound: "Parsable[T]" = copy.copy(self)
         bound._instance = instance
@@ -750,15 +749,15 @@ class Parsable(Generic[T]):
           ``Parsable(...)`` 构造的）→ 抛 ``MissingContextError``。
         - ``context`` 为 Agent：渲染上下文 = 实例属性摊平（``vars(agent)`` 逐键
           提升为顶层变量）+ ``agent`` / ``self`` 入口（实例自身，可经 ``getattr``
-          到达类属性、描述符、方法）+ ``env``（``os.environ`` 只读视图）+
-          ``config``（项目配置合并视图）+ ``_extra``（原值，其中 Parsable 经
+          到达类属性、描述符、方法）+ ``env`` （``os.environ`` 只读视图）+
+          ``config`` （项目配置合并视图）+ ``_extra`` （原值，其中 Parsable 经
           ``.resolved`` 惰性触发）。``env`` 与 ``config`` 始终从该 Agent 的
           ``runtime`` 现场获取并合并。
         - 保留名约束：Agent 属性命名为 ``env`` / ``config`` / ``agent`` /
           ``self`` 会覆盖框架注入的值，框架检测到抛
           ``ReservedAttributeError``。
         - ``context`` 为 ``Mapping``：以其内容为基底，同样自动注入 ``env``
-          （恒为 ``os.environ`` 只读视图）与 ``config``（取自绑定实例的
+          （恒为 ``os.environ`` 只读视图）与 ``config`` （取自绑定实例的
           ``runtime``；未绑定时不注入 ``config``，模板引用 ``config.*`` 按
           Jinja2 默认行为渲染为空）。键冲突时 Mapping 中的显式键优先于注入值。
           ``FILE_REF`` 的路径解析以绑定实例的 ``runtime`` 进行；未绑定 +
@@ -769,7 +768,7 @@ class Parsable(Generic[T]):
           ``.resolved`` 渲染一层即止（见 :data:`EXPRESSION` 的结果收尾规约）；
           不修改自身状态。
         - 边缘情况：``FILE_REF`` 的被引用文件不存在 → 求值时抛出底层
-          ``OSError``（框架不预检、不兜底）；模板引用未定义变量按 Jinja2 默认
+          ``OSError`` （框架不预检、不兜底）；模板引用未定义变量按 Jinja2 默认
           行为渲染为空。
 
         :raises flowing.errors.MissingContextError:
@@ -798,14 +797,14 @@ class Parsable(Generic[T]):
             # 未绑定且未传 context -> MissingContextError（无参构造，固定消息）
             raise MissingContextError()
         if isinstance(context, Mapping):
-            # Mapping 分支（M-13：以其内容为基底并始终注入 env/config）——
-            # S-16 裁决：由 resolve() 本体承载，不拆具名内部函数
-            # （_do_resolve 只服务 Agent 分支；Mapping 只服务测试与手动求值）
+            # Mapping 分支：以其内容为基底并始终注入 env/config——
+            # 由 resolve() 本体承载（_do_resolve 只服务 Agent 分支；
+            # Mapping 只服务测试与手动求值）
             ctx: dict[str, Any] = dict(context)
-            ctx.setdefault("env", MappingProxyType(os.environ))  # os.environ 只读视图（R-5 落实）
+            ctx.setdefault("env", MappingProxyType(os.environ))  # os.environ 只读视图
             if self._instance is not None:
                 ctx.setdefault("config", self._instance.runtime.config)
-                # {% include %} 基准永远来自绑定实例（P3-08）：绑定实例存在时
+                # {% include %} 基准永远来自绑定实例：绑定实例存在时，
                 # Mapping 分支的 include 与 $ 引用同源于 resolve_path
                 ctx["__include_resolver__"] = _make_include_resolver(
                     self._instance.runtime, self._instance.source_dir
@@ -813,14 +812,14 @@ class Parsable(Generic[T]):
             # 未绑定时不注入 config，模板引用 config.* 按 Jinja2 默认渲染为空
             if self.type is FILE_REF:
                 # FILE_REF 需 runtime 做路径解析，Mapping 路径下唯一来源是
-                # 绑定实例（S-16 裁决）；未绑定 -> MissingContextError
+                # 绑定实例；未绑定 -> MissingContextError
                 if self._instance is None:
                     raise MissingContextError()
                 resolved_path = self._instance.runtime.resolve_path(
-                    self.source[1:],   # P3-09：先剥 $ 形式标记再进 resolve_path
-                    source_dir=self._instance.source_dir,  # P3-11：文件→目录换算唯一承担者是 Agent.source_dir
+                    self.source[1:],   # 先剥 $ 形式标记再进 resolve_path
+                    source_dir=self._instance.source_dir,  # 文件→目录换算的唯一承担者是 Agent.source_dir
                 )
-                ctx["__file_ref_path__"] = resolved_path  # 供 _render 第一步读文件（R-11 内部约定键名）
+                ctx["__file_ref_path__"] = resolved_path  # 供 _render 第一步读文件（内部约定键名）
             return self._render(ctx)
         # context 为 Agent：摊平实例属性 + env/config 注入与保留名检测
         # （ReservedAttributeError 检测点在上下文构建中，见 _do_resolve）
@@ -838,8 +837,8 @@ class Parsable(Generic[T]):
 
         Jinja2 渲染任意对象时默认调用 ``str()``——对 Parsable 而言 ``str()``
         只展示模板源（不求值，见 :meth:`__str__`）；因此模板内引用 Parsable
-        必须写显式的 ``.resolved``（「这里是一次求值」意图可读，不依赖隐式
-        字符串化）。模板中显式 ``{{ x.resolve() }}``（无参、已绑定）与
+        必须写显式的 ``.resolved`` （「这里是一次求值」意图可读，不依赖隐式
+        字符串化）。模板中显式 ``{{ x.resolve() }}`` （无参、已绑定）与
         ``.resolved`` 语义等价，但 ``.resolved`` 是惯用写法。模板内完整示例见
         :data:`TEMPLATE` 的「混合内容中的 Parsable 引用」。
 
@@ -894,68 +893,26 @@ class Parsable(Generic[T]):
           不读文件、不访问运行时。
         - ``source`` 含换行 / 引号时按其 ``repr`` 转义展示。
 
-        .. seealso:: :meth:`__str__`（与之对立的求值行为）
+        .. seealso:: :meth:`__str__` （与之对立的求值行为）
         """
         return f"Parsable(source={self.source!r}, type={self.type})"
 
     # -------------------------------------------------------------------
-    # 内部方法（不属稳定契约，仅为说明时序而列出）
+    # 内部方法（不属稳定契约）
     # -------------------------------------------------------------------
 
     def _do_resolve(self, agent: "Agent") -> T:
-        """构建渲染上下文并执行渲染。内部 API，不属稳定契约。
-
-        .. rubric:: 功能介绍与动机
+        """构建渲染上下文并执行渲染（Agent 分支）。内部 API，不属稳定契约。
 
         :meth:`resolve` 的核心实现：把 Agent 实例属性摊平为顶层变量，合并
-        ``env``（``agent.runtime.env``）与 ``config``
-        （``agent.runtime.config``），然后委托 :meth:`_render` 执行两步
-        渲染。单独成方法是为了让「上下文构建」与「渲染执行」两个关注点
-        各自可测。
-
-        .. rubric:: 行为规约
-
-        - 上下文构建等价于（键优先级从低到高，后者覆盖前者）::
-
-              ctx = {
-                  **agent._extra,            # .fya 扩展字段（原值并入；
-                                             # Parsable 经 .resolved 惰性触发）
-                  **agent.__dict__,          # 实例属性摊平（不含类属性/方法——
-                                             # 那些经 agent 入口 getattr 访问）
-                  "agent": agent,            # 实例自身入口（描述符/类属性/方法可达）
-                  "self": agent,               # 与 agent 同值的别名（模板里两种写法等价）
-                  "env": agent.runtime.env,
-                  "config": agent.runtime.config,
-              }
-
-          **D10**：状态量不再自动暴露进模板上下文（R-6 状态键注入取消）；
-          状态量若需进模板，走 ``env`` / ``config`` / ``_extra`` 等既有
-          显式通道。
-          ``env``/``config`` 在摊平之后写入——实例属性占用保留名时会被
-          框架检测并抛 ``ReservedAttributeError``，而不是静默互相覆盖。
-          ``_extra`` 键与实例属性的重名在解析期检测，运行期不撞车。
-        - 时序约束：每次调用现场构建上下文（``env``/``config``/实例属性
-          均取当前值），构建结果不跨调用复用。
-        - ``FILE_REF`` 的路径解析需要运行时与 ``source_dir`` 基准
-          （由 ``agent.source_dir`` 属性统一供给，P3-11），经
-          ``Runtime.resolve_path(path, *, source_dir)`` 完成；
-          传入前已剥去 ``$`` 形式标记（P3-09）。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.parsable.Parsable._render()``（时机：构建渲染
-          上下文后，每次 resolve）；``flowing.runtime.Runtime.resolve_path()``
-          （时机：``FILE_REF`` 求值时路径解析，``source_dir`` 由
-          ``Agent.source_dir`` 属性统一供给）
-        - 被调：``flowing.parsable.Parsable.resolve()``（时机：每次非
-          短路求值）
-
-        .. seealso:: :meth:`resolve`、:meth:`_render`、
-            ``flowing.runtime.Runtime.resolve_path``
+        ``env`` 与 ``config``，然后委托 :meth:`_render` 执行两步渲染。每次调用
+        现场构建上下文（``env`` / ``config`` / 实例属性均取当前值），构建结果
+        不跨调用复用；``FILE_REF`` 的路径解析经 ``Runtime.resolve_path`` 完成
+        （传入前已剥去 ``$`` 形式标记）。
         """
-        # D10：模板上下文不再自动暴露状态量（取消 R-6 状态键注入）——
-        # 状态量若需进模板，走 env / config / _extra 等既有显式通道
-        # 保留名检测（摊平构建前检测 agent.__dict__）——
+        # 模板上下文不自动暴露状态量——状态量若需进模板，走
+        # env / config / _extra 等既有显式通道
+        # 保留名检测（摊平构建前检测 agent.__dict__）：
         # 实例属性占用 env/config/agent/self 会覆盖框架注入值，fail fast
         for reserved in ("env", "config", "agent", "self"):
             if reserved in agent.__dict__:
@@ -968,78 +925,48 @@ class Parsable(Generic[T]):
             "env": agent.runtime.env,
             "config": agent.runtime.config,
         }
-        # {% include %} 与 $ 引用同源（P3-08）：include 名经同一
+        # {% include %} 与 $ 引用同源：include 名经同一
         # resolve_path、同一 source_dir 基准（绑定实例的 Agent.source_dir）
         ctx["__include_resolver__"] = _make_include_resolver(agent.runtime, agent.source_dir)
         if self.type is FILE_REF:
             # FILE_REF 路径解析（每次求值）：source_dir 基准由
-            # agent.source_dir 属性统一供给（P3-11：「文件→所在目录」
-            # 换算的唯一承担者；source_file is None 时为 None，./ 前缀
+            # agent.source_dir 属性统一供给（「文件→所在目录」换算的
+            # 唯一承担者；source_file is None 时为 None，./ 前缀
             # 由 resolve_path 报错）
             resolved_path = agent.runtime.resolve_path(
-                self.source[1:],   # P3-09：先剥 $ 形式标记再进 resolve_path
+                self.source[1:],   # 先剥 $ 形式标记再进 resolve_path
                 source_dir=agent.source_dir,
             )
-            ctx["__file_ref_path__"] = resolved_path  # 供 _render 第一步读文件（R-11 内部约定键名）
+            ctx["__file_ref_path__"] = resolved_path  # 供 _render 第一步读文件（内部约定键名）
         result: T = self._render(ctx)
         return result
 
     def _render(self, ctx: Mapping[str, Any]) -> T:
         """按固定顺序执行两步渲染。内部 API，不属稳定契约。
 
-        .. rubric:: 功能介绍与动机
+        1. ``$`` 引用展开——仅顶层、不递归（``FILE_REF`` 形式在此读文件）。
+        2. Jinja2 渲染——``EXPRESSION`` 返回表达式原生值，其余返回 ``str``；
+           ``{% include %}`` 在此阶段解析。
 
-        渲染执行体，承载「两步渲染顺序固定不可配置」的定稿约束：
-
-        1. ``$`` 引用展开——仅顶层、不递归（``FILE_REF`` 形式在此读文件；
-           其余形式的 ``source`` 文本中不会出现待展开的顶层 ``$path``）。
-        2. Jinja2 渲染——``EXPRESSION`` 返回表达式原生值，其余返回
-          ``str``；``{% include %}`` 在此阶段解析。
-
-        ``{% include %}`` 的落点是 Jinja2 加载器：框架为渲染 Environment
-        提供自定义加载器，模板内的 include 名（如 ``{% include "./header.md" %}``）
-        经与 ``FILE_REF`` **同源**的路径解析——同一个
-        ``Runtime.resolve_path``、同一个 ``source_dir`` 基准（绑定实例的
-        ``Agent.source_dir``，P3-08 裁决）。内联模板无「包含者文件」身份，
-        include 基准一律来自绑定实例；include 名不剥 ``$``（Jinja2 模板内
-        的 include 语法本就不带 ``$`` 形式标记）。加载器对
-        ``{% extends %}`` 的解析**不在契约内**（模板继承暂不支持，
-        见模块 docstring 两步渲染段）。
-
-        ``RAW`` 与 ``LITERAL`` 在 :meth:`resolve` 层短路，不进入本方法。
-
-        .. rubric:: 行为规约
-
-        - 两步**分开执行、无交错**：不会在 ``$`` 展开中触发 Jinja2，也
-          不会在 Jinja2 渲染中再触发 ``$`` 展开。
-        - 不缓存渲染结果与编译产物以外的任何输入（模板编译缓存属
-          Jinja2 内部行为，不构成框架级结果缓存）。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：无框架内调用目标（Jinja2 引擎为外部库；``FILE_REF`` 读
-          文件与路径解析的框架侧入口为
-          ``flowing.runtime.Runtime.resolve_path()``，时机：第一步
-          ``$`` 展开、仅 ``FILE_REF`` 形式；第二步 ``{% include %}``
-          经框架提供的自定义 Jinja2 加载器走同一个
-          ``Runtime.resolve_path``、同一 ``source_dir`` 基准，P3-08）
-        - 被调：``flowing.parsable.Parsable._do_resolve()``（时机：每次
-          resolve 进入渲染时）
-
-        .. seealso:: :meth:`resolve`、:meth:`_do_resolve`
+        两步分开执行、无交错。``RAW`` 与 ``LITERAL`` 在 :meth:`resolve` 层短路，
+        不进入本方法。``{% include %}`` 的落点是框架为渲染 Environment 提供的
+        自定义加载器，include 名经与 ``FILE_REF`` 同源的路径解析（同一个
+        ``Runtime.resolve_path``、同一个 ``source_dir`` 基准——绑定实例的
+        ``Agent.source_dir``）；内联模板无「包含者文件」身份，include 基准一律
+        来自绑定实例。
         """
         # 第一步：$ 引用展开——仅 FILE_REF 在此现场读文件（不递归展开被引用
         # 文件中的 $path）；路径解析已在 _do_resolve / resolve 的 Mapping
         # 分支经 Runtime.resolve_path 完成；文件不存在时底层 OSError 直接
         # 抛出（框架不预检、不兜底）
         if self.type is FILE_REF:
-            path = ctx["__file_ref_path__"]  # 由 resolve/_do_resolve 解析后放入（R-11 内部约定键名）
+            path = ctx["__file_ref_path__"]  # 由 resolve/_do_resolve 解析后放入（内部约定键名）
             expanded: str = Path(path).read_text(encoding="utf-8")  # 现场读取，无缓存
         else:
             expanded = self.source  # 其余形式的 source 文本中不会出现待展开的顶层 $path
         # 第二步：Jinja2 渲染——EXPRESSION 返回表达式原生值，其余返回 str；
         # {% include %} 在此阶段经自定义加载器解析（与 $ 引用同源于
-        # resolve_path，P3-08）。每次求值现场新建 Environment——框架级
+        # resolve_path）。每次求值现场新建 Environment——框架级
         # 不缓存编译产物跨调用复用之外的任何结果（无缓存原则）
         env = _build_jinja_env(ctx.get("__include_resolver__"))
         # 注意：渲染调用一律传位置形态 dict（render(ctx) / expr(ctx)），
@@ -1062,31 +989,17 @@ class Parsable(Generic[T]):
     def _infer_type(cls, source: Any) -> str:
         """按 ``source`` 样式推断形式常量。内部 API，不属稳定契约。
 
-        .. rubric:: 功能介绍与动机
-
-        :meth:`__init__` 调用的判定逻辑，实现模块级「五种形式判定表」的
-        自上而下顺序：``$"..."`` → ``RAW``；``$`` 开头 → ``FILE_REF``；
-        ``strip(source)`` 恰为一个完整 ``{{ expr }}`` → ``EXPRESSION``；
-        含 Jinja2 语法 → ``TEMPLATE``；其余（含非字符串）→ ``LITERAL``。
-
-        .. rubric:: 行为规约
-
-        - 纯函数：同输入恒同输出，无副作用。
-        - 边缘情况：``$"_"`` → ``RAW``；``"_"``（裸字符串，非哨兵）→
-          ``LITERAL``（PENDING 语义只存在于 ``.fya`` 解析层，不经本函数）。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``无``（纯函数）
-        - 被调：``flowing.parsable.Parsable.__init__()``（时机：每次构造
-          Parsable）
-
-        .. seealso:: :data:`RAW`、:data:`FILE_REF`、:data:`EXPRESSION`、
-            :data:`TEMPLATE`、:data:`LITERAL`
+        实现模块级「五种形式判定」的自上而下顺序：``$"..."`` → ``RAW``；
+        ``$`` 开头 → ``FILE_REF``；``strip(source)`` 恰为一个完整 ``{{ expr }}``
+        → ``EXPRESSION``；含 Jinja2 语法 → ``TEMPLATE``；其余（含非字符串）→
+        ``LITERAL``。纯函数：同输入恒同输出，无副作用。``$"_"`` → ``RAW``；
+        ``"_"`` （裸字符串，非哨兵）→ ``LITERAL`` （PENDING 语义只存在于
+        ``.fya`` 解析层，不经本函数）。
         """
-        # 按模块级「五种形式判定表」自上而下判定，首个命中者生效
+        # 按模块级「五种形式判定」自上而下判定，首个命中者生效
         if not isinstance(source, str):
-            # 非字符串值（123/true 等）：LITERAL（M-14 例外承载与 Python API 手动构造）
+            # 非字符串值（123/true 等）：LITERAL（宿主声明 Parsable 承载的
+            # 例外与 Python API 手动构造）
             return LITERAL
         if source.startswith('$"') and source.endswith('"'):
             # $"..." 贪婪匹配形式（含 $"_" 与 $"$200.00" 边缘情况）
@@ -1096,9 +1009,9 @@ class Parsable(Generic[T]):
             return FILE_REF
         stripped: str = source.strip()
         if stripped.startswith("{{") and stripped.endswith("}}"):
-            # strip(source) 恰好是一个完整 {{ expr }}：R-4 落实——内部不得
-            # 再出现 {{ / }}（即首个 {{ 的配对 }} 恰落在末尾），否则是
-            # 混合文本（如 "{{ a }} {{ b }}"），落 TEMPLATE
+            # strip(source) 恰好是一个完整 {{ expr }}：内部不得再出现
+            # {{ / }}（即首个 {{ 的配对 }} 恰落在末尾），否则是混合文本
+            # （如 "{{ a }} {{ b }}"），落 TEMPLATE
             inner = stripped[2:-2]
             if "{{" not in inner and "}}" not in inner:
                 return EXPRESSION
@@ -1114,9 +1027,9 @@ class Parsable(Generic[T]):
 
 class _ResolvePathLoader(jinja2.BaseLoader):
     """``{% include %}`` 的自定义加载器：与 ``$`` 引用同源于
-    ``Runtime.resolve_path``、同一 ``source_dir`` 基准（P3-08 裁决）。
+    ``Runtime.resolve_path``、同一 ``source_dir`` 基准。内部 API。
 
-    include 名不剥 ``$``（Jinja2 模板内的 include 语法本就不带 ``$`` 形式
+    include 名不剥 ``$`` （Jinja2 模板内的 include 语法本就不带 ``$`` 形式
     标记）；内联模板无「包含者文件」身份，基准永远来自绑定实例——无绑定
     实例（resolver 为 None）时 include 一律 ``TemplateNotFound``。
     """
@@ -1137,8 +1050,9 @@ class _ResolvePathLoader(jinja2.BaseLoader):
 
 
 def _make_include_resolver(runtime: Any, source_dir: Any) -> Any:
-    """构造 include 名 → 文件文本的解析闭包（与 FILE_REF 同一 resolve_path
-    与 source_dir 基准，P3-08）。内部 API。"""
+    """构造 include 名 → 文件文本的解析闭包（与 FILE_REF 同一 ``resolve_path``
+    与 ``source_dir`` 基准）。内部 API。
+    """
 
     def _resolve(name: str) -> str:
         path = runtime.resolve_path(name, source_dir=source_dir)
@@ -1150,11 +1064,9 @@ def _make_include_resolver(runtime: Any, source_dir: Any) -> Any:
 def _build_jinja_env(resolver: Any) -> jinja2.Environment:
     """按是否具备 include 解析基准构建渲染 Environment。内部 API。
 
-    框架不注册任何模板全局函数 / 包（定稿裁决：无 ``now()`` / ``datetime``
-    等）；autoescape 关闭（prompt 文本场景，非 HTML）。undefined 取
-    ``ChainableUndefined``——「未定义变量渲染为空」的规约对链式访问
-    （``config.limits.turns`` 这类）同样成立（默认 ``Undefined`` 的链式
-    取值会抛 UndefinedError，与规约的「渲染为空」不符）。
+    框架不注册任何模板全局函数 / 包；autoescape 关闭（prompt 文本场景，
+    非 HTML）；undefined 取 ``ChainableUndefined``——「未定义变量渲染为空」
+    的规约对链式访问（``config.limits.turns`` 这类）同样成立。
     """
     return _FlowingEnvironment(
         loader=_ResolvePathLoader(resolver),
@@ -1167,7 +1079,7 @@ class _SelfToAgentTransformer(jinja2.visitor.NodeTransformer):
     """把模板 AST 中的名字 ``self`` 改写为 ``agent``。内部 API。
 
     动机：Jinja2 代码生成器把根作用域中未声明的 ``self`` 名字劫持为
-    ``TemplateReference``（服务 ``{% block %}`` 模板继承机制），导致渲染
+    ``TemplateReference`` （服务 ``{% block %}`` 模板继承机制），导致渲染
     上下文里注入的 ``self`` 变量不可达；而框架渲染上下文契约要求
     ``self`` 是 Agent 实例别名（与 ``agent`` 同值，
     ``{{ self.my_method() }}`` 必须可用）。模板继承不在契约内，改写无
