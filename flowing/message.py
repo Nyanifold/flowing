@@ -1168,24 +1168,20 @@ def _text_tokens(text: str) -> int:
 
 
 class MessageQueue:
-    """Agent 的消息队列：优先级排序 + 同优先级 FIFO 的异步队列.
+    """Agent 的消息队列：优先级排序 + 同优先级 FIFO 的异步队列。
 
     .. rubric:: 功能介绍
 
-    每个 Agent 一个独立队列（``Agent._message_queue``），是外部消息进入逻辑 turn
-    循环的唯一通道。工作循环经 ``Agent._dequeue()`` 消费——核心默认**一条一条**
-    （最安全），drain / 合并 / 按来源分组等**策略由覆写** ``_dequeue()`` 实现，
-    本类提供 ``drain_all`` / ``take_while`` 等批量取出原语支撑覆写。
+    每个 Agent 一个独立队列（``Agent._message_queue``），是外部消息进入
+    逻辑 turn 循环的唯一通道。工作循环经 ``Agent._dequeue()`` 消费——
+    核心默认一条一条（最安全），drain / 合并 / 按来源分组等策略由覆写
+    ``_dequeue()`` 实现，本类提供 ``drain_all`` / ``take_while`` 等批量
+    取出原语支撑覆写。
 
-    .. rubric:: 设计动机
-
-    - **排序即机制**：按 ``MessagePriority`` 数值升序、同级按入队序号 FIFO——
-      队列只承诺这一最小调度语义；防饿死、来源加权等策略不在框架核心。
-    - **纯入队统一**：忙时不拒绝（无「拒绝 + 入队」两路），活跃 turn 中入队的
-      消息自然排队，turn 结束后被消费；消费保证由常驻工作循环提供（入队即会被
-      消费，无需「入队触发」逻辑）。
-    - **覆写管策略、钩子管观察**：``_dequeue()`` 覆写管「多条 / 策略」，
-      ``before_dequeue`` / ``after_dequeue`` 钩子管「观察 / 变换」。
+    队列只承诺最小调度语义：按 ``MessagePriority`` 数值升序、同级按入队
+    顺序 FIFO。防饿死、来源加权等策略不在框架核心。忙时不拒绝：活跃
+    turn 中入队的消息自然排队，turn 结束后被消费；入队即保证会被常驻
+    工作循环消费（无需「入队触发」逻辑）。
 
     .. rubric:: 使用示例
 
@@ -1208,41 +1204,29 @@ class MessageQueue:
                 return msgs + extras
             agent._dequeue = _coalescing_dequeue
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
-    - 排序：``priority`` 升序（``INTERRUPT`` 最先）；同优先级 FIFO（入队序号，
-      单调递增，无需比较 ``timestamp``）。
-    - **进队列的 kind**：``USER`` / ``EVENT`` / ``PEER`` / ``SYSTEM`` /
-      ``PLUGIN`` / ``SUBAGENT``（+ 异步工具最终结果以 ``EVENT`` 入队）；
-      ``PROVIDER`` 永不入队。本类**不校验** kind——投递纪律由调用方与
+    - 排序：``priority`` 升序（``INTERRUPT`` 最先）；同优先级 FIFO
+      （入队序号，单调递增，无需比较 ``timestamp``）。
+    - 进队列的 kind：``USER`` / ``EVENT`` / ``PEER`` / ``SYSTEM`` /
+      ``PLUGIN`` / ``SUBAGENT``（异步工具最终结果以 ``EVENT`` 入队）；
+      ``PROVIDER`` 永不入队。本类不校验 kind——投递纪律由调用方与
       ``Agent.enqueue_message`` 的钩子链负责。
-    - 非行为：不防低优先级饿死、不持久化（队列待消费消息以框架核心
-      裸名键在 ``core.jsonl`` 核心袋有最小集记录（D1 双袋），
-      恢复语义见持久化规约；本类自身不落盘）。
-    - 并发模型：单进程 asyncio；``enqueue`` 是无等待的同步操作（队列无界），
-      ``dequeue`` / ``drain_all`` 是协程。
-
-    .. rubric:: 调用关系（审计）
-
-    - 调用：无（容器类；逐方法调用关系见各方法 rubric）
-    - 被调：``flowing.agent.Agent.enqueue_message``（时机：每次入队，
-      经 :meth:`enqueue`）；``flowing.agent.Agent._dequeue``（时机：常驻
-      工作循环每轮消费，经 :meth:`dequeue`）；
-      ``flowing.agent.Agent.cancel_queued``（时机：每次撤回，经
-      :meth:`remove`）；``flowing.agent.Agent.set_queued_priority``
-      （时机：每次重设未出队消息优先级，经 :meth:`set_priority`）
-    - 实例化方：``flowing.agent.Agent``（每实例一份
-      ``Agent._message_queue``；逐字构造点未见规约，时机：未见规约）
+    - 不防低优先级饿死；本类自身不持久化（队列待消费消息的恢复语义属
+      持久化规约）。
+    - 并发模型：单进程 asyncio；``enqueue`` 是无等待的同步操作（队列
+      无界），``dequeue`` / ``drain_all`` 是协程。
 
     .. seealso::
        :class:`flowing.message.MessagePriority`、
-       :meth:`flowing.agent.Agent._dequeue`、:meth:`flowing.agent.Agent.enqueue_message`、
+       :meth:`flowing.agent.Agent._dequeue`、
+       :meth:`flowing.agent.Agent.enqueue_message`、
        :meth:`flowing.agent.Agent.cancel_queued`、
        :meth:`flowing.agent.Agent.set_queued_priority`。
     """
 
     def __init__(self) -> None:
-        # X13：有序 list + (priority 数值, 自增入队序号) 二分插入排序；
+        # 有序 list + (priority 数值, 自增入队序号) 二分插入排序；
         # remove / set_priority 线性扫描定位（队列规模小，机制从简）；
         # 阻塞唤醒用 asyncio.Event（enqueue 置位、取空后清位）。
         self._items: list[tuple[int, int, Message]] = []
@@ -1250,30 +1234,22 @@ class MessageQueue:
         self._not_empty = asyncio.Event()
 
     def enqueue(self, msg: Message) -> None:
-        """入队一条消息（无等待、无界）.
+        """入队一条消息（无等待、无界）。
 
         .. rubric:: 功能介绍
 
-        将 ``msg`` 按（``priority``, 入队序号）插入排序位置。``Agent.enqueue_message``
-        在 ``before_enqueue`` 钩子之后调用本方法。
+        将 ``msg`` 按（``priority``, 入队序号）插入排序位置。
+        ``Agent.enqueue_message`` 在 ``before_enqueue`` 钩子之后调用本
+        方法。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         - 同步、无阻塞、立即返回；入队即保证会被常驻工作循环消费。
         - 不修改 ``msg``（``id`` / ``timestamp`` 在构造时已就位）。
-        - 非行为：不做容量限制、不做去重、不做内容审核（审核走钩子）。
+        - 不做容量限制、不做去重、不做内容审核（审核走钩子）。
 
-        .. rubric:: 测试案例
-
-        - 前置：空队列 → 操作：``enqueue`` NORMAL 消息 A、HIGH 消息 B → 操作：
-          ``await dequeue()`` → 期望：先得 B。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：无（排序插入为内部机制，逐字段路径未见规约）
-        - 被调：``flowing.agent.Agent.enqueue_message``（时机：每次入队，
-          时序 dispatch ``before_enqueue`` → ``enqueue`` → dispatch
-          ``after_enqueue``）
+        .. seealso::
+           :meth:`dequeue`、:meth:`set_priority`。
         """
         # 入队序号单调递增，同优先级 FIFO tie-break；seq 唯一保证
         # 元组比较不会回落到 Message 本身（Message 不可比较）
@@ -1285,15 +1261,16 @@ class MessageQueue:
 
         .. rubric:: 功能介绍
 
-        「等消息」与「取消息」的拆分原语之一（R-13 裁决）：``Agent._dequeue``
-        的默认实现用它把 ``before_dequeue`` 的派发点移到「队列确实非空、
-        即将出队」的时刻，消除空转期的无效钩子派发。enqueue 时唤醒等待者。
+        「等消息」与「取消息」的拆分原语：``Agent._dequeue`` 的默认实现
+        用它把 ``before_dequeue`` 的派发点移到「队列确实非空、即将出队」
+        的时刻，消除空转期的无效钩子派发。enqueue 时唤醒等待者。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         - 队列非空时立即返回；为空时挂起至下一次入队。
-        - 返回后队列可能再次被掏空（如 ``before_dequeue`` 钩子扔消息），
-          本方法不做保证——重试循环由调用方（``_dequeue``）承担。
+        - 返回后队列可能再次被掏空（如 ``before_dequeue`` 钩子移除
+          消息），本方法不做保证——重试循环由调用方（``_dequeue``）
+          承担。
 
         .. seealso:: :meth:`dequeue`、:meth:`dequeue_nowait`
         """
@@ -1301,10 +1278,10 @@ class MessageQueue:
             await self._not_empty.wait()
 
     def dequeue_nowait(self) -> Message | None:
-        """非阻塞取出优先级最高的一条；队列空返回 ``None``。
+        """非阻塞取出优先级最高的一条消息；队列空返回 ``None``。
 
-        与 :meth:`wait_not_empty` 配套（R-13 裁决）：``_dequeue`` 在
-        ``before_dequeue`` 派发后用它取消息——钩子在此窗口把消息扔掉
+        与 :meth:`wait_not_empty` 配套：``Agent._dequeue`` 在
+        ``before_dequeue`` 派发后用它取消息——钩子在此窗口把消息移除
         （``cancel_queued`` / ``remove``）时返回 ``None``，调用方重新
         等待并重新派发 ``before_dequeue``（每条真正出队的消息之前恰好
         一次 before 派发）。
@@ -1317,30 +1294,24 @@ class MessageQueue:
         return msg
 
     async def dequeue(self) -> Message:
-        """阻塞取出优先级最高的一条消息（工作循环核心默认路径）.
+        """阻塞取出优先级最高的一条消息（工作循环核心默认路径）。
 
         .. rubric:: 功能介绍
 
-        队列空时挂起等待，直到有消息入队；``Agent._dequeue()`` 核心默认实现即
-        ``[await self._message_queue.dequeue()]``（一条一条）。
+        队列空时挂起等待，直到有消息入队；``Agent._dequeue()`` 核心默认
+        实现即 ``[await self._message_queue.dequeue()]``（一条一条）。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         - 前置条件：在事件循环中调用（工作循环 Task 内）。
-        - 后置条件：返回的消息已从队列移除；其等待者绑定（``_pending_turns.pop``）
-          由工作循环在出队时完成，不在本方法内。
-        - 边缘情况：Agent ``destroy()`` 取消工作循环后，挂起的 ``dequeue`` 随 Task
-          取消而结束，不返回、不泄漏。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：无（阻塞等待为内部机制，未见规约）
-        - 被调：``flowing.agent.Agent._dequeue`` 核心默认实现（时机：
-          常驻工作循环每轮消费一条，时序 dispatch ``before_dequeue`` →
-          ``dequeue`` → dispatch ``after_dequeue``）
+        - 后置条件：返回的消息已从队列移除；等待者绑定由工作循环在出队
+          时完成，不在本方法内。
+        - 边缘情况：Agent ``destroy()`` 取消工作循环后，挂起的
+          ``dequeue`` 随 Task 取消而结束，不返回、不泄漏。
 
         .. seealso::
-           :meth:`drain_all`、:meth:`take_while`、:meth:`flowing.agent.Agent._dequeue`。
+           :meth:`drain_all`、:meth:`take_while`、
+           :meth:`flowing.agent.Agent._dequeue`。
         """
         while True:
             msg = self.dequeue_nowait()
@@ -1349,32 +1320,20 @@ class MessageQueue:
             await self._not_empty.wait()
 
     async def drain_all(self) -> list[Message]:
-        """一次性取出当前所有排队消息（drain 覆写原语）.
+        """一次性取出当前所有排队消息（drain 覆写原语）。
 
         .. rubric:: 功能介绍
 
-        按出队顺序（优先级 + FIFO）返回并移除**调用时刻**已在队列中的全部消息；
-        不为等待新消息而阻塞（若队列为空返回空列表）。
+        按出队顺序（优先级 + FIFO）返回并移除调用时刻已在队列中的全部
+        消息；不为等待新消息而阻塞（队列为空时返回空列表）。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
-        - 用于 ``_dequeue()`` 覆写实现「合并回合」：多条消息一次吸收，回合收尾时
-          **每条的等待者共享同一 ``TurnResult`` 并被全部 resolve**（核心通用收尾
-          天然兼容批量）。
-        - 边缘情况：调用与「另一生产者正在 enqueue」交错时，只保证取出调用时刻的
-          存量；新入队者留给下一次。
-
-        .. rubric:: 测试案例
-
-        - 前置：队列有 3 条消息（各有 ``message()`` 等待者）→ 操作：覆写
-          ``_dequeue`` 为 ``drain_all`` 后触发回合 → 期望：一个回合消费 3 条，
-          3 个等待者 resolve 到同一 ``TurnResult``。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：无（批量取出为内部机制，未见规约）
-        - 被调：无框架内逐字调用方（``_dequeue()`` 覆写原语；示例性
-          用法见 ``flowing.agent.Agent._dequeue`` 与本类 docstring）
+        - 用于 ``_dequeue()`` 覆写实现「合并回合」：多条消息一次吸收，
+          回合收尾时每条消息的等待者共享同一 ``TurnResult`` 并被全部
+          resolve（核心通用收尾天然兼容批量）。
+        - 边缘情况：调用与「另一生产者正在 enqueue」交错时，只保证取出
+          调用时刻的存量；新入队者留给下一次。
 
         .. seealso::
            :meth:`dequeue`、:meth:`flowing.agent.Agent._dequeue`。
@@ -1386,28 +1345,20 @@ class MessageQueue:
         return [msg for _, _, msg in items]
 
     def take_while(self, predicate: Callable[[Message], bool]) -> list[Message]:
-        """从队首按出队顺序连续取出满足条件的消息（合并覆写原语）.
+        """从队首按出队顺序连续取出满足条件的消息（合并覆写原语）。
 
         .. rubric:: 功能介绍
 
-        标准 take-while 语义：从队首开始，按出队顺序逐条检查，**连续**取出满足
-        ``predicate`` 的消息，遇到首个不满足者停止；不阻塞。
+        标准 take-while 语义：从队首开始，按出队顺序逐条检查，连续取出
+        满足 ``predicate`` 的消息，遇到首个不满足者停止；不阻塞。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         - 同步、立即返回（可能为空列表）。
         - 典型用途：``_dequeue()`` 覆写中的按来源 / 按窗口合并
           （``lambda m: m.source == first.source``）。
-        - 边缘情况：队首消息即不满足 → 返回空列表，队列不变；队列被取空 →
-          返回全部已取消息。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：无（取出为内部机制，未见规约）
-        - 被调：``flowing.agent.Agent._run_turn``（时机：检查点 ②.5
-          urgent 吸收，按 urgent 带谓词连 drain）；``_dequeue()`` 覆写
-          原语（示例性用法见 ``flowing.agent.Agent._dequeue`` 与本类
-          docstring）
+        - 边缘情况：队首消息即不满足 → 返回空列表，队列不变；队列被取
+          空 → 返回全部已取消息。
 
         .. seealso::
            :meth:`drain_all`、:meth:`flowing.agent.Agent._dequeue`。
@@ -1420,47 +1371,28 @@ class MessageQueue:
         return taken
 
     def peek(self, priority: MessagePriority | None = None) -> Message | None:
-        """窥看下一条将被出队的消息，**不移除**（观测原语）.
+        """窥看下一条将被出队的消息，不移除（观测原语）。
 
         .. rubric:: 功能介绍
 
-        按出队顺序（优先级 + 同级 FIFO）返回队首消息；指定 ``priority`` 时
-        返回该优先级带内 FIFO 队首（用于「只看某一带」的观察，如 UI 分列
-        预览各优先级各一条）。队列为空、或指定优先级带内无消息时返回
-        ``None``。
+        按出队顺序（优先级 + 同级 FIFO）返回队首消息；指定 ``priority``
+        时返回该优先级带内 FIFO 队首（用于「只看某一带」的观察，如 UI
+        分列预览各优先级各一条）。队列为空、或指定优先级带内无消息时
+        返回 ``None``。
 
-        .. rubric:: 设计动机
+        ``dequeue`` 阻塞且移除、``drain_all`` / ``take_while`` 批量移除
+        ——队列此前没有「只看不动」的入口；``peek`` 补齐观测面，与
+        :meth:`__len__` 同属观测原语。
 
-        ``dequeue`` 阻塞且移除、``drain_all`` / ``take_while`` 批量移除——
-        队列此前没有「只看不动」的入口，UI 预览、``_dequeue()`` 覆写的
-        前置决策（先看队首再决定取多少）只能先取后放（破坏 FIFO 序号）。
-        ``peek`` 补齐观测面，与 :meth:`__len__` 同属观测原语。
+        .. rubric:: 行为要点
 
-        .. rubric:: 行为规约
-
-        - 同步、不阻塞、立即返回；**不移除**消息，队列状态不变。
+        - 同步、不阻塞、立即返回；不移除消息，队列状态不变。
         - 返回的消息仍在队列中：后续 ``dequeue`` / ``set_priority`` /
           ``remove`` 照常作用于它；不得将返回值视为「已占有」。
         - 无同步语义：跨 Task 观察时是瞬时值，不得据此做互斥决策
           （同 :meth:`__len__` 的观测约定）。
-        - ``priority`` 过滤只选带内队首，不跨带比较；``None`` 表示全局队首
-          （即下一次 ``dequeue`` 会取到的那条）。
-
-        .. rubric:: 测试案例
-
-        - 前置：队列含 NORMAL 消息 A（先入）、HIGH 消息 B（后入）→ 操作：
-          ``peek()`` → 期望：返回 B，``len(queue)`` 不变；``await dequeue()``
-          仍得 B。
-        - 前置：同上 → 操作：``peek(MessagePriority.NORMAL)`` → 期望：
-          返回 A（带内队首，不看全局）。
-        - 前置：空队列 → 操作：``peek()`` → 期望：``None``，不阻塞。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：无（只读内部排序结构，未见规约）
-        - 被调：``flowing.agent.Agent._run_turn``（时机：检查点 ②.5
-          urgent 吸收，按带窥看队首）；观测原语（典型调用方是 UI 预览与
-          ``_dequeue()`` 覆写的前置决策）
+        - ``priority`` 过滤只选带内队首，不跨带比较；``None`` 表示全局
+          队首（即下一次 ``dequeue`` 会取到的那条）。
 
         .. seealso::
            :meth:`dequeue`、:meth:`__len__`、:class:`MessagePriority`。
@@ -1474,30 +1406,19 @@ class MessageQueue:
         return None
 
     def remove(self, message_id: str) -> bool:
-        """按 id 撤回一条**未出队**的消息（支撑 ``Agent.cancel_queued``）.
+        """按 id 撤回一条未出队的消息（支撑 ``Agent.cancel_queued``）。
 
         .. rubric:: 功能介绍
 
         从队列中移除指定消息；返回是否找到并移除。``Agent.cancel_queued``
-        在本方法返回 ``True`` 时联动 resolve 对应等待者（cancelled），调用方不挂起。
+        在本方法返回 ``True`` 时联动 resolve 对应等待者（cancelled），
+        调用方不挂起。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
-        - 已出队（正在或已被回合消费）或不存在的 id → 返回 ``False``，无副作用。
-        - 非行为：不影响正在执行的回合（撤回的是排队消息，不是执行）。
-
-        .. rubric:: 测试案例
-
-        - 前置：``message()`` 已入队未消费 → 操作：``remove(message_id)`` →
-          期望：返回 ``True``，且该等待者收到 ``status="cancelled"`` 的
-          ``TurnResult``（联动在 Agent 层完成）。
-        - 前置：消息已被消费 → 操作：``remove(message_id)`` → 期望：``False``。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：无（移除为内部机制，未见规约）
-        - 被调：``flowing.agent.Agent.cancel_queued``（时机：每次撤回
-          未出队消息；返回 ``True`` 时由 Agent 层联动 resolve 等待者）
+        - 已出队（正在或已被回合消费）或不存在的 id → 返回 ``False``，
+          无副作用。
+        - 不影响正在执行的回合（撤回的是排队消息，不是执行）。
 
         .. seealso::
            :meth:`flowing.agent.Agent.cancel_queued`。
@@ -1511,21 +1432,18 @@ class MessageQueue:
         return False
 
     def set_priority(self, message_id: str, priority: MessagePriority) -> bool:
-        """按 id 重设一条**未出队**消息的优先级，队列立即按新值重排.
+        """按 id 重设一条未出队消息的优先级，队列立即按新值重排。
 
         .. rubric:: 功能介绍
 
-        找到队列中指定消息，原地改写 ``msg.priority`` 并按新值重新定位到
-        ``(priority, 入队序号)`` 排序点。支撑
+        找到队列中指定消息，原地改写 ``msg.priority`` 并按新值重新定位
+        到（``priority``, 入队序号）排序点。支撑
         :meth:`flowing.agent.Agent.set_queued_priority`。
 
-        .. rubric:: 设计动机
-
-        优先级是入队后仍可变的调度属性（典型场景：用户催办、Guardrail 升级
-        提醒）。重排复用既有的 ``(priority, 入队序号)`` 排序键——**保留原
-        入队序号**（用户裁决）：语义为「这条消息从入队起就该是新优先级」，
-        而非「现在新来的一条高优先级消息」；它在新优先级带内的 FIFO 位置由
-        原入队早晚决定。
+        优先级是入队后仍可变的调度属性（典型场景：用户催办、Guardrail
+        升级提醒）。重排保留原入队序号：语义为「这条消息从入队起就该是
+        新优先级」，而非「现在新来的一条高优先级消息」；它在新优先级带
+        内的 FIFO 位置由原入队早晚决定。
 
         .. rubric:: 使用示例
 
@@ -1534,30 +1452,16 @@ class MessageQueue:
             # 用户催办：把排队中的消息提升为 HIGH
             agent._message_queue.set_priority(msg_id, MessagePriority.HIGH)
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
-        - 找到未出队消息 → 原地改写 ``msg.priority``、按 ``(新 priority,
-          原入队序号)`` 重新定位，返回 ``True``。
+        - 找到未出队消息 → 原地改写 ``msg.priority``、按（新 ``priority``,
+          原入队序号）重新定位，返回 ``True``。
         - 已出队（正在或已被回合消费）或不存在的 id → 返回 ``False``，
           无副作用。
         - 同步、无等待；不改写 ``id`` / ``timestamp`` / 等待者绑定。
-        - 非行为：不影响正在执行的回合；自身不落盘（队列不持久化排序状态，
-          恢复时按消息上附着的 ``priority`` 值重建——原地改写使恢复语义
-          自动正确）。
-
-        .. rubric:: 测试案例
-
-        - 前置：队列含 HIGH 消息 A（先入）、NORMAL 消息 B（后入）→ 操作：
-          ``set_priority(B.id, MessagePriority.HIGH)`` → 期望：返回
-          ``True``，连续 ``dequeue`` 顺序为 A、B（B 保留原入队序号，
-          晚于先入的 A）。
-        - 前置：B 已出队 → 操作：同上 → 期望：``False``，队列不变。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：无（重排为内部机制，未见规约）
-        - 被调：``flowing.agent.Agent.set_queued_priority``（时机：每次
-          重设未出队消息优先级）
+        - 不影响正在执行的回合；自身不落盘（队列不持久化排序状态，恢复
+          时按消息上附着的 ``priority`` 值重建——原地改写使恢复语义自动
+          正确）。
 
         .. seealso::
            :meth:`enqueue`、:meth:`remove`、:class:`MessagePriority`、
@@ -1567,48 +1471,38 @@ class MessageQueue:
             if msg.id == message_id:
                 del self._items[i]
                 msg.priority = priority
-                # 保留原入队序号（用户裁决）：在新优先级带内按原入队早晚定位
+                # 保留原入队序号：在新优先级带内按原入队早晚定位
                 bisect.insort(self._items, (int(priority), seq, msg))
                 return True
         return False
 
     def __len__(self) -> int:
-        """当前排队消息数（观测用途，无同步语义）.
+        """当前排队消息数（观测用途，无同步语义）。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
-        - 单事件循环内是调用时刻的精确值；跨 Task 观察时是瞬时值，不得据此做
-          互斥决策（机制从简：队列无锁，依赖单循环串行）。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：无
-        - 被调：无（观测用途；框架内未见调用方，时机：未见规约）
+        - 单事件循环内是调用时刻的精确值；跨 Task 观察时是瞬时值，不得
+          据此做互斥决策（队列无锁，依赖单循环串行）。
         """
         return len(self._items)
 
 
 class MessageChain:
-    """消息级树的任意手术入口（``Agent.chain``）：五 op 最小完备集.
+    """消息级树的任意手术入口（``Agent.chain``）：五 op 最小完备集。
 
     .. rubric:: 功能介绍
 
-    对已落盘 / 在树上的历史消息做**增、删、改、重连**的统一入口。**内存消息链是
-    唯一权威**——op 直接修改内存中的 ``Agent._messages`` 映射与 ``parent_id`` 链，
-    随后向 ``tree.jsonl`` **append 一条变更记录**（运行期零截断、零重写）；
-    物理重写延迟到压缩期。
+    对已落盘 / 在树上的历史消息做增、删、改、重连的统一入口。内存消息链
+    是唯一权威——op 直接修改内存中的 ``Agent._messages`` 映射与
+    ``parent_id`` 链，随后向 ``tree.jsonl`` append 一条变更记录（运行期
+    零截断、零重写）；物理重写延迟到压缩期。
 
-    .. rubric:: 设计动机
+    消息产生即落盘，手术直接作用于已落盘历史：删除中间消息时，tombstone
+    （删除标记行）把「分散的逐行重写」变成「运行期 append 一条标记 +
+    压缩期一次整体重写」。
 
-    消息级设计放弃了旧 Turn 模型的「当前 turn 内存缓冲区」（prepend / remove 曾是
-    免费的纯内存操作）：消息产生即落盘，手术直接作用于已落盘历史。没有 tombstone
-    时，删除中间消息会迫使 ``parent_id`` 链断裂点之后的**每一行重写**（删 3 条
-    可能重写 94 条）；tombstone 把「分散的 O(n) 重写」变成「运行期 append O(1) +
-    压缩期一次 O(n)」。
-
-    **一切内容走持久化路径**（M-29 裁决：原 ``TurnContext.inject`` 临时注入
-    通道已删除）：recap / reminder 等「临时上下文」也由本类挂上、用完
-    ``remove`` 擦除；回合开头的附加式注入走 ``before_turn`` 的
+    一切内容走持久化路径：recap / reminder 等「临时上下文」也由本类挂上、
+    用完 ``remove`` 擦除；回合开头的附加式注入走 ``before_turn`` 的
     ``TurnContext.pending_messages``（同样随批次挂树持久化）。
 
     .. rubric:: 使用示例
@@ -1622,148 +1516,120 @@ class MessageChain:
         # 单条删：删除一条消息（子树不级联）
         agent.chain.remove("m7")
 
-        # 删除带子树的消息：先 reparent 子树，再 remove（定式）
-        for child_id in children_of(agent, "m7"):
-            agent.chain.reparent(child_id, to="m6")
-        agent.chain.remove("m7")
-
         # 子树整体重连到另一分支
         agent.chain.reparent("m8", to="m3")
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
     五 op 语义总表：
 
-    ============ ============ ============================================
-    op           语义         影响范围
-    ============ ============ ============================================
-    ``insert``   单条增       新增消息 + 调整前后邻接（既有子消息重挂其下）
-    ``branch``   单条增分支   新增消息挂到指定 parent 下（``None`` = 开新根），**不动既有子消息**
-    ``remove``   单条删       **仅该消息，子树不自动级联**
-    ``update``   单条改       **仅内容，不动链**
-    ``reparent`` 子树重连     该消息及其整个子树移动到新位置
-    ============ ============ ============================================
+    .. list-table::
+       :header-rows: 1
 
-    通用规约：
+       * - op
+         - 语义
+         - 影响范围
+       * - ``insert``
+         - 单条增
+         - 新增消息 + 调整前后邻接（既有子消息重挂其下）
+       * - ``branch``
+         - 单条增分支
+         - 新增消息挂到指定 parent 下（``None`` = 开新根），不动既有子消息
+       * - ``remove``
+         - 单条删
+         - 仅该消息，子树不自动级联
+       * - ``update``
+         - 单条改
+         - 仅内容，不动链
+       * - ``reparent``
+         - 子树重连
+         - 该消息及其整个子树移动到新位置
 
-    - 五 op 正交，任意手术由它们组合（最小完备集）。``branch`` 为 M-20
-      裁决新增——``insert`` 的「既有子消息重挂」规则在分叉点会把多个
-      子分支合并到新消息之下，只想**新增平行分支**时用 ``branch``；
-      ``branch(None, msg)`` 是森林模型下唯一的持久化开根入口（压缩
-      换链等场景，见 :meth:`branch`）。
-    - 每个 op = 改内存链 + append 一条变更记录行（insert 为新消息行 + 邻接调整
-      记录；branch 仅新消息行（无邻接调整）；remove 为 tombstone
-      ``{"op":"remove","id":...}``；update / reparent 为对应变更行）。
-    - **级联规则**：``remove`` 不级联——删除带子树的消息会留下父链指向不存在
-      节点的孤儿子树；正确做法是**先 ``reparent`` 子树再 ``remove``**（定式，
-      见使用示例）。
-    - **不自动移动** ``current_head_id``：手术目标是历史结构，head 切换是
-      ``Agent.fork`` 的职责；删除 / 重连当前 head 或其上溯路径上的消息属于
-      调用方责任（MessageChain 本身不修正 head；需要删除当前 head 并回退
-      head 的便捷语义用 ``Agent.remove`` / ``Agent.pop``）。
-    - 不变量：op 完成后内存链与「文件重放结果」一致（重放变更记录必得同一
-      权威链）。
-    - 压缩（清理 tombstone、重写尾部）由持久化层（
-      :class:`flowing.persistence.FileRecordStore` 的 drain 任务）在「队列
-      排空后且 tombstone ≥ 阈值（默认 256）」时自主触发（S-31 裁决），
-      **不是**本类方法的同步副作用。
-
-    非行为：
-
-    - 不做「级联删除」「自动 fork」「自动更新 head」等便利策略——策略在应用层。
-    - 不提供批量 op 糖衣（批量 = 循环调用五 op，变更记录逐条 append）。
-
-    .. rubric:: 调用关系（审计）
-
-    - 调用：``flowing.agent.Agent._persist_message()``（insert / branch
-      的新消息行）与 ``flowing.agent.Agent._persist_tree_record()``
-      （remove 的 tombstone / update / reparent 与 insert 邻接调整的
-      move 行）（时机：每次 op 完成内存修改后同步提交，S-31 裁决——
-      write-behind 排队即返，op 保持同步签名）
-    - 被调：应用 / 策略层经 ``flowing.agent.Agent.chain`` 调用（公共
-      手术 API；框架内 docstring 示例见 ``flowing.errors``、
-      ``flowing.context``，时机：未见规约）
-    - 实例化方：``flowing.agent.Agent.__init__``（时机：同步骨架阶段，
-      每次创建/恢复管线一次；构造契约见 ``_agent`` 字段，S-26 裁决）
+    - 五 op 正交，任意手术由它们组合（最小完备集）。``branch`` 是
+      ``insert`` 的补充——``insert`` 在分叉点会把多个子分支合并到新消息
+      之下，只想新增平行分支时用 ``branch``；``branch(None, msg)`` 是
+      森林模型下唯一的持久化开根入口（压缩换链等场景，见 :meth:`branch`）。
+    - 每个 op = 改内存链 + append 一条变更记录行（insert 为新消息行 +
+      邻接调整记录；branch 仅新消息行；remove 为 tombstone
+      ``{"type": "tombstone", "id": ...}``；update / reparent 为对应变更行）。
+    - 级联规则：``remove`` 不级联——删除带子树的消息会留下父链指向不存在
+      节点的孤儿子树；正确做法是先对子树逐条 :meth:`reparent` 到新父
+      节点、再 ``remove``（定式）。
+    - 不自动移动 ``current_head_id``：手术目标是历史结构，head 切换是
+      ``Agent.fork`` 的职责；删除 / 重连当前 head 或其上溯路径上的消息
+      属于调用方责任（需要「删除当前 head 并回退到父节点」的便捷语义用
+      ``Agent.remove`` / ``Agent.pop``）。
+    - 不变量：op 完成后内存链与「文件重放结果」一致（重放变更记录必得
+      同一权威链）。
+    - 压缩（清理 tombstone、重写尾部）由持久化层
+      （:class:`flowing.persistence.FileRecordStore` 的 drain 任务）在
+      「队列排空后且 tombstone 数量 ≥ 阈值（默认 256）」时自主触发，
+      不是本类方法的同步副作用。
+    - 不做「级联删除」「自动 fork」「自动更新 head」等便利策略——策略在
+      应用层；不提供批量 op 糖衣（批量 = 循环调用五 op，变更记录逐条
+      append）。
 
     .. seealso::
-       :meth:`flowing.agent.Agent.fork`（切换 head，与手术正交——手术改结构，
-       fork 改视角）、
+       :meth:`flowing.agent.Agent.fork`（切换 head，与手术正交——手术改
+       结构，fork 改视角）、
        :meth:`flowing.agent.Agent._persist_message` /
        :meth:`flowing.agent.Agent._persist_tree_record`（两条落盘通道）、
        :class:`flowing.persistence.FileRecordStore`（压缩的落盘细节）。
-       原 ``TurnContext.inject`` 临时注入通道已删除（M-29）：注入走持久化
-       的 :meth:`insert`，无独立旁路。
     """
 
     _agent: "Agent"
-    """属主 Agent 反向引用（构造契约：``Agent.__init__`` 以
-    ``MessageChain(self)`` 传入，S-26 裁决）——五个 op 直接操作
-    ``Agent._messages``，落盘经 ``Agent._persist_message``（新消息行）
-    与 ``Agent._persist_tree_record``（变更记录行）同步提交（S-31）。
-    内部 API，不属稳定契约。
+    """属主 Agent 反向引用（``Agent.__init__`` 以 ``MessageChain(self)``
+    传入）——五个 op 直接操作 ``Agent._messages``，落盘经
+    ``Agent._persist_message``（新消息行）与 ``Agent._persist_tree_record``
+    （变更记录行）同步提交。内部 API，不属稳定契约。
     """
 
     def __init__(self, agent: "Agent") -> None:
-        # S-26 构造契约：Agent.__init__ 以 MessageChain(self) 传入属主
+        """构造消息链：绑定属主 Agent。
+
+        通常不直接实例化——应用层经 ``Agent.chain`` 访问本类实例。
+
+        :param agent: 属主 Agent（五个 op 直接操作其 ``_messages`` 映射，
+            落盘经其 ``_persist_message`` / ``_persist_tree_record``）。
+        """
         self._agent = agent
 
     def insert(self, after_id: str, msg: Message) -> str:
-        """单条增：在 ``after_id`` 之后插入一条消息，返回新消息 id.
+        """单条增：在 ``after_id`` 之后插入一条消息，返回新消息 id。
 
         .. rubric:: 功能介绍
 
-        将 ``msg`` 挂到 ``after_id`` 之下（``msg.parent_id = after_id``），并调整
-        前后邻接：``after_id`` 原有的直接子消息**重挂到新消息之下**（各自子树
-        随之整体移动，其内部链不变）。若 ``after_id`` 无子消息，等价于追加一个
-        新分支。
+        将 ``msg`` 挂到 ``after_id`` 之下（``msg.parent_id = after_id``），
+        并调整前后邻接：``after_id`` 原有的直接子消息重挂到新消息之下
+        （各自子树随之整体移动，其内部链不变）。若 ``after_id`` 无子消息，
+        等价于追加一个新分支。
 
-        .. rubric:: 设计动机
+        「单点 op、邻接调整」使线性链上的插入保持链序直觉：``m1 → m2``
+        上 ``insert("m1", x)`` 得 ``m1 → x → m2``。分支点上插入会把多个
+        子分支合并到新消息之下——这是确定性规则而非特例处理；只想新增
+        平行分支时用 :meth:`branch`。
 
-        「单点 op、邻接调整」使线性链上的插入（最典型的历史手术，如补插一条
-        SYSTEM 提醒）保持链序直觉：``m1 → m2`` 上 ``insert("m1", x)`` 得
-        ``m1 → x → m2``。分支点上插入会把多个子分支合并到新消息之下——这是
-        确定性规则而非特例处理；只想新增平行分支时用 :meth:`branch`。
+        .. rubric:: 行为要点
 
-        .. rubric:: 行为规约
+        - 前置条件：``after_id`` 在树中存在；``msg.id`` 不与现有节点
+          冲突（``msg.id`` 缺省时由框架分配）。
+        - 后置条件：``msg`` 成为 ``after_id`` 的直接子消息且（若原有子
+          消息）成为它们的父消息；``msg`` 落盘（append 新消息行）+ 邻接
+          调整记录 append。
+        - 插入当前 head 之后不移动 ``current_head_id``（head 切换是
+          ``Agent.fork`` 的职责）。
+        - 不校验 ``msg.kind``（任何 kind 的消息都可成为历史节点）。
 
-        - 前置条件：``after_id`` 在树中存在；``msg.id`` 不与现有节点冲突
-          （``msg.id`` 缺省时由框架分配）。
-        - 后置条件：``msg`` 成为 ``after_id`` 的直接子消息且（若原有子消息）成为
-          它们的父消息；``msg`` 落盘（append 新消息行）+ 邻接调整记录 append。
-        - 边缘情况：插入当前 head 之后**不移动** ``current_head_id``（head 切换
-          是 ``Agent.fork`` 的职责；turn 内 head 随消息挂树即时前移，回合末
-          无结算写入）。
-        - 非行为：不校验 ``msg.kind``（任何 kind 的消息都可成为历史节点）。
-
-        :raises KeyError:
-            ``after_id`` 不存在于消息树。
-        :raises ValueError:
-            ``msg.id`` 与现有节点冲突。
-
-        .. rubric:: 测试案例
-
-        - 前置：线性链 ``m1 → m2 → m3`` → 操作：``insert("m1", x)`` → 期望：
-          ``x.parent_id == "m1"`` 且 ``m2.parent_id == x.id``；``m3`` 链不变。
-        - 前置：``m1`` 无子消息 → 操作：``insert("m1", x)`` → 期望：``m1`` 有
-          唯一子消息 ``x``。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.agent.Agent._persist_message()``（新消息行）
-          与 ``flowing.agent.Agent._persist_tree_record()``（邻接调整
-          的 move 变更行，每个被重挂子消息一条）（时机：内存修改完成后
-          同步提交，S-31）
-        - 被调：应用 / 策略层经 ``Agent.chain``（公共 API）；
-          ``flowing.context`` 规约的「回合中途追加用 ``chain.insert``」
-          （时机：回合中途追加注入）
+        :return: 新消息的 id。
+        :raises KeyError: ``after_id`` 不存在于消息树。
+        :raises ValueError: ``msg.id`` 与现有节点冲突。
 
         .. seealso::
-           :meth:`remove`、:meth:`reparent`、:meth:`flowing.agent.Agent.fork`。
+           :meth:`remove`、:meth:`reparent`、
+           :meth:`flowing.agent.Agent.fork`。
         """
-        # 宿主 Agent 引用经 S-26 裁决的构造契约字段 ``_agent``（见类 docstring），
-        # 访问真实存在的 Agent._messages / Agent._persist_message /
-        # Agent._persist_tree_record（S-31：均为同步提交，op 保持同步签名）。
+        # 宿主 Agent 引用见类 docstring ``_agent`` 字段；op 经其
+        # _persist_message / _persist_tree_record 同步提交（write-behind 排队即返）。
         if after_id not in self._agent._messages:
             raise KeyError(after_id)
         if msg.id in self._agent._messages:
@@ -1776,187 +1642,121 @@ class MessageChain:
                 rehung.append(child.id)
         msg.parent_id = after_id
         self._agent._messages[msg.id] = msg
-        self._agent._persist_message(msg)   # 新消息行（同步提交，S-31）
+        self._agent._persist_message(msg)   # 新消息行（同步提交）
         for cid in rehung:   # 邻接调整：每个被重挂的子消息一条 move 变更行
             self._agent._persist_tree_record(
                 {"type": "move", "id": cid, "parent_id": msg.id})
         return msg.id
 
     def branch(self, parent_id: str | None, msg: Message) -> str:
-        """单条增分支：把 ``msg`` 挂到指定 parent 下（``None`` = 开新根），返回该消息 id（M-20 裁决新增）.
+        """单条增分支：把 ``msg`` 挂到指定 parent 下（``None`` = 开新根），返回新消息 id。
 
         .. rubric:: 功能介绍
 
         将 ``msg`` 直接挂为 ``parent_id`` 的新子消息（``msg.parent_id =
-        parent_id``），**不调整任何既有子消息**——与 :meth:`insert` 的
-        「既有子消息重挂到新消息之下」规则正交。``parent_id=None`` 时
-        ``msg`` 成为**新根**（森林模型的开根入口，见模块 docstring
-        「消息级树（允许多根的森林）」）。
+        parent_id``），不调整任何既有子消息——与 :meth:`insert` 的「既有
+        子消息重挂到新消息之下」规则正交。``parent_id=None`` 时 ``msg``
+        成为新根（森林模型的开根入口，见模块 docstring）。
 
-        .. rubric:: 设计动机
+        ``insert`` 在分叉点的合并语义对「新增平行分支」（fork 分支上补
+        一条新消息、并行探索线等）是错的；``branch`` 提供无语义陷阱的
+        纯挂接原语。``None`` 开根使「上下文压缩换链（摘要作为新根开新链，
+        旧树完整保留）」等场景获得唯一的持久化开根入口——不新增
+        ``add_root`` 之类同义方法，不引入虚拟根节点。
 
-        ``insert`` 在分叉点的合并语义对「新增平行分支」（fork 分支上补一条
-        新消息、并行探索线等）是错的；``branch`` 提供无语义陷阱的纯挂接
-        原语。``None`` 放宽（裁决）：森林模型下「根」即「虚拟空父的子节点」，
-        上下文压缩换链（摘要作为新根开新链，旧树完整保留）等场景由此
-        获得**唯一**的持久化开根入口——不新增 ``add_root`` 之类同义方法，
-        不引入虚拟根节点。
-
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         - 前置条件：``parent_id`` 为 ``None``（开新根）或在树中存在；
           ``msg.id`` 不与现有节点冲突（缺省时由框架分配）。
-        - 后置条件：``parent_id`` 非 ``None`` 时，``msg`` 成为其直接子消息，
-          兄弟消息（既有子消息）的 ``parent_id`` 与位置**均不变**；
-          ``parent_id=None`` 时，``msg.parent_id is None``，成为新的根，
-          既有各根链不受影响。落盘仅 append 新消息行（无邻接调整记录）。
-        - 返回值：``msg`` 的 id（调用方用于后续 ``reparent`` / ``remove``
-          或 fork 目标）。
-        - 非行为：不移动 ``current_head_id``（开新根后切 head 走
+        - 后置条件：``parent_id`` 非 ``None`` 时，``msg`` 成为其直接子
+          消息，既有子消息的 ``parent_id`` 与位置均不变；``parent_id``
+          为 ``None`` 时，``msg.parent_id is None``，成为新的根，既有各
+          根链不受影响。落盘仅 append 新消息行（无邻接调整记录）。
+        - 不移动 ``current_head_id``（开新根后切 head 走
           :meth:`flowing.agent.Agent.fork`）；不校验 ``msg.kind``。
 
-        :raises KeyError:
-            ``parent_id`` 非 ``None`` 且不存在于消息树。
-        :raises ValueError:
-            ``msg.id`` 与现有节点冲突。
-
-        .. rubric:: 测试案例
-
-        - 前置：``m1`` 已有子消息 ``m2`` → 操作：``branch("m1", x)`` →
-          期望：``x.parent_id == "m1"`` 且 ``m2.parent_id == "m1"`` 不变，
-          ``m1`` 现有两个直接子消息。
-        - 前置：``branch("m9", x)`` 后 ``fork(x_id)`` → 期望：head 切换到
-          新分支，上下文上溯经 ``m1``。
-        - 前置：已有链 ``m1 → m2`` → 操作：``branch(None, s)``（``s`` 为
-          SYSTEM 摘要消息）→ 期望：``s.parent_id is None``，``_messages``
-          中现有两个根（``m1`` 与 ``s``），``m1`` 链不变；再
-          ``fork(s.id)`` → 期望：上下文上溯只含 ``s``。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.agent.Agent._persist_message()``（时机：仅
-          append 新消息行，无邻接调整记录；同步提交，S-31）
-        - 被调：应用 / 策略层经 ``Agent.chain``（公共 API，M-20 裁决
-          新增；``None`` 开根形态的典型调用方是
-          ``flowing.composables.compact.use_compact`` 的压缩换链，时机：
-          压缩回合收尾）
+        :return: 新消息的 id（调用方用于后续 ``reparent`` / ``remove``
+            或 fork 目标）。
+        :raises KeyError: ``parent_id`` 非 ``None`` 且不存在于消息树。
+        :raises ValueError: ``msg.id`` 与现有节点冲突。
 
         .. seealso::
            :meth:`insert`（分叉点的合并语义对偶）、
-           :meth:`flowing.agent.Agent.fork`（切到新分支 / 新根的视角操作——
-           fork 只切视角，从不创建节点）。
+           :meth:`flowing.agent.Agent.fork`（切到新分支 / 新根的视角操作
+           ——fork 只切视角，从不创建节点）。
         """
-        # 宿主 Agent 引用见类 docstring ``_agent`` 字段（S-26 构造契约）。
+        # 宿主 Agent 引用见类 docstring ``_agent`` 字段。
         if parent_id is not None and parent_id not in self._agent._messages:
             raise KeyError(parent_id)
         if msg.id in self._agent._messages:
             raise ValueError(msg.id)
         msg.parent_id = parent_id   # None = 开新根（森林模型）
         self._agent._messages[msg.id] = msg
-        self._agent._persist_message(msg)   # 仅新消息行，无邻接调整（同步提交，S-31）
+        self._agent._persist_message(msg)   # 仅新消息行，无邻接调整（同步提交）
         return msg.id
 
     def remove(self, msg_id: str) -> None:
-        """单条删：仅删除该消息，**子树不级联**（tombstone）.
+        """单条删：仅删除该消息，子树不级联（tombstone）。
 
         .. rubric:: 功能介绍
 
         将 ``msg_id`` 从权威链中删除：内存链移除该节点 + 提交墓碑变更行
-        （``{"type": "tombstone", "id": ...}``，经
-        ``Agent._persist_tree_record``）；物理删除延迟到压缩期
-        （FileRecordStore drain 任务排空后阈值触发，S-31）。
+        （``{"type": "tombstone", "id": ...}``）；物理删除延迟到压缩期
+        （FileRecordStore drain 任务排空后阈值触发）。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
-        - **不级联**：该消息的子消息**不**随之删除，其 ``parent_id`` 变为指向
-          不存在节点的孤儿链——上下文上溯到断点即终止。删除带子树的消息前，
-          **先 ``reparent`` 子树再 ``remove``**（定式）：
-
-          .. code-block:: python
-
-              for child_id in children:
-                  agent.chain.reparent(child_id, to=msg.parent_id)
-              agent.chain.remove(msg_id)
-
-        - 删除尾部消息是纯截断语义；删除中间消息在「直接物理删除」模型下本需
-          O(后续长度) 重写，tombstone 将其降为运行期 O(1)。
-        - 幂等性：对不存在的 id 抛 ``KeyError``（重复删除不是静默成功）。
-        - 非行为：不移动 ``current_head_id``；删除 head 上溯路径上的消息属于
-          调用方责任。需要「删除当前 head 并回退到父节点」时，请使用
+        - 不级联：该消息的子消息不随之删除，其 ``parent_id`` 变为指向
+          不存在节点的孤儿链——上下文上溯到断点即终止。删除带子树的消息
+          前，先对子树逐条 :meth:`reparent` 到新父节点、再 ``remove``
+          （定式）。
+        - 删除尾部消息是纯截断语义；删除中间消息在「直接物理删除」模型
+          下本需逐行重写，tombstone 将其降为运行期 O(1)。
+        - 对不存在的 id 抛 ``KeyError``（重复删除不是静默成功）。
+        - 不移动 ``current_head_id``；删除 head 上溯路径上的消息属于调用
+          方责任。需要「删除当前 head 并回退到父节点」时，请使用
           ``Agent.remove`` / ``Agent.pop``（Agent 层负责 head 维护）。
 
-        :raises KeyError:
-            ``msg_id`` 不存在于消息树（或已被删除）。
-
-        .. rubric:: 测试案例
-
-        - 前置：``m1 → m2 → m3`` → 操作：``remove("m2")`` → 期望：``m2`` 不可达；
-          ``m3.parent_id == "m2"``（孤儿）；重放文件（消息行 + tombstone）后
-          权威链同样不含 ``m2``。
-        - 前置：``m2`` 带子消息 ``m3`` → 操作：先 ``reparent("m3", to="m1")``
-          再 ``remove("m2")`` → 期望：``m3.parent_id == "m1"``，无孤儿。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.agent.Agent._persist_tree_record()``（时机：
-          内存移除后同步提交 tombstone 变更行，S-31）
-        - 被调：应用 / 策略层经 ``Agent.chain``（公共 API；docstring
-          示例见 ``flowing.errors``，时机：未见规约）；recap / reminder
-          等临时注入的擦除（时机：用完即擦——本类 docstring 自述）
+        :raises KeyError: ``msg_id`` 不存在于消息树（或已被删除）。
 
         .. seealso::
            :meth:`reparent`、:meth:`insert`。
         """
-        # 宿主 Agent 引用见类 docstring ``_agent`` 字段（S-26 构造契约）。
+        # 宿主 Agent 引用见类 docstring ``_agent`` 字段。
         if msg_id not in self._agent._messages:
             raise KeyError(msg_id)
         del self._agent._messages[msg_id]  # 内存链移除；子树不级联（留下孤儿链）
         self._agent._persist_tree_record(
-            {"type": "tombstone", "id": msg_id})   # 墓碑行（同步提交，S-31）
+            {"type": "tombstone", "id": msg_id})   # 墓碑行（同步提交）
 
     def remove_by_tags(self, tags: set[str]) -> int:
-        """按 **tags 过滤**批量删（recap / reminder 等临时注入的擦除入口）。
+        """按 tags 过滤批量删除（recap / reminder 等临时注入的擦除入口）。
 
         .. rubric:: 功能介绍
 
-        遍历消息树删除满足以下**任一**条件的消息，逐条走 :meth:`remove`
+        遍历消息树，删除满足以下任一条件的消息，逐条走 :meth:`remove`
         （内存移除 + 墓碑行），返回删除条数：
 
-        - 消息自身 ``Message.tags`` 与给定 ``tags`` **相交**；
+        - 消息自身 ``Message.tags`` 与给定 ``tags`` 相交；
         - 消息任一 ``content`` block 的 ``tags`` 与给定 ``tags`` 相交。
 
-        支撑「临时注入、响应后清洗」场景：``after_turn`` 钩子内按 tags 擦除
-        本回合附加的提醒消息，保证不累积到后续轮次。
+        支撑「临时注入、响应后清洗」场景：``after_turn`` 钩子内按 tags
+        擦除本回合附加的提醒消息，保证不累积到后续轮次。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
-        - 匹配：以上两条规则任一命中即删除；``tags`` 为空集 → 不删任何消息
-          （返回 0）。
-        - 逐条 :meth:`remove`：子树不级联、产生墓碑行、已删除/不存在 id 的
-          幂等语义与 :meth:`remove` 一致（本方法只遍历现存消息，天然无
-          ``KeyError``）。
-        - 非行为：本方法不直接移动 ``current_head_id``；但若按 tags 删除的
-          消息中包含当前 head，调用方应使用 ``Agent.remove_by_tags``
-          （Agent 层负责 head 维护）。不触碰 ``pending_messages``（本方法
-          作用于已挂树的消息）。
+        - 匹配：以上两条规则任一命中即删除；``tags`` 为空集 → 不删任何
+          消息（返回 0）。
+        - 逐条 :meth:`remove`：子树不级联、产生墓碑行；本方法只遍历现存
+          消息，天然不会因 id 不存在抛 ``KeyError``。
+        - 不直接移动 ``current_head_id``；若按 tags 删除的消息中包含当前
+          head，调用方应使用 ``Agent.remove_by_tags``（Agent 层负责 head
+          维护）。不触碰 ``pending_messages``（本方法作用于已挂树的消息）。
 
-        .. rubric:: 测试案例
+        :return: 删除的消息条数。
 
-        - 前置：树上含 ``Message(tags=['reminder'])`` 的消息两条 + 无 tags
-          消息一条。操作：``chain.remove_by_tags({'reminder'})`` → 期望：
-          返回 2，两条 reminder 消息从树与重放权威链中消失，无 tags 消息保留。
-        - 前置：消息的 ``TextBlock`` 带有 ``tags=['reminder']``。操作：
-          ``chain.remove_by_tags({'reminder'})`` → 期望：该消息被删除。
-        - 前置：``remove_by_tags(set())`` → 期望：返回 0，无删除。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.message.MessageChain.remove``（时机：逐条，每命中一条）
-        - 被调：应用 / 策略层经 ``Agent.chain``（时机：after_turn 等收尾
-          钩子内按 tags 清洗临时注入消息）；``Agent.remove_by_tags`` 透传
-          本方法并补 head 维护
-
-        .. seealso:: :meth:`remove`、:meth:`flowing.agent.Agent.remove_by_tags`
+        .. seealso::
+           :meth:`remove`、:meth:`flowing.agent.Agent.remove_by_tags`。
         """
         if not tags:
             return 0
@@ -1972,60 +1772,47 @@ class MessageChain:
         return len(to_remove)
 
     def update(self, msg_id: str, content: list[ContentBlock]) -> None:
-        """单条改：仅替换消息内容，**不动链**.
+        """单条改：仅替换消息内容，不动链。
 
         .. rubric:: 功能介绍
 
-        替换 ``msg_id`` 的 ``content`` 列表（如编辑历史中的一条用户消息、修正
-        一条 SYSTEM 注入）；``parent_id`` / ``kind`` / ``id`` 等其余字段不变，
-        前后邻接不变。
+        替换 ``msg_id`` 的 ``content`` 列表（如编辑历史中的一条用户消息、
+        修正一条 SYSTEM 注入）；``parent_id`` / ``kind`` / ``id`` 等其余
+        字段不变，前后邻接不变。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
-        - 运行期副作用：改内存 + append update 变更记录；压缩期随尾部重写固化。
-        - 非行为：不允许改 ``kind`` / ``parent_id``（改结构用 :meth:`reparent`，
+        - 运行期副作用：改内存 + append update 变更记录；压缩期随尾部
+          重写固化。
+        - 不允许改 ``kind`` / ``parent_id``（改结构用 :meth:`reparent`，
           改身份等于删除 + 插入的组合）；不递归校验新 content 的合法性
           （block 排列合法性是 adapter 组装时的职责）。
-        - 边缘情况：更新一条 PROVIDER 消息的 content 不会自动重算 ``turn_end``
-          ——``turn_end`` 是写入时的边界事实，调用方需自行保持一致（机制不猜策略）。
+        - 更新一条 PROVIDER 消息的 content 不会自动重算 ``turn_end``
+          ——``turn_end`` 是写入时的边界事实，调用方需自行保持一致。
 
-        :raises KeyError:
-            ``msg_id`` 不存在于消息树。
-
-        .. rubric:: 测试案例
-
-        - 前置：``m1(USER, [text="旧"])`` → 操作：``update("m1",
-          [TextBlock(text="新")])`` → 期望：内容替换、``parent_id`` 不变、
-          子消息链不受影响、文件尾部有 update 变更行。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.agent.Agent._persist_tree_record()``（时机：
-          内容替换后同步提交 update 变更行，S-31）
-        - 被调：应用 / 策略层经 ``Agent.chain``（公共 API；框架内未见
-          逐字调用方，时机：未见规约）
+        :raises KeyError: ``msg_id`` 不存在于消息树。
 
         .. seealso::
            :meth:`remove`、:meth:`reparent`。
         """
-        # 宿主 Agent 引用见类 docstring ``_agent`` 字段（S-26 构造契约）。
+        # 宿主 Agent 引用见类 docstring ``_agent`` 字段。
         if msg_id not in self._agent._messages:
             raise KeyError(msg_id)
         self._agent._messages[msg_id].content = content  # 仅替换内容，不动链
-        # update 变更行（同步提交，S-31）；压缩期固化。content 序列化为行内
-        # content 项形态（X2 行格式唯一序列化点），保证 JSON 可落盘
+        # update 变更行（同步提交）；压缩期固化。content 序列化为行内
+        # content 项形态，保证 JSON 可落盘
         self._agent._persist_tree_record(
             {"type": "update", "id": msg_id,
              "content": [_block_to_record(b) for b in content]})
 
     def reparent(self, msg_id: str, *, to: str) -> None:
-        """子树重连：改 ``msg_id`` 的 ``parent_id``，**整个子树随之移动**.
+        """子树重连：改 ``msg_id`` 的 ``parent_id``，整个子树随之移动。
 
         .. rubric:: 功能介绍
 
-        「单点 op，子树效应」——只改目标消息一个字段，其后代链不变，整个子树
-        自然跟着走。是五 op 中唯一能移动既有结构的 op：分支迁移、删除前的子树
-        保全、压缩摘要分支的挂接都经它完成。
+        「单点 op，子树效应」——只改目标消息一个字段，其后代链不变，整个
+        子树自然跟着走。是五 op 中唯一能移动既有结构的 op：分支迁移、
+        删除前的子树保全、压缩摘要分支的挂接都经它完成。
 
         .. rubric:: 使用示例
 
@@ -2034,42 +1821,24 @@ class MessageChain:
             # 把 m8 分支整体挂到 m3 之下
             agent.chain.reparent("m8", to="m3")
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
-        - 前置条件：``msg_id`` 与 ``to`` 均在树中存在；``to`` 不是 ``msg_id``
-          自身或其**后代**（防环）。
-        - 后置条件：``msg_id.parent_id == to``；其后代的 ``parent_id`` 不变；
-          append move 变更记录。
-        - 边缘情况：重连根消息（``parent_id=None`` 者）等价于把整棵树挂为新
-          子树——规约不禁止，但调用方应明确自己在做什么（机制不拦策略）。
-        - 非行为：不移动 ``current_head_id``；不复制子树（移动语义，非拷贝）。
+        - 前置条件：``msg_id`` 与 ``to`` 均在树中存在；``to`` 不是
+          ``msg_id`` 自身或其后代（防环）。
+        - 后置条件：``msg_id.parent_id == to``；其后代的 ``parent_id``
+          不变；append move 变更记录。
+        - 边缘情况：重连根消息（``parent_id=None`` 者）等价于把整棵树挂
+          为新子树——规约不禁止，但调用方应明确自己在做什么。
+        - 不移动 ``current_head_id``；不复制子树（移动语义，非拷贝）。
 
-        :raises KeyError:
-            ``msg_id`` 或 ``to`` 不存在于消息树。
-        :raises ValueError:
-            ``to`` 是 ``msg_id`` 自身或其后代（会成环）。
-
-        .. rubric:: 测试案例
-
-        - 前置：``m1 → m2 → m3`` 与分支 ``m2 → m4 → m5`` → 操作：
-          ``reparent("m4", to="m1")`` → 期望：``m4.parent_id == "m1"``，
-          ``m5.parent_id == "m4"`` 不变（子树整体移动）。
-        - 前置：同上 → 操作：``reparent("m2", to="m4")`` → 期望：抛
-          ``ValueError``（``m4`` 是 ``m2`` 的后代，会成环）。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.agent.Agent._persist_tree_record()``（时机：
-          改链后同步提交 move 变更行，S-31）
-        - 被调：应用 / 策略层经 ``Agent.chain``（公共 API）；「删除前
-          保全子树」定式中与 :meth:`remove` 组合（时机：删除带子树
-          消息前——本类 docstring 定式）
+        :raises KeyError: ``msg_id`` 或 ``to`` 不存在于消息树。
+        :raises ValueError: ``to`` 是 ``msg_id`` 自身或其后代（会成环）。
 
         .. seealso::
            :meth:`remove`（删除前保全子树的定式）、:meth:`insert`、
            :meth:`flowing.agent.Agent.fork`。
         """
-        # 宿主 Agent 引用见类 docstring ``_agent`` 字段（S-26 构造契约）。
+        # 宿主 Agent 引用见类 docstring ``_agent`` 字段。
         if msg_id not in self._agent._messages:
             raise KeyError(msg_id)
         if to not in self._agent._messages:
@@ -2085,4 +1854,4 @@ class MessageChain:
         self._agent._messages[msg_id].parent_id = to  # 单点改链，整个子树随之移动
         self._agent._persist_tree_record(
             {"type": "move", "id": msg_id,
-             "parent_id": to})   # move 变更行（同步提交，S-31）
+             "parent_id": to})   # move 变更行（同步提交）
