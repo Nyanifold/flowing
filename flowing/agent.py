@@ -258,24 +258,20 @@ logger 符号）。"""
 
 
 class _LlmViewValidationError(FlowingError):
-    """LLM 视角校验失败的内部信号（**内部 API，不属稳定契约**）。
+    """LLM 视角校验失败时抛出的内部信号（内部 API，不属稳定契约）。
 
-    spec 未写清处落实：``schema_to_model`` 的桥接模型默认忽略未定义键
-    （Pydantic 默认 extra 行为），而「幻觉参数按未定义参数校验错误处理」
-    要求显式拒绝——未知键检查在 ``Agent._normalize`` 内以本异常报出，
-    键名即 LLM 自己提供的别名（回指不构成泄漏）；``Agent.tool_call``
-    捕获后包装为 ``ToolResult(status="error")`` 正常产物。
-    ``ToolDefinition.strict is False`` 的工具不施加未知键拒绝（工具层
-    不限制参数，见 ``Agent._normalize`` 行为规约第 1 步）。
+    未知键检查在 ``Agent._normalize`` 内以本异常报出，键名即 LLM 自己提供
+    的参数名；``Agent.tool_call`` 捕获后包装为 ``ToolResult(status="error")``
+    正常产物。``strict=False`` 的工具不施加未知键拒绝。
     """
 
 
 def _estimate_tool_schema_tokens(definition: ToolDefinition) -> int:
-    """工具 schema 的 token 补估（``llm_definition()`` JSON 序列化 ÷ 4）。
+    """工具 schema 的 token 补估（内部 API，不属稳定契约）。
 
-    **内部 API，不属稳定契约。** ``estimate_context_tokens`` 的「锚点后新增
-    工具补估 schema」与「无锚点全估」共用；与消息估算的字符启发式（4 字符
-    /token）同口径。
+    ``llm_definition()`` 产物的 JSON 序列化长度除以 4，与消息估算的
+    「4 字符 / token」口径一致；``estimate_context_tokens`` 的「锚点后
+    新增工具补估」与「无锚点全估」共用。
     """
     from dataclasses import asdict
 
@@ -283,11 +279,12 @@ def _estimate_tool_schema_tokens(definition: ToolDefinition) -> int:
 
 
 def _as_parsable_patch(value: Any) -> Parsable | None:
-    """覆写体的文本类补丁值归一（**内部 API**）：``_``（PENDING）→ 空补丁
-    （``None``）；``Parsable`` 原样透传；其余包装为 ``Parsable`` 常量。
+    """覆写体的文本类补丁值归一（内部 API，不属稳定契约）。
 
+    ``_``（PENDING）→ ``None``（空补丁语义：声明了覆写位、内容为空，从基底
+    回填）；``Parsable`` 原样透传；其余包装为 ``Parsable`` 常量。
     ``add_tool`` 的 ``description`` 与 ``add_agent`` 的 ``system_prompt`` /
-    ``description`` 共用（求值面内字段的手动包装点）。
+    ``description`` 共用。
     """
     if value is PENDING:
         return None   # 空补丁语义：声明了覆写位、内容为空（从基底回填）
@@ -302,17 +299,15 @@ def _classify_override_args(
     specified: dict[str, Parsable],
     param_aliases: dict[str, str],
 ) -> None:
-    """覆写体 ``args:`` 映射的逐参数判别（**内部 API**）。
-
-    ``add_tool`` / ``add_agent`` 共用（SubagentEntry 行为规约：同一套代码
-    路径）。规则（ToolEntry 行为规约本体）：
+    """覆写体 ``args:`` 映射的逐参数判别（内部 API，``add_tool`` /
+    ``add_agent`` 共用，同一套代码路径）：
 
     - 值是 dict → ``override_params`` 稀疏补丁（JSON Schema 关键字，零糖）；
     - 键含 ``<name> as <alias>`` → ``param_aliases``，值部分照常判别；
-    - 值是 ``_``（PENDING）→ **空补丁**（``override_params[name] = {}``，
-      深层块可逐字段填充，未填充则合成时全量回填，不报错）；
-    - 其它值 → ``specified``（包装 ``Parsable``；``"{{ self.inject('key') }}"``
-      注入表达式在此落入，R-4）。
+    - 值是 ``_``（PENDING）→ 空补丁（``override_params[name] = {}``，
+      深层块可逐字段填充，未填充则合成时全量回填）；
+    - 其它值 → ``specified``（包装 ``Parsable``；注入表达式
+      ``"{{ self.inject('key') }}"`` 在此落入）。
     """
     for raw_key, value in args_body.items():
         pname, palias = split_as(raw_key)
@@ -326,7 +321,8 @@ def _classify_override_args(
             specified[pname] = value if isinstance(value, Parsable) else Parsable(value)
 
 WatchHandler = Callable[[Any, Any], None]
-"""``watch`` 的回调类型：``(new_value, old_value) -> None``，返回值忽略。
+"""``watch`` 的回调类型：``(new_value, old_value) -> None``，返回值
+被忽略。
 """
 
 
@@ -494,183 +490,109 @@ class Execution:
 
     .. rubric:: 功能介绍
 
-    Agent 发起的每个异步执行（工具调用、子 Agent、LLM 请求、副线查询）启动时
-    注册一条 ``Execution`` 入 ``agent._executions``，完成/异常/取消/超时后
-    **在 ``finally`` 中移除**。``cancel`` / ``stop`` 族通过遍历该注册表
-    置位控制信号。
+    Agent 发起的每个异步执行（工具调用、子 Agent、LLM 请求、副线查询）
+    启动时注册一条本实例进 ``Agent._executions`` 注册表，完成 / 异常 /
+    取消后移除（清理在 ``finally`` 中）。``cancel`` / ``stop`` 族通过
+    遍历该注册表置位控制信号；快照层只投影其中的 ``kind`` / ``tags`` /
+    ``started_at`` 三个字段。
 
-    .. rubric:: 设计动机
+    .. rubric:: 行为要点
 
-    取消是**协作式**的：``cancel.set()`` 是请求不是命令——执行体在检查点
-    检测信号后自行决定立即停止（返回已有/空结果）、忽略信号正常完成、或做
-    关键收尾后返回部分结果。框架不设「kill -9」语义（那是可覆写 ``stop()``
-    的职责）。``pause`` Event 与 ``cancel`` 对称，保留给 Tool 覆写与
-    Composable——**框架核心不主动 set/clear 它**，且 Execution 层暂停只影响
-    单个执行、不级联（区别于 Agent 层 ``pause()`` 工作循环 gate）。
-
-    .. rubric:: 使用示例
-
-    .. code-block:: python
-
-        execution = Execution(
-            id=str(uuid4()), kind="tool", tags=self._build_tool_tags(tool),
-            started_at=datetime.now(), cancel=asyncio.Event(),
-            pause=asyncio.Event(),
-        )
-        self._executions[execution.id] = execution
-        try:
-            return await tool(resolved_args, caller=self, execution=execution)
-        finally:
-            self._executions.pop(execution.id, None)
-
-    .. rubric:: 行为规约
-
-    - ``kind`` 是**开放字符串**（非封闭枚举）：内置四值 ``"tool"`` /
-      ``"agent"`` / ``"request"`` / ``"side_query"``；扩展可引入新值
-      （``"workflow"`` / ``"cron"`` 等），注册/冲突规则由扩展自管。
-    - ``tags`` 供分组取消（``cancel_by_tag``）；典型用法
-      ``tags=["bash", "long-running"]``、``tags=["subagent", "explore"]``。
-    - 不变量：注册与清理严格成对，清理一定在 ``finally``——执行条目永不
-      留残留，杜绝「幽灵条目」让后续 ``cancel()`` 误伤已完成的执行。
-    - 非行为：快照（``AgentSnapshot.executions``）只暴露
-      ``kind`` / ``tags`` / ``started_at``——**不暴露** ``cancel`` / ``pause``
-      Event，避免绕过控制 API 与钩子。
-
-    .. rubric:: 测试案例
-
-    - 前置：工具执行抛异常。操作：等待 ``tool_call`` 返回 → 期望：
-      ``agent._executions`` 中对应条目已被移除（finally 清理）。
-    - 前置：``Execution(kind="tool", tags=["bash"])`` 运行中。操作：
-      ``agent.cancel_by_tag("bash")`` → 期望：仅该条目 ``cancel.is_set()``，
-      其它条目与 ``_turn_abort`` 不动。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``flowing.agent.Agent.cancel()`` / ``cancel_children()`` /
-      ``cancel_by_tag()``（时机：每次取消，遍历 ``_executions`` 置位
-      信号）；快照投影见 ``flowing.snapshot.ExecutionInfo``（时机：每次
-      ``Agent.snapshot()``）
-    - 实例化方：``flowing.agent.Agent.tool_call``（``kind="tool"``）、
-      ``Agent.provider_gen``（``kind="request"``）、``Agent.side_query``
-      （``kind="side_query"``）、``Agent.invoke_subagent``
-      （``kind="agent"``）（时机：各执行启动时注册，finally 清理）
+    - ``kind`` 是开放字符串（非封闭枚举）：内置 ``"tool"`` / ``"agent"`` /
+      ``"request"`` / ``"side_query"`` 四种；扩展可引入新值，注册与冲突
+      规则由扩展自管。
+    - ``tags`` 供分组取消（``cancel_by_tag`` / ``stop_by_tag``）；典型
+      用法 ``tags=["bash", "long-running"]``。
+    - 注册与清理严格成对、清理一定在 ``finally``：执行条目不残留，避免
+      后续 ``cancel()`` 误伤已完成的执行。
+    - 取消是协作式的：``cancel`` 置位是请求不是命令——执行体在检查点检测
+      信号后自行决定立即停止（返回已有或空结果）、忽略信号正常完成、或
+      做关键收尾后返回部分结果。框架不设强制终止语义（那是可覆写
+      ``stop()`` 的职责）。
+    - ``pause`` 置位同样是协作式请求，保留给 Tool 覆写与 Composable——
+      框架核心不主动 set / clear 它；只影响单个执行、不级联（区别于
+      Agent 层 ``pause()`` 对工作循环 gate 的控制）。
+    - 快照（``AgentSnapshot.executions``）只暴露 ``kind`` / ``tags`` /
+      ``started_at``，不暴露两个 Event——避免绕过控制 API 与钩子。
 
     .. seealso::
 
-        - :meth:`Agent.cancel` / :meth:`Agent.cancel_children` /
-          :meth:`Agent.cancel_by_tag` —— 信号置位入口。
-        - :class:`flowing.tool.ScriptTool` —— 工具执行的宿主（cancel 注入）。
+        - :meth:`Agent.cancel` / :meth:`Agent.cancel_by_tag` —— 信号置位入口。
+        - :class:`flowing.tool.Tool` —— 工具执行的宿主（``execution`` 注入）。
     """
 
     id: str
-    """UUID，注册表 ``_executions`` 的 key。
+    """UUID，注册表 ``Agent._executions`` 的 key。
     """
     kind: str
     """开放字符串：内置 ``"tool"`` / ``"agent"`` / ``"request"`` /
-    ``"side_query"``；扩展可引入新 kind。
+    ``"side_query"``；扩展可引入新值。
     """
     tags: list[str]
     """自由标签，``cancel_by_tag`` / ``stop_by_tag`` 的分组依据。
     """
     started_at: datetime
-    """启动时间戳（监控 / 日志 / stop 超时判断）。
+    """启动时间戳（监控 / 日志 / 超时判断）。
     """
     cancel: asyncio.Event
-    """置位 = 请求取消（初始未 set）；协作式信号，执行体可自行决定是否响应。
-    词汇约定：**「取消 Execution」一侧统一叫 cancel**（方法
-    ``cancel()`` / ``cancel_children()`` / ``cancel_by_tag()``、钩子
-    ``before_cancel`` / ``after_cancel`` 与本字段）；**Turn 循环一侧保留
-    abort**（``_turn_abort`` / ``abort_turn()`` / ``before_turn_abort`` /
-    ``turn.aborted``）——两个域各自的词汇内部自洽，不跨域混用。
+    """置位 = 请求取消（初始未 set）；协作式信号，执行体可自行决定
+    是否响应。词汇约定：执行侧统一叫 cancel（方法 ``cancel()`` /
+    ``cancel_by_tag()``、钩子 ``before_cancel`` / ``after_cancel`` 与本
+    字段）；Turn 循环一侧保留 abort（``abort_turn()`` /
+    ``before_turn_abort`` / ``turn.aborted``）——两个域的词汇各自内部
+    自洽，不跨域混用。
     """
     pause: asyncio.Event
-    """置位 = 请求暂停（初始未 set）；保留给 Tool 覆写与 Composable，框架
-    核心不主动 set/clear；只影响单个执行，不级联。
+    """置位 = 请求暂停（初始未 set）；保留给 Tool 覆写与 Composable，
+    框架核心不主动 set / clear；只影响单个执行，不级联。
     """
 
 
 @dataclass
 class FieldUpdate:
-    """``watch`` watcher 通道的 value——一次实例属性赋值事件的快照
-    （M-41 最终裁决：watcher 通道 + fire-and-forget，纯观察语义）。
+    """``watch`` watcher 通道的 value——一次实例属性赋值事件的快照。
 
     .. rubric:: 功能介绍
 
-    ``Agent.__setattr__`` 拦截实例属性赋值时，在**写入前**构造本对象
-    并以 fire-and-forget 方式通知 watcher 通道（``hooks._notify_watch``，
+    ``Agent.__setattr__`` 拦截实例属性赋值时，在写入前构造本对象并以
+    fire-and-forget 方式通知 watcher 通道（``hooks._notify_watch``，
     pattern 匹配本对象的 ``name`` 字段——``agent.watch('locale', ...)``
-    即字面量精确匹配）。watcher 收到的是赋值事件的**自洽快照**：
-    无论 watcher 何时真正执行，``old`` / ``new`` 都是触发那一刻的值。
+    即字面量精确匹配）。watcher 收到的是赋值事件的自洽快照：无论
+    watcher 何时真正执行，``old`` / ``new`` 都是触发那一刻的值。
 
-    .. rubric:: 设计动机
+    .. rubric:: 行为要点
 
-    watcher 的触发者是**用户的赋值语句**而非框架管线，且赋值是
-    同步原语——若 watcher 参与赋值语义（改写 / 取消），watcher 就
-    必须是同步函数。最终裁决放弃拦截语义（对齐 Vue / MobX 的「只
-    通知」哲学）：通知改为 fire-and-forget 后台任务，赋值不等待
-    watcher，watcher 因此可以是 sync 或 async——同步约束随拦截语义
-    一起消失。想拦截赋值请用 Python 原生手段（property setter）。
-
-    .. rubric:: 使用示例
-
-    .. code-block:: python
-
-        # 低层注册（收完整快照）
-        self.hooks.watch('locale',
-            lambda agent, fu: self.logger.info(f"{fu.name}: {fu.old} -> {fu.new}"))
-
-        # 更常用的是语法糖：
-        self.watch('locale', lambda new, old: self.reload_prompt())
-
-    .. rubric:: 行为规约
-
-    - **纯观察**：改写 ``new`` 无效（watcher 返回值被忽略）；
+    - 纯观察：watcher 改写 ``new`` 无效（watcher 返回值被忽略）；
       ``raise Intercepted`` 与普通异常同处理——终止本次 watcher 链、
-      记录日志，**不影响赋值**（fire-and-forget 无上抛对象）。
-    - watcher 可为同步或 async（后台任务统一 await）。
-    - **时序不保证**：通知任务在写入前入队，但 watcher 的实际执行
-      可能晚于写入完成；连续多次赋值的多个 watcher 间执行顺序
-      亦不保证——依赖时序的逻辑应自行序列化，快照数据始终自洽。
-    - 无运行中的 event loop 时（如 ``__init__`` 骨架阶段的赋值），
-      通知**静默跳过**——赋值照常，watcher 不触发。这是
-      fire-and-forget 的已知边界。
-    - 触发范围：仅**实例属性赋值**；描述符 / 类属性 / ``_`` 前缀骨架
-      字段的初始化不经过本机制。
-    - 边缘情况：watcher 内再次给同名字段赋值造成递归通知——
-      框架不做递归防护，属编程错误。
-    - 插件约定：托管变量（如 i18n 插件注入的 ``agent.i18n``）应以
-      插件自有对象为载体，属性级拦截在该对象自己的类里实现；顶层
-      槽位的重绑定只能经 ``watch`` 观察、不能拦截（可纠正性
-      回写，会二次触发监听）。
-
-    .. rubric:: 测试案例
-
-    - 前置：``calls = []``；``agent.watch('locale', lambda new, old:
-      calls.append((new, old)))``。操作：``agent.locale = "en"`` 后
-      让出 event loop。期望：``calls == [("en", <旧值>)]``。
-    - 前置：``hooks.watch('locale', lambda a, fu: 1/0)``。操作：
-      ``agent.locale = "zh"``。期望：赋值成功、无异常传播、异常被
-      记录日志。
-    - 前置：无运行中 event loop。操作：``agent.locale = "zh"``。
-      期望：赋值成功，handler 未触发。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：watcher 通道的通知 value（时机：fire-and-forget
-      后台任务，赋值写入前入队）
-    - 实例化方：``flowing.agent.Agent.__setattr__``（时机：每次实例属性
-      赋值，写入前构造快照）
+      记录日志，不影响赋值（fire-and-forget 无上抛对象）。
+    - watcher 可为同步或异步函数（后台任务统一 await）。
+    - 时序不保证：通知任务在写入前入队，但 watcher 的实际执行可能晚于
+      写入完成；连续多次赋值的多个 watcher 间执行顺序亦不保证——依赖
+      时序的逻辑应自行序列化，快照数据始终自洽。
+    - 无运行中的 event loop 时（如 ``__init__`` 骨架阶段的赋值），通知
+      静默跳过——赋值照常，watcher 不触发。这是 fire-and-forget 的已知
+      边界。
+    - 触发范围：仅实例属性赋值；描述符 / 类属性 / ``_`` 前缀骨架字段的
+      初始化不经过本机制。
+    - watcher 内再次给同名字段赋值会造成递归通知——框架不做递归防护，
+      属编程错误。
+    - 插件约定：托管变量（如 i18n 插件注入的 ``agent.i18n``）应以插件
+      自有对象为载体，属性级拦截在该对象自己的类里实现；顶层槽位的
+      重绑定只能经 ``watch`` 观察、不能拦截（可纠正性回写会二次触发
+      监听）。
 
     .. seealso::
 
-        :meth:`Agent.watch`、:class:`flowing.hooks.HookList`
+        - :meth:`Agent.watch` —— ``(new, old)`` 形态的注册糖。
+        - :meth:`flowing.hooks.HookRegistry.watch` —— 低层注册
+          （``(agent, value)`` 形态）。
     """
 
     name: str
-    """被赋值的字段名；``match_on`` 锚点（pattern 匹配本字段）。
+    """被赋值的字段名；watcher 注册的 pattern 按本字段匹配。
     """
     old: Any
-    """旧值（字段不存在时为 ``_UNSET`` 哨兵）。
+    """旧值；字段此前不存在时为 ``None``。
     """
     new: Any
     """即将写入的值（快照，只读语义——改写不影响赋值）。
@@ -683,60 +605,42 @@ class ProviderErrorContext:
 
     .. rubric:: 功能介绍
 
-    ``_run_turn`` 内 ``provider_gen()`` 抛出的异常被回合层捕获后，构造本对象并
-    dispatch ``on_provider_error``。handler 在内部执行动作（sleep 退避 / 改
+    ``provider_gen()`` 抛出的异常被回合层捕获后，构造本对象并 dispatch
+    ``on_provider_error``。handler 在内部执行动作（退避等待 / 改
     ``self.model`` / 调 ``abort_turn()``）并写 ``can_continue`` 表达决策。
-
-    .. rubric:: 设计动机
-
-    机制 vs 策略：核心只做错误分类与分发（本对象是机制）；「该不该重试、
-    重试几次」是策略——内置、可选、非默认的 ``use_retry()`` Composable 以
-    ``by="retry"`` 注册 handler 提供重试，不调用则 ``can_continue`` 保持
-    ``False``，错误直接终止回合（Agent 存活）。
+    核心只提供机制（错误分类与分发）；「该不该重试、重试几次」是策略——
+    内置的可选 Composable ``use_retry()`` 以 ``by="retry"`` 注册 handler
+    提供重试；不启用时 ``can_continue`` 保持 ``False``，错误直接终止
+    回合（Agent 存活，可继续消费后续消息）。
 
     .. rubric:: 使用示例
 
     .. code-block:: python
 
-        async def _retry(agent, ctx: ProviderErrorContext) -> ProviderErrorContext:
-            if isinstance(ctx.error, (RateLimitedError, ServerError)):
+        from flowing.errors import RateLimitedError
+
+        async def _retry(agent, ctx):
+            if isinstance(ctx.error, RateLimitedError):
                 await asyncio.sleep(2)
-                ctx.can_continue = True     # 触发 continue（重试）
+                ctx.can_continue = True   # 触发回合内重试
             return ctx
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
-    - ``can_continue=False``（默认 / 无 handler / handler 未改写）→ 回合
-      中断（break）；``True`` → 内层循环 ``continue``（handler 须已完成
-      退避 / 换模型等动作）。
-    - handler 内调 ``agent.abort_turn()`` 是合法出口：``continue`` 后下一次
-      ``provider_gen()`` 开头检测信号 → 返回 ``cancelled`` 响应 → 回合走 abort
-      收尾。
-    - 非行为：``ContextLengthError`` **不经过** ``on_provider_error``——不可
-      重试，直接上抛（需钩子层压缩/截断的场景由 ``before_provider_gen`` 等机制
-      处理）。
+    - ``can_continue=False``（默认；无 handler 或 handler 未改写）→ 回合
+      中断，本回合以 ``"error"`` 结局收尾；``True`` → 重新发起
+      ``provider_gen``——handler 须已完成退避 / 换模型等动作。
+    - handler 内调 ``agent.abort_turn()`` 是合法出口：``continue`` 后
+      下一次 ``provider_gen()`` 开头检测到信号 → 返回 ``cancelled`` 响应
+      → 回合走 abort 收尾（``"cancelled"`` 结局）。
+    - ``ContextLengthError`` 不经过本钩子——不可重试，直接上抛（需要
+      压缩 / 截断的场景由 ``before_provider_gen`` 等机制处理）。
     - ``provider`` 是 provider 条目名字符串（``self.model.provider``），
       不是 Provider 实例。
 
-    .. rubric:: 测试案例
-
-    - 前置：provider 抛 ``RateLimitedError``，无 handler → 操作：消息触发
-      回合 → 期望：回合中断，``TurnResult.status == "error"``，Agent 存活
-      可继续消费后续消息。
-    - 前置：handler 写 ``can_continue=True`` → 期望：同一 ``TurnContext``
-      内重新发起 ``provider_gen``。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``on_provider_error`` 钩子 dispatch 的 value（时机：``provider_gen()``
-      异常被回合层捕获后）；``flowing.composables.retry.use_retry`` 的
-      handler 消费本对象（时机：启用重试的 Agent 每次 LLM 调用失败）
-    - 实例化方：``flowing.agent.Agent._run_turn``（时机：``provider_gen()`` 抛
-      异常后、dispatch ``on_provider_error`` 前）
-
     .. seealso::
 
-        - :meth:`Agent.provider_gen` —— 异常来源（``provider_gen`` 本身不捕获、不重试）。
+        - :meth:`Agent.provider_gen` —— 异常来源（其本身不捕获、不重试）。
         - :mod:`flowing.composables.retry` —— 可选重试策略。
         - :class:`flowing.errors.ContextLengthError` —— 不经过本钩子的例外。
     """
@@ -748,53 +652,42 @@ class ProviderErrorContext:
     """发生错误的 provider 条目名（``ModelConfig.provider``，字符串）。
     """
     model: ModelConfig
-    """发生错误时的模型结构体。
+    """发生错误时的模型结构体（``ModelConfig``）。
     """
     can_continue: bool = False
-    """决策字段：handler 写 ``True`` 触发回合内重试；默认 ``False`` =
-    回合中断。取代了旧 ``QueryErrorAction`` 枚举与 ``shortcut`` 写法。
+    """决策字段：handler 写 ``True`` 触发回合内重试；默认 ``False``
+    表示回合中断。
     """
 
 
 @dataclass
 class CancelContext:
-    """``before_cancel`` 钩子的 value——取消操作的拦截上下文。
+    """``before_cancel`` / ``after_cancel`` 钩子点的 value——取消操作的上下文。
 
     .. rubric:: 功能介绍
 
-    ``cancel()`` 在置位任何 ``abort`` 信号**之前** dispatch
-    ``before_cancel``，handler 可 ``raise Intercepted`` 阻止取消——适用于
-    当前操作不可中断的场景（支付已提交、关键事务进行中）。
+    ``cancel()`` 在置位任何取消信号之前 dispatch ``before_cancel``，
+    handler 可 ``raise Intercepted`` 阻止取消——适用于当前操作不可中断的
+    场景（支付已提交、关键事务进行中）。``after_cancel`` 在信号置位后
+    立即 dispatch，是「取消请求已被接受」的事实事件（纯观察）。
 
-    .. rubric:: 设计动机
+    .. rubric:: 行为要点
 
-    审批 / 阻断是机制（钩子点 + ``Intercepted``），「什么时候不许取消」是
-    策略（应用层 handler）。框架不内置任何不可取消规则。
-
-    .. rubric:: 行为规约
-
-    - ``reason``：取消原因说明。``Agent.cancel()`` / ``stop()`` 均**不接受
-      原因参数**（定稿：无参）；框架内部 dispatch 时填默认值 ``""``。扩展
-      若自行 dispatch ``before_cancel`` 可携带自定义原因。
+    - ``reason`` 是取消原因说明。``Agent.cancel()`` / ``stop()`` 均不接受
+      原因参数（无参），框架内部 dispatch 时填默认值 ``""``；扩展若自行
+      dispatch ``before_cancel`` 可携带自定义原因。
     - handler ``raise Intercepted`` → 取消被阻止，``_executions`` 与
       ``_turn_abort`` 均不置位。
     - handler 普通异常 → 直接上抛给 ``cancel()`` 调用方，信号不置位。
 
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``before_cancel`` 钩子 dispatch 的 value（时机：置位任何
-      ``abort`` 信号之前）
-    - 实例化方：``flowing.agent.Agent.cancel``（时机：每次取消；
-      ``Agent.stop`` 默认实现经 ``cancel`` 间接触发）
-
     .. seealso::
 
-        - :meth:`Agent.cancel` —— 唯一触发点。
+        - :meth:`Agent.cancel` —— 触发点。
         - :class:`flowing.errors.Intercepted` —— 阻断信号。
     """
 
     reason: str = ""
-    """取消原因；框架内部调用恒为 ``""``（cancel 族无参定稿），供扩展
+    """取消原因；框架内部调用恒为 ``""``（cancel 族无参），供扩展
     自行 dispatch 时携带。
     """
 
@@ -803,73 +696,45 @@ def build_turn_result(turn: TurnContext, agent: "Agent", *,
                       intercepted: bool = False,
                       error: BaseException | None = None,
                       finish_reason: str = "") -> TurnResult:
-    """回合收尾组装 :class:`TurnResult`（模块级函数）。
+    """回合收尾组装 :class:`TurnResult` 的模块级函数。
 
     .. rubric:: 功能介绍
 
-    ``_run_turn`` 的 ``finally`` 中、``after_turn`` 之后调用：从
-    :class:`TurnContext` 与消息级树聚合 ``final_text`` / ``status`` /
-    ``token_usage`` / ``finish_reason``，产物 resolve 给本回合全部 waiters
-    （共享同一实例）。
+    回合执行体在收尾段（``after_turn`` 之后）调用：从 :class:`TurnContext`
+    与消息级树聚合 ``final_text`` / ``status`` / ``token_usage`` /
+    ``finish_reason``，产物 resolve 给本回合全部等待者（共享同一实例）。
 
-    .. rubric:: 设计动机
-
-    组装逻辑独立于 ``_run_turn`` 主体：收尾路径有多条（正常 / abort /
-    异常 / Intercepted），统一出口保证四种结局都产出合法 ``TurnResult``，
-    调用方永不挂起。
-
-    **信号来源（S-28 裁决）**：结局信号分两类载体——执行期状态在
-    ``turn`` 上（``aborted`` / ``usages`` / ``message_ids``）；一次性
-    结局信号（拦截 / 异常对象）由调用点 ``_run_turn`` 的 except 帧
-    **显式传参**（``intercepted`` / ``error``），不落入 ``TurnContext``
-    字段（它们只在收尾瞬间有意义，不该污染 turn 族钩子 value 与快照
-    投影）。树访问经 ``agent`` 参数（``Agent._messages``）。
-
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
     - 纯函数式组装：读 ``turn.message_ids`` 指向的树中消息，不修改树、
       不落盘、不 dispatch 钩子。
     - ``status`` 判定（优先级从上到下）：``turn.aborted`` →
       ``"cancelled"``；``intercepted=True`` → ``"blocked"``；
-      ``error is not None`` → ``"error"``；否则 ``"completed"``。
-    - ``token_usage`` 聚合（S-13 具名规约）：``turn.usages`` 为空 →
-      ``None``（区分「provider 未上报」与「真用了 0」）；非空 →
-      七个计数字段逐字段求和，聚合体 ``raw = {}``（逐次原始字段的
-      消费方走 ``after_provider_gen``）。
-    - 边缘情况：``turn.message_ids`` 为空（空 turn）→ ``final_text=""``、
-      ``token_usage=None``。
+      ``error`` 非 ``None`` → ``"error"``；否则 ``"completed"``。
+    - ``token_usage`` 聚合：``turn.usages`` 为空 → ``None``（区分
+      「provider 未上报」与「真用了 0」）；非空 → 七个计数字段逐字段
+      求和，聚合体的 ``raw`` 为空字典（逐次原始字段的消费方走
+      ``after_provider_gen`` 钩子）。
+    - ``finish_reason`` 取值：取消 / 拦截 / 异常结局填对应字面量
+      （``"cancelled"`` / ``"intercepted"`` / ``"error"``）；自然完成填
+      调用点传入的末次 ``provider_gen`` 响应原始停止原因；空 Turn 填
+      空字符串。信息字段，不参与控制流。
+    - 边缘情况：``turn.message_ids`` 为空（空 Turn）→ ``final_text`` 为
+      空字符串、``token_usage`` 为 ``None``。
 
-    :param turn: 本回合的执行期载体。
-    :param agent: 属主 Agent——树访问载体（``agent._messages``）。
-    :param intercepted: 本回合是否被钩子 ``Intercepted`` 硬阻断
-        （``_run_turn`` 的 except 帧捕获后传入）。
-    :param error: 本回合未捕获的异常对象（同上；无为 ``None``）。
-    :param finish_reason: 自然完成时末次 ``provider_gen`` 响应的原始停止原因
-        （``provider_data.get("stop_reason", "")``，由 ``_run_turn`` 显式
-        传入；R-09 落实——取消 / 拦截 / 异常结局由本函数按 ``status`` 填
-        对应字面量，本参数仅 ``completed`` 结局采用）。
-
-    .. rubric:: 测试案例
-
-    - 前置：正常完成的 turn（含一条 USER + 一条 PROVIDER ``turn_end=True``
-      消息）→ 操作：``build_turn_result(turn, agent)`` → 期望：
-      ``status="completed"``，``final_text`` 为 PROVIDER 文本。
-    - 前置：``before_turn`` handler 抛 ``Intercepted`` → 期望：
-      ``status="blocked"``，``final_text=""``（批次未挂树）。
-    - 前置：内层循环未捕获异常 → 期望：``status="error"``。
-
-    .. rubric:: 调用关系（审计）
-
-    - 调用：读 ``Agent._messages``（每次收尾，经 ``agent`` 参数访问
-      树中消息）；其余为纯函数式聚合，不改树、不落盘、不 dispatch
-    - 被调：``flowing.agent.Agent._run_turn``（时机：finally 收尾、
-      ``after_turn`` 之后；``intercepted`` / ``error`` 由其
-      except 帧传入）
+    :param turn: 本回合的执行期载体（:class:`TurnContext`）。
+    :param agent: 属主 Agent——树访问载体（读 ``Agent._messages``）。
+    :param intercepted: 本回合是否被钩子 ``Intercepted`` 硬阻断。
+    :param error: 本回合未捕获的异常对象（无则为 ``None``）。
+    :param finish_reason: 自然完成时末次 ``provider_gen`` 响应的原始停止
+        原因；取消 / 拦截 / 异常结局忽略本参数、由本函数按 ``status``
+        填对应字面量。
+    :return: 组装好的 :class:`TurnResult`。
 
     .. seealso::
 
-        - :meth:`Agent._run_turn` —— 唯一调用点。
         - :class:`TurnResult` —— 产物类型。
+        - :meth:`Agent.query` —— 等待者的获取入口。
     """
     status: Literal["completed", "blocked", "error", "cancelled"]
     if turn.aborted:
