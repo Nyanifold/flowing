@@ -769,7 +769,7 @@ class SubagentInvokeTool(Tool):
         resume: str = "",
         asynchronized: bool = False,
         **kwargs: Any,
-    ) -> dict[str, Any]:
+    ) -> Any:
         """转发 ``caller.invoke_subagent()`` 并返回确认收据。
 
         .. rubric:: 行为规约
@@ -780,12 +780,12 @@ class SubagentInvokeTool(Tool):
         - ``kwargs`` 为该子 Agent 类型声明的其余 args（catalog 中 LLM
           可见），原样透传给 ``invoke_subagent`` 经 ``SubagentEntry.
           resolve()`` 聚合。
-        - ``asynchronized=True``：不等待运行段，但创建保证同步——先
-          await ``caller._prepare_subagent(...)``（失败即上抛，经
-          ``Tool.__call__`` 包装为 ``status="error"``，LLM 可见），再
-          ``asyncio.ensure_future(caller._run_subagent(..., enqueue_result=True))``
-          后台承载运行段，立即返回 ``status="started"`` 收据（此时收据
-          字面成立：子 Agent 已创建）。
+        - ``asynchronized=True``（B14）：**async gen 嵌套形态**——返回
+          :meth:`_run_async` 的 async generator 对象，由 ``Tool.__call__``
+          的后台管线驱动（首 yield 收据 → 注册表 → 强引用/取消/destroy
+          覆盖）。创建仍保证同步：``_prepare_subagent`` 在首 yield 前
+          await（失败即上抛，经 ``Tool.__call__`` 的 except 顺序分派为
+          ``status="error"`` / ``blocked``，LLM 可见）。
         - 缺省 ``False``：同步等待子 Agent 完成，以 ``enqueue_result=False``
           调用 ``invoke_subagent``；随后把返回的 ``SubagentResult`` 全字段
           平铺进本工具返回 dict，不再另发 SUBAGENT 消息。
@@ -794,23 +794,21 @@ class SubagentInvokeTool(Tool):
 
         - 调用：``flowing.agent.Agent.invoke_subagent()``（每次执行；
           ``asynchronized=True`` 时拆段为 :meth:`Agent._prepare_subagent`
-          （同步 await）+ :meth:`Agent._run_subagent`（经
-          ``asyncio.ensure_future`` 后台））
-        - 被调：``flowing.tool.Tool.__call__`` 调度层
+          （首 yield 前同步 await）+ :meth:`Agent._run_subagent`（运行段，
+          由 ``Tool._drive_asyncgen`` 后台驱动，B14））
+        - 被调：``flowing.tool.Tool.__call__`` 调度层（async gen 形态——
+          首 yield 收据 + 后台驱动）
         """
         if bool(agent_type) == bool(resume):  # 互斥且至少其一
             raise ValueError("agent_type 与 resume 必须二选一")
         if asynchronized:
-            # 不等待运行段，但创建保证同步：准备段失败（Intercepted / 校验 /
-            # 创建抛错）在此同步上抛 -> Tool.__call__ 包装为 status="error"
-            # （LLM 可见）；运行段结局走 TurnResult 四态 + SUBAGENT 消息
-            # 正常通道，只剩框架 bug 走框架错误通道
-            child, invocation, execution = await caller._prepare_subagent(
-                agent_type, prompt=prompt or None, name=name or None,
-                resume=resume or None, kwargs=kwargs)
-            asyncio.ensure_future(caller._run_subagent(
-                child, invocation, execution, enqueue_result=True))
-            return {"invoked": name or resume, "status": "started"}
+            # B14：async gen 嵌套形态——execute 保持 async def（同步路径须
+            # 带值 return，async generator 内禁止），asynchronized 分支返回
+            # async gen 对象；Tool.__call__ 识别后走与 execute 自身即 async
+            # gen 同一条后台管线（首 yield 收据 → 注册表 → 驱动）
+            return self._run_async(
+                caller=caller, name=name, agent_type=agent_type,
+                prompt=prompt, resume=resume, **kwargs)
         result = await caller.invoke_subagent(
             agent_type, prompt=prompt or None, name=name or None,
             resume=resume or None, **kwargs)
@@ -823,6 +821,50 @@ class SubagentInvokeTool(Tool):
             "result": result.result,
             "subagent_status": result.subagent_status,
         }
+
+    async def _run_async(
+        self,
+        *,
+        caller: Agent,
+        name: str,
+        agent_type: str,
+        prompt: str,
+        resume: str,
+        **kwargs: Any,
+    ) -> None:
+        """``asynchronized=True`` 的运行段 async generator（B14，内部 API）。
+
+        .. rubric:: 行为规约
+
+        - 首 yield 前（轻量准备）：``caller._prepare_subagent(...)`` 同步
+          await——失败（Intercepted / 校验 / 创建抛错）经 ``Tool.__call__``
+          的 except 顺序分派（``Intercepted`` → ``blocked``；其余 →
+          ``status="error"``，LLM 可见）；成功则收据字面成立（子 Agent
+          已创建）。
+        - ① 首 yield：收据 ``{"invoked": name or resume, "status": "started"}``
+          （pending，带 ``background_task_id`` 注册键）。
+        - 运行段：``await caller._run_subagent(..., enqueue_result=True)``
+          后台驱动——**完成/失败投递由它内部经 SUBAGENT 消息完成**
+          （TurnResult 四态契约，``agent.py`` docstring 4090-4110：失败 →
+          ``subagent_status="error"``），故无需末 yield，``_drive_asyncgen``
+          的 ``except Exception`` 只是兜底（不应重复投递错误块）。
+        - 取消：任务被 ``cancel_background_task`` / destroy 取消时，
+          ``CancelledError`` 注入运行段 await 点，``_drive_asyncgen`` 投递
+          「已取消」后裸 raise。
+
+        .. rubric:: 调用关系（审计）
+
+        - 调用：``flowing.agent.Agent._prepare_subagent``（首 yield 前）、
+          ``flowing.agent.Agent._run_subagent``（运行段）
+        - 被调：:meth:`execute`（``asynchronized=True`` 分支，返回本方法
+          的 async generator 对象）
+        """
+        child, invocation, execution = await caller._prepare_subagent(
+            agent_type, prompt=prompt or None, name=name or None,
+            resume=resume or None, kwargs=kwargs)
+        yield {"invoked": name or resume, "status": "started"}   # 收据（pending）
+        await caller._run_subagent(
+            child, invocation, execution, enqueue_result=True)   # 运行段（后台驱动）
 
 
 # TOOL_NAMING（Tool 资源的路径形态身份名推断规则表）的单一权威定义在

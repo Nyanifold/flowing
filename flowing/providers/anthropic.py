@@ -263,7 +263,9 @@ class AnthropicMessagesProvider(Provider):
         """单条 TOOL 消息 → 一个 ``tool_result`` 块（归并段与孤立形态共用）。
 
         消息级 ``tool_call_id`` → ``tool_use_id``；``tool_status="error"``
-        → ``is_error: true``；空 content 兜底（pending 收据等）。
+        → ``is_error: true``；空 content 兜底（返回 Task 路径的 pending
+        收据等；async gen 路径的 pending 收据带内容——首 yield + 「后台
+        任务 ID」块，B10——按正常 tool_result 映射）。
         """
         return {
             "type": "tool_result",

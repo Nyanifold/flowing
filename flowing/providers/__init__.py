@@ -143,9 +143,11 @@ TOOL/EVENT 消息的 ``content`` 是纯内容块（工具结果摊平设计，�
   OpenAI Chat Completions 的 tool 消息为文本-only → **媒体转移**：
   媒体块攒入紧随 tool 消息的合成 user 消息（固定措辞提示）；Gemini
   ``functionResponse`` 后跟媒体 part。
-- **空 content 兜底**：``pending`` 收据等 ``content=[]`` 的 TOOL
-  消息，其 API 层兜底形态（各家对空 tool_result 的接受度不同）属
-  各 adapter 职责。
+- **空 content 兜底**：返回 Task 路径的 ``pending`` 收据（``output=None``
+  → ``content=[]``）等空 TOOL 消息，其 API 层兜底形态（各家对空
+  tool_result 的接受度不同）属各 adapter 职责；async gen 路径的
+  pending 收据带内容（首 yield + 「后台任务 ID」块，B10），按正常
+  tool_result 映射（B1/B10 承诺的 LLM 可见链路）。
 - **白名单组装**（D21）：adapter 从 ``llm_definition()`` 产物只取
   已知字段（name/description/parameters 等）构造 API schema；产物
   可含非直发字段（``output_schema`` 随声明携带），白名单取用下

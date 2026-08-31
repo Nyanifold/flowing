@@ -1,43 +1,45 @@
 """承载 ``RunWorkflowTool`` 与 ``WorkflowPlugin``——Workflow 的 LLM 触发入口工具与扩展插件类。
 """
 
-import asyncio
-import logging
 from typing import Any, ClassVar
 
 from flowing.agent import Agent
 from flowing.plugins import Plugin
 from flowing.runtime import Runtime
-from flowing.tool import Tool, ToolDefinition
+from flowing.tool import ScriptTool, ToolDefinition
 
 from .loader import resolve_workflow
 from .workflow import Workflow
 
-_logger = logging.getLogger(__name__)
 
-
-class RunWorkflowTool(Tool):
-    """内置 ``run-workflow`` 工具——Workflow 的 LLM 触发入口（**必异步**）。
+class RunWorkflowTool(ScriptTool):
+    """内置 ``run-workflow`` 工具——Workflow 的 LLM 触发入口（**async gen 形态**）。
 
     .. rubric:: 功能介绍
 
     LLM 传 workflow 文件路径 + 参数（可含自然语言 prompt），本工具按
     路径解析 workflow 定义、实例化、**后台任务启动**并立即返回收据。由
     :class:`WorkflowPlugin` 在 ``install()`` 时注册进全局工具注册表。
+    基类为 `ScriptTool`（B12 裁决：进入「应用代码应使用 ScriptTool」的
+    正式通道）；类级 ``definition`` 显式声明（保留 ``strict=False``——
+    自动生成路径不含 strict 字段），``execute`` 为 async generator
+    形态（B1：首 yield 收据 → 后台运行 → 末 yield 最终呈现）。
 
     .. rubric:: 设计动机
 
     **异步防死锁**（模块 docstring 专属角度六）：workflow 可反向
     ``caller.query()`` 等 caller 的回合产物，而 caller 工作循环串行——
-    同步等待 workflow 完成即死锁。因此本工具**永远** ``asyncio.create_task``
-    后台启动、立即返回；同步执行只允许「workflow 不反向调用 caller」的
-    代码直调场景（调用方自行保证，框架不预设检查）。
+    同步等待 workflow 完成即死锁。async gen 形态下首 yield 之后的运行段
+    由框架后台驱动（``Tool._drive_asyncgen``），收据立即返回、运行段不
+    阻塞工具调用栈——防死锁语义不变，且比手写 ``create_task`` 多获得：
+    完成可见（末 yield EVENT）、失败可见（EVENT 错误块 + 日志，替代仅
+    日志的静默失败）、强引用与取消收敛到 Agent 注册表（B9）。
 
     .. rubric:: 使用示例
 
     .. code-block:: python
 
-        class RunWorkflowTool(Tool):
+        class RunWorkflowTool(ScriptTool):
             definition = ToolDefinition(
                 name="run-workflow",
                 description="启动一个编排工作流。参数 path 为 workflow 定义文件路径（@/ 项目根相对）。",
@@ -45,28 +47,29 @@ class RunWorkflowTool(Tool):
                 strict=False,   # 其余参数透传给 Workflow.run()
             )
 
-            async def execute(self, *, path: str, caller: Agent, **args: Any) -> dict:
-                wf_class = resolve_workflow(path)
+            async def execute(self, *, path: str, caller: Agent, **args: Any):
+                wf_class = resolve_workflow(path)      # 轻量准备（首 yield 前）
                 instance = wf_class(caller, caller.runtime)
-                asyncio.create_task(instance.run(**args))   # ★ 后台启动，绝不 await
-                return {"status": "started", "workflow": path}
+                yield {"status": "started", "workflow": path}   # ① 收据（pending，TOOL 消息带 path）
+                await instance.run(**args)             # 长任务（后台，框架驱动）
+                yield {"status": "done", "workflow": path}      # ② 最终呈现（EVENT）
 
     .. rubric:: 行为规约
 
-    - 期待行为：``execute`` 从 ``create_task`` 返回后立即以收据返回
-      （框架包装为 ``status="completed"`` 的 ToolResult）；收据保证键
-      ``status="started"`` 与 ``workflow=<路径>``，实现可附加任务标识
-      等观测字段。workflow 结果的**异步交付**由编排代码自行完成：
-      ``caller.enqueue_message(...)``（fire-and-forget，结果作为独立
-      消息进入 caller 队列，后续逻辑 Turn 被消费）或经订阅观察；框架
-      初版不提供统一的结果回传通道。
-    - 非行为：绝不 ``await instance.run(...)``；不持久化运行状态；不做
-      并发数/节点数上限检查（初版不预设）。
-    - 边缘情况：``path`` 解析失败（``resolve_workflow`` 抛错）→ 异常
-      由 ``Tool.__call__`` 包装为 ``status="error"`` 的 LLM 可见结果；
-      后台任务自身异常（``run()`` 抛错）不向本工具传播——任务已脱离，
-      失败经任务自身路径暴露（初版仅约定「不静默吞掉：异常记录在任务
-      上，可经日志观察」）。
+    - 期待行为：``execute`` 以 async generator 形态运行——**首 yield 前**
+      完成轻量准备（``resolve_workflow`` + 实例化），首 yield 产出收据
+      （框架包装为 ``status="pending"`` 的 ToolResult，带 ``background_task_id``
+      注册键）；``instance.run()`` 在后台由框架驱动，完成时末 yield 产出
+      EVENT 消息（LLM 可见）。收据保证键 ``status="started"`` 与
+      ``workflow=<路径>``。workflow 自身的**数据结果**仍由编排代码自投
+      （``caller.enqueue_message(...)``——框架完成消息与编排结果消息两条
+      并存，角色不同：状态 vs 数据）。
+    - 非行为：首 yield 之后不接触 ``asyncio.Task`` / ``create_task``
+      （框架后台驱动）；不持久化运行状态；不做并发数/节点数上限检查。
+    - 边缘情况：``path`` 解析失败（首 yield 前异常）→ ``Tool.__call__``
+      的 except 顺序分派——``Intercepted`` → ``blocked``、其余 →
+      ``status="error"`` 的 LLM 可见结果；后台运行段异常（``run()`` 抛错）
+      → 框架投递 EVENT 错误块 + 诊断日志（双通道，LLM 可见）。
     - 前置条件：``caller`` 非 None（LLM 入口总有 caller）；解析结果须
       为 :class:`Workflow` 子类（函数形态经编译后也满足，见
       :func:`resolve_workflow`）。
@@ -76,9 +79,9 @@ class RunWorkflowTool(Tool):
     - 前置：``@/verify_fix.py`` 定义 ``VerifyFixWorkflow``；caller
       绑定 ``run-workflow`` 条目。操作：LLM 调用 ``run-workflow(
       path="@/verify_fix.py", max_rounds=2)``。期望：``execute`` 在
-      ``run()`` 完成**之前**返回收据 ``{"status": "started",
-      "workflow": "@/verify_fix.py"}``；``VerifyFixWorkflow`` 实例的
-      ``caller`` 是该 Agent。
+      ``run()`` 完成**之前**返回 pending 收据（``{"status": "started",
+      "workflow": "@/verify_fix.py"}`` + 后台任务 ID）；``VerifyFixWorkflow``
+      实例的 ``caller`` 是该 Agent。
     - 前置：``@/quick.py`` 只含无 self 的顶层 ``async def run(...)``。
       操作：LLM 调用 ``run-workflow(path="@/quick.py")``。期望：
       函数形态编译为 ``Workflow`` 子类后正常后台启动（裸名
@@ -91,7 +94,8 @@ class RunWorkflowTool(Tool):
     .. rubric:: 调用关系（审计）
 
     - 调用：``execute()`` 内 ``resolve_workflow(path)`` → 实例化 →
-      ``asyncio.create_task(instance.run(**args))``（时机：每次工具调用）
+      ``await instance.run(**args)``（时机：每次工具调用；运行段由
+      ``Tool._drive_asyncgen`` 后台驱动，不阻塞工具调用栈）
     - 被调：``flowing.tool.Tool.__call__()`` 调度链包装 ``execute()``
       （时机：每次 LLM 经 ``run-workflow`` 的 tool_call 派发）
     - 实例化方：``flowing.plugins.workflow.WorkflowPlugin.install()``
@@ -101,7 +105,8 @@ class RunWorkflowTool(Tool):
 
         - :class:`Workflow` —— 被拉起的对象。
         - :func:`resolve_workflow` —— 名称解析。
-        - :class:`flowing.tool.Tool` —— ``execute()`` 签名与返回值包装。
+        - :class:`flowing.tool.ScriptTool` —— 基类（async gen 形态见其
+          类 docstring「async generator 形态」段落）。
     """
 
     definition: ToolDefinition = ToolDefinition(
@@ -118,19 +123,21 @@ class RunWorkflowTool(Tool):
     同构的「薄入口 + 内层校验」形态）。
     """
 
-    async def execute(self, *, path: str, caller: Agent, **args: Any) -> dict[str, Any]:
-        """后台启动指定 workflow 并立即返回收据（语义见类 docstring）。
+    async def execute(self, *, path: str, caller: Agent, **args: Any):
+        """async generator 形态后台启动指定 workflow（B1/B12，语义见类 docstring）。
 
         .. rubric:: 行为规约
 
-        - 期待行为：``resolve_workflow(path)`` → 实例化 →
-          ``asyncio.create_task(instance.run(**args))`` → 返回
-          ``{"status": "started", "workflow": path}``；``path`` 不从
-          ``args`` 透传给 ``run()``。
-        - ``path`` 语义同 :func:`resolve_workflow`（``@/`` 根相对，根外
-          保留绝对路径）。M-101 裁决后无 ``workflows/`` 约定目录：LLM
-          给出的是**路径**而非裸名；「LLM 可触达哪些 workflow」的边界由
-          应用层经 ``before_tool_call`` 钩子管控，框架不预设白名单。
+        - 首 yield 前（轻量准备）：``resolve_workflow(path)`` → 实例化——
+          异常经 ``Tool.__call__`` 的 except 顺序分派（``Intercepted`` →
+          ``blocked``；其余 → ``status="error"``，LLM 可见）。
+        - ① 首 yield：收据 ``{"status": "started", "workflow": path}``
+          （框架包装为 pending ToolResult + ``background_task_id`` 注册键）。
+        - 后台运行段：``await instance.run(**args)``（框架后台驱动；
+          ``path`` 不从 ``args`` 透传给 ``run()``）。
+        - ② 末 yield：最终呈现 ``{"status": "done", "workflow": path}``
+          （EVENT，LLM 可见）；运行段异常由框架投递 EVENT 错误块 + 日志
+          （双通道，替代旧版仅日志的静默失败）。
         - 非行为：不等待运行完成；不把 ``run()`` 的返回值写进收据。
 
         :raises flowing.errors.FlowingError: —— ``resolve_workflow``
@@ -140,33 +147,19 @@ class RunWorkflowTool(Tool):
 
         - 调用：``flowing.plugins.workflow.resolve_workflow(path)``；
           ``wf_class(caller, caller.runtime)``（即 ``Workflow.__init__``）；
-          ``asyncio.create_task(instance.run(**args))``——时机均为每次
-          工具调用，且绝不 await ``run()``
+          ``await instance.run(**args)``——时机均为每次工具调用，运行段由
+          ``Tool._drive_asyncgen`` 后台驱动（不阻塞工具调用栈）
         - 被调：``flowing.tool.Tool.__call__()``（时机：每次 LLM 经
-          ``run-workflow`` 的 tool_call；返回值由 ``__call__`` 包装为
-          ``status="completed"`` 的 ToolResult）
+          ``run-workflow`` 的 tool_call；async gen 形态——首 yield 收据 +
+          后台驱动，见类 docstring）
 
         .. seealso:: :func:`resolve_workflow`、:meth:`Workflow.run`
         """
-        wf_class: type[Workflow] = resolve_workflow(path)
+        wf_class: type[Workflow] = resolve_workflow(path)   # 轻量准备（首 yield 前——出错 → error/blocked 结果）
         instance = wf_class(caller, caller.runtime)
-        task = asyncio.create_task(instance.run(**args))  # 后台启动，绝不 await（异步防死锁，见类 docstring）
-        # fire-and-forget 任务的强引用与异常观察：任务脱离后不向本工具传播，
-        # 但不静默吞掉——异常记日志（任务对象本身也携带 exception 可查）
-        tasks = self.__dict__.setdefault("_run_tasks", set())
-
-        def _finalize(done: asyncio.Task) -> None:
-            tasks.discard(done)
-            if done.cancelled():
-                return
-            exc = done.exception()
-            if exc is not None:
-                _logger.error("workflow 后台运行失败（%s）", path, exc_info=exc)
-
-        tasks.add(task)
-        task.add_done_callback(_finalize)
-        receipt = {"status": "started", "workflow": path}  # 立即返回的收据；run() 返回值不进收据
-        return receipt
+        yield {"status": "started", "workflow": path}       # ① 收据（pending，TOOL 消息带 path）
+        await instance.run(**args)                          # 长任务（后台，由 _drive_asyncgen 驱动；path 不透传）
+        yield {"status": "done", "workflow": path}          # ② 最终呈现（EVENT）
 
 
 class WorkflowPlugin(Plugin):
