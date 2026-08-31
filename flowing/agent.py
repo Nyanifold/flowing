@@ -332,212 +332,135 @@ WatchHandler = Callable[[Any, Any], None]
 
 @dataclass
 class TurnContext:
-    """逻辑 Turn 的执行期临时对象——所有 turn 族钩子的 value。
+    """逻辑 Turn 的执行期临时对象——``before_turn`` / ``before_turn_abort`` /
+    ``after_turn`` 三个 turn 族钩子点的 value 类型。
 
     .. rubric:: 功能介绍
 
-    逻辑 Turn（消费一条（或多条，若覆写 ``_dequeue``）消息 →
-    ``ProviderResponse.finish=True`` 的执行过程）在执行期间的唯一载体。
-    turn 开始时由 ``_run_turn`` 创建，收尾后丢弃；同时是
-    :attr:`TurnResult.turn` 的类型与 ``Agent.current_turn`` 的类型。
-
-    .. rubric:: 设计动机
-
-    取代旧物理 Turn 结构：消息级树下「本 turn 产生了哪些消息」只是对树中
-    消息节点的**引用集**（``message_ids``），不再需要一个拥有消息副本的
-    物理容器。Turn 降级为纯执行概念后，需要一个对象承载：① turn 族钩子的
-    value；② 回合物质存活性标记（``current_turn``；快照投影据此判定）；
-    ③ 出队后挂树前的待发批次
-    （``pending_messages``，M-29 最终裁决：原 ``inject`` 临时注入区删除，
-    临时内容改由 ``before_turn`` 向待发批次**附加式**注入，随回合挂树
-    持久化——一切内容走持久化路径）；④ finish 工具的结构化交卷载荷暂存
-    （``finish_output``——置位即请求本回合自然结束，turn loop 工具段
-    照常执行完后视同 ``finish=True`` 走统一收尾；载荷经此传递到收尾段
-    写入 ``last_result``）。
+    逻辑 Turn 是「消费一条（或按覆写的出队策略多条）消息、直到 Provider
+    响应 ``finish=True`` 才结束」的执行过程。本对象由回合执行体在 Turn
+    开始时创建、收尾后丢弃，是 :attr:`TurnResult.turn` 与
+    ``Agent.current_turn`` 的类型。它只承载回合执行期间的临时信息：不进入
+    消息树、不写任何持久化文件、进程崩溃后不恢复（恢复只重建消息级树与
+    状态袋，见本模块 docstring）。
 
     .. rubric:: 使用示例
 
+    ``before_turn`` 钩子：把一条消息附加进本回合的待挂树批次（排在触发
+    消息之后，随批次一起挂树并持久化）：
+
     .. code-block:: python
 
-        # before_turn 钩子：安全扫描（命中即硬阻断本 turn，
-        # 待发消息随阻断丢弃、不进树）
-        async def _scan(agent, turn: TurnContext) -> TurnContext:
-            for msg in turn.pending_messages:
-                if msg.kind == MessageKind.USER and (await scan(msg)).dangerous:
-                    raise Intercepted("内容违规")
-            return turn
-
-        # before_turn 钩子：附加式注入 reminder（排在触发消息之后，
-        # 随批次挂树持久化、崩溃可恢复；擦除用 chain.remove）。
-        # 通用版本（含 clean / 间隔参数）见 composables.use_system_reminder
-        async def _reminder(agent, turn: TurnContext) -> TurnContext:
+        async def _reminder(agent, turn):
             turn.pending_messages.append(Message(
                 kind=MessageKind.EVENT, source="reminder",
-                content=[TextBlock(text=f"当前时间：{datetime.now()}")],
-            ))
+                content=[TextBlock(text="请先核对金额")]))
             return turn
 
-    .. rubric:: 行为规约
+        agent.hooks.before_turn(_reminder)
 
-    期待行为：
+    .. rubric:: 行为要点
 
-    - turn 开始（``_run_turn`` 入口）创建；``message_ids`` 初始为空，
-      每条经 ``_append_message`` 挂树的消息把 id 追加进来（含触发本 turn
-      的首条消息——它在 ``before_turn`` 之后的挂树批次中）。
-    - ``pending_messages``：出队后、挂树前的待发批次（含触发消息）。
-      **仅 ``before_turn`` 期间可读写**（追加 = 附加式注入，排在触发消息
-      之后；清空 = 空 turn）；挂树批次完成后清空，此后读写无意义。
-      ``before_turn`` 被 ``Intercepted`` 阻断时批次整体丢弃（不落盘、
-      不留痕，显式丢失语义）。
-    - ``aborted`` 由幂等的 abort 标记路径置位（cancel / 超时 / 父级联 /
-      Composable 直接置位均走同一路径），``before_turn_abort`` 只 dispatch
-      一次；``after_turn`` handler 经 ``aborted`` 区分正常结束与取消。
-    - 无物理 turn 标识字段；需要逻辑标识时用 ``message_ids[0]``（turn
-      首条消息 id）。
-
-    非行为：
-
-    - 不是持久化单位：本身及其任何字段都不写入 tree.jsonl / state.jsonl。
-    - 不做消息去重、不维护消息对象副本——只有 id 引用。
-
-    边缘情况：
-
-    - 空 turn（启动即被 abort）：
-      ``message_ids`` 可能只含触发消息或为空；空 turn 不产生新树节点，
-      ``current_head_id`` 不变。
-    - 崩溃后``TurnContext`` 随进程消失，恢复流程**不重建**它（恢复三条
-      规则只处理消息级树）。
-
-    .. rubric:: 测试案例
-
-    - 前置：Agent 空闲。操作：``await agent.query("你好")`` → 期望：
-      ``TurnResult.turn`` 为 ``TurnContext``，``message_ids`` 依序含 USER
-      消息与 PROVIDER 消息的 id，``aborted is False``。
-    - 前置：turn 进行中。操作：``agent.abort_turn()`` → 期望：本 turn 的
-      ``TurnContext.aborted is True``，``before_turn_abort`` 恰好触发一次；
-      ``after_turn`` handler 读到 ``turn.aborted is True``。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``flowing.agent.Agent._run_turn()``（时机：逻辑 turn 开始创建、
-      收尾后丢弃）；快照投影见 ``flowing.snapshot.TurnContextInfo``
-      （时机：每次 ``Agent.snapshot()``）
-    - 实例化方：``flowing.agent.Agent._run_turn``（每次逻辑 turn）
+    - ``message_ids`` 引用消息级树中的节点：按产生顺序追加 id，不含消息
+      对象副本；``message_ids[0]`` 是本 Turn 首条消息的 id——本对象没有
+      独立标识字段，需要逻辑标识时用它。
+    - ``pending_messages`` 只在 ``before_turn`` 钩子执行期间可读写：
+      追加即附加式注入（排在触发消息之后），清空即空 Turn；批次挂树
+      完成后清空，此后读写没有意义。``before_turn`` 被 ``Intercepted``
+      阻断时整个批次丢弃——不落盘、不留痕（显式丢失语义）。
+    - ``aborted`` 由 abort 标记路径置位（``abort_turn()`` / 取消 / 父级联
+      / 钩子内直接置位走同一路径）；置位幂等，``before_turn_abort`` 随之
+      每回合至多触发一次。``after_turn`` 钩子读 ``aborted`` 区分正常结束
+      与取消。
+    - ``usages`` 是本回合各次成功 ``provider_gen`` 上报用量的纯内存累加
+      器（追加的是消息上附着的同一个 ``Usage`` 对象引用，不是第二份
+      数据；用量唯一权威是 ``Message.usage``）；收尾时聚合进
+      ``TurnResult.token_usage`` 后随本对象丢弃。副线调用
+      （``side_query``）不经回合循环，其用量不记入本字段。
+    - ``finish_output`` 是 finish 工具的结构化交卷载荷：置位即请求本
+      回合自然结束（工具段照常执行完，随后视同 ``finish=True`` 走统一
+      收尾），载荷由收尾段写入 ``Agent.last_result``。瞬态字段，随回合
+      丢弃、不落盘。
+    - 边缘情况：空 Turn（启动即被 abort）不产生新树节点，
+      ``message_ids`` 可能只含触发消息或为空，``current_head_id`` 不变。
 
     .. seealso::
 
-        - :class:`TurnResult` —— ``turn`` 字段类型即本类。
-        - :meth:`Agent._run_turn` —— 创建与收尾本对象的位置。
-        - :class:`flowing.message.MessageChain` —— 持久化手术入口
-          （M-29 后，回合中追加内容的唯一通道）。
+        - :class:`TurnResult` —— ``turn`` 字段即本类，回合产物的载体。
+        - :meth:`Agent.query` —— 等待一个逻辑 Turn 完成的入口。
     """
 
     started_at: datetime
-    """turn 开始时间戳（监控 / 日志 / 耗时统计用）。
+    """本 Turn 开始时间戳（监控 / 日志 / 耗时统计用）。
     """
     finished_at: datetime | None = None
-    """turn 收尾完成时间戳；执行期间为 ``None``，``finish`` 收尾时由
-    ``_run_turn`` 落位。快照投影（``TurnContextInfo``）只在执行期间可见，
-    故其中该字段恒为 ``None``；完整取值见 ``TurnResult.turn.finished_at``。
+    """本 Turn 收尾完成的时间戳；执行期间为 ``None``，由回合收尾时落位。
+    快照投影只在执行期间可见，故其中该字段恒为 ``None``；完整取值见
+    ``TurnResult.turn.finished_at``。
     """
     message_ids: list[str] = field(default_factory=list)
-    """本 turn 已挂树消息的 id（**引用**消息级树节点，按产生顺序追加）。
-    逻辑标识约定：``message_ids[0]`` 即本 turn 的首条消息 id。
+    """本 Turn 已挂树消息的 id 列表（引用消息级树节点，按产生顺序追加）。
+    ``message_ids[0]`` 是本 Turn 首条消息的 id。
     """
     aborted: bool = False
-    """abort 标记；幂等路径只置位一次，``before_turn_abort`` 随之只触发一次。
+    """abort 标记：置位幂等，``before_turn_abort`` 随之每回合至多触发一次。
     """
     pending_messages: list[Message] = field(default_factory=list)
-    """出队后挂树前的待发批次（含触发消息）；仅 ``before_turn`` 期间可读写，
-    挂树批次完成后清空。被 ``Intercepted`` 阻断时整体丢弃（不落盘、不留痕）。
+    """出队后、挂树前的待发批次（含触发本 Turn 的消息）；仅 ``before_turn``
+    钩子执行期间可读写，批次挂树完成后清空。被 ``Intercepted`` 阻断时
+    整体丢弃、不落盘。
     """
     usages: list[Usage] = field(default_factory=list)
-    """本 turn 各次成功 provider_gen 上报的用量（``_run_turn`` 内层循环在
-    ``response.message is not None and response.message.usage is not None``
-    时追加——追加的是消息上附着的**同一 Usage 对象的引用**，不是第二份
-    事实；usage 的唯一权威是 ``Message.usage``）。纯内存运行期累加器——
-    不落盘（与本类「不是持久化单位」一致），收尾时由 ``build_turn_result``
-    聚合进 ``TurnResult.token_usage`` 后随本对象丢弃。副线调用
-    （``side_query``）不经 ``_run_turn``，其用量不记入本字段（S-13 裁决）。
+    """本 Turn 各次成功 ``provider_gen`` 上报的用量（追加的是消息上附着的
+    同一个 ``Usage`` 对象引用，不是第二份数据）；纯内存累加器，不落盘，
+    收尾时由 ``build_turn_result`` 聚合进 ``TurnResult.token_usage``。
+    副线调用（``side_query``）不经过本字段。
     """
     finish_output: dict[str, Any] | None = None
-    """finish 工具的结构化交卷载荷——``FinishTool.execute`` 置位（**置位即
-    请求本回合自然结束**：turn loop 工具段照常执行完，随后视同
-    ``finish=True`` 走统一收尾段；载荷由收尾段写入 ``last_result``）。
-    瞬态字段：随回合丢弃、不落盘（与本类「不是持久化单位」一致）——从
-    子 Agent 角度它就是一次性传递介质。配对 TOOL 消息正常挂树（无特例），
-    本回合的 ``turn_end=True`` 落在该消息上（置位转移检测，见
-    ``_run_turn`` 工具调用循环）。任何工具置位本字段语义相同（不限
-    finish）。
+    """finish 工具的结构化交卷载荷：置位即请求本回合自然结束（工具段照常
+    执行完，随后视同 ``finish=True`` 走统一收尾），载荷由收尾段写入
+    ``last_result``。瞬态字段，随回合丢弃、不落盘。
     """
 
 
 @dataclass
 class TurnResult:
-    """逻辑 Turn 的产物——``query()`` 等待语义的 resolve 值。
+    """逻辑 Turn 的产物——``query()`` 等待语义的返回值。
 
     .. rubric:: 功能介绍
 
-    「Agent 下一个逻辑 turn 边界返回的东西」。由 :func:`build_turn_result`
-    在回合收尾（``after_turn`` 之后）组装；同一回合
-    内所有消息的等待者（``_pending_turns`` 出队绑定）**共享同一实例**。
-
-    .. rubric:: 设计动机
-
-    等待语义与 fire-and-forget 分离：``query()`` 需要同步请求-响应的产物
-    （Workflow 编排、进程内 UI 适配器两个驱动场景），``enqueue_message()``
-    不需要。``TurnResult`` 是该产物的统一结构，边界状态全 resolve——
-    调用方永不挂起。
+    由 :func:`build_turn_result` 在回合收尾（``after_turn`` 之后）组装；
+    同一回合内所有消息的等待者共享同一个实例（出队合并时两条消息的
+    等待者拿到同一对象）。四种结局（正常完成 / 被 ``Intercepted`` 阻断 /
+    取消 / 异常终止）都会产生本对象并 resolve 给等待者，调用方永不挂起。
 
     .. rubric:: 使用示例
 
     .. code-block:: python
 
-        result = await agent.query("帮我查订单 ORD-12345")
+        result = await agent.query("帮我查订单 4521")
         if result.status == "completed":
             print(result.final_text)
-        print(result.token_usage)   # Usage | None
+            print(result.token_usage)   # Usage | None
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
-    - ``status`` 四值：``"completed"``（``finish=True`` 自然结束）/
-      ``"blocked"``（被 ``Intercepted`` 阻断）/ ``"cancelled"``（cancel /
-      destroy / ``cancel_queued`` 联动）/ ``"error"``（未捕获异常终止）。
-      **四种状态都 resolve**（回合确实结束了），调用方不挂起。
-    - ``final_text``：本 turn 最后一条 PROVIDER 消息的文本拼接；无
-      PROVIDER 消息（如 abort 于首次 provider_gen 前）时为空字符串。
-    - ``token_usage``：本 turn 各次成功 ``provider_gen`` 上报用量的聚合
-      （``TurnContext.usages`` 累加器逐字段求和——累加器持有消息上
-      同一 ``Usage`` 对象的引用，非第二份事实；``raw`` 不聚合；字段名
-      是 ``token_usage``，不是 ``usage``）。为 ``None`` 当且仅当无任何
-      成功 provider_gen **上报**用量——区分「provider 未上报」与「真用了 0」；
-      部分 provider_gen 上报时只就上报者求和（S-13 裁决）。边缘：abort 于
-      消息成形前的调用（``message=None``）其用量无载体，不进入聚合
-      （见 ``flowing.providers.ProviderResponse`` 类 docstring 的边缘代价
-      声明）。
-    - ``finish_reason``：**信息字段**（原始停止原因，如 ``"end_turn"`` /
+    - ``status`` 四值：``"completed"``（Provider 响应 ``finish=True``
+      自然结束）/ ``"blocked"``（被 ``Intercepted`` 阻断）/ ``"cancelled"``
+      （取消 / 销毁 / ``cancel_queued`` 联动）/ ``"error"``（未捕获异常
+      终止）。四种结局都会 resolve 给等待者。
+    - ``final_text`` 是本 Turn 最后一条 PROVIDER 消息中全部
+      ``TextBlock`` 的文本拼接；本 Turn 没有 PROVIDER 消息（如 abort 于
+      首次 ``provider_gen`` 之前）时为空字符串。
+    - ``token_usage`` 是本 Turn 各次成功 ``provider_gen`` 上报用量的
+      聚合（对 ``TurnContext.usages`` 逐字段求和；``raw`` 不聚合）；为
+      ``None`` 当且仅当没有任何成功调用上报用量——区分「provider 未上报」
+      与「真用了 0」。部分调用上报时只就上报者求和。
+    - ``finish_reason`` 是信息字段（原始停止原因，如 ``"end_turn"`` /
       ``"cancelled"`` / ``"intercepted"``），不参与控制流；Provider 侧的
-      结束判定字段是 ``ProviderResponse.finish: bool``，二者勿混。
-    - 非行为：``TurnResult`` 不是持久化结构的投影——``turn`` 是执行期
-      临时对象（:class:`TurnContext`），读取其 ``message_ids`` 可回溯树中
-      消息，但本对象自身不落盘。
-
-    .. rubric:: 测试案例
-
-    - 前置：drain 覆写下两条消息合并为一个回合。操作：两个
-      ``query()`` 并发等待 → 期望：两个 future resolve 到**同一**
-      ``TurnResult`` 实例。
-    - 前置：``before_turn`` handler ``raise Intercepted`` → 操作：
-      ``await agent.query(...)`` → 期望：返回 ``status="blocked"``
-      的 ``TurnResult``，不抛 ``Intercepted``。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``flowing.agent.Agent.query()`` 的等待语义 resolve 值
-      （时机：回合收尾，四种结局均 resolve）；``Agent._pending_turns``
-      的 Future 结果类型
-    - 实例化方：``flowing.agent.build_turn_result``（时机：``_run_turn``
-      的 finally 收尾，``after_turn`` 之后）
+      结束判定字段是 ``ProviderResponse.finish``，二者不要混用。
+    - 本对象自身不落盘：``turn`` 是执行期临时对象，读它的 ``message_ids``
+      可回溯树中消息，但本对象随回合结束即丢弃。
 
     .. seealso::
 
@@ -547,20 +470,21 @@ class TurnResult:
     """
 
     turn: TurnContext
-    """产生本结果的逻辑 Turn 的执行期临时对象（文档 14 后类型为
-    ``TurnContext``）；其 ``message_ids`` 引用消息级树中的节点。
+    """产生本结果的逻辑 Turn 的执行期临时对象；其 ``message_ids`` 引用
+    消息级树中的节点。
     """
     final_text: str
-    """最终回复文本；无 PROVIDER 消息时为空字符串。
+    """最终回复文本；本 Turn 无 PROVIDER 消息时为空字符串。
     """
     status: Literal["completed", "blocked", "error", "cancelled"]
-    """回合结局；四值均会 resolve 给等待者。
+    """回合结局；四种结局均会 resolve 给等待者。
     """
     token_usage: Usage | None
-    """本 turn 聚合 token 用量；无成功 provider_gen 时为 ``None``。
+    """本 Turn 聚合 token 用量；无任何成功 ``provider_gen`` 上报用量时为
+    ``None``。
     """
     finish_reason: str
-    """信息性停止原因（不占控制流字段）。
+    """信息性停止原因（不参与控制流）。
     """
 
 
