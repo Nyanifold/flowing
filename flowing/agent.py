@@ -2,7 +2,7 @@
 
 .. rubric:: 功能介绍
 
-框架核心层。本模块承载 Flowing 的中心对象 :class:`Agent`（智能体基类，
+框架核心层。本模块承载 Flowing 的中心对象 :class:`Agent` （智能体基类，
 ``.fya`` 声明式与手写 Python 子类生成完全相同的类模型），以及围绕它的
 回合载体与结果结构：
 
@@ -32,7 +32,7 @@
 
 .. rubric:: 全局约定（跨符号、影响使用的约定）
 
-**async 方法约定**：一切会在内部 dispatch 钩子的公开方法都是 async
+async 方法约定：一切会在内部 dispatch 钩子的公开方法都是 async
 方法，调用时用 ``await``——``query`` / ``message`` / ``steer`` /
 ``enqueue_message`` / ``enqueue_messages`` / ``fork`` / ``cancel`` /
 ``stop`` / ``destroy`` / ``create_subagent`` / ``invoke_subagent`` /
@@ -41,49 +41,49 @@
 ``cancel_queued`` / ``provide`` / ``inject`` / ``watch`` / ``parsable`` /
 ``snapshot`` / ``register_state`` / ``add_tool`` 等。
 
-**实例化与生命周期**：Agent 实例不直接构造——唯一创建路径是
+实例化与生命周期：Agent 实例不直接构造——唯一创建路径是
 :meth:`flowing.runtime.Runtime.create_agent`，恢复路径是
-:meth:`flowing.runtime.Runtime.recover_agent`（``create_subagent`` /
+:meth:`flowing.runtime.Runtime.recover_agent` （``create_subagent`` /
 ``Workflow.create_agent`` / ``Runtime.mount`` 全部委托创建管线）。创建与
 恢复管线各自在一个新实例上执行 ``setup()``；实例诞生（``after_create`` /
 ``after_recover`` 完成）即启动常驻工作循环 Task，``destroy()`` 时取消。
 ``destroy()`` 递归销毁子树、丢弃实例，但 session 记录（tree.jsonl /
 state.jsonl）与池 key 保留——「有 key 无 value」可现场恢复。
 
-**消息级树**：树节点是消息（``Message.id`` + ``parent_id`` 链，
+消息级树：树节点是消息（``Message.id`` + ``parent_id`` 链，
 ``current_head_id`` 指向消息 id，``None`` 表示空树）。``fork`` 只切换
 视角（游标）、从不创建节点；树手术（插入 / 删除 / 更新 / 重挂）经
-``Agent.chain``（:class:`flowing.message.MessageChain`）。
+``Agent.chain`` （:class:`flowing.message.MessageChain`）。
 
-**Turn 只是逻辑执行阶段**：``TurnContext`` 不落盘、不进树、进程崩溃后
+Turn 只是逻辑执行阶段：``TurnContext`` 不落盘、不进树、进程崩溃后
 不恢复；恢复 = 重放 ``tree.jsonl`` / ``state.jsonl`` 日志现场重建。
 
-**持久化布局**：每 Agent 一个 session 目录（``agent_id`` 命名，父子
-平级），内含 ``tree.jsonl``（消息树）/ ``core.jsonl``（框架私有核心
-状态）/ ``state.jsonl``（默认状态袋）与 ``meta.json``（身份四键，
+持久化布局：每 Agent 一个 session 目录（``agent_id`` 命名，父子
+平级），内含 ``tree.jsonl`` （消息树）/ ``core.jsonl`` （框架私有核心
+状态）/ ``state.jsonl`` （默认状态袋）与 ``meta.json`` （身份四键，
 Runtime 属主）。物理读写由 :class:`flowing.persistence.FileRecordStore`
 执行——write-behind：提交同步排队、drain 任务串行落盘，调用返回不代表
 已写盘，正常关闭（``destroy()`` 排空后端）会写完未落盘内容。状态键声明
-经 ``agent.state.register(key, default)``（缺省即写、幂等）；扩展状态
+经 ``agent.state.register(key, default)`` （缺省即写、幂等）；扩展状态
 空间经 ``register_state(name)`` 开启（命名袋，独立文件）。
 
-**provide-inject 链**：``provide(key, value)`` 在本节点注册值；``inject``
+provide-inject 链：``provide(key, value)`` 在本节点注册值；``inject``
 从当前节点沿父链逐级向根查找（先近后远，终点是 Runtime）；同 key 重复
 ``provide`` 是覆盖更新，查找实时、不缓存；找到根仍未命中抛
 ``MissingProvideError``。敏感信息（API key / 凭证）走本通道——不进消息
 流、不进 LLM 上下文、不落盘。
 
-**钩子与 watch**：每个实例持有一个独立的钩子注册表（``agent.hooks``），
+钩子与 watch：每个实例持有一个独立的钩子注册表（``agent.hooks``），
 全部钩子只对当前实例生效；核心钩子点全集见 :mod:`flowing.hooks`。
 ``watch`` 通道监听实例属性赋值事件——fire-and-forget 通知、纯观察
 （赋值不等待 watcher，watcher 改写无效）。
 
-**死锁禁止**：在当前回合的调用栈内（任何钩子、工具 ``execute``、
+死锁禁止：在当前回合的调用栈内（任何钩子、工具 ``execute``、
 ``provider_gen`` 期间的 await 点）``await query()`` 必死锁；跨 Agent
 等待图成环（A 等 B、B 等 A）同样是死锁，框架不做环检测。回合内需要
-驱动用 :meth:`Agent.steer`（STEER 优先级，当轮 context 可见）。
+驱动用 :meth:`Agent.steer` （STEER 优先级，当轮 context 可见）。
 
-**无生命周期状态机**：Agent 不提供 ``status`` 字段；「在干什么」的观测
+无生命周期状态机：Agent 不提供 ``status`` 字段；「在干什么」的观测
 由快照层从内部状态现场派生（``snapshot()``）。
 
 .. rubric:: 使用示例
@@ -124,7 +124,7 @@ Runtime 属主）。物理读写由 :class:`flowing.persistence.FileRecordStore`
       ``Usage`` / ``ProviderDelta``。
 """
 
-from __future__ import annotations   # S-43 裁决③：注解延迟求值，配合 TYPE_CHECKING 破注解级循环边
+from __future__ import annotations   # 注解延迟求值，配合 TYPE_CHECKING 破注解级循环边
 
 import asyncio
 import contextlib
@@ -235,7 +235,7 @@ def _estimate_tool_schema_tokens(definition: ToolDefinition) -> int:
 def _as_parsable_patch(value: Any) -> Parsable | None:
     """覆写体的文本类补丁值归一（内部 API，不属稳定契约）。
 
-    ``_``（PENDING）→ ``None``（空补丁语义：声明了覆写位、内容为空，从基底
+    ``_`` （PENDING）→ ``None`` （空补丁语义：声明了覆写位、内容为空，从基底
     回填）；``Parsable`` 原样透传；其余包装为 ``Parsable`` 常量。
     ``add_tool`` 的 ``description`` 与 ``add_agent`` 的 ``system_prompt`` /
     ``description`` 共用。
@@ -258,9 +258,9 @@ def _classify_override_args(
 
     - 值是 dict → ``override_params`` 稀疏补丁（JSON Schema 关键字，零糖）；
     - 键含 ``<name> as <alias>`` → ``param_aliases``，值部分照常判别；
-    - 值是 ``_``（PENDING）→ 空补丁（``override_params[name] = {}``，
+    - 值是 ``_`` （PENDING）→ 空补丁（``override_params[name] = {}``，
       深层块可逐字段填充，未填充则合成时全量回填）；
-    - 其它值 → ``specified``（包装 ``Parsable``；注入表达式
+    - 其它值 → ``specified`` （包装 ``Parsable``；注入表达式
       ``"{{ self.inject('key') }}"`` 在此落入）。
     """
     for raw_key, value in args_body.items():
@@ -395,9 +395,9 @@ class TurnResult:
 
     .. rubric:: 行为要点
 
-    - ``status`` 四值：``"completed"``（Provider 响应 ``finish=True``
-      自然结束）/ ``"blocked"``（被 ``Intercepted`` 阻断）/ ``"cancelled"``
-      （取消 / 销毁 / ``cancel_queued`` 联动）/ ``"error"``（未捕获异常
+    - ``status`` 四值：``"completed"`` （Provider 响应 ``finish=True``
+      自然结束）/ ``"blocked"`` （被 ``Intercepted`` 阻断）/ ``"cancelled"``
+      （取消 / 销毁 / ``cancel_queued`` 联动）/ ``"error"`` （未捕获异常
       终止）。四种结局都会 resolve 给等待者。
     - ``final_text`` 是本 Turn 最后一条 PROVIDER 消息中全部
       ``TextBlock`` 的文本拼接；本 Turn 没有 PROVIDER 消息（如 abort 于
@@ -581,7 +581,7 @@ class ProviderErrorContext:
 
     .. rubric:: 行为要点
 
-    - ``can_continue=False``（默认；无 handler 或 handler 未改写）→ 回合
+    - ``can_continue=False`` （默认；无 handler 或 handler 未改写）→ 回合
       中断，本回合以 ``"error"`` 结局收尾；``True`` → 重新发起
       ``provider_gen``——handler 须已完成退避 / 换模型等动作。
     - handler 内调 ``agent.abort_turn()`` 是合法出口：``continue`` 后
@@ -641,7 +641,7 @@ class CancelContext:
     """
 
     reason: str = ""
-    """取消原因；框架内部调用恒为 ``""``（cancel 族无参），供扩展
+    """取消原因；框架内部调用恒为 ``""`` （cancel 族无参），供扩展
     自行 dispatch 时携带。
     """
 
@@ -665,7 +665,7 @@ def build_turn_result(turn: TurnContext, agent: "Agent", *,
     - ``status`` 判定（优先级从上到下）：``turn.aborted`` →
       ``"cancelled"``；``intercepted=True`` → ``"blocked"``；
       ``error`` 非 ``None`` → ``"error"``；否则 ``"completed"``。
-    - ``token_usage`` 聚合：``turn.usages`` 为空 → ``None``（区分
+    - ``token_usage`` 聚合：``turn.usages`` 为空 → ``None`` （区分
       「provider 未上报」与「真用了 0」）；非空 → 七个计数字段逐字段
       求和，聚合体的 ``raw`` 为空字典（逐次原始字段的消费方走
       ``after_provider_gen`` 钩子）。
@@ -699,7 +699,7 @@ def build_turn_result(turn: TurnContext, agent: "Agent", *,
         status = "error"
     else:
         status = "completed"
-    # final_text（S-28：树访问经 agent._messages）：turn.message_ids 逆序找
+    # final_text：树访问经 agent._messages，turn.message_ids 逆序找
     # 最后一条 PROVIDER 消息，取其 content 中 TextBlock 的拼接文本
     final_text: str = ""   # 空 turn / 无 PROVIDER 消息 → ""
     for mid in reversed(turn.message_ids):
@@ -708,7 +708,7 @@ def build_turn_result(turn: TurnContext, agent: "Agent", *,
             final_text = "".join(b.text for b in m.content
                                  if isinstance(b, TextBlock))
             break
-    # token_usage 聚合（S-13 具名规约）：usages 空 -> None（区分未上报与真零）；
+    # token_usage 聚合：usages 空 -> None（区分未上报与真零）；
     # 非空 -> 七字段逐字段求和，raw 不聚合
     token_usage: Usage | None = None
     if turn.usages:
@@ -722,7 +722,7 @@ def build_turn_result(turn: TurnContext, agent: "Agent", *,
             total_tokens=sum(u.total_tokens for u in turn.usages),
             raw={},
         )
-    # finish_reason（R-09 落实）：取消 / 拦截 / 异常结局填对应字面量；
+    # finish_reason：取消 / 拦截 / 异常结局填对应字面量；
     # 自然完成填末次 provider_gen 响应的 stop_reason（调用点显式传入）；
     # 空 turn 填 ""。信息字段，不参与控制流。
     if status == "cancelled":
@@ -746,10 +746,10 @@ class Agent:
     作为类属性（没有独立的 ``AgentSpec`` 结构）。
 
     实例化不直接进行：唯一创建路径是
-    :meth:`flowing.runtime.Runtime.create_agent`（``Agent.create_subagent``
+    :meth:`flowing.runtime.Runtime.create_agent` （``Agent.create_subagent``
     / ``Workflow.create_agent`` / ``Runtime.mount`` 全部委托它）；恢复路径
     是 :meth:`flowing.runtime.Runtime.recover_agent`。两条管线都会执行
-    ``setup()``（可重入契约见 :meth:`setup`）。
+    ``setup()`` （可重入契约见 :meth:`setup`）。
 
     .. rubric:: 设计要点
 
@@ -878,13 +878,13 @@ class Agent:
       :func:`flowing.paths.pascal_to_kebab`）。
 
     ``.fya`` 与手写子类中不禁止写 ``name``，但仅作一致性断言：与推断值
-    不符抛 :class:`flowing.errors.NameMismatchError`（消息含声明值 /
+    不符抛 :class:`flowing.errors.NameMismatchError` （消息含声明值 /
     推断值 / 来源）；一致时无任何效果。
     """
     description: ClassVar[Parsable]
     """Agent 的一句话介绍（Parsable），供父 Agent 路由决策与 catalog
     渲染读取；渲染上下文为父 Agent 实例。可选：缺失 / ``null`` 落
-    ``None``（消费方按空串处理）。普通字符串赋值同样可用（消费方原样
+    ``None`` （消费方按空串处理）。普通字符串赋值同样可用（消费方原样
     取文本）。
     """
     metadata: ClassVar[dict[str, Any]]
@@ -901,8 +901,8 @@ class Agent:
     model_tag: str = "default"
     """声明层模型意图（``"fast" / "high" / "default"`` 是语义约定、非
     枚举），与 Provider 完全解耦；支持 Jinja2 模板（惰性求值，每次
-    ``provider_gen()`` 前重新求值）。运行时可变：``agent.model_tag =
-    "high"`` 会重新解析并覆盖 ``self.model``，只能指向配置已定义模型。
+    ``provider_gen()`` 前重新求值）。运行时可变：``agent.model_tag = "high"``
+    会重新解析并覆盖 ``self.model``，只能指向配置已定义模型。
     标签未定义回退 ``default``；``default`` 也未定义 → 报错（不静默
     回退）。
     """
@@ -911,16 +911,16 @@ class Agent:
     ``subagent-invoke`` 工具 LLM 可见 schema 与执行层校验的来源）。
     三种来源形态：
 
-    - ``.fya`` 显式写 ``args:``（纯 JSON Schema 展开式）→ 经
+    - ``.fya`` 显式写 ``args:`` （纯 JSON Schema 展开式）→ 经
       :func:`flowing.params.schema_to_model` 桥接成模型，以其为准
       （YAML 优先），``setup()`` 签名仅作校验对照（参数必须有对应字段、
       类型标注必须兼容）；
-    - 手写子类显式声明 ``args_model = MyArgs``（BaseModel 子类）→
+    - 手写子类显式声明 ``args_model = MyArgs`` （BaseModel 子类）→
       直接使用；
     - 两者皆无 → 类创建时从 ``setup()`` 签名推导：类型标注 → 字段类型
       （标注缺失 → 构造期抛 ``ValueError``）；带默认值 → 字段默认值
       （可选）；无默认值 → 必填。``setup(**kwargs)`` 全 kwarg 吸收形态
-      → 推导产物为 ``None``（空模型不接受构造参数）。
+      → 推导产物为 ``None`` （空模型不接受构造参数）。
 
     推导发生在类创建期而非实例化期：产物是确定的类属性，运行时无重复
     推导。
@@ -962,7 +962,7 @@ class Agent:
 
     node_id: str
     """全局唯一 ID（``agent-`` + UUID），生命周期内不可变；恢复路径
-    ``node_id = agent_id``（身份连续、可重现）。
+    ``node_id = agent_id`` （身份连续、可重现）。
     """
     runtime: Runtime
     """返指 Runtime（对象图根）；不构成循环引用——关闭时 Runtime 主动
@@ -971,7 +971,7 @@ class Agent:
     _parent_id: str
     """父节点 ID 字符串（非对象引用）。双重用途：① 销毁时父 → 子定位；
     ② provide 链子 → 父上溯（``inject_from``）。创建时绑定、终身不变的
-    历史事实——根 Agent 指向 Runtime 的 ``node_id``（``"runtime-0"``）；
+    历史事实——根 Agent 指向 Runtime 的 ``node_id`` （``"runtime-0"``）；
     节点存活与否由 ``_nodes`` 在册与否表达，不由本字段。内部 API。
     """
     _children: dict[str, Agent]
@@ -1071,8 +1071,8 @@ class Agent:
     """
     model: ModelConfig
     """模型结构体（运行时成员，可解析、可变）；实例化时由 ``model_tag``
-    解析填充初始值。两条动态修改路径：① 改 ``model_tag``（只能指向配置
-    已定义模型）；② 直接赋 ``ModelConfig(...)``（任意模型）。「换模型」
+    解析填充初始值。两条动态修改路径：① 改 ``model_tag`` （只能指向配置
+    已定义模型）；② 直接赋 ``ModelConfig(...)`` （任意模型）。「换模型」
     = 换一份完整规格，无中间态。
     """
 
@@ -1093,33 +1093,34 @@ class Agent:
     API。
     """
 
-    # ─────────────────── 实例属性：持久化（内部，S-31 裁决） ──────────────
+    # ─────────────────── 实例属性：持久化（内部） ────────────────────────
 
     _session_dir: Path
     """本 Agent 的 session 持久化目录（``tree.jsonl`` / ``core.jsonl`` /
     ``state.jsonl`` / ``meta.json`` 所在目录）。
 
     创建管线预绑：``Runtime.create_agent(session_dir=...)`` 指定（绝对
-    路径原样 / 相对 ``runtime._persist_dir``），缺省 ``persist_dir /
-    node_id``；恢复路径从池元数据回绑。子类可在 ``super().__init__()``
+    路径原样 / 相对 ``runtime._persist_dir``），缺省
+    ``persist_dir / node_id``；恢复路径从池元数据回绑。子类可在
+    ``super().__init__()``
     之前覆写本字段实现「初始化时指定」。内部 API，不属稳定契约。
     """
     _tree_store: RecordStore
     """``tree.jsonl`` 的落盘后端（write-behind：提交同步排队、drain
     任务串行落盘；墓碑压缩在 store 内部自主触发）。构造在
-    ``__init__``（经 :meth:`_open_stores`）。内部 API，不属稳定契约。
+    ``__init__`` （经 :meth:`_open_stores`）。内部 API，不属稳定契约。
     """
     _core_state: StateView
     """核心状态袋（``core.jsonl`` 后端内嵌，``merge_last_line=True``）；
     框架私有——真状态 2 键（child_ids + current_head_id，property
     透传）。不对外暴露（用户经 :attr:`state` 或 :meth:`register_state`
-    开新袋，不碰 core）。构造点同为 ``__init__``（经
+    开新袋，不碰 core）。构造点同为 ``__init__`` （经
     :meth:`_open_stores`）。内部 API。
     """
     _state_bag: StateView
     """默认状态袋（``state.jsonl`` 后端内嵌，``merge_last_line=True``）；
     :attr:`state` property 的落点；业务 / 插件状态键（``state.register``
-    缺省落点）。构造点同为 ``__init__``（经 :meth:`_open_stores`）。
+    缺省落点）。构造点同为 ``__init__`` （经 :meth:`_open_stores`）。
     内部 API。
     """
 
@@ -1139,8 +1140,8 @@ class Agent:
           ``_executions`` / ``_pending_turns`` / ``_tool_entries`` /
           ``_subagent_entries`` 等；``current_turn = None``、``_pause_gate``
           初始放行。
-        - 建立 ``_extra``（实例级静默仓库）与持久化后端——经
-          :meth:`_open_stores`（session 目录由管线预绑，骨架期即可知）。
+        - 建立 ``_extra`` （实例级静默仓库）与持久化后端——经
+          :meth:`_open_stores` （session 目录由管线预绑，骨架期即可知）。
         - 注入 ``system_prompt`` 惰性引用块（``prompt_blocks[0]``，
           ``by="core"``）。
         - 调 :meth:`_init_hooks` 同步注册 ``@on()`` 声明的钩子。
@@ -1148,7 +1149,7 @@ class Agent:
         开发者自己引入的装配逻辑（依赖 args / inject 的赋值、业务钩子
         注册、Composable 启用）放 :meth:`setup`。
         """
-        # P3-03 裁决（用户）：_extra 与状态袋在 __init__ 建立——管线第 2 步
+        # _extra 与状态袋在 __init__ 建立——管线第 2 步
         # （__new__ 绑 node_id / runtime / _parent_id）先于 __init__，
         # session 目录骨架期即可知，「尚不可知」的旧表述作废
         self._extra = {}   # 实例级静默仓库；fya 装配层在生成 setup() 前置段合入未知字段
@@ -1160,7 +1161,7 @@ class Agent:
         self.prompt_blocks = PromptBlockList()
         self._message_queue = MessageQueue()   # 无参：纯内存优先级队列
         self._messages = {}
-        self.chain = MessageChain(self)   # S-26：构造收属主 Agent——五 op
+        self.chain = MessageChain(self)   # 构造收属主 Agent——五 op
         # 直接操作 Agent._messages 并经 Agent._persist_message 落盘
         self._executions = {}
         self._background_tasks: dict[str, asyncio.Task] = {}   # 后台任务注册表（B9：按 id 取消/查询 + 强引用防 GC + destroy 统一覆盖；cancel_by_tag 不涉及）
@@ -1215,9 +1216,9 @@ class Agent:
             cls.source_file = None   # 项目根之外的源文件：无 "@/" 表达 -> None
 
     def __getattr__(self, name: str) -> Any:
-        """回退查找链：``_extra``（内部 API，不属稳定契约）。
+        """回退查找链：``_extra`` （内部 API，不属稳定契约）。
 
-        ``name`` 在 ``_extra`` 中 → 返回 ``_extra[name]``（原值返回，不做
+        ``name`` 在 ``_extra`` 中 → 返回 ``_extra[name]`` （原值返回，不做
         隐式 Parsable 解包）；否则 ``AttributeError``。状态量不在回退链上
         ——读写统一走 ``agent.state`` 显式视图。体内只经 ``__dict__.get``
         探查 ``_extra``：子类在 ``super().__init__()`` 之前赋值等场景下
@@ -1230,7 +1231,7 @@ class Agent:
         raise AttributeError(name)
 
     def _init_hooks(self) -> None:
-        """把 ``@on()`` 声明的钩子注册到实例 ``hooks``（同步；内部 API）。
+        """把 ``@on()`` 声明的钩子注册到实例 ``hooks`` （同步；内部 API）。
 
         ``__init__`` 阶段执行，早于 ``setup()``——这就是 ``before_create``
         只能经 ``@on('before_create')`` 声明的原因（setup 尚未运行时无法
@@ -1246,7 +1247,7 @@ class Agent:
           :meth:`flowing.hooks.HookRegistry.declare` 冲刷。``setup()`` 后
           PENDING 检查发现暂记列表非空 → ``UnknownHookPointError``。
         """
-        # S-29 收集原语：MRO 派生→基类方向判覆写（每个名字只认最派生的
+        # 收集原语：MRO 派生→基类方向判覆写（每个名字只认最派生的
         # 最终定义），收集后按基类→派生类顺序注册
         seen: set[str] = set()
         marked: list[tuple[Any, tuple]] = []   # （最终定义函数， 记录 tuple）
@@ -1260,7 +1261,7 @@ class Agent:
                     marked.append((member, marks))
         for member, marks in reversed(marked):   # 基类 → 派生类
             # spec 未写清处落实（「按绑定方法注册」与 dispatch 的 (agent, value)
-            # 统一签名冲突——绑定方法会多收一个位置参数）：注册**未绑定函数**，
+            # 统一签名冲突——绑定方法会多收一个位置参数）：注册未绑定函数，
             # dispatch 时首参 agent 恰好落进方法的 self 位（与 .fya $script
             # 的 def _(self, tool_call) 写法相容）
             for hook_name, by, tags, pattern in marks:
@@ -1339,12 +1340,12 @@ class Agent:
         self._core_state._persisted.setdefault("current_head_id", None)
 
     def register_state(self, name: str, backend: str = "file") -> StateView:
-        """开启一个命名状态空间，返回其 :class:`StateView`（公共 API）。
+        """开启一个命名状态空间，返回其 :class:`StateView` （公共 API）。
 
         .. rubric:: 功能介绍
 
         打开本 Agent 的一个命名状态袋：``<session_dir>/<name>.jsonl``。
-        与 :attr:`state`（默认袋）对称的扩展通道：命名袋是插件 / 领域的
+        与 :attr:`state` （默认袋）对称的扩展通道：命名袋是插件 / 领域的
         独立状态空间（独立文件、独立压缩 / 崩溃边界），不挂载任何 agent
         属性——调用方自行持有返回的袋对象。
 
@@ -1413,7 +1414,7 @@ class Agent:
 
         字符串键的通用读取入口（key 是变量的场景：插件写通用逻辑、slash
         命令、调试工具）。查找序：已注册状态键 → 从 ``agent.state`` 读出
-        （持久值，无则回退 ``default``）；否则 ``getattr``（实例属性 →
+        （持久值，无则回退 ``default``）；否则 ``getattr`` （实例属性 →
         类属性 → ``_extra`` 回退）；仍无 → 返回 ``default``。
 
         :param key: 字符串键。
@@ -1421,7 +1422,7 @@ class Agent:
 
         .. seealso:: :meth:`set`、:meth:`delete`、:attr:`state`
         """
-        bag = self.__dict__.get("_state_bag")   # 护栏（P3-03）
+        bag = self.__dict__.get("_state_bag")   # 护栏：袋未建立时跳过
         if bag is not None and key in bag:
             return bag[key]   # 状态域：持久值 ?? default
         return getattr(self, key, default)   # 属性域 + _extra 回退（__getattr__）
@@ -1429,7 +1430,7 @@ class Agent:
     def set(self, key: str, value: Any) -> None:
         """动态键统一写——状态键 / ``_extra`` / 实例属性三域路由。
 
-        - 已注册状态键 → ``self.state[key] = value``（写透落盘 + JSON
+        - 已注册状态键 → ``self.state[key] = value`` （写透落盘 + JSON
           校验；写不触发 watcher）。
         - ``key`` 在 ``_extra`` 中 → 原地更新（静默仓库，不触发 watcher）。
         - 否则 ``setattr(self, key, value)``——普通实例属性路径
@@ -1450,10 +1451,10 @@ class Agent:
     def delete(self, key: str) -> None:
         """动态键统一删——三域路由（语义同 :meth:`set` 的镜像）。
 
-        - 已注册状态键 → ``del self.state[key]``（删持久值，读回退 default；
+        - 已注册状态键 → ``del self.state[key]`` （删持久值，读回退 default；
           不触发 watcher——删除不是赋值事件）。
         - ``key`` 在 ``_extra`` 中 → 移除该键。
-        - 否则 ``delattr(self, key)``（普通实例属性删除；类属性 / 方法删
+        - 否则 ``delattr(self, key)`` （普通实例属性删除；类属性 / 方法删
           不掉，``AttributeError`` 原样上抛）。
 
         .. seealso:: :meth:`get`、:meth:`set`
@@ -1478,7 +1479,7 @@ class Agent:
         的 ``override_args`` 覆盖，触发的是 ``before_recover`` /
         ``after_recover`` 钩子对）。签名即 args 来源（与 ``args_model``
         对照，见 :attr:`args_model`）。与 ``__init__`` 的分工：核心必要
-        的初始化全部在 ``__init__``（同步骨架，无外部输入）；``setup``
+        的初始化全部在 ``__init__`` （同步骨架，无外部输入）；``setup``
         只承载开发者引入的装配逻辑——依赖 args 与 inject 的赋值、业务
         钩子注册、Composable 启用。
 
@@ -1518,7 +1519,7 @@ class Agent:
         """
         # 基类空实现（契约注释）：子类覆写承载装配逻辑——状态赋值、钩子注册、
         # inject 读取、Composable 调用；setup 中写 state 合法（D5）；可重入
-        # 语义见上文「行为规约」（create 与 recover 各跑一次、必为不同实例）。
+        # 语义见上文 docstring（create 与 recover 各跑一次、必为不同实例）。
         ...
 
     async def destroy(self) -> None:
@@ -1528,13 +1529,13 @@ class Agent:
 
         销毁本实例及其整个生命周期子树。时序（顺序为不变量）：
 
-        1. resolve 全部 ``_pending_turns``（``TurnResult(status="cancelled")``）
+        1. resolve 全部 ``_pending_turns`` （``TurnResult(status="cancelled")``）
            ——调用方不挂起；
         2. 取消常驻工作循环 Task + 取消全部后台任务（只 cancel 不 await，
            await 无界会让 destroy 挂起）→ 关闭持久化后端（``close()`` =
            排空写队列 + 停写任务——不排空即销毁会静默丢尾部记录）；
         3. dispatch ``before_destroy``；
-        4. 深度优先递归 ``child.destroy()``（子树收集：``_children`` ∪
+        4. 深度优先递归 ``child.destroy()`` （子树收集：``_children`` ∪
            ``_nodes`` 按 ``_parent_id`` 扫描），清空 ``_children``；
         5. 从 ``_nodes`` 摘除（池移除实例值）；
         6. dispatch ``after_destroy``。
@@ -1561,7 +1562,7 @@ class Agent:
             - :meth:`flowing.runtime.Runtime.get_agent` —— 现场恢复入口。
             - :meth:`flowing.runtime.Runtime.shutdown` —— 进程级收尾。
         """
-        # 幂等守卫（spec 行为规约：重复调用安全，二次调用「直接返回」）：
+        # 幂等守卫（docstring 行为要点：重复调用安全，二次调用「直接返回」）：
         # **本实例**已摘除即二次调用，直接返回——按身份比较而非 id：本 id
         # 可能已被「有 key 无 value → 现场恢复」重建为新实例重新注册，
         # 旧实例（如父级 _children 里的过期引用）不得再操作已关闭的后端
@@ -1670,7 +1671,7 @@ class Agent:
             elif op == "delete":
                 core_persisted.pop(record["key"], None)
             # 未知行形态（meta 已被 replay 吸收）静默跳过
-        # ①b 孤立 tool_call 合成占位（M-25 恢复扫描，配对锚为消息字段）：
+        # ①b 孤立 tool_call 合成占位（配对锚为消息字段）：
         #    逐分支扫描 PROVIDER 消息的 ToolCallBlock.id，同分支后续无
         #    tool_call_id 匹配的 TOOL 消息者，合成占位消息挂树封闭配对：
         #    Message(kind=TOOL, tool_call_id=<孤立调用 id>,
@@ -1715,7 +1716,7 @@ class Agent:
                 self._core_state["current_head_id"] = placeholder.id
         # ③ 读 state.jsonl（_state_bag._store.replay()）逐键重放进默认袋
         #    （直写 _persisted 绕过写通道；无 schema：持久化键
-        #    无论登记与否一律装袋，P3-04 裁决——逐键覆盖 register 的初值
+        #    无论登记与否一律装袋——逐键覆盖 register 的初值
         #    是「已持久值优先」语义的天然结果（D4）；child_ids 已在 core 袋
         #    重放中装袋——core 袋唯一真值，无内存镜像）
         persisted = self._state_bag._persisted
@@ -1748,7 +1749,7 @@ class Agent:
         ``list`` 直接作为 ContentBlock 列表。``kind`` 默认 ``USER``，可传
         ``SYSTEM`` / ``EVENT`` / ``PEER`` 等。``**kwargs`` 透传给 Message
         构造（``source`` / ``priority`` / ``tags`` 等）。返回包含本消息
-        的逻辑 Turn 的 :class:`TurnResult`（四种结局均 resolve，调用方不
+        的逻辑 Turn 的 :class:`TurnResult` （四种结局均 resolve，调用方不
         挂起）。
 
         .. rubric:: 使用示例
@@ -1770,7 +1771,7 @@ class Agent:
           回合收尾要等钩子返回，钩子要等下一回合产物，下一回合要等当前
           回合收尾。跨 Agent 等待同理：等待图成环（A 等 B、B 等 A）即
           死锁，框架不做环检测。
-        - 回合内需要驱动，用 :meth:`steer`（STEER 优先级，当轮 context
+        - 回合内需要驱动，用 :meth:`steer` （STEER 优先级，当轮 context
           可见）；``enqueue_message`` / :meth:`message` 入队的非 STEER
           消息回合内不可察觉，只在回合间消费。
         - 崩溃 / ``destroy()`` 都不挂起调用方（resolve cancelled）。
@@ -1790,7 +1791,7 @@ class Agent:
             blocks = content
         msg = Message(kind=kind, content=blocks, **kwargs)
         fut: asyncio.Future[TurnResult] = asyncio.get_running_loop().create_future()
-        self._pending_turns[msg.id] = fut   # P3-01：注册先于入队——消息对外可见时句柄必已存在
+        self._pending_turns[msg.id] = fut   # 注册先于入队——消息对外可见时句柄必已存在
         try:
             message_id = await self.enqueue_message(msg)   # 打包 + 入队
             return await fut   # 等待「包含我这条消息的回合」产物（四结局均 resolve）
@@ -1895,8 +1896,8 @@ class Agent:
 
         .. rubric:: 行为要点
 
-        - 时序：dispatch ``before_enqueue``（可检查 / 修改 / ``raise
-          Intercepted`` 拒绝——内容审核、速率限制、文件过大）→
+        - 时序：dispatch ``before_enqueue`` （可检查 / 修改 /
+          ``raise Intercepted`` 拒绝——内容审核、速率限制、文件过大）→
           ``_message_queue.enqueue(msg)`` → dispatch ``after_enqueue``
           （纯观察，日志 / 审计）→ 返回 ``msg.id``。
         - 消费保证：入队即会被消费（常驻工作循环），无需「入队触发」逻辑。
@@ -1927,7 +1928,7 @@ class Agent:
 
         .. rubric:: 行为要点
 
-        - 逐条委托 :meth:`enqueue_message`（每条独立经过
+        - 逐条委托 :meth:`enqueue_message` （每条独立经过
           ``before_enqueue`` / ``after_enqueue``）；任一条被
           ``Intercepted`` 时异常上抛，已入队的不回滚。
         - 返回顺序与输入顺序一致。
@@ -2025,7 +2026,7 @@ class Agent:
 
         .. rubric:: 行为要点
 
-        - 遍历 ``task.cancel()``（只 cancel 不 await——执行体可忽略取消，
+        - 遍历 ``task.cancel()`` （只 cancel 不 await——执行体可忽略取消，
           await 无界会让 ``destroy()`` 挂起）；幂等，空表 no-op。
         - 不清空注册表（移除由 done_callback 闭包完成；destroy 场景由
           destroy 显式 ``clear()``）。
@@ -2103,7 +2104,7 @@ class Agent:
 
         - 同步、纯读取、无副作用：不 dispatch 钩子、不改任何状态。
         - 路径收集口径与上下文组装相同（沿 ``current_head_id`` 上溯）。
-        - 锚点命中时：``measured = 锚点.usage.total_tokens``（含
+        - 锚点命中时：``measured = 锚点.usage.total_tokens`` （含
           cache_read——缓存读的 token 也占窗口）；``estimated`` 追加
           「当前启用工具中不在 ``_measured_tool_names`` 的 schema 估算」
           ——锚点后新增工具的补估规则。
@@ -2116,7 +2117,7 @@ class Agent:
         - 不设阈值、不触发压缩、不告警（策略归插件）；不缓存结果；估算值
           永不用于计费。
         - 边缘情况：路径为空 → 全零且 ``measured is None``；锚点消息的
-          ``usage.total_tokens == 0``（异常响应）不算有效锚点，继续上溯。
+          ``usage.total_tokens == 0`` （异常响应）不算有效锚点，继续上溯。
 
         .. seealso::
 
@@ -2212,9 +2213,9 @@ class Agent:
         ``ProviderResponse(message=None, finish=False, cancelled=True)``，
         不抛异常）→ ``self.model.resolve(self)`` 字段级惰性求值 → provider
         懒获取（``provider_registry.get(model.provider)``）→ dispatch
-        ``before_provider_gen``（可改写完整 ``Context``）→ Provider 调用
+        ``before_provider_gen`` （可改写完整 ``Context``）→ Provider 调用
         （注册 ``Execution(kind="request")``）→ dispatch
-        ``after_provider_gen``（可改写 ``ProviderResponse``）→ 返回。
+        ``after_provider_gen`` （可改写 ``ProviderResponse``）→ 返回。
 
         .. rubric:: 使用示例
 
@@ -2225,7 +2226,7 @@ class Agent:
 
         .. rubric:: 行为要点
 
-        - ``stream=True``（默认）：流式路径——逐 delta 累积进
+        - ``stream=True`` （默认）：流式路径——逐 delta 累积进
           ``Message.content`` 并经 ``on_provider_delta`` dispatch
           （纯观察：累积只认 Provider 原始 delta，dispatch 的返回值被
           丢弃、不回写——改写单条 delta 无意义，需改写走
@@ -2234,7 +2235,7 @@ class Agent:
           全量 delta 同样 dispatch——两种路径的 delta 数据格式完全一致，
           订阅者永远可以依赖「每次 ``provider_gen`` 至少一条 delta」。
         - ``by``：来源标记，透写到每条 ``ProviderDelta`` 与返回的
-          ``ProviderResponse``（adapter 不填，由本方法盖写）。主 Turn
+          ``ProviderResponse`` （adapter 不填，由本方法盖写）。主 Turn
           内层循环传 ``"_turn"``，``side_query`` 传 ``"_side"``；下划线
           开头为框架保留值，插件自定义来源勿用。``after_provider_gen``
           与 ``on_provider_delta`` 钩子点以 ``match_on="by"`` 声明，
@@ -2261,7 +2262,7 @@ class Agent:
         if self._turn_abort.is_set():
             return ProviderResponse(message=None, finish=False, cancelled=True)   # abort：不抛异常、不发起 Provider 调用
         model: ModelConfig = self.model.resolve(self)   # 每次调用前字段级惰性求值
-        provider: Provider = self.runtime.provider_registry.get(model.provider)   # 懒获取（C-04 裁决：ProviderRegistry，未知条目 KeyError）
+        provider: Provider = self.runtime.provider_registry.get(model.provider)   # 懒获取（未知条目 KeyError）
         context = await self.hooks.before_provider_gen.dispatch(self, context)   # 可改写完整 Context
         execution = Execution(id=uuid4().hex, kind="request", tags=[],
                               started_at=datetime.now(),
@@ -2281,11 +2282,11 @@ class Agent:
                         self, ProviderDelta(kind="text", text=full_text,
                                             content_index=0, by=by))
             else:
-                # 流式（R-11 落实）：list[ContentBlock] 累积器按
+                # 流式：list[ContentBlock] 累积器按
                 # content_index 归位——text/thinking delta 逐段拼接进对应块；
                 # 结构化内容（工具调用等）由 adapter 在末段以完整块
                 # （delta.block）交付，直接归位；usage 由末帧附着进组装消息；
-                # R-09 落实：末帧 provider_data（含原始 stop_reason）并入组装
+                # 末帧 provider_data（含原始 stop_reason）并入组装
                 # 响应，使 completed 结局的 finish_reason 口径在流式主路径生效。
                 accumulated: dict[int, ContentBlock] = {}
                 final_usage: Usage | None = None
@@ -2329,7 +2330,7 @@ class Agent:
                         for b in message.content),
                     cancelled=interrupted,
                     model=model.model if isinstance(model.model, str) else "",
-                    provider_data=final_provider_data,   # R-09：末帧 stop_reason 通道
+                    provider_data=final_provider_data,   # 末帧 stop_reason 通道
                 )
         finally:
             self._executions.pop(execution.id, None)   # finally 清理（不变量：不捕获异常）
@@ -2373,7 +2374,7 @@ class Agent:
 
         .. rubric:: 行为要点
 
-        - 注册 ``Execution(kind="side_query")``（可被 ``cancel_by_tag`` /
+        - 注册 ``Execution(kind="side_query")`` （可被 ``cancel_by_tag`` /
           级联取消命中）；abort 时返回空文本（不抛异常）。
         - 上下文组装基于当前消息级树（与主路径同一机制，不剥离工具
           schema、不做任何副线特化——保证 prompt 缓存命中率）；但本次
@@ -2409,7 +2410,7 @@ class Agent:
         self._executions[execution.id] = execution   # 可被 cancel_by_tag / 级联取消命中
         original_model: ModelConfig | None = None
         if model_tag is not None:
-            # R-08 落实：请求前当场解析临时 ModelConfig（_resolve_model_tag），
+            # 请求前当场解析临时 ModelConfig（_resolve_model_tag），
             # 不改写 self.model——经 object.__setattr__ 临时换绑再还原，
             # 不触发 watcher、不影响并发回合的观测面
             original_model = self.model
@@ -2510,7 +2511,7 @@ class Agent:
         .. rubric:: 功能介绍
 
         回合外的消息树追加入口：``msg.parent_id = current_head_id`` →
-        挂入 ``_messages`` → 落盘 → ``current_head_id = msg.id``（写透
+        挂入 ``_messages`` → 落盘 → ``current_head_id = msg.id`` （写透
         core 袋）。它也是回合内挂树的核心写路径；本方法不 dispatch turn
         族钩子、不写 ``turn.message_ids``——这两部分由回合内的挂树入口
         在调用本方法前后补齐。
@@ -2546,7 +2547,7 @@ class Agent:
 
         - 同步方法，不 dispatch 钩子。
         - ``parent_id`` 为 ``None`` 时开新根；非 ``None`` 时须存在。
-        - 不移动 ``current_head_id``（需要切过去用 :meth:`fork`）。
+        - 不移动 ``current_head_id`` （需要切过去用 :meth:`fork`）。
 
         :return: ``msg.id``。
 
@@ -2590,9 +2591,9 @@ class Agent:
         .. rubric:: 功能介绍
 
         消息上下文最基本的组织方式（核心机制，非扩展特性）。时序：
-        dispatch ``before_fork``（可改写 target / ``raise Intercepted``
+        dispatch ``before_fork`` （可改写 target / ``raise Intercepted``
         阻止）→ 目标合法性检查 → 记录切换前的原 head → 切换
-        ``current_head_id`` → dispatch ``after_fork``（纯观察，日志 /
+        ``current_head_id`` → dispatch ``after_fork`` （纯观察，日志 /
         通知 UI 刷新分支列表）。
 
         .. rubric:: 设计要点
@@ -2672,7 +2673,7 @@ class Agent:
         - 同步方法，幂等（重复调用无额外效果）；不 dispatch 钩子。
         - 优先级：``pause()`` 与 abort 同时发生时先挂起——``resume()``
           后才判定终止（每处检查点 pause 在前、abort 在后）。
-        - 不置位任何 ``Execution.pause``（Execution 层暂停是另一个正交
+        - 不置位任何 ``Execution.pause`` （Execution 层暂停是另一个正交
           通道，由 Tool 覆写 / Composable 自管，不级联）。
         - 作用范围：仅控制本 Agent 的工作循环 turn 检查点——不递归子
           Agent（子树暂停用 :meth:`pause_recursive`）。
@@ -2701,7 +2702,7 @@ class Agent:
         .. rubric:: 功能介绍
 
         ``self.pause()`` 后对 ``_children`` 中每个活子 Agent 递归调用
-        ``pause_recursive()``（深度优先）。典型场景：UI 的「暂停整个工作
+        ``pause_recursive()`` （深度优先）。典型场景：UI 的「暂停整个工作
         流」按钮。
 
         .. rubric:: 行为要点
@@ -2772,16 +2773,16 @@ class Agent:
 
         .. rubric:: 功能介绍
 
-        时序：dispatch ``before_cancel``（value 为 :class:`CancelContext`，
+        时序：dispatch ``before_cancel`` （value 为 :class:`CancelContext`，
         handler ``raise Intercepted`` 阻止取消）→ 置位 ``_executions``
-        全部 abort + 置位回合退出信号 → dispatch ``after_cancel``（信号
+        全部 abort + 置位回合退出信号 → dispatch ``after_cancel`` （信号
         置位后立即触发——「取消请求已被接受」的事实事件；纯观察，日志 /
         通知 / 审计）。无状态值迁移（Agent 无生命周期状态机）。
 
         观察点分工：``after_cancel`` 表达的是「取消已被接受、信号已置
         位」，dispatch 点在本方法体内——协作式取消禁止本方法等待回合退出
         （回合内的代码调 ``cancel()`` 时等待即自死锁）。「回合真正退出」
-        的观察归 ``after_turn``（全路径，handler 读 ``turn.aborted`` 区分
+        的观察归 ``after_turn`` （全路径，handler 读 ``turn.aborted`` 区分
         取消与正常结束）。空闲 Agent（无回合在跑）被 cancel 时
         ``after_cancel`` 照常触发：信号置位是事实，与有无回合无关。
 
@@ -2817,7 +2818,7 @@ class Agent:
             execution.cancel.set()   # 协作式信号：执行体自行决定停止方式
         self._turn_abort.set()
         # after_cancel：信号置位后立即 dispatch——「取消已被接受」的事实事件
-        # （S-35 裁决；回合真正退出的观察归 _run_turn finally 的
+        # （回合真正退出的观察归 _run_turn finally 的
         #   after_turn，handler 读 turn.aborted 分流）
         await self.hooks.after_cancel.dispatch(self, CancelContext())
 
@@ -2862,7 +2863,7 @@ class Agent:
 
         .. rubric:: 行为要点
 
-        - 默认实现 = ``await self.cancel()``（含 before/after_cancel
+        - 默认实现 = ``await self.cancel()`` （含 before/after_cancel
           钩子）。
         - 覆写约定：先调默认逻辑或自行置位信号，再做强制动作；Agent
           可覆写 ``cancel()`` 为空操作以完全无视协作信号（此时
@@ -2903,8 +2904,9 @@ class Agent:
 
         .. rubric:: 功能介绍
 
-        直接委托 ``runtime.create_agent(agent_type,
-        parent_id=self.node_id, **kwargs)``——不提供别的，只提供「自己
+        直接委托 ``runtime.create_agent``，把 ``agent_type`` 与
+        ``**kwargs`` 原样透传、``parent_id`` 固定为 ``self.node_id``
+        ——不提供别的，只提供「自己
         的 ``node_id`` 作为 ``parent_id``」。可选 ``name`` 为子代起语义
         名（登记进 ``child_ids``，供 ``invoke_subagent(resume=...)`` 按名
         续接；语义名只存在父侧表中，子实例不自持名字）。
@@ -2945,7 +2947,7 @@ class Agent:
         child = await self.runtime.create_agent(
             agent_type, parent_id=self.node_id, **kwargs)   # 直接委托，仅提供 parent_id
         self._children[child.node_id] = child   # 进入生命周期子树（node_id 为 key；创建即注册由 create_agent 管线完成）
-        if name is not None:   # S-34：语义名 -> agent_id 登记并写透（未命名子 Agent 不入表；语义名只存在父侧本表，子实例不自持）
+        if name is not None:   # 语义名 -> agent_id 登记并写透（未命名子 Agent 不入表；语义名只存在父侧本表，子实例不自持）
             ids = dict(self.child_ids)   # core 袋唯一真值（D7 property 透传）
             ids[name] = child.node_id
             self._core_state["child_ids"] = ids   # 写透整表进核心袋（末行合并防膨胀）
@@ -2968,7 +2970,7 @@ class Agent:
         :meth:`_run_subagent`）：
 
         - 准备段（同步 await）：按别名查 ``_subagent_entries`` →
-          ``SubagentEntry.resolve()``（LLM args → 完整 kwargs：别名映射 +
+          ``SubagentEntry.resolve()`` （LLM args → 完整 kwargs：别名映射 +
           specified 求值 + inject 注入）→ 构造
           :class:`SubagentInvocation` 并 dispatch 父 Agent 的
           ``before_subagent_invoke`` → 注册 ``Execution(kind="agent")`` →
@@ -2978,7 +2980,7 @@ class Agent:
           ``ToolResult(status="error")`` 承载（LLM 可见）。
         - 运行段（可后台）：``await child.query(prompt)`` 等待产出 →
           构造 :class:`SubagentResult` → dispatch
-          ``after_subagent_invoke``（先于交付：handler 可改写 result，
+          ``after_subagent_invoke`` （先于交付：handler 可改写 result，
           改写对两条路径同时生效）→ 用改写后的 result 构造
           ``Message(kind=SUBAGENT)`` 推入本实例队列（LLM 后续回合感知）
           并返回。运行段结局走 ``TurnResult`` 四态正常通道
@@ -3022,7 +3024,7 @@ class Agent:
           ``asyncio.create_task(agent.invoke_subagent(...))``——本方法是
           协程，可被后台执行；结果只交给该 Task，不会推入 Agent 队列。
         - ``subagent-invoke`` 工具的 ``asynchronized=True`` 是另一条特殊
-          路径：它不走本方法，而是拆成 ``_prepare_subagent``（同步创建）
+          路径：它不走本方法，而是拆成 ``_prepare_subagent`` （同步创建）
           + 后台 ``_run_subagent(enqueue_result=True)``；完成后必定 enqueue
           SUBAGENT 消息，工具只返回 ``started`` 收据。外部代码若不想
           入队，不要走该工具异步路径，用
@@ -3063,7 +3065,7 @@ class Agent:
         状态。返回 ``(child, invocation, execution)`` 三元组，交由
         :meth:`_run_subagent` 消费；Execution 清理由运行段 finally 承担
         （本段异常路径自清理）。``name`` 经 ``SubagentInvocation.name``
-        进创建管线：新建路径透传 :meth:`create_subagent`（登记
+        进创建管线：新建路径透传 :meth:`create_subagent` （登记
         ``child_ids``）；resume 路径忽略（实例已存在）。
         """
         entry = self._subagent_entries[agent_type]   # 按别名查（agent_type 形参承载别名）
@@ -3085,12 +3087,12 @@ class Agent:
         try:
             child: Agent
             if invocation.resume is not None:
-                # 续接（S-34）：语义名 -> agent_id 翻译（child_ids property，
+                # 续接：语义名 -> agent_id 翻译（child_ids property，
                 # core 袋真值），再经
                 # Runtime.get_agent 按 id 取（活着直接用；已销毁/休眠 ->
                 # 现场恢复——destroy ≠ 删除，记录保留）；表项不随 destroy 删除
                 if invocation.resume not in self.child_ids:
-                    raise ValueError(invocation.resume)   # 按名未找到 -> 报错（C-02 口径）
+                    raise ValueError(invocation.resume)   # 按名未找到 -> 报错
                 child = await self.runtime.get_agent(
                     self.child_ids[invocation.resume])
                 self._children[child.node_id] = child   # 重新进入生命周期子树（父级联销毁恢复生效）
@@ -3119,7 +3121,7 @@ class Agent:
         SUBAGENT 消息同源采用改写后的结果；本钩子不接 ``Intercepted``
         （阻断闸在 before，答卷级处置用改写表达）。
 
-        ``enqueue_result``：``True``（默认）→ dispatch 后构造独立
+        ``enqueue_result``：``True`` （默认）→ dispatch 后构造独立
         ``Message(kind=SUBAGENT, priority=STEER)`` 入本实例队列——长
         turn 可达天级，子代完成推送须即时注入：回合进行中于检查点被
         吸收、当轮 context 可见、不打断。``False`` → 跳过入队，只返回
@@ -3161,20 +3163,20 @@ class Agent:
 
         .. rubric:: 功能介绍
 
-        时序：dispatch ``before_tool_call``（可改写 ``ToolCall`` /
+        时序：dispatch ``before_tool_call`` （可改写 ``ToolCall`` /
         ``shortcut`` 短路 / ``raise Intercepted`` 硬阻断）→ 按别名查
-        ``_tool_entries`` → :meth:`_normalize`（LLM 视角校验 / 别名映射
+        ``_tool_entries`` → :meth:`_normalize` （LLM 视角校验 / 别名映射
         与 ``ToolEntry.resolve()`` 聚合 / 默认值填充）→ ``Tool.__call__``
         调度（注册 ``Execution(kind="tool")``，finally 清理）→ dispatch
-        ``after_tool_call``（可改写结果；shortcut 路径照常触发）→ 收尾
+        ``after_tool_call`` （可改写结果；shortcut 路径照常触发）→ 收尾
         归一（return 前幂等再跑一次 ``normalize_output``，封 shortcut 与
         钩子改写两条缝）→ 返回。
 
         .. rubric:: 行为要点
 
-        - 仅按别名查找；未命中 → ``UnknownToolError``（无规范名回退——
+        - 仅按别名查找；未命中 → ``UnknownToolError`` （无规范名回退——
           回退会绕开 Agent 级绑定）。
-        - ``Intercepted`` → 返回 ``ToolResult.blocked(...)``（LLM 可见
+        - ``Intercepted`` → 返回 ``ToolResult.blocked(...)`` （LLM 可见
           形态为 ``[TextBlock(reason)]``），不上抛。
         - ``ToolResult(status="error")`` 是正常产物：LLM 可见、不触发
           任何错误钩子（工具业务错误不走异常通道）。
@@ -3195,10 +3197,10 @@ class Agent:
           ``Tool.__call__`` 不等待，立即产 ``ToolResult(status="pending")``
           收据（经 ``as_message`` 塑形为 ``tool_status="pending"``、
           ``content=[]`` 的 TOOL 消息挂树，配对一次性封闭）；同时给 Task
-          挂 ``add_done_callback``（框架固定行为，非扩展点）。完成回调：
+          挂 ``add_done_callback`` （框架固定行为，非扩展点）。完成回调：
           取终值 → ``normalize_output`` → ``output_to_blocks`` →
-          ``Message(kind=EVENT, source="tool_result", ...,
-          priority=STEER)`` 进队列（长 turn 可达天级，完成推送须即时
+          ``Message(kind=EVENT, source="tool_result", ...)`` 构造
+          STEER 消息进队列（长 turn 可达天级，完成推送须即时
           注入——检查点吸收、当轮 context 可见、不打断）；任务异常 →
           标注块 + 错误文本块（与同步 error 同语义，LLM 可见）。
 
@@ -3232,7 +3234,7 @@ class Agent:
             tool = self.runtime.tool_registry.get(entry.name_ori)   # 按规范名取可执行对象（提前：_normalize 的校验与默认值填充需其 definition.params_schema）
             # _normalize 的 LLM 视角校验失败 -> ToolResult(status="error")
             # 正常产物（错误文本以 LLM 命名空间/别名，LLM 自我修正反馈），
-            # after_tool_call 照常触发；内部校验已迁入 Tool.__call__（S-33），
+            # after_tool_call 照常触发；内部校验已迁入 Tool.__call__，
             # 失败 -> 上抛框架错误通道 + 日志
             try:
                 resolved_args: dict[str, Any] = self._normalize(entry, tool_call, tool)
@@ -3291,7 +3293,7 @@ class Agent:
         """
         # 1. LLM 视角校验（先于一切转换）：校验模型由
         #    entry.llm_definition(self.runtime, self).params_schema 经
-        #    params.schema_to_model 桥接（C-09：推导归属 ToolEntry）；失败 ->
+        #    params.schema_to_model 桥接（推导归属 ToolEntry）；失败 ->
         #    错误文本以 LLM 命名空间进 ToolResult.error（由 tool_call 包装为正常产物）
         #    ——校验模型按 LLM 视图（别名化 + 隐藏参数排除后的 schema）建模，
         #    错误消息的字段名因此天然落在 LLM 命名空间
@@ -3321,7 +3323,7 @@ class Agent:
 
         ``source_file`` 是 ``@/`` 格式字符串，经 ``runtime.resolve_path``
         落地为绝对路径后取 ``.parent``；``source_file`` 为 ``None`` →
-        返回 ``None``（无文件上下文，下游裸名解析退化为纯注册表查询；
+        返回 ``None`` （无文件上下文，下游裸名解析退化为纯注册表查询；
         FILE_REF 用 ``./`` 相对路径时由 ``resolve_path`` 报错）。「文件 →
         所在目录」换算的唯一承担者：``get_tool`` / ``get_agent_class``、
         插件挂载的技能工具、以及 Parsable 的 FILE_REF 求值一律经本方法，
@@ -3336,8 +3338,8 @@ class Agent:
 
         .. rubric:: 功能介绍
 
-        薄委托 ``runtime.tool_registry.get(name_or_path,
-        source_dir=self.source_dir())``——与直接调注册表的区别仅在文件
+        薄委托 ``runtime.tool_registry.get``（``name_or_path`` +
+        ``source_dir=self.source_dir()``）——与直接调注册表的区别仅在文件
         上下文：裸名先查本 Agent 定义文件所在目录的定向文件查找链（文件
         覆盖 ``default::`` / ``builtin::``），``./`` / ``../`` 相对路径
         可用。无文件上下文（``source_file`` 为 ``None``）时退化为纯注册
@@ -3345,11 +3347,11 @@ class Agent:
 
         .. rubric:: 行为要点
 
-        - 未找到 → 抛 :class:`flowing.errors.ToolNotFoundError`（注册表与
+        - 未找到 → 抛 :class:`flowing.errors.ToolNotFoundError` （注册表与
           文件链均不命中）。
 
-        .. seealso:: :meth:`flowing.tool.ToolRegistry.get`（完整解析语义
-            与候选链）、:meth:`get_agent_class`（同构门面）
+        .. seealso:: :meth:`flowing.tool.ToolRegistry.get` （完整解析语义
+            与候选链）、:meth:`get_agent_class` （同构门面）
         """
         return self.runtime.tool_registry.get(name_or_path, source_dir=self.source_dir())
 
@@ -3359,8 +3361,8 @@ class Agent:
 
         .. rubric:: 功能介绍
 
-        薄委托 ``runtime.get_agent_class(agent_type,
-        source_dir=self.source_dir())``——语义与 :meth:`get_tool` 同构
+        薄委托 ``runtime.get_agent_class``（``agent_type`` +
+        ``source_dir=self.source_dir()``）——语义与 :meth:`get_tool` 同构
         （裸名文件链优先、文件覆盖注册表；无文件上下文退化为纯注册表
         查询）。Agent 侧只有 ``get_agent_class``，没有 ``get_agent``——
         取活实例 / 现场恢复统一走
@@ -3368,7 +3370,7 @@ class Agent:
 
         .. rubric:: 行为要点
 
-        - 未找到 → 抛 ``KeyError``（``get_agent_class`` 的失败形态）。
+        - 未找到 → 抛 ``KeyError`` （``get_agent_class`` 的失败形态）。
 
         .. seealso:: :meth:`flowing.runtime.Runtime.get_agent_class`、
             :meth:`flowing.runtime.Runtime.get_agent`
@@ -3398,8 +3400,9 @@ class Agent:
         - ``.fya`` 装配层（主调用方）：``parse_fya`` 产出的 ``EntryRef``
           直接透传——``add_tool(ref)``，此时 ``alias`` / ``body`` 必须缺省
           （与 ``ref`` 自带字段重复 → :class:`flowing.errors.FormatError`）；
-        - 程序化（``setup()`` / 运行期）：``add_tool(name, alias=...,
-          body=...)``，``body`` 与 ``.fya`` 单键映射项的覆写映射同构
+        - 程序化（``setup()`` / 运行期）：调用
+          ``add_tool(name, alias=..., body=...)``，``body`` 与 ``.fya``
+          单键映射项的覆写映射同构
           （键集 ``description`` / ``args`` / ``output`` / ``enabled``；
           旧 ``inject`` 键已删除，注入写 args 里的
           ``"{{ self.inject('key') }}"`` 表达式）；内部经
@@ -3435,15 +3438,15 @@ class Agent:
           上一条报 ``EntryNameConflictError``。
         - body 判别（本方法体内，单点维护）：键集固定为 ``description`` /
           ``args`` / ``output`` / ``enabled``；未知键 →
-          :class:`flowing.errors.FormatError`（含旧 ``inject`` 键——已
+          :class:`flowing.errors.FormatError` （含旧 ``inject`` 键——已
           删除，注入写 args 里的注入表达式）。各键去向：
 
           - ``description`` → ``override_description``；``str`` 构造时包装
             为 :class:`flowing.parsable.Parsable` 常量，``Parsable`` 原样
-            透传，``_``（PENDING）→ 空补丁（视为无覆写）；
+            透传，``_`` （PENDING）→ 空补丁（视为无覆写）；
           - ``args`` → 逐参数判别：dict 值 → ``override_params`` 稀疏补丁
             （JSON Schema 关键字）；键含 ``as`` → ``param_aliases``；
-            ``_`` → 空补丁；其它值 → ``specified``（包装 ``Parsable``，
+            ``_`` → 空补丁；其它值 → ``specified`` （包装 ``Parsable``，
             惰性求值；注入表达式在此落入）；
           - ``output`` → 独立判别分支：值是「字段名 → JSON Schema 定义」
             映射，逐字段并入 ``override_params``，不经过 args 的关键字
@@ -3461,11 +3464,11 @@ class Agent:
           :class:`flowing.errors.ToolNotFoundError`。
 
         :param name: 规范名 / 路径 / ``ns::name`` 引用串，或 ``.fya`` 解析
-            产出的 ``EntryRef``（此时 ``alias`` / ``body`` 必须缺省）。
+            产出的 ``EntryRef`` （此时 ``alias`` / ``body`` 必须缺省）。
         :param alias: LLM 看到的别名；缺省按 ``normalize_entries`` 推断。
         :param body: 覆写映射，与 ``.fya`` 单键映射项的值同构；``None``
             为无覆写。
-        :returns: 新创建的 ``ToolEntry``（便于链式修改，如置 ``enabled``）。
+        :returns: 新创建的 ``ToolEntry`` （便于链式修改，如置 ``enabled``）。
         :raises flowing.errors.ToolNotFoundError: 引用未在注册表 / 查找链。
         :raises flowing.errors.EntryNameConflictError: 同 alias 条目已存在。
         :raises flowing.errors.FormatError: EntryRef 与 ``alias`` / ``body``
@@ -3490,7 +3493,7 @@ class Agent:
                     if tool.registry_key not in (f"default::{ref.raw}", f"builtin::{ref.raw}")
                     else ref.raw)
         key = ref.alias
-        if key in self._tool_entries:   # 同 alias 重复添加 = 笔误（绑定层统一 fail-fast，见行为规约）
+        if key in self._tool_entries:   # 同 alias 重复添加 = 笔误（绑定层统一 fail-fast，见 docstring）
             raise EntryNameConflictError(key, kind="tool")
         # 第 1 步：body 判别（键集校验 + 逐键去向，规则见 docstring；未知键 -> FormatError）
         #   description -> override_description（PENDING->None；str->Parsable 包装；Parsable 透传）
@@ -3521,7 +3524,7 @@ class Agent:
             elif body_key == "enabled":
                 enabled = bool(body_val)
             elif body_key == "inject":
-                # R-4 已删除：注入写 args 里的 "{{ self.inject('key') }}" 表达式
+                # inject 键已删除：注入写 args 里的 "{{ self.inject('key') }}" 表达式
                 raise FormatError("工具覆写体的 inject 键已删除（R-4）：注入请写 "
                                   "args 里的 {{ self.inject('key') }} 表达式")
             else:
@@ -3565,8 +3568,9 @@ class Agent:
           ``EntryRef`` 直接透传——``add_agent(ref)``，此时 ``alias`` /
           ``body`` 必须缺省（与 ``ref`` 自带字段重复 →
           :class:`flowing.errors.FormatError`）；
-        - 程序化（``setup()`` / 运行期）：``add_agent(name, alias=...,
-          body=...)``，``body`` 与 ``.fya`` 单键映射项的覆写映射同构
+        - 程序化（``setup()`` / 运行期）：调用
+          ``add_agent(name, alias=..., body=...)``，``body`` 与 ``.fya``
+          单键映射项的覆写映射同构
           （键集 ``system_prompt`` / ``description`` / ``args`` /
           ``enabled``——无 ``output``：输出 schema 覆写是 Tool 面概念；
           无 ``inject`` 键，注入写 args 里的
@@ -3584,7 +3588,7 @@ class Agent:
           （绑定层统一 fail-fast，与 tool / skill 同口径）。
         - body 判别（本方法体内，单点维护）：键集固定为 ``system_prompt`` /
           ``description`` / ``args`` / ``enabled``；未知键 →
-          :class:`flowing.errors.FormatError`（含旧 ``inject`` 键，已删除）。
+          :class:`flowing.errors.FormatError` （含旧 ``inject`` 键，已删除）。
           各键去向：
 
           - ``system_prompt`` → ``override_system_prompt``；``str`` 包装为
@@ -3596,7 +3600,7 @@ class Agent:
             实例；
           - ``args`` → 逐参数判别（规则同 ``add_tool``）：dict 值 →
             ``override_params``；键含 ``as`` → ``param_aliases``；``_`` →
-            空补丁；其它值 → ``specified``（包装 Parsable，
+            空补丁；其它值 → ``specified`` （包装 Parsable，
             ``invoke_subagent()`` 内以父 Agent 实例上下文求值）。差异：
             ``inject`` 目标是子 Agent 初始化参数而非 ``execute()`` 参数；
           - ``enabled`` → 布尔原样。
@@ -3609,7 +3613,7 @@ class Agent:
           （条目表由声明 / ``setup()`` 重建）。
 
         :param name: 引用串（全形态，见上）或 ``.fya`` 解析产出的
-            ``EntryRef``（此时 ``alias`` / ``body`` 必须缺省）。
+            ``EntryRef`` （此时 ``alias`` / ``body`` 必须缺省）。
         :param alias: catalog 与 ``invoke_subagent`` 用的别名；缺省按
             ``normalize_entries`` 推断。
         :param body: 覆写映射，与 ``.fya`` 单键映射项的值同构。
@@ -3620,7 +3624,7 @@ class Agent:
         :raises KeyError: 引用在注册表与文件链均不命中。
 
         .. seealso:: :class:`flowing.subagents.SubagentEntry`、
-            :meth:`invoke_subagent`、:meth:`add_tool`（同构管线）
+            :meth:`invoke_subagent`、:meth:`add_tool` （同构管线）
         """
         # 第 0 步：归一为 EntryRef（唯一构造通道 = normalize_entries）
         if isinstance(name, EntryRef):
@@ -3732,7 +3736,7 @@ class Agent:
         .. seealso:: :meth:`provide`、:func:`flowing.provide.inject_from`、
             :class:`flowing.params.InjectionKey` —— 类型安全键。
         """
-        # 统一上溯算法 = flowing.provide.inject_from（S-43 裁决①后 canonical home；
+        # 统一上溯算法 = flowing.provide.inject_from（canonical home；
         # 经 flowing.runtime 再导出亦有效）
         return inject_from(self.runtime, self, key)   # 链底仍无 -> MissingProvideError(key)
 
@@ -3788,8 +3792,9 @@ class Agent:
           时 watcher 不触发（赋值照常）。
         - ``handler=None`` 时返回装饰器（``@self.watch("x")`` 写法）；
           否则注册并原样返回 handler。
-        - 监听的是赋值事件本身，不监听解析值变化：``self.c =
-          Parsable("{{ a == b }}")`` 后改 ``a`` 不触发 ``watch("c")``；
+        - 监听的是赋值事件本身，不监听解析值变化：
+          ``self.c = Parsable("{{ a == b }}")`` 后改 ``a`` 不触发
+          ``watch("c")``；
           重新赋值（换 Parsable、赋非 Parsable 值、赋 ``_``）才触发。
         - 需要完整值对象时，直接经 ``self.hooks.watch`` 注册
           ``(agent, fu)`` 形态的 watcher。
@@ -3816,7 +3821,7 @@ class Agent:
 
         .. rubric:: 行为要点
 
-        - 顺序：构造 :class:`FieldUpdate`（``name`` / ``old`` / ``new``
+        - 顺序：构造 :class:`FieldUpdate` （``name`` / ``old`` / ``new``
           快照）→ fire-and-forget 通知 watcher 通道（不 await）→ 执行
           写入。赋值语义不受 watcher 影响：无改写、无取消、异常不上抛。
         - 不再拦截状态键：经 ``agent.xxx = v`` 写已注册状态键落普通实例
@@ -3832,7 +3837,7 @@ class Agent:
           ``super().__init__()`` 赋值）→ 跳过 dispatch，落普通实例属性。
         - 边缘情况：handler 内再次给同名字段赋值造成递归 dispatch——
           框架不做递归防护，属编程错误。
-        - ``model_tag`` 赋值会触发重新解析并覆盖 ``self.model``（只能
+        - ``model_tag`` 赋值会触发重新解析并覆盖 ``self.model`` （只能
           指向配置已定义模型）；改标签触发的换模型不再二次触发 model
           字段的 watcher（一次语义事件 = 改标签）。
 
@@ -3841,7 +3846,7 @@ class Agent:
         if not name.startswith("_"):   # 仅实例属性赋值触发；_ 前缀骨架字段初始化不经过本机制
             old: Any = getattr(self, name, None)   # 字段不存在时规约为 _UNSET 哨兵（flowing.parsable）
             fu = FieldUpdate(name=name, old=old, new=value)   # 写入前构造快照
-            # 护栏（P3-03）：hooks 未建立（管线第 2 步预绑 node_id/runtime
+            # 护栏：hooks 未建立（管线第 2 步预绑 node_id/runtime
             # 早于 __init__）时只经 __dict__.get 探查，缺失即跳过——骨架期
             # 赋值本就不产生观测事件
             hooks = self.__dict__.get("hooks")
@@ -3889,7 +3894,7 @@ class Agent:
         框架不为 Parsable 做隐式解包——``_extra`` / entry 覆写等求值面外
         位置拿到的 Parsable 需手动 ``.resolve(context)``。
 
-        .. seealso:: :class:`flowing.parsable.Parsable`（五形式与两步渲染）
+        .. seealso:: :class:`flowing.parsable.Parsable` （五形式与两步渲染）
         """
         p = Parsable(source)
         p._instance = self   # 绑定渲染上下文（内部字段，见 flowing.parsable 内部 API 清单）
@@ -3919,7 +3924,7 @@ class Agent:
 
         - 只读：修改返回对象不影响 Agent；字段为拷贝或 Info 视图。
         - 一致性：单次调用内各字段取同一时刻的读值。
-        - ``keys``：``None``（默认）收集全部切面；指定时只收集指定字段
+        - ``keys``：``None`` （默认）收集全部切面；指定时只收集指定字段
           （其余为 ``None``——如不需要 ``context_usage`` 的锚点扫描开销，
           可不收它）。需要多切面同一时刻一致 → 同一次调用传入全部所需
           key。
@@ -3987,34 +3992,14 @@ class Agent:
     # ────────────────────────── 工作循环与逻辑 Turn（内部） ─────────────────
 
     async def _work_loop(self) -> None:
-        """常驻消息工作循环（每个 Agent 一个 Task）。
+        """常驻消息工作循环（每个 Agent 一个 Task；内部 API）。
 
-        **内部 API，不属稳定契约。**
-
-        .. rubric:: 行为规约
-
-        .. code-block:: python
-
-            while True:
-                await self._pause_gate.wait()      # 检查点 ①：dequeue 前（仅 pause）
-                msgs = await self._dequeue()       # list[Message]（可覆写）
-                waiters = [self._pending_turns.pop(m.id, None) for m in msgs]
-                await self._run_turn(msgs, waiters)
-
-        - 启动时机：``after_create`` / ``after_recover`` 完成即启动；
-          ``destroy()`` 时取消。消费保证：入队即会被消费。
-        - 串行：一个 Agent 一个工作循环、同一时刻一个逻辑回合；活跃回合
-          中入队的消息自然排队。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.agent.Agent._dequeue()`` 与
-          ``flowing.agent.Agent._run_turn()``（时机：每轮循环）、
-          ``_pause_gate.wait()``（检查点 ①）
-        - 被调：创建 / 恢复管线（时机：``after_create`` /
-          ``after_recover`` 完成即启动常驻 Task；``destroy()`` 时取消）
-
-        .. seealso:: :meth:`_dequeue`、:meth:`_run_turn`
+        循环：等待工作循环 gate → 出队（:meth:`_dequeue`，可覆写）→ 把
+        出队消息的等待者从 ``_pending_turns`` 摘出 → 执行一个逻辑回合
+        （:meth:`_run_turn`）。回合异常记录日志后继续循环（waiters 已由
+        回合收尾喂饱）。启动时机：``after_create`` / ``after_recover``
+        完成即启动；``destroy()`` 时取消。串行：同一时刻一个逻辑回合，
+        活跃回合中入队的消息自然排队。
         """
         while True:
             await self._pause_gate.wait()      # 检查点 ①：dequeue 前（仅 pause）
@@ -4030,44 +4015,17 @@ class Agent:
                 _logger.exception("agent %s: turn crashed", self.node_id)
 
     async def _dequeue(self) -> list[Message]:
-        """出队扩展点：核心默认**一条**，可覆写实现 drain / 合并策略。
+        """出队扩展点：核心默认一条，可覆写实现 drain / 合并策略（内部 API）。
 
-        **内部 API，不属稳定契约。**
+        默认实现：阻塞到队列非空 → dispatch ``before_dequeue`` → 非阻塞
+        取一条（返回 ``None`` = 钩子在此窗口扔掉了消息 → 重新等待并再次
+        派发 before）→ dispatch ``after_dequeue`` （可变换返回的消息列表）。
 
-        .. rubric:: 行为规约
-
-        - 默认实现（R-13 裁决：「等消息」与「取消息」拆分）：
-          ``await self._message_queue.wait_not_empty()``（阻塞到队列非空）
-          → dispatch ``before_dequeue``（此刻确实即将出队）→
-          ``self._message_queue.dequeue_nowait()``（非阻塞取；**返回
-          ``None`` = 钩子在此窗口扔掉了消息**（``cancel_queued`` /
-          ``remove``）→ 回到等待、重新派发 before——每条真正出队的
-          消息之前恰好一次 before 派发）→ dispatch ``after_dequeue``
-          （可**变换**返回的消息列表）。
-        - 覆写管「多条 / 策略」（``drain_all()`` / ``take_while()`` 合并、
-          批量、按来源分组），钩子管「观察 / 变换」——分工不混。
-        - 覆写批量后核心通用收尾天然兼容（resolve 回合内所有等待者，
-          共享同一 ``TurnResult``）。
-
-        .. rubric:: 使用示例
-
-        .. code-block:: python
-
-            def use_message_drain(agent):
-                async def _drain_dequeue():
-                    return await agent._message_queue.drain_all()
-                agent._dequeue = _drain_dequeue
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``before_dequeue`` / ``after_dequeue`` dispatch 与
-          ``flowing.message.MessageQueue.dequeue()``（时机：默认实现
-          每次出队）
-        - 被调：``flowing.agent.Agent._work_loop``（时机：每轮循环）
-
-        .. seealso:: :class:`flowing.message.MessageQueue`、:meth:`_work_loop`
+        覆写管「多条 / 策略」（``drain_all()`` 合并、批量、按来源分组），
+        钩子管「观察 / 变换」——分工不混。覆写批量后核心通用收尾天然兼容
+        （resolve 回合内所有等待者，共享同一 ``TurnResult``）。
         """
-        while True:   # R-13：等消息与取消息拆分；钩子扔消息则重新等待
+        while True:   # 等消息与取消息拆分；钩子扔消息则重新等待
             await self._message_queue.wait_not_empty()   # 阻塞到非空
             await self.hooks.before_dequeue.dispatch(self)   # 即将出队时派发（观察队列，无 value）
             msg = self._message_queue.dequeue_nowait()   # 非阻塞取；None = 钩子扔掉了 -> 重等
@@ -4081,123 +4039,43 @@ class Agent:
         msgs: list[Message],
         waiters: list[asyncio.Future[TurnResult] | None],
     ) -> None:
-        """逻辑 Turn 执行主体（消息级完整时序）。
+        """逻辑 Turn 执行主体（内部 API；消息级完整时序）。
 
-        **内部 API，不属稳定契约。**
+        时序（顺序为不变量）：创建 ``TurnContext`` → 把
+        ``current_turn`` 置为本回合载体 → 新建回合退出信号 →
+        ``turn.pending_messages = msgs`` （出队
+        批次暂存，未挂树）→ dispatch ``before_turn`` （可改写
+        ``pending_messages``——追加为附加式注入；``raise Intercepted``
+        硬阻断则批次全部丢弃、不落盘）→ 批次逐条经 :meth:`_append_message`
+        挂树 → 内层循环：检查点（pause 在前、abort 判定在后）→ urgent
+        吸收（``INTERRUPT`` 在队首则连 drain ``INTERRUPT`` + ``STEER``
+        两带挂树并 ``abort_turn()``；仅 ``STEER`` 在队首则只 drain STEER
+        挂树、不 abort，当轮 context 可见）→ ``_assemble_context`` →
+        ``provider_gen`` （异常 → 构造 ``ProviderErrorContext`` → dispatch
+        ``on_provider_error`` → ``can_continue=False`` 则 break，``True``
+        则 continue；``ContextLengthError`` 不经过该钩子直接上抛）→ 响应
+        消息挂树 → 工具调用循环（同一响应内全部 ``tool_call`` 并行执行，
+        批次前同一 pause/abort 检查点）→ ``response.finish`` 或
+        ``finish_output`` 置位则 break。三处 abort 判定互斥（各自随即
+        break）且 ``turn.aborted`` 幂等置位，``before_turn_abort`` 每回合
+        至多触发一次。
 
-        .. rubric:: 行为规约（时序不变量）
-
-        1. 创建 ``TurnContext`` → ``self.current_turn = turn``（标记回合
-           物质存活）→ 新建 ``self._turn_abort`` →
-           ``turn.pending_messages = msgs``（出队批次暂存，**未挂树**）。
-        2. dispatch ``before_turn``（value 为 ``TurnContext``）：handler 可读 /
-           改写 ``turn.pending_messages``——追加 reminder 为**附加式**（排在
-           触发消息之后，随批次一起挂树持久化）；handler ``raise
-           Intercepted`` 硬阻断本回合，``pending_messages`` **全部丢弃**
-           （不落盘、不留痕——M-29 后续裁决：出队后挂树前中断 = 丢弃刚出队
-           的消息，此丢失语义为显式契约；崩溃落在同一窗口同理）。
-        3. ``pending_messages`` 逐条经 :meth:`_append_message` 挂树（是树节点，
-           不再是「turn 内部首元素」；各条照常触发 ``before_turn_append``）；
-           挂毕 ``pending_messages`` 清空。
-        4. 内层循环 ``while True``：
-
-           - **检查点 ②（provider_gen 前）**：``await self._pause_gate.wait()``
-             **在前**，``_turn_abort.is_set()`` 判定**在后**（置位则幂等
-             置位 ``turn.aborted`` → dispatch ``before_turn_abort`` →
-             ``break``）。
-           - **检查点 ②.5（urgent 吸收，夹在 ② 的 pause 与 abort 判定
-             之间）**：``peek(INTERRUPT)`` 命中 → ``take_while`` 连 drain
-             ``INTERRUPT``+``STEER`` 两带（优先级有序保证二者构成队首
-             连续段），逐条 ``_append_message`` 挂树（其等待者从
-             ``_pending_turns`` 并入本回合 waiters，收尾共享本回合
-             ``TurnResult``）→ ``self.abort_turn()`` 置 Event，由紧随的
-             abort 判定统一收口；否则 ``peek(STEER)`` 命中 → 仅 drain
-             ``STEER`` 这一优先级带、挂树**不** abort——紧随的
-             ``_assemble_context`` 当轮即可见这些消息。②.5 吸收的消息
-             **不经过** ``before_turn``——这不构成拦截绕过：Guardrail 类
-             内容审核/速率拦截的位置在**入队时**的 ``before_enqueue``
-             （一切入队消息的必经闸），``before_turn`` 只管「出队批次的
-             附加注入与整批阻断」，两类闸门分工不同。
-           - ``context = self._assemble_context()``；``response = await
-             self.provider_gen(context)``；异常 → 构造 ``ProviderErrorContext`` →
-             dispatch ``on_provider_error`` → ``can_continue=False`` 则
-             ``break``，``True`` 则 ``continue``（handler 内已 sleep /
-             改模型 / ``abort_turn()``）。
-           - ``response.message is not None`` → ``_append_message``。
-           - ``response.cancelled or _turn_abort.is_set()`` →
-             幂等置位 ``turn.aborted`` → dispatch ``before_turn_abort`` →
-             ``break``（cancelled 也走 abort 路径）。
-           - 工具调用循环（并行版）：收集本响应的全部 ``tool_call``
-             block；**并行批次前是检查点 ③**（pause 在前、abort 在后；
-             置位则幂等置位 ``turn.aborted`` → dispatch
-             ``before_turn_abort`` → 跳过本批全部工具）；非 ``tool_call``
-             block 跳过；对全部 ``tool_call`` 以 ``asyncio.gather`` 并行
-            执行 :meth:`tool_call`，随后按响应中的原始顺序逐条
-             ``result.as_message(tc.id)`` → ``_append_message`` 挂树。
-             finish 置位转移检测在并行块收口后统一处理（同一批内多个工具
-             置位 ``finish_output`` 时，仅首个在原始顺序中触发置位的 TOOL
-             消息标 ``turn_end=True``）。
-           - ``response.finish or turn.finish_output is not None`` →
-             ``break``（自然结束；后者 = finish 工具置位——工具段已照常
-             执行完，同响应的并行工具不受影响）。
-
-           ``before_turn_abort`` 每回合至多触发一次：三处 abort 判定互斥
-           （各自随即 ``break``），且 ``turn.aborted`` 幂等置位。
-
-        5. ``finally``（所有路径——释放回合身份牌先于一切钩子）：
-           ``current_turn = None``（回合物质终结；钩子抛异常不再楔死
-           agent。head 随每条消息挂树即时前移，回合末无结算写入；
-           空 turn 无 append，head 自然不动）→ dispatch ``after_turn``
-           （所有路径**唯一**收尾观察点——``after_turn_abort`` /
-           ``after_turn_finished`` 已删除：路径分流由 handler 读
-           ``turn.aborted`` 承担，「最后一刻」无具名场景支撑，不为
-           无场景的区分预留钩子点）→ ``result = build_turn_result(
-           turn, self, intercepted=..., error=...)``（S-28：拦截/异常
-           信号由 except 帧显式传入）→ **写 ``self.last_result``**
-           （``turn.finish_output`` 非 None → 该 dict；否则
-           ``result.final_text or None``——在 resolve waiters 之前，
-           等待方醒来即见本轮产物；abort/cancel/error 同样覆写）→
-           遍历 waiters，
-           ``fut is not None and not fut.done()`` → ``set_result``
-           （drain 合并共享同一 ``TurnResult``）。
-
-        .. rubric:: 边缘情况
-
-        - 空 Turn（启动即 abort）：不产生
-          新树节点，``current_head_id`` 不变。
-        - 异步工具：对 Turn 循环完全透明——「消息来得晚一些」。
-        - 子 Agent = 特殊工具调用：同步阻塞等结果或异步收据 + EVENT
-          消息，两种模式对父 Turn 循环同构。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.agent.TurnContext`` 构造、
-          ``flowing.agent.Agent._append_message()``、
-          ``flowing.agent.Agent._assemble_context()``、
-          ``flowing.agent.Agent.provider_gen()``、
-          ``flowing.agent.Agent.tool_call()``、
-          ``flowing.agent.Agent.abort_turn()``（时机：检查点 ②.5 吸收到
-          ``INTERRUPT`` 消息时）、``flowing.message.MessageQueue.peek()``
-          / ``take_while()``（时机：检查点 ②.5 urgent 吸收）、
-          ``flowing.agent.build_turn_result()`` 与 turn 族钩子 dispatch
-          （含 ``before_turn_abort``，时机：均见本方法时序不变量）
-        - 被调：``flowing.agent.Agent._work_loop``（时机：每批出队
-          消息）
-
-        .. seealso::
-
-            - :meth:`_append_message` —— 挂树 + 落盘统一入口（五步）。
-            - :meth:`provider_gen` / :meth:`_assemble_context` —— 内循环两步。
-            - :class:`TurnContext` —— 执行期载体。
+        ``finally`` （所有路径）：``current_turn = None`` （释放回合身份牌
+        先于一切钩子）→ dispatch ``after_turn`` （所有路径唯一收尾观察点；
+        handler 读 ``turn.aborted`` 分流）→ ``build_turn_result`` 组装 →
+        写 ``self.last_result`` → resolve 全部 waiters（共享同一
+        ``TurnResult``）。``after_turn`` handler 异常不中断 waiters 交付
+        ——捕获后先喂饱再原样上抛；异常路径交付的 ``result.turn`` 为合成
+        空载体（不暴露真实 turn）。
         """
         # 1. 创建 TurnContext
         turn = TurnContext(started_at=datetime.now(), message_ids=[])
         self.current_turn = turn   # 标记回合物质存活
         self._turn_abort = asyncio.Event()   # 每个逻辑 Turn 独立新建
         turn.pending_messages = msgs   # 出队批次暂存（未挂树）
-        intercepted = False                    # S-28：结局信号由 except 帧显式
+        intercepted = False                    # 结局信号由 except 帧显式
         error: BaseException | None = None     # 传入 build_turn_result，不落 TurnContext
-        last_stop_reason = ""   # R-09：末次 provider_gen 响应的原始停止原因（completed 结局的 finish_reason 来源）
+        last_stop_reason = ""   # 末次 provider_gen 响应的原始停止原因（completed 结局的 finish_reason 来源）
         try:
             # 2. before_turn（附加式注入 / Intercepted 阻断）；
             # 异常路径：Intercepted -> pending_messages 全部丢弃不落盘（显式
@@ -4227,7 +4105,7 @@ class Agent:
                         waiters.append(self._pending_turns.pop(m.id, None))
                         await self._append_message(m, turn)
                 if self._turn_abort.is_set():
-                    turn.aborted = True   # 幂等置位（C-03 裁决：不立 _mark_abort 方法，语义即此布尔赋值）
+                    turn.aborted = True   # 幂等置位（语义即此布尔赋值）
                     await self.hooks.before_turn_abort.dispatch(self, turn)   # abort 判定收口处统一触发（每回合至多一次）
                     break
                 context = self._assemble_context()
@@ -4245,11 +4123,11 @@ class Agent:
                     continue    # handler 已完成退避/换模型/abort_turn()
                 if response.message is not None:
                     if response.message.usage is not None:
-                        # S-13：turn 级用量累加（追加消息上同一 Usage 对象的
+                        # turn 级用量累加（追加消息上同一 Usage 对象的
                         # 引用，收尾由 build_turn_result 聚合；ProviderResponse
                         # 不携带 usage，消息是唯一载体）
                         turn.usages.append(response.message.usage)
-                    # S-14：turn_end 由 agent 层写入——turn 随本条消息关闭
+                    # turn_end 由 agent 层写入——turn 随本条消息关闭
                     #（自然 finish 或取消/abort）→ True；provider 的 finish
                     # 只是关闭原因之一，adapter 不写 turn_end；finish 工具
                     # 置位路径的 turn_end 落在其配对 TOOL 消息上（见下
@@ -4257,7 +4135,7 @@ class Agent:
                     #（已挂树落盘）
                     response.message.turn_end = response.finish or response.cancelled
                     await self._append_message(response.message, turn)
-                last_stop_reason = response.provider_data.get("stop_reason", "")   # R-09：completed 结局的 finish_reason 来源
+                last_stop_reason = response.provider_data.get("stop_reason", "")   # completed 结局的 finish_reason 来源
                 if response.cancelled or self._turn_abort.is_set():
                     turn.aborted = True   # cancelled 也走 abort 路径
                     await self.hooks.before_turn_abort.dispatch(self, turn)
@@ -4307,7 +4185,7 @@ class Agent:
                     break
                 if response.finish or turn.finish_output is not None:
                     break   # 自然结束（含 finish 置位：工具段照常执行完再收尾）
-        except Intercepted:   # S-28：拦截走异常通道（捕获结局信号）
+        except Intercepted:   # 拦截走异常通道（捕获结局信号）
             intercepted = True
             raise   # 异常继续上抛（waiters 已由 finally 的 set_result 喂饱）
         except Exception as exc:
@@ -4331,7 +4209,7 @@ class Agent:
                 turn.finished_at = datetime.now()
                 result = build_turn_result(turn, self, intercepted=intercepted,
                                            error=error,
-                                           finish_reason=last_stop_reason)   # S-28：信号显式传参（R-09：completed 结局的 stop_reason 同通道）
+                                           finish_reason=last_stop_reason)   # 信号显式传参（completed 结局的 stop_reason 同通道）
                 if not expose_turn:
                     # 异常路径（after_turn 钩子崩）：不暴露真实 turn 对象——
                     # 收尾期间崩过，调用方不应拿到可回溯树/读钩子状态的执行期
@@ -4355,7 +4233,7 @@ class Agent:
             # 5b. 观察钩子：turn 对象作为 value 照常传入（身份释放 ≠ 产物消失；
             # handler 契约 (agent, value) 不受影响；此期间 agent.current_turn
             # 已为 None，绕开 value 读它的写法会看到空闲）
-            # 已知边界修复（2026-08-31 裁决）：after_turn handler 异常不得
+            # 已知边界修复：after_turn handler 异常不得
             # 中断 waiters 交付——捕获后先喂饱再**原样上抛**（except 块内裸
             # raise 保留 handler 内层 traceback；普通异常落 _work_loop 的
             # turn crashed 日志，CancelledError 照常传播）；异常路径交付
@@ -4368,36 +4246,15 @@ class Agent:
             _finish()
 
     async def _append_message(self, msg: Message, turn: TurnContext) -> None:
-        """消息级持久化统一入口：turn 钩子 + :meth:`push` + turn 记账。
+        """消息挂树 + 落盘统一入口（内部 API）。
 
-        **内部 API，不属稳定契约。**
-
-        .. rubric:: 行为规约
-
-        时序：dispatch ``before_turn_append``（可改写 / ``Intercepted``）
-        → :meth:`push`（核心写路径：① 设 ``parent_id = current_head_id``
-        → ② 挂入 ``_messages`` → ③ ``_persist_message`` 落盘 → ④
-        ``current_head_id`` 前移）→ ⑤ ``turn.message_ids.append(msg.id)``
-        （记 turn 索引）→ dispatch ``after_turn_append``（观察；此后改写
-        不进树——消息已落盘）。
-
-        - **消息完整后才经过本方法**——流式进行中的增量（尚未定型为
-          消息的 delta 累积态）不经过它，天然不落盘（持久化时机的
-          自然结果，非主动丢弃）；流式被中断时，已累积内容定型为
-          一条 ``partial=True`` 的完整消息，照常挂树落盘。
-        - 副线（``side_query``）消息不经过本方法（副线不挂树不落盘）。
-        - ``push`` 不 dispatch turn 钩子、不写 ``turn.message_ids``，
-          由本方法补齐这两部分。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``before_turn_append`` / ``after_turn_append`` dispatch、
-          :meth:`push`（时机：见本方法时序规约）
-        - 被调：``flowing.agent.Agent._run_turn``（时机：挂树批次与
-          内层循环每条完整消息）
-
-        .. seealso:: :meth:`push`、:meth:`_persist_message`、
-            :attr:`current_head_id`
+        时序：dispatch ``before_turn_append`` （可改写 / ``Intercepted``）
+        → :meth:`push` （设 ``parent_id = current_head_id`` → 挂入
+        ``_messages`` → 落盘 → head 前移）→ ``turn.message_ids.append``
+        → dispatch ``after_turn_append`` （观察；此后改写不进树——消息已
+        落盘）。消息完整后才经过本方法——流式进行中的增量不经过它，天然
+        不落盘；流式被中断时，已累积内容定型为一条 ``partial=True`` 的
+        完整消息，照常挂树落盘。副线（``side_query``）消息不经过本方法。
         """
         msg = await self.hooks.before_turn_append.dispatch(self, msg)   # 可改写 / Intercepted
         self.push(msg)                             # 核心写路径：parent_id → _messages → 落盘 → head 前移
@@ -4405,37 +4262,14 @@ class Agent:
         await self.hooks.after_turn_append.dispatch(self, msg)   # 观察（此后改写不进树）
 
     def _persist_message(self, msg: Message) -> None:
-        """提交一条完整消息落盘（write-behind：同步排队即返）。
+        """提交一条完整消息落盘（内部 API；write-behind：同步排队即返）。
 
-        **内部 API，不属稳定契约。**
-
-        .. rubric:: 行为规约
-
-        序列化 ``msg`` 为消息行（含 ``id`` / ``parent_id`` /
-        ``turn_end`` / ``partial`` 等）→ ``self._tree_store.submit(行)``
-        ——**同步返回不代表已落盘**（契约①「产生即排队」）。墓碑阈值压缩
-        不再由本方法触发——它是 :class:`flowing.persistence.FileRecordStore`
-        drain 任务在「队列排空后」的自主行为（S-31 裁决；append-only
-        约束与崩溃安全语义不变，见
-        :mod:`flowing.persistence` 模块规约）。
-
-        - poison 传染：store 已进入 poison 态时本方法**同步重抛**首次
-          落盘异常（错误在挂树现场爆出，而非静默分叉）。
-        - 副线（``side_query``）消息不经过本方法（不落盘语义不变）。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.persistence.RecordStore.submit()``（时机：
-          每次提交；序列化 ``msg`` 为消息行 dict）
-        - 被调：``flowing.agent.Agent._append_message``（时机：五步
-          第 ③ 步）、``flowing.message.MessageChain.insert`` /
-          ``branch``（时机：手术新增消息行）
-
-        .. seealso::
-
-            - :meth:`_append_message` —— 调用方（五步规约）。
-            - :meth:`_persist_tree_record` —— 变更记录行通道（对偶）。
-            - :class:`flowing.persistence.RecordStore` —— 落盘后端。
+        序列化 ``msg`` 为消息行（含 ``id`` / ``parent_id`` / ``turn_end`` /
+        ``partial`` 等）→ ``self._tree_store.submit(行)``——同步返回不代表
+        已落盘（产生即排队）。墓碑压缩由 ``FileRecordStore`` drain 任务在
+        队列排空后自主触发。store 已进入 poison 态时本方法同步重抛首次
+        落盘异常（错误在挂树现场爆出，而非静默分叉）。副线消息不经过
+        本方法。
         """
         # 序列化 msg 为消息行 dict -> self._tree_store.submit(行)
         # （同步排队即返；poison 态时 submit 重抛首次落盘异常）
@@ -4443,89 +4277,33 @@ class Agent:
         self._tree_store.submit(to_record(msg))
 
     def _persist_tree_record(self, record: dict) -> None:
-        """提交一条**变更记录行**落盘（tombstone / update / move /
-        邻接调整；write-behind 同步排队）。
+        """提交一条变更记录行落盘（内部 API；tombstone / update / move）。
 
-        **内部 API，不属稳定契约。**
-
-        .. rubric:: 功能介绍
-
-        :class:`flowing.message.MessageChain` 五 op 的落盘通道（S-31
-        裁决新增）：与 :meth:`_persist_message` 共用同一
-        ``_tree_store`` 队列——消息行与变更行在同一 FIFO 中按提交序
-        落盘，重放时按行序应用（消息行建树、变更行做手术）。
-
-        .. rubric:: 行为规约
-
-        - ``record`` 约定字段：``{"type": "tombstone", "id": ...}`` /
-          ``{"type": "update", "id": ..., "content": [...]}`` /
-          ``{"type": "move", "id": ..., "parent_id": ...}``；
-          ``insert`` 的邻接调整对被重挂的每个子消息各提交一条
-          ``move`` 行。
-        - 排队语义 / poison 重抛与 :meth:`_persist_message` 相同
-          （同一 store，同一契约）。
-        - 非行为：不校验 record 语义（哪条消息该删、环检测等是
-          ``MessageChain`` 的职责）；不改变内存权威（op 已先改内存）。
-
-        .. rubric:: 测试案例
-
-        - ``chain.remove("m2")`` → drain 后文件尾部含 tombstone 行；
-          重放后权威链不含 ``m2``。
-        - ``chain.reparent("m4", to="m1")`` → 文件尾部含 move 行；
-          重放后 ``m4.parent_id == "m1"``。
-        - poison：注入落盘异常后调 ``chain.update(...)`` → 期望：
-          同步重抛同一异常。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.persistence.RecordStore.submit()``（时机：
-          每次变更记录提交）
-        - 被调：``flowing.message.MessageChain.remove`` / ``update`` /
-          ``reparent`` / ``insert``（邻接调整）（时机：五 op 完成内存
-          修改后）
-
-        .. seealso:: :meth:`_persist_message`（消息行通道）、
-            :class:`flowing.message.MessageChain`（变更行的产生者）。
+        :class:`flowing.message.MessageChain` 五 op 的落盘通道：与
+        :meth:`_persist_message` 共用同一 ``_tree_store`` 队列——消息行与
+        变更行在同一 FIFO 中按提交序落盘，重放时按行序应用。``record``
+        约定字段：``{"type": "tombstone", "id": ...}`` /
+        ``{"type": "update", "id": ..., "content": [...]}`` /
+        ``{"type": "move", "id": ..., "parent_id": ...}``；``insert`` 的
+        邻接调整对被重挂的每个子消息各提交一条 ``move`` 行。排队语义 /
+        poison 重抛与 :meth:`_persist_message` 相同。不校验 record 语义
+        （哪条消息该删、环检测等是 ``MessageChain`` 的职责）；不改变内存
+        权威（op 已先改内存）。
         """
         self._tree_store.submit(record)   # 与消息行同一 FIFO，按提交序落盘
 
     def _render_subagent_catalog(self) -> str:
-        """渲染 ``<available_subagents>`` catalog 块（子智能体 catalog 的
-        唯一渲染槽位）。
+        """渲染 ``<available_subagents>`` catalog 块（内部 API）。
 
-        **内部 API，不属稳定契约。**
-
-        .. rubric:: 功能介绍
-
-        对每个 ``enabled=True`` 的
-        :class:`flowing.subagents.SubagentEntry` 调
+        对每个 ``enabled=True`` 的子 Agent 绑定条目调
         :meth:`flowing.subagents.SubagentEntry.catalog_view` 在 Python 侧
         预计算视图 dict，再经模板一次性渲染（模板只负责排布）。模板取
-        ``getattr(self, "subagent_catalog_template", None) or
-        DEFAULT_SUBAGENT_CATALOG_TEMPLATE``——Agent 对象自己有
-        ``subagent_catalog_template`` 属性则用其值，否则用内置缺省。
-
-        .. rubric:: 行为规约
-
-        - 无 ``enabled=True`` 条目 → 返回 ``""``（整块不注入）。
-        - 渲染经 Parsable TEMPLATE 语义（include 基准为本 Agent 的
-          ``source_dir``，P3-08）；渲染异常 fail-fast 上抛，不静默降级。
-        - 每次调用现场渲染，无缓存（``cache="dynamic"`` 语义——enabled
-          状态与覆写运行时可变）。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.subagents.SubagentEntry.catalog_view()``（时机：
-          每个 ``enabled=True`` 条目）；``self.parsable(...).resolve(...)``
-          （时机：模板渲染，上下文 ``{"entries": views, "agent": self}``）
-        - 被调：``flowing.agent.Agent._assemble_context`` 的子智能体
-          catalog 块（时机：每次上下文组装现场渲染，
-          ``cache="dynamic"`` 语义）
-
-        .. seealso::
-
-            :data:`flowing.subagents.DEFAULT_SUBAGENT_CATALOG_TEMPLATE`、
-            :attr:`subagent_catalog_template`。
+        模板取 ``subagent_catalog_template`` 属性（缺失时回退
+        ``DEFAULT_SUBAGENT_CATALOG_TEMPLATE``）。无 ``enabled=True``
+        条目 →
+        返回 ``""`` （整块不注入）。渲染经 Parsable TEMPLATE 语义（include
+        基准为本 Agent 的 ``source_dir``）；渲染异常 fail-fast 上抛，不
+        静默降级。每次调用现场渲染，无缓存。
         """
         views: list[dict[str, Any]] = [
             entry.catalog_view(self)   # Python 侧预计算视图（description/params_xml 已解析）
@@ -4538,60 +4316,32 @@ class Agent:
             getattr(self, "subagent_catalog_template", None)   # Agent 级覆写槽位（类属性 / fya 同名字段落入实例属性或 _extra，getattr 同样命中）
             or DEFAULT_SUBAGENT_CATALOG_TEMPLATE
         )
-        return self.parsable(template).resolve({"entries": views, "agent": self})   # Parsable TEMPLATE 语义，include 基准 source_dir（P3-08）；渲染异常 fail-fast 上抛
+        return self.parsable(template).resolve({"entries": views, "agent": self})   # Parsable TEMPLATE 语义，include 基准 source_dir；渲染异常 fail-fast 上抛
 
     def _assemble_context(self) -> Context:
-        """组装 ``Context``：每次调用现场求值（无缓存）。
+        """组装 ``Context`` （内部 API；每次调用现场求值，无缓存）。
 
-        **内部 API，不属稳定契约。**
+        四部分（``Context`` 不是扁平消息列表）：
 
-        .. rubric:: 行为规约
-
-        三部分（``Context`` 不是扁平消息列表）：
-
-        1. 遍历 ``prompt_blocks``（跳过 ``enabled=False``）逐块
-           ``resolve()`` → ``list[PromptSegment]``（保留 cache 标记——
+        1. 遍历 ``prompt_blocks`` （跳过 ``enabled=False``）逐块
+           ``resolve()`` → ``list[PromptSegment]`` （保留 cache 标记——
            仅是 adapter 意图标记，框架本地不缓存）；``prompt_blocks[0]``
            的 ``{{ self.system_prompt }}`` 惰性引用在此触发解析。
         2. 消息路径：从 ``current_head_id`` 沿 ``parent_id`` 上溯到根，
-           反转得根 → head 的消息序列；半截 turn 的已落盘消息照常
-           包含（M-28 裁决，不再截断；孤立 tool_call 由恢复时合成的
-           ``synthetic`` 占位 TOOL 消息封闭成对——``tool_call_id=<孤立
-           调用 id>``、``tool_status="error"``、``content=[TextBlock(占位
-           说明)]``，不再是合成 ToolResultBlock）。
-        3. ``_visible_tools()`` → ``list[ToolDefinition]``（仅
-           ``enabled=True`` 条目，经 ``llm_definition()``）。**无隐式
-           附加**——``subagent-invoke`` / ``finish`` 等内置工具必须由
-           用户显式声明（``.fya`` 的 ``tools:`` 或
-           ``add_tool("subagent-invoke")``）才进入可见面
-           （S-19 最终裁决：一切工具——含技能、子智能体——以用户
-           声明为准，框架不隐式添加）。
+           反转得根 → head 的消息序列；半截 turn 的已落盘消息照常包含
+           （孤立 tool_call 由恢复时合成的 ``synthetic`` 占位 TOOL 消息
+           封闭成对）。
+        3. ``_visible_tools()`` → ``list[ToolDefinition]`` （仅
+           ``enabled=True`` 条目）。无隐式附加——``subagent-invoke`` /
+           ``finish`` 等内置工具必须由用户显式声明才进入可见面。
         4. 子智能体 catalog：``<available_subagents>`` 块经
-           ``_render_subagent_catalog()`` 现场渲染并入
-           ``system_prompt`` 段（``cache="dynamic"``；此前该装配无
-           具名代码点，本次补上）。
+           ``_render_subagent_catalog()`` 现场渲染并入 ``system_prompt``
+           段（``cache="dynamic"``）。
 
-        - 现场求值是功能正确性前提（环境变量、实例属性、模式状态永远
-          最新），不是性能优化。
-        - 同步方法：渲染为同步 Jinja2 求值；``before_provider_gen`` 钩子在
-          ``provider_gen()`` 内对本产物仍可改写（但**不推荐**直接改写
-          ``messages``——内容增删走持久化路径，M-29 裁决）。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.context.PromptBlockList`` 逐块 ``resolve()``
-          与 ``flowing.agent.Agent._visible_tools()``（时机：每次调用
-          现场求值，无缓存）
-        - 被调：``flowing.agent.Agent._run_turn``（时机：内层循环检查
-          点 ② 之后每轮）、``flowing.agent.Agent.side_query``（时机：
-          同一机制，每次副线调用）
-
-        .. seealso::
-
-            - :class:`flowing.context.Context` —— 产物结构。
-            - :class:`flowing.context.PromptBlockList` —— 块管理语义。
-            - :attr:`TurnContext.pending_messages` —— 回合开头附加式
-              注入的载体（M-29 裁决）。
+        现场求值是功能正确性前提（环境变量、实例属性、模式状态永远最新），
+        不是性能优化。同步方法：渲染为同步 Jinja2 求值；
+        ``before_provider_gen`` 钩子在 ``provider_gen()`` 内对本产物仍可
+        改写（但不推荐直接改写 ``messages``——内容增删走持久化路径）。
         """
         # 1. 遍历 prompt_blocks（__iter__ 跳过 enabled=False）逐块现场求值
         # 分段装配（「未见具名符号」落实）：PromptSegment(content=求值文本,
@@ -4615,7 +4365,7 @@ class Agent:
         # synthetic 占位 TOOL 消息封闭成对——tool_status="error"、
         # content=[TextBlock(占位说明)]，见 _restore 步骤 ①b）
         tools = self._visible_tools()
-        # S-19 最终裁决：无隐式附加——subagent-invoke / finish 等内置工具
+        # 无隐式附加——subagent-invoke / finish 等内置工具
         # 需用户经 tools: / add_tool 显式声明才进入可见面
         # <available_subagents> 块经 _render_subagent_catalog() 现场渲染，
         # 并入 system_prompt 段（cache="dynamic" 语义，无本地缓存）
@@ -4628,21 +4378,12 @@ class Agent:
         return Context(system_prompt=segments, tools=tools, messages=messages)
 
     def _visible_tools(self) -> list[ToolDefinition]:
-        """当前 ``enabled=True`` 工具条目经 ``llm_definition()`` 的定义列表。
+        """当前 ``enabled=True`` 工具条目经 ``llm_definition()`` 的定义
+        列表（内部 API）。
 
-        **内部 API，不属稳定契约。** 每次现场生成，无缓存；``enabled``
-        运行时可变（模式切换），故不可缓存。子 Agent 不走本方法——其
-        LLM 可见声明是 catalog XML（见
+        每次现场生成，无缓存；``enabled`` 运行时可变（模式切换），故不可
+        缓存。子 Agent 不走本方法——其 LLM 可见声明是 catalog XML（见
         :meth:`flowing.subagents.SubagentEntry.catalog_view`）。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.tool.ToolEntry.llm_definition()``（时机：每个
-          ``enabled=True`` 条目，每次现场生成）
-        - 被调：``flowing.agent.Agent._assemble_context``（时机：组装
-          第 3 步）
-
-        .. seealso:: :meth:`flowing.tool.ToolEntry.llm_definition`
         """
         defs: list[ToolDefinition] = []
         for entry in self._tool_entries.values():
