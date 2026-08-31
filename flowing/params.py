@@ -44,7 +44,8 @@ fya 声明层（``args:`` 块）的书写规则：逐参数展开，无 ``type: 
 ``minLength`` / ``maxLength`` / ``pattern`` / ``items`` / ``properties``
 ——逐关键字映射为 Pydantic 字段约束；超出子集（``oneOf`` / ``anyOf`` /
 ``$ref`` / ``allOf`` 等组合子）在装配期抛
-:class:`flowing.errors.FormatError`（fail-fast）。
+:class:`flowing.errors.FormatError`（fail-fast：出错即刻抛异常、不静默
+降级）。
 
 覆写（:func:`apply_param_overrides`）供绑定层（``ToolEntry`` /
 ``SubagentEntry``）的 ``override_params`` 使用：对基底 JSON Schema
@@ -68,6 +69,11 @@ calling 传给 LLM，因此只接受 JSON 兼容值（``str`` / ``int`` / ``floa
 不做运行期类型校验。因此类型不匹配（父 provide 了 ``int``、子按
 ``InjectionKey[str]`` inject）不会被框架拦截——需要运行期校验的场景走
 参数声明（Pydantic 模型校验），而非 provide / inject。
+
+本模块的公开面为无下划线前缀的符号（常量 ``ARG_SHORTHAND`` /
+``TYPE_ALIASES``，函数 ``expand_args_schema`` / ``schema_to_model`` /
+``apply_param_overrides``，类 :class:`InjectionKey` / :class:`ConfigKey`），
+属跨版本稳定契约；下划线前缀符号为内部实现。
 
 .. seealso::
 
@@ -389,7 +395,7 @@ def apply_param_overrides(
     :return: 合并后的新 dict；基底及其 property dict 不被修改。
 
     :raises flowing.errors.FormatError: 补丁含超出
-        :data:`SCHEMA_KEYWORDS` 子集的关键字时（fail-fast，单点）。
+        :data:`SCHEMA_KEYWORDS` 子集的关键字时（fail-fast）。
 
     .. rubric:: 行为要点
 

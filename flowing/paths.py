@@ -31,9 +31,11 @@
   不含 ``::`` 且含 ``/`` 或反斜杠字符，一律判为路径，以引用方提供的
   ``source_dir`` 为基准解析，不再要求必须写 ``./`` 前缀。判定顺序固定：
   路径前缀（``./`` / ``../`` / ``@/``）与绝对路径优先；其次含 ``::`` →
-  限定名（``ns::name``）；再次含 ``/`` 或反斜杠字符 → 路径；最后才是
-  裸名。
-- 因此 ``agents/live2d-controller`` 这类写法在 Agent 的 ``tools:`` /
+  看第一个 ``::`` 之前的左段：左段是纯标识符则判限定名（``ns::name``），
+  左段含路径特征（含 ``/`` 或以 ``.py`` 结尾）则判路径（``文件::类名``
+  形态，如 ``./agents.py::OrderAgent``，完整规则见 :func:`classify_ref`）；
+  再次含 ``/`` 或反斜杠字符 → 路径；最后才是裸名。
+- 因此 ``agents/order-agent`` 这类写法在 Agent 的 ``tools:`` /
   ``subagents:`` / ``skills:`` 引用中按路径解析，以该 Agent 定义文件
   所在目录为 ``source_dir`` 基准。
 - ``@/`` 前缀指向 flowing 子项目目录（工程根）：:func:`resolve_path`
@@ -52,7 +54,7 @@
     root = Path("/proj")
     classify_ref("payment")                # "bare"：裸名走注册表查找
     classify_ref("builtin::web-search")    # "qualified"：限定名
-    classify_ref("./agents/order-agent")   # "path"：路径，按 source_dir 解析
+    classify_ref("./agents/order-agent")   # "path"：路径形态；由 resolve_path 按 source_dir 解析
     resolved = resolve_path("@/tools/search.py", project_root=root)
     # resolved == Path("/proj/tools/search.py")
     to_project_path(resolved, project_root=root)   # "@/tools/search.py"
@@ -116,10 +118,10 @@ PATH_PREFIXES: tuple[str, ...] = ("./", "../", "@/")
 _DRIVE_RE = re.compile(r"^[A-Za-z]:/")
 """Windows 盘符绝对路径判定（分隔符归一后的形态，如 ``C:/x``）。
 
-POSIX 上 ``pathlib`` 不把盘符 / UNC 识别为绝对路径；按 PATH_PREFIXES
-docstring「Windows 盘符 / UNC 均算绝对路径」的跨平台约定，实现侧在
-归一化后用本正则显式判定（UNC 归一后为 ``//`` 前缀，由前导 ``/``
-判定覆盖）。
+POSIX 上 ``pathlib`` 不把盘符 / UNC 识别为绝对路径；按
+:data:`PATH_PREFIXES` docstring「Windows 盘符 / UNC 均算绝对路径」的
+跨平台约定，实现侧在归一化后用本正则显式判定（UNC 归一后为 ``//``
+前缀，由前导 ``/`` 判定覆盖）。
 """
 
 
