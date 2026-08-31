@@ -1901,9 +1901,9 @@ class Agent:
           ``_message_queue.enqueue(msg)`` → dispatch ``after_enqueue``
           （纯观察，日志 / 审计）→ 返回 ``msg.id``。
         - 消费保证：入队即会被消费（常驻工作循环），无需「入队触发」逻辑。
-        - 可入队种类：USER / EVENT / SYSTEM / PLUGIN / SUBAGENT / TOOL
-          （仅异步最终结果，以 ``EVENT`` kind 入队）/ PEER；``PROVIDER``
-          永远不进队列（回合内产生）。
+        - 可入队种类：USER / EVENT / SYSTEM / PLUGIN / SUBAGENT / PEER，
+          以及异步工具最终结果（以 ``EVENT`` kind 入队，content 为标注块 +
+          结果块列表）；``PROVIDER`` 消息永远不进队列（回合内产生）。
         - 优先级插队只影响消费顺序，不影响 ``_pending_turns`` 关联
           （逐条按 id pop）。
         - :raises flowing.errors.Intercepted: ``before_enqueue`` handler
