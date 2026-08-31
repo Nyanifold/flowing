@@ -990,103 +990,50 @@ class ResourceNotFoundError(ResourceError):
 
 
 class ProviderError(FlowingError):
-    """Provider 加载与调用异常中间层（核心机制，不可替换）。
+    """Provider 加载与调用异常的分类中间层（adapter 互操作标准）。
 
     .. rubric:: 功能介绍
 
-    Provider adapter 抛出的全部归类异常之基类。adapter 必须把 SDK / HTTP
-    层的原生异常归类为本层子类后抛出——这是 adapter 互操作标准的一部分。
+    Provider adapter 抛出的全部归类异常的公共基类。adapter 必须把 SDK / HTTP
+    层的原生异常归类为本层的具体子类后抛出——这是 adapter 互操作标准的一部分：
+    回合层的错误决策（``on_provider_error`` → ``can_continue``）依赖稳定的错误
+    分类，策略层不需要 import 每个 SDK 的异常类型。
 
-    .. rubric:: 设计动机
+    .. rubric:: 行为要点
 
-    回合层的错误决策（``on_provider_error`` → ``can_continue``）依赖稳定的
-    错误分类；若各 adapter 直接抛原生异常，策略层（``use_retry`` 等）将
-    不得不 import 每个 SDK 的异常类型，机制与策略一起泄漏。
-
-    .. rubric:: 使用示例
-
-    .. code-block:: python
-
-        # adapter 内的归类职责（示意）
-        try:
-            resp = await self._client.chat.completions.create(...)
-        except RateLimitError as e:                    # SDK 原生异常
-            raise RateLimitedError(
-                str(e), provider=self.name, model=model.model,
-                retry_after=_parse_retry_after(e),
-            ) from e
-
-    .. rubric:: 行为规约
-
-    - 中间层本身可被实例化抛出的场景不存在；adapter 必须使用具体子类。
-    - 通用字段 ``provider`` / ``model`` 供日志、计费与策略层消费——异常的
-      传播路径经过 ``on_provider_error`` 钩子分发，handler 远离抛出上下文，
-      归属信息必须由异常自身携带（M-06 裁决；对照先例 kimi-code / pi 由
-      调用方上下文承载，flowing 的钩子分发模型下不适用）。
-    - ``status_code`` / ``request_id`` / ``retry_after`` 置于基类而非具体
-      子类（M-06 裁决）：``Retry-After`` 语义可出现在任意响应（503/529
-      过载同样携带），重试 handler 应能无条件消费
-      ``ctx.error.retry_after or 默认退避``，不按类型特判。
-    - 消息文本面向人读（不回喂 LLM；喂模型的错误由上层另行构造），
-      结构化字段面向代码。
-    - 非行为：框架核心不内置重试——可重试性只是分类事实，是否重试由
-      ``on_provider_error`` handler（如 ``use_retry()``）决定。
-    - 不变量：``provider_gen()`` 不捕获、不重试任何 Provider 异常；统一在逻辑
-      Turn 层接住（``ContextLengthError`` 除外，见模块 docstring 决策树）。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``flowing.agent.Agent._run_turn`` 逻辑 Turn 错误决策树
-      （时机：``provider_gen()`` 内 Provider 调用抛异常——构造
-      ``ProviderErrorContext`` 后 dispatch ``on_provider_error``；
-      ``ContextLengthError`` 除外直接上抛，见模块 docstring 决策树与
-      agent.pyi:1830-1831）；``flowing.composables.retry`` 默认 handler
-      的 isinstance 分类判定（时机：每次 ``on_provider_error`` dispatch，
-      composables/retry.pyi:307-311）
-    - 实例化方：各 Provider adapter（时机：SDK / HTTP 原生异常归类后
-      抛出——互操作标准，分类表见 ``flowing.providers`` 包 docstring
-      「Provider 异常分类」一节；中间层本体不直接
-      实例化，adapter 必须使用具体子类）
+    - 通用字段：``provider``（Provider 条目名）、``model``（模型 ID）、
+      ``status_code``（HTTP 状态码）、``request_id``（服务端请求 ID）、
+      ``retry_after``（服务端建议的重试等待秒数）——均默认 ``None``，供日志、
+      计费与策略层消费。字段置于基类：``Retry-After`` 语义可出现在任意响应
+      （503/529 过载同样携带），重试 handler 可无条件消费
+      ``retry_after or 默认退避``，不按类型特判。
+    - 本类是分类中间层：adapter 应抛出具体子类，而不是本类实例。
+    - 调用期错误的可重试分类：``RateLimitedError`` / ``ServerError`` /
+      ``NetworkError`` / ``ProviderTimeoutError`` 属可重试类；
+      ``ContextLengthError`` / ``RequestTooLargeError`` / ``QuotaExhaustedError`` /
+      ``AuthenticationError`` / ``InvalidRequestError`` / ``ContentPolicyError``
+      不可重试——可重试性只是分类事实，是否重试由 ``on_provider_error`` handler
+      （如 ``use_retry()``）决定，框架核心不内置重试。
+    - ``provider_gen()`` 不捕获、不重试任何 Provider 异常，统一在逻辑 Turn 层
+      接住（``ContextLengthError`` 除外，不经 ``on_provider_error`` 直接上抛）。
+    - 消息文本面向人读（不回喂 LLM）；结构化字段面向代码。
 
     .. seealso::
 
         :class:`flowing.providers.Provider`
-        :meth:`flowing.agent.Agent.query`
         :mod:`flowing.composables.retry`
     """
 
     provider: str | None
-    """Provider 条目名（``providers.yaml`` 中的 key，条目名即身份标识）。
-    加载期异常（如 ``MissingEnvironmentVariableError``）同样填写。
-    
-    .. seealso:: :class:`flowing.errors.ProviderError`
-    """
+    """Provider 条目名（``providers.yaml`` 中的 key，条目名即身份标识）；加载期异常（如 ``MissingEnvironmentVariableError``）同样填写。"""
     model: str | None
-    """调用时使用的模型 ID（``ModelConfig.model``）；加载期异常可为 ``None``。
-    
-    .. seealso:: :class:`flowing.errors.ProviderError`
-    """
+    """调用时使用的模型 ID（``ModelConfig.model``）；加载期异常可为 ``None``。"""
     status_code: int | None
-    """HTTP 状态码（如 429 / 500 / 503）；非 HTTP 来源的错误（连接失败、
-    加载期失败等）为 ``None``。供日志、诊断与策略层按码细分
-    （参考 kimi-code 先例：status code 是重试白名单与 UI 文案的核心依据）。
-    
-    .. seealso:: :class:`flowing.errors.ProviderError`
-    """
+    """HTTP 状态码（如 429 / 500 / 503）；非 HTTP 来源的错误（连接失败、加载期失败等）为 ``None``。"""
     request_id: str | None
-    """服务端返回的请求 ID（如 ``x-request-id`` 响应头）；未提供为 ``None``。
-    供日志归因与工单定位。
-    
-    .. seealso:: :class:`flowing.errors.ProviderError`
-    """
+    """服务端返回的请求 ID（如 ``x-request-id`` 响应头）；未提供为 ``None``。"""
     retry_after: float | None
-    """服务端建议的重试等待秒数（``Retry-After`` 响应头）；未建议为
-    ``None``，策略层使用自身默认退避。429 之外的响应（503/529 过载）
-    同样可能携带，故置于基类。
-    
-    .. seealso:: :class:`flowing.errors.RateLimitedError`、
-    :data:`flowing.composables.retry.RETRYABLE_ERRORS`
-    """
+    """服务端建议的重试等待秒数（``Retry-After`` 响应头）；未建议为 ``None``，由策略层使用自己的默认退避。429 之外的响应（503/529 过载）同样可能携带，故置于基类。"""
 
     def __init__(
         self,
@@ -1098,13 +1045,14 @@ class ProviderError(FlowingError):
         request_id: str | None = None,
         retry_after: float | None = None,
     ) -> None:
-        """
-        .. rubric:: 调用关系（审计）
+        """构造 Provider 错误实例。
 
-        - 调用：``Exception.__init__``（时机：每次构造，传递面向人读的
-          ``message``——模块行为规约「异常消息字符串由框架格式化」）
-        - 被调：各 Provider adapter 归类抛子类时经子类构造间接调用
-          （时机：SDK / HTTP 原生异常归类；本层不直接实例化——行为规约）
+        :param message: 面向人读的错误消息（不回喂 LLM）。
+        :param provider: Provider 条目名；默认 ``None``。
+        :param model: 调用时使用的模型 ID；默认 ``None``。
+        :param status_code: HTTP 状态码；默认 ``None``。
+        :param request_id: 服务端请求 ID；默认 ``None``。
+        :param retry_after: 服务端建议的重试等待秒数；默认 ``None``。
         """
         super().__init__(message)
         self.provider = provider
@@ -1115,154 +1063,82 @@ class ProviderError(FlowingError):
 
 
 class ContextLengthError(ProviderError):
-    """上下文长度溢出（不可重试；不经 ``on_provider_error``，直接上抛）。
+    """上下文长度溢出（token 数超限，不可重试、不经 ``on_provider_error``）。
 
     .. rubric:: 功能介绍
 
     组装的 ``Context`` 超出模型 ``context_window`` 时由 adapter 在请求 / 响应
-    解析时抛出。是 Provider 异常分类中**唯一**绕过 ``on_provider_error`` 的类型。
+    解析时抛出。是 Provider 调用期异常中唯一绕过 ``on_provider_error`` 的类型：
+    「上下文太长」重试必然重现同样失败，不可重试是事实而非策略，因此框架把它
+    硬编码为直接上抛，不给策略层误判空间。压缩 / 截断属策略，由钩子层（如
+    ``before_provider_gen`` 中的压缩 Composable）在**下一次**调用前处理，不在
+    错误路径内自动发生。
 
-    .. rubric:: 设计动机
+    .. rubric:: 行为要点
 
-    「上下文太长」重试必然重现同样失败——不可重试是事实而非策略，因此框架
-    把它硬编码为直接上抛，不给策略层误判空间。压缩 / 截断属策略，由钩子层
-    （如 ``before_provider_gen`` 中的压缩 Composable）在**下一次**调用前处理，
-    不在错误路径内自动发生。
-
-    .. rubric:: 使用示例
-
-    .. code-block:: python
-
-        # 应用层或外层调用方捕获
-        try:
-            result = await agent.query(long_document)
-        except ContextLengthError:
-            await agent.chain.remove(old_message_ids)   # 消息级树手术，策略层决定
-
-    .. rubric:: 行为规约
-
-    - 五要素：字段继承 ``provider`` / ``model``；抛出时机为 adapter 请求 /
-      响应解析；调用方：逻辑 Turn 循环**不**将其送入 ``on_provider_error``，
-      直接上抛给 ``query()`` 等待方 / 调用代码，由应用层决定是否 catch；
-      不可重试（框架强制）；属机制（不可替换）。
-    - 边缘情况：直接上抛不改变逻辑 Turn 收尾不变量——``after_turn`` 钩子
-      照常触发，已产生消息保持消息级树 append-only 持久化。
-    - 测试案例：前置：注册一个写 ``can_continue=True`` 的 ``on_provider_error``
-      handler；操作：Provider 抛 ``ContextLengthError``；期望：handler 未被
-      调用，异常上抛出 Turn 循环。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``flowing.agent.Agent._run_turn``（时机：逻辑 Turn 循环不
-      送入 ``on_provider_error``，直接上抛给 ``query()`` 等待方 / 调用
-      代码，agent.pyi:691/1831）；``flowing.context`` / ``flowing.message``
-      分层兜底引用（时机：context 组装超限的前置检测兜底，
-      context.pyi:973/1030，message.pyi:332/597）
-    - 实例化方：Provider adapter（时机：请求 / 响应解析发现组装的
-      ``Context`` 超出模型 ``context_window``——本类行为规约）
+    - 字段继承 ``ProviderError``（``provider`` / ``model``）。
+    - 不经 ``on_provider_error``：逻辑 Turn 层直接上抛，回合以 error 结局终止
+      （``after_turn`` 收尾钩子照常触发，已产生的消息照常持久化），Agent 存活。
+    - 与 ``RequestTooLargeError`` 区分：本类是 token 数超限，后者是请求体字节数
+      超限（HTTP 413），恢复路径不同。
 
     .. seealso::
 
         :class:`flowing.errors.RequestTooLargeError`
-            字节超限（HTTP 413）的对偶分类，恢复路径不同。
         :class:`flowing.errors.ProviderError`
         :class:`flowing.context.Context`
-        :class:`flowing.message.MessageChain`
     """
 
 
 class RequestTooLargeError(ProviderError):
-    """请求体字节超限（HTTP 413，不可重试类；经 ``on_provider_error``）。
+    """请求体字节超限（HTTP 413，不可重试，经 ``on_provider_error``）。
 
     .. rubric:: 功能介绍
 
-    请求体**字节数**超限（典型：多模态附件过大），与
-    :class:`ContextLengthError` 的 **token 数**超限相区分。
+    请求体**字节数**超限（典型：多模态附件过大）时由 adapter 抛出，与
+    ``ContextLengthError`` 的 **token 数**超限相区分。两者恢复路径不同：token
+    超限靠压缩会话历史；字节超限压缩历史无用，必须剥离媒体附件后重发。注意
+    部分 Provider（如 Vertex）会把 prompt 过长也返回 413，adapter 归类时以消息
+    内容辅助判别——归类依据是语义而非状态码。
 
-    .. rubric:: 设计动机
+    .. rubric:: 行为要点
 
-    两者恢复路径本质不同（M-06 裁决，kimi-code 先例）：token 超限靠压缩
-    会话历史；字节超限压缩历史无用，必须剥离媒体附件重发。注意 status
-    code 不可尽信——部分 Provider（如 Vertex）会把 prompt 过长也返回
-    413，adapter 归类时须以消息内容辅助判别。压缩与媒体剥离都是后续
-    钩子的职责，本类只作为分类信号存在——框架核心不内置任何恢复机制。
-
-    .. rubric:: 行为规约
-
-    - 五要素：字段继承基类；抛出时机为 Provider 返回 413（或等价语义）；
-      调用方走 ``on_provider_error``（handler 可据此触发媒体剥离后重发，
-      也可 ``can_continue=False`` 上抛给用户）；不可重试（原样重发必然
-      重现）；分类属机制。
-    - 边缘情况：Provider 把 token 超限误报为 413 时，adapter 应归类为
-      :class:`ContextLengthError` 而非本类——归类依据是语义而非状态码。
-    - 测试案例：前置：注册一个剥离最大附件后置 ``can_continue=True`` 的
-      handler；操作：Provider 返回 413；期望：handler 被调用，重发成功。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``flowing.agent.Agent._run_turn`` 的 ``on_provider_error``
-      决策树（时机：provider_gen() 内 Provider 调用抛异常）；``flowing.composables.retry`` 默认 handler（时机：每次 ``on_provider_error``
-      dispatch——本类在 ``NON_RETRYABLE_ERRORS`` 中直接放行不重试，
-      composables/retry.pyi:173/182）
-    - 实例化方：Provider adapter（时机：Provider 返回 413 或等价语义
-      ——归类依据是语义而非状态码）
+    - 字段继承 ``ProviderError``。
+    - 经 ``on_provider_error`` 分发：handler 可据此剥离媒体附件后重发（置
+      ``can_continue=True``），也可保持 ``can_continue=False`` 让回合终止。
+    - 不可重试（原样重发必然重现）；分类属机制，恢复动作属策略。
 
     .. seealso::
 
         :class:`flowing.errors.ContextLengthError`
-            token 超限的对偶分类（不经 ``on_provider_error``，直接上抛）。
         :class:`flowing.errors.ProviderError`
     """
 
 
 class RateLimitedError(ProviderError):
-    """Provider 限流（HTTP 429，可重试类）。
+    """Provider 限流（HTTP 429 瞬时限流，可重试类）。
 
     .. rubric:: 功能介绍
 
-    临时限流。是否重试、退避多久由策略层决定（``use_retry()`` 或自定义
-    ``on_provider_error`` handler）；框架核心只负责分类。
+    临时限流：等一等能成功。是否重试、退避多久由策略层决定（``use_retry()``
+    或自定义 ``on_provider_error`` handler）；框架核心只负责分类。429 通常携带
+    ``Retry-After`` 之类的服务端建议，结构化进 ``retry_after`` 字段，策略层不必
+    解析各家 SDK 的响应头格式。
 
-    .. rubric:: 设计动机
+    .. rubric:: 行为要点
 
-    429 通常携带 ``Retry-After`` 之类的服务端建议；把它结构化为
-    ``retry_after`` 字段，使策略层不必解析各家 SDK 的响应头格式。
-
-    .. rubric:: 使用示例
-
-    .. code-block:: python
-
-        async def retry_handler(agent, ctx):
-            if isinstance(ctx.error, RateLimitedError):
-                await asyncio.sleep(ctx.error.retry_after or 1.0)
-                ctx.can_continue = True
-            return ctx
-
-    .. rubric:: 行为规约
-
-    - 五要素：字段继承基类 ``retry_after``（秒，``None`` 表示服务端未建议）；
-      抛出时机为 Provider 调用返回 429 且语义为**瞬时限流**（配额耗尽见
-      :class:`QuotaExhaustedError`）；调用方：逻辑 Turn 层捕获后进入
-      ``on_provider_error`` 决策；可重试（策略决定次数与退避，框架无默认值）；
-      分类属机制，重试属策略。
-    - 边缘情况：未启用任何重试 handler 时，逻辑 Turn 直接静默终止——
-      框架不提供默认容错。
-    - 测试案例：前置：``use_retry()`` 已启用；操作：连续两次 429 后成功；
-      期望：回合正常完成，``retry_after`` 被 handler 读取。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``flowing.agent.Agent._run_turn`` 的 ``on_provider_error``
-      决策树（时机：provider_gen() 内 Provider 调用抛异常）；``flowing.composables.retry`` 默认 handler（时机：每次 ``on_provider_error``
-      dispatch——``RETRYABLE_ERRORS`` 成员，isinstance 判定后计数与
-      退避，composables/retry.pyi:156/238/307）
-    - 实例化方：Provider adapter（时机：Provider 调用返回 429 且语义
-      为瞬时限流）
+    - 字段继承 ``ProviderError``；``retry_after`` 为服务端建议的重试等待秒数，
+      ``None`` 表示服务端未建议。
+    - 经 ``on_provider_error`` 分发；可重试（次数与退避由策略决定，框架无默认
+      值）。
+    - 未启用任何重试 handler 时，回合直接以 error 结局终止——框架不提供默认
+      容错。
+    - 与 ``QuotaExhaustedError`` 区分：同为 429，本类是「太快了」，后者是「没
+      额度了」（不可重试）。
 
     .. seealso::
 
         :class:`flowing.errors.QuotaExhaustedError`
-            同为 429 但**不可重试**的对偶分类。
         :class:`flowing.errors.ProviderError`
         :mod:`flowing.composables.retry`
     """
@@ -1273,41 +1149,22 @@ class QuotaExhaustedError(ProviderError):
 
     .. rubric:: 功能介绍
 
-    与 :class:`RateLimitedError` 同为 429 但语义相反：「你太快了」（等一等
-    能成功）vs「你没额度了」（等多久都不会成功，需要人介入——充值、换
-    key、换 provider）。
+    与 ``RateLimitedError`` 同为 429 但语义相反：「你太快了」（等一等能成功）
+    与「你没额度了」（等多久都不会成功，需要人介入——充值、换 key、换
+    provider）。重试配额耗尽是纯浪费：每次重试必然失败。刻意不做
+    ``RateLimitedError`` 的子类：继承会让 ``except RateLimitedError`` 与
+    isinstance 重试判定误捕本类——类型树本身即是重试策略的判定表。
 
-    .. rubric:: 设计动机
+    .. rubric:: 行为要点
 
-    重试配额耗尽是纯浪费：每次重试烧延迟预算且必然失败，用户几分钟
-    后才看到第一秒就已确定的「余额不足」。**刻意不做** ``RateLimitedError``
-    的子类（M-06 裁决，kimi-code 先例）：继承会让 ``except RateLimitedError``
-    与 ``isinstance`` 重试判定误捕本类——类型树本身即是重试策略的判定表。
-
-    .. rubric:: 行为规约
-
-    - 五要素：字段继承基类；抛出时机为 adapter 识别到配额语义——优先读
-      结构化错误码（如 ``exceeded_current_quota_error``），退化到账单措辞
-      正则（``insufficient_quota`` / ``billing`` 等）；调用方走
-      ``on_provider_error``；**不可重试**；分类属机制。
-    - 非行为：框架不检测余额数值、不触发充值流程；本类只是分类信号，
-      恢复动作（换 provider / 提示用户）属策略层。
-    - 测试案例：前置：Provider 返回 429 且 body 含 ``insufficient_quota``；
-      操作：``provider_gen()``；期望：adapter 抛 ``QuotaExhaustedError`` 而非
-      ``RateLimitedError``，``isinstance(e, RateLimitedError)`` 为假。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``flowing.agent.Agent._run_turn`` 的 ``on_provider_error``
-      决策树（时机：provider_gen() 内 Provider 调用抛异常）；``flowing.composables.retry`` 默认 handler（时机：每次 ``on_provider_error``
-      dispatch——``NON_RETRYABLE_ERRORS`` 成员，composables/retry.pyi:183）
-    - 实例化方：Provider adapter（时机：识别到配额 / 余额耗尽语义——
-      优先结构化错误码，退化账单措辞正则，429 或专用错误码）
+    - 字段继承 ``ProviderError``。
+    - 经 ``on_provider_error`` 分发；不可重试。
+    - 框架不检测余额数值、不触发充值流程：本类只是分类信号，恢复动作（换
+      provider / 提示用户）属策略层。
 
     .. seealso::
 
         :class:`flowing.errors.RateLimitedError`
-            同为 429 但可重试的对偶分类。
         :class:`flowing.errors.ProviderError`
     """
 
@@ -1317,32 +1174,18 @@ class ServerError(ProviderError):
 
     .. rubric:: 功能介绍
 
-    服务端临时故障。分类为可重试；重试与否由策略层决定。
+    服务端临时故障（5xx 通常自愈），分类为可重试；重试与否由策略层决定。与
+    4xx 请求错误（请求本身有问题，重试无意义）分开两类，使策略层可以按类判断。
 
-    .. rubric:: 设计动机
+    .. rubric:: 行为要点
 
-    5xx 与 4xx 的可恢复性本质不同：前者通常自愈，后者（请求本身有问题）
-    重试无意义。分开两类使策略层可以按类判断。
-
-    .. rubric:: 行为规约
-
-    - 五要素：字段继承基类（``status_code`` 记录 5xx 码；``retry_after``
-      可能随 503/529 过载响应携带）；抛出时机为 Provider 返回 5xx；
-      调用方走 ``on_provider_error``；可重试（策略决定）；分类属机制。
-    - 测试案例：前置：无重试 handler；操作：Provider 持续 500；期望：
-      逻辑 Turn 静默终止，Agent 存活。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``flowing.agent.Agent._run_turn`` 的 ``on_provider_error``
-      决策树（时机：provider_gen() 内 Provider 调用抛异常）；``flowing.composables.retry`` 默认 handler（时机：每次 ``on_provider_error``
-      dispatch——``RETRYABLE_ERRORS`` 成员，composables/retry.pyi:157/311）
-    - 实例化方：Provider adapter（时机：Provider 返回 5xx 服务端错误）
+    - 字段继承 ``ProviderError``；``status_code`` 记录具体的 5xx 码，
+      ``retry_after`` 可能随 503/529 过载响应携带。
+    - 经 ``on_provider_error`` 分发；可重试（策略决定）。
 
     .. seealso::
 
         :class:`flowing.errors.InvalidRequestError`
-            4xx 请求错误（不可重试）的对偶分类。
         :class:`flowing.errors.ProviderError`
     """
 
@@ -1352,28 +1195,15 @@ class NetworkError(ProviderError):
 
     .. rubric:: 功能介绍
 
-    请求未到达 Provider 或响应中断的网络抖动。adapter 负责把 httpx /
-    aiohttp 等库的连接异常归类为本类。
+    请求未到达 Provider 或响应中断的网络抖动。adapter 负责把 httpx / aiohttp
+    等库的连接异常归类为本类。网络错误与 HTTP 层错误（有响应状态码）的可恢复
+    策略不同（通常立即或短退避重试），独立分类避免策略层做字符串匹配。
 
-    .. rubric:: 设计动机
+    .. rubric:: 行为要点
 
-    网络错误与 HTTP 层错误（有响应状态码）的可恢复策略不同（通常立即或
-    短退避重试）；独立分类避免策略层做字符串匹配。
-
-    .. rubric:: 行为规约
-
-    - 五要素：字段继承 ``provider`` / ``model``；抛出时机为传输层失败；
-      调用方走 ``on_provider_error``；可重试（策略决定）；分类属机制。
-    - 测试案例：前置：目标不可达；操作：发起 ``provider_gen()``；期望：adapter 抛
-      ``NetworkError``（而非 httpx 原生异常直出）。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``flowing.agent.Agent._run_turn`` 的 ``on_provider_error``
-      决策树（时机：provider_gen() 内 Provider 调用抛异常）；``flowing.composables.retry`` 默认 handler（时机：每次 ``on_provider_error``
-      dispatch——``RETRYABLE_ERRORS`` 成员，composables/retry.pyi:158/311）
-    - 实例化方：Provider adapter（时机：传输层失败——连接失败 / DNS /
-      TLS 等，httpx / aiohttp 连接异常归类）
+    - 字段继承 ``ProviderError``（``status_code`` 为 ``None``——非 HTTP 响应
+      错误）。
+    - 经 ``on_provider_error`` 分发；可重试（策略决定）。
 
     .. seealso::
 
@@ -1387,30 +1217,15 @@ class ProviderTimeoutError(ProviderError):
 
     .. rubric:: 功能介绍
 
-    请求超过 adapter 超时预算时抛出。
+    请求超过 adapter 的超时预算时抛出。命名自带归属（Provider 层超时），刻意
+    不继承内置 ``TimeoutError``——``except TimeoutError``（内置）不会捕获本类。
 
-    .. rubric:: 设计动机
+    .. rubric:: 行为要点
 
-    命名自带归属（Provider 层超时），与内置 ``TimeoutError`` 无遮蔽关系
-    （M-02 裁决：原名 ``TimeoutError`` 改为现名，避免与内置同名引发的
-    ``except`` 误捕）。
-
-    .. rubric:: 行为规约
-
-    - 五要素：字段继承 ``provider`` / ``model``；抛出时机为调用超时；
-      调用方走 ``on_provider_error``；可重试（策略决定）；分类属机制。
-    - 非行为：本类**不**继承内置 ``TimeoutError``，``except TimeoutError``
-      （内置）不会捕获它。
-    - 测试案例：操作：adapter 超时抛出；期望：``isinstance(e,
-      ProviderTimeoutError)`` 为真且 ``isinstance(e, builtins.TimeoutError)``
-      为假。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``flowing.agent.Agent._run_turn`` 的 ``on_provider_error``
-      决策树（时机：provider_gen() 内 Provider 调用抛异常）；``flowing.composables.retry`` 默认 handler（时机：每次 ``on_provider_error``
-      dispatch——``RETRYABLE_ERRORS`` 成员，composables/retry.pyi:159/311）
-    - 实例化方：Provider adapter（时机：请求超过 adapter 超时预算）
+    - 字段继承 ``ProviderError``。
+    - 经 ``on_provider_error`` 分发；可重试（策略决定）。
+    - 不继承内置 ``TimeoutError``（``isinstance(e, builtins.TimeoutError)``
+      为假）。
 
     .. seealso::
 
@@ -1424,33 +1239,16 @@ class AuthenticationError(ProviderError):
 
     .. rubric:: 功能介绍
 
-    API key 无效、过期或权限不足。凭证问题不自愈，分类为不可重试——
-    ``use_retry()`` 内置 handler 对本类直接放行（不写 ``can_continue``）。
+    API key 无效、过期或权限不足。凭证问题不自愈，分类为不可重试——默认重试
+    策略（``use_retry()``）对本类直接放行（不写 ``can_continue``）。凭证修复
+    需要人工介入（换 key、改配置）；应用层可自定义 handler 做「换凭证后重试」，
+    不可重试只是分类事实的默认值，策略仍可覆盖。
 
-    .. rubric:: 设计动机
+    .. rubric:: 行为要点
 
-    凭证修复需要人工介入（换 key、改配置），自动重试只会放大失败；但框架
-    不阻止应用层自定义 handler 做「换凭证后重试」——不可重试是分类事实的
-    默认值，策略仍可覆盖。
-
-    .. rubric:: 行为规约
-
-    - 五要素：字段继承 ``provider`` / ``model``；抛出时机为 Provider 返回
-      401 / 403；调用方走 ``on_provider_error``；不可重试（默认，策略可覆盖）；
-      分类属机制。
-    - 边缘情况：凭证内容本身**不进**异常字段与消息文本（敏感信息边界：
-      API key 不进消息、不落盘）。
-    - 测试案例：前置：错误 key；操作：``provider_gen()``；期望：抛
-      ``AuthenticationError``，且 ``str(e)`` 不含 key 原文。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``flowing.agent.Agent._run_turn`` 的 ``on_provider_error``
-      决策树（时机：provider_gen() 内 Provider 调用抛异常）；``flowing.composables.retry`` 默认 handler（时机：每次 ``on_provider_error``
-      dispatch——``NON_RETRYABLE_ERRORS`` 成员，对本类直接放行不写
-      ``can_continue``，composables/retry.pyi:180）
-    - 实例化方：Provider adapter（时机：Provider 返回 401 / 403 凭证
-      错误）
+    - 字段继承 ``ProviderError``。
+    - 经 ``on_provider_error`` 分发；默认不可重试（策略可覆盖）。
+    - 凭证内容本身不进异常字段与消息文本（API key 不进消息、不落盘）。
 
     .. seealso::
 
@@ -1465,30 +1263,14 @@ class InvalidRequestError(ProviderError):
 
     .. rubric:: 功能介绍
 
-    请求参数违反 API 约束（非法字段、不支持的参数组合等）。重试必然重现
-    同样失败，分类为不可重试。
+    请求参数违反 API 约束（非法字段、不支持的参数组合等）时抛出。重试必然重现
+    同样失败，分类为不可重试。模型能力不兼容（如无视觉能力的模型收到图片）在
+    API 调用时也可能以此类报错——框架核心不做能力预校验。
 
-    .. rubric:: 设计动机
+    .. rubric:: 行为要点
 
-    与 ``ContextLengthError`` 同为「请求构造问题」，但后者因「必然重现 + 需要
-    上下文手术」被框架硬编码为绕过 ``on_provider_error``；本类保留在决策树内，
-    由策略层决定（默认不写 ``can_continue`` 即终止）。
-
-    .. rubric:: 行为规约
-
-    - 五要素：字段继承 ``provider`` / ``model``；抛出时机为 Provider 返回
-      400；调用方走 ``on_provider_error``；不可重试（默认）；分类属机制。
-    - 边缘情况：模型能力不兼容（如无视觉能力的模型收到图片）在 API 调用时
-      以此类报错——框架核心不做能力预校验（最小行为约定）。
-    - 测试案例：前置：构造非法参数的请求；操作：``provider_gen()``；期望：抛
-      ``InvalidRequestError`` 且经过 ``on_provider_error``。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``flowing.agent.Agent._run_turn`` 的 ``on_provider_error``
-      决策树（时机：provider_gen() 内 Provider 调用抛异常）；``flowing.composables.retry`` 默认 handler（时机：每次 ``on_provider_error``
-      dispatch——``NON_RETRYABLE_ERRORS`` 成员，composables/retry.pyi:181）
-    - 实例化方：Provider adapter（时机：Provider 返回 400 请求非法）
+    - 字段继承 ``ProviderError``。
+    - 经 ``on_provider_error`` 分发；默认不可重试。
 
     .. seealso::
 
@@ -1502,27 +1284,15 @@ class ContentPolicyError(ProviderError):
 
     .. rubric:: 功能介绍
 
-    Provider 侧内容审查（输入或输出触发安全策略）拒绝生成时抛出。
+    Provider 侧内容审查（输入或输出触发安全策略）拒绝生成时抛出。内容拒绝与
+    限流 / 故障语义完全不同：不是暂时不可用，而是「这个内容不行」；应用层通常
+    需要改写输入或告知用户，独立分类便于策略层区分处理。
 
-    .. rubric:: 设计动机
+    .. rubric:: 行为要点
 
-    内容拒绝与限流 / 故障语义完全不同：不是暂时不可用，而是「这个内容不行」；
-    应用层通常需要改写输入或告知用户，独立分类便于策略层区分处理。
-
-    .. rubric:: 行为规约
-
-    - 五要素：字段继承 ``provider`` / ``model``；抛出时机为 Provider 内容
-      审查拒绝；调用方走 ``on_provider_error``；不可重试（默认——改写输入是
-      应用层决策，非框架重试范畴）；分类属机制。
-    - 测试案例：前置：触发审查的输入；操作：``provider_gen()``；期望：抛
-      ``ContentPolicyError``，默认路径下逻辑 Turn 静默终止。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``flowing.agent.Agent._run_turn`` 的 ``on_provider_error``
-      决策树（时机：provider_gen() 内 Provider 调用抛异常）；``flowing.composables.retry`` 默认 handler（时机：每次 ``on_provider_error``
-      dispatch——``NON_RETRYABLE_ERRORS`` 成员，composables/retry.pyi:182）
-    - 实例化方：Provider adapter（时机：Provider 内容安全审查拒绝生成）
+    - 字段继承 ``ProviderError``。
+    - 经 ``on_provider_error`` 分发；默认不可重试（改写输入是应用层决策，非
+      框架重试范畴）。
 
     .. seealso::
 
@@ -1531,19 +1301,14 @@ class ContentPolicyError(ProviderError):
 
 
 class MissingEnvironmentVariableError(ProviderError):
-    """Provider 条目加载时 ``{{env.VAR}}`` 引用的环境变量不存在。
+    """Provider 条目加载时 ``{{env.VAR}}`` 引用的环境变量不存在时抛出。
 
     .. rubric:: 功能介绍
 
     ``providers.yaml`` 中的 ``{{env.VAR}}`` 是纯字符串替换（非 Jinja2 /
-    Parsable），在条目**加载时**一次性求值；变量缺失即在加载时报本异常。
-    与调用期异常不在同一时序，不经过 ``on_provider_error``。
-
-    .. rubric:: 设计动机
-
-    凭证引用是静态替换、总在启动时一次完成；缺失时 fail fast 优于「运行到
-    第一次调用才 401」。非 ``{{env.`` 前缀的 ``{{`` 保持原样（不报错不替换），
-    不触发本异常。
+    Parsable），在条目**加载时**一次性求值；变量缺失即在加载时抛出本异常——
+    fail-fast，不静默降级（避免运行到第一次调用才 401）。非 ``{{env.`` 前缀的
+    ``{{`` 保持原样（不报错不替换），不触发本异常。
 
     .. rubric:: 使用示例
 
@@ -1554,24 +1319,14 @@ class MissingEnvironmentVariableError(ProviderError):
           adapter: deepseek
           api_key: "{{env.DEEPSEEK_TEAM_KEY}}"   # 变量缺失 → 加载时抛出
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
-    - 五要素：字段 ``var_name`` / ``entry``（Provider 条目名）；抛出时机为
-      providers.yaml 条目加载；调用方不 catch（部署错误，修正环境后重启）；
-      不可重试；属机制。
-    - 边缘情况：``ModelConfig`` 字段中的环境变量引用走 Parsable 运行时求值
-      （每次 ``provider_gen()`` 前），其失败按普通求值异常处理，**不**属本类。
-    - 测试案例：前置：条目含 ``{{env.X}}`` 且环境中无 ``X``；操作：启动
-      Runtime 加载 providers.yaml；期望：抛 ``MissingEnvironmentVariableError``
-      且 ``e.var_name == "X"``。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``无``（加载期 fail fast，不经 ``on_provider_error``，与调用期
-      异常不在同一时序）
-    - 实例化方：``flowing.providers.provider`` 的 providers.yaml 条目加载
-      路径（:func:`flowing.providers.provider.load_provider_candidates`；
-      时机：``{{env.VAR}}`` 字符串替换时变量缺失）
+    - 字段 ``var_name``（缺失的环境变量名，不含 ``{{env.`` 前缀）与 ``entry``
+      （引用该变量的 Provider 条目名）。
+    - 加载期异常：与调用期异常不在同一时序，不经 ``on_provider_error``。
+    - 部署错误：调用方不捕获，修正环境后重新启动。
+    - ``ModelConfig`` 字段中的环境变量引用走 Parsable 运行时求值（每次
+      ``provider_gen()`` 前），其失败按普通求值异常处理，不属本类。
 
     .. seealso::
 
@@ -1581,24 +1336,15 @@ class MissingEnvironmentVariableError(ProviderError):
     """
 
     var_name: str
-    """缺失的环境变量名（不含 ``{{env.`` 前缀）。
-    
-    .. seealso:: :class:`flowing.errors.MissingEnvironmentVariableError`
-    """
+    """缺失的环境变量名（不含 ``{{env.`` 前缀）。"""
     entry: str
-    """引用该变量的 Provider 条目名。
-    
-    .. seealso:: :class:`flowing.errors.MissingEnvironmentVariableError`
-    """
+    """引用该变量的 Provider 条目名。"""
 
     def __init__(self, var_name: str, entry: str) -> None:
-        """
-        .. rubric:: 调用关系（审计）
+        """构造异常实例。
 
-        - 调用：``无``（仅平行字段赋值）
-        - 被调：``flowing.providers.provider`` providers.yaml 条目加载路径
-          （:func:`flowing.providers.provider.load_provider_candidates`）
-          的 raise（时机：``{{env.VAR}}`` 替换时变量缺失）
+        :param var_name: 缺失的环境变量名；与 ``var_name`` 字段一致。
+        :param entry: 引用该变量的 Provider 条目名；与 ``entry`` 字段一致。
         """
         # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Missing environment variable {var_name!r} referenced by provider entry {entry!r}")
@@ -1607,66 +1353,41 @@ class MissingEnvironmentVariableError(ProviderError):
 
 
 class ProviderNameConflictError(ProviderError):
-    """Provider adapter 规范名重名注册（未指定 ``override=True``）。
+    """Provider adapter 规范名重名注册（未指定 ``override=True``）时抛出。
 
     .. rubric:: 功能介绍
 
-    ``register_provider()`` 检测到注册表键（adapter 的 ``name`` 类属性）
-    已存在且未声明覆盖时抛出。发生在 **import 期 / Runtime 初始化的
-    自动发现阶段**，与调用期异常不在同一时序，不经 ``on_provider_error``。
-
-    .. rubric:: 设计动机
-
-    adapter 注册表是进程级全局表，第三方包经 ``FLOWING_PROVIDER_MODULES``
-    / ``flowing_provider_*`` 自动发现汇入——两个包撞同名 adapter 是真实
-    可发生的集成情形（非纯作者笔误），需要可精确 ``except`` 的具名类型；
-    冲突家族与 :class:`ToolNameConflictError` /
-    :class:`EntryNameConflictError` 同构（P3-14 裁决补齐）。显式
+    ``register_provider()`` 检测到注册表键（adapter 的 ``name`` 类属性）已存在
+    且未声明覆盖时抛出。发生在 import 期 / Runtime 初始化的自动发现阶段
+    （``FLOWING_PROVIDER_MODULES`` 与 ``flowing_provider_*`` 扫描会 import 第三方
+    包），与调用期异常不在同一时序，不经 ``on_provider_error``。两个包撞同名
+    adapter 是真实可发生的集成情形，需要可精确 ``except`` 的具名类型。显式
     ``override=True`` 是唯一合法覆盖通道（后 import 者胜出并产生警告）。
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
-    - 五要素：字段 ``name``（冲突的 adapter 规范名）；抛出时机为
-      ``register_provider`` 装饰器执行（import 期）；调用方不 catch
-      （部署/集成错误，改名或显式 override 后重来）；不可重试；属机制。
-    - 基类通用字段 ``provider`` / ``model`` 无上下文可填（注册期无
-      条目）；冲突名由 ``name`` 承载。
-    - 与 :class:`ToolNameConflictError` 的分层：本类管**进程级 adapter
-      注册表**（有 override 通道）；工具注册表在 Runtime 实例内、无
-      override 通道（重注册无正当场景）。
-    - 作者笔误（装饰到非 ``Provider`` 子类 / 缺 ``name`` 的对象）**不走
-      本类**——刻意抛内置 ``ValueError``（见模块 docstring 豁免声明）。
-    - 测试案例：前置：已注册 ``name="deepseek"``；操作：
-      ``@register_provider`` 注册另一个同名类；期望：抛
-      ``ProviderNameConflictError`` 且 ``e.name == "deepseek"``，原注册
-      保持不变。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``无``（import 期 fail fast；测试可精确断言）
-    - 实例化方：``flowing.providers.provider.register_provider`` 的
-      内部 ``_register``（时机：键已存在且 ``override=False``）
+    - ``name`` 字段为发生冲突的 adapter 规范名（``Provider.name`` 类属性）。
+    - 基类通用字段 ``provider`` / ``model`` 无上下文可填（注册期无条目）。
+    - import 期错误：调用方不捕获（部署 / 集成错误，改名或显式 override 后重来）。
+    - 与 ``ToolNameConflictError`` 的分层：本类管进程级 adapter 注册表（有
+      override 通道）；工具注册表在 Runtime 实例内、无 override 通道。
+    - 作者笔误（装饰到非 ``Provider`` 子类 / 缺 ``name`` 的对象）不走本类——
+      刻意抛内置 ``ValueError``（编程错误，不该被恢复逻辑捕获）。
 
     .. seealso::
 
         :class:`flowing.errors.ProviderError`
         :class:`flowing.errors.ToolNameConflictError`
-        :class:`flowing.errors.EntryNameConflictError`
+        :func:`flowing.providers.register_provider`
     """
 
     name: str
-    """发生冲突的 adapter 规范名（``Provider.name`` 类属性）。
-
-    .. seealso:: :class:`flowing.errors.ProviderNameConflictError`
-    """
+    """发生冲突的 adapter 规范名（``Provider.name`` 类属性）。"""
 
     def __init__(self, name: str) -> None:
-        """
-        .. rubric:: 调用关系（审计）
+        """构造异常实例。
 
-        - 调用：``无``（仅平行字段赋值）
-        - 被调：``register_provider`` 的内部 ``_register``（时机：同名
-          冲突且未 override）
+        :param name: 发生冲突的 adapter 规范名；与 ``name`` 字段一致。
         """
         # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(
