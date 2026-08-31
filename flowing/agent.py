@@ -1747,72 +1747,34 @@ class Agent:
         ``content: str`` 自动打包为 ``[TextBlock(text=content)]``；
         ``list`` 直接作为 ContentBlock 列表。``kind`` 默认 ``USER``，可传
         ``SYSTEM`` / ``EVENT`` / ``PEER`` 等。``**kwargs`` 透传给 Message
-        构造（``source`` / ``priority`` / ``tags`` 等）。
-
-        .. rubric:: 设计动机
-
-        两个驱动场景：① Workflow 代码编排需要同步请求-响应（免自拼
-        ``after_turn`` 钩子 + id 关联 + 等待清理的样板，避免并发误删 /
-        钩子改写 id 错位）；② 进程内同步式 UI 适配器可直接 ``await``。
-        等待语义（``query``）与 fire-and-forget（``enqueue_message`` /
-        ``message``）分离。
+        构造（``source`` / ``priority`` / ``tags`` 等）。返回包含本消息
+        的逻辑 Turn 的 :class:`TurnResult`（四种结局均 resolve，调用方不
+        挂起）。
 
         .. rubric:: 使用示例
 
         .. code-block:: python
 
-            result = await agent.query("帮我查订单 ORD-12345")
+            result = await agent.query("帮我查订单 4521")
             assert result.status == "completed"
 
-            # 副线（不 commit、不落盘，返回 str）走 side_query：
-            text = await agent.side_query("总结以上对话")
+        .. rubric:: 行为要点
 
-            # PEER 消息（对等 Agent 有意图地主动发送）
-            await peer.query("库存已变更", kind=MessageKind.PEER,
-                             source=f"agent:{self.node_id}")
-
-        .. rubric:: 行为规约
-
-        - 等待语义：等「包含我这条消息」的逻辑回合完成，返回该回合
-          ``TurnResult``；空闲时可能被 drain 合并（共享产物），活跃回合
-          中排队等当前回合完成。
-        - 副线不走本方法——副线唯一入口是 :meth:`side_query`（
-          ``Message.side`` 字段已删除，「副线」是调用路径属性而非
-          消息属性）。
+        - 等待语义：等「包含我这条消息」的逻辑回合完成；空闲时可能被
+          drain 合并（共享产物），活跃回合中排队等当前回合完成。
+        - 副线不走本方法——副线唯一入口是 :meth:`side_query`。
         - 取消等待 ≠ 取消回合：``await`` 被取消时消息已在队列（可能已
-          执行），取消只是不领结果（``finally`` 清理 ``_pending_turns``
-          条目）；撤回未出队消息用 :meth:`cancel_queued`。
-        - **死锁禁止（P3-01 裁决）**：在当前回合的调用栈内（任何钩子、
-          工具 ``execute``、provider_gen 期间的 await 点）``await query()``
-          必死锁——回合收尾要等钩子返回，钩子要等下一回合产物，下一
-          回合要等当前回合收尾。跨 Agent 等待同理：等待图成环（A 等
-          B、B 等 A）即分布式死锁，**框架不做环检测**。
-        - 回合内需要驱动，用 :meth:`steer`（STEER 优先级，检查点 ②.5
-          吸收、当轮 context 可见）；:meth:`enqueue_message` /
-          :meth:`message` 入队的非 STEER 消息回合内不可察觉，只在
-          回合间消费。确需跨 Agent ``await query()`` 的，等待图无环
-          （DAG）由开发者保证。
+          执行），取消只是不领结果；撤回未出队消息用 :meth:`cancel_queued`。
+        - 死锁禁止：在当前回合的调用栈内（任何钩子、工具 ``execute``、
+          ``provider_gen`` 期间的 await 点）``await query()`` 必死锁——
+          回合收尾要等钩子返回，钩子要等下一回合产物，下一回合要等当前
+          回合收尾。跨 Agent 等待同理：等待图成环（A 等 B、B 等 A）即
+          死锁，框架不做环检测。
+        - 回合内需要驱动，用 :meth:`steer`（STEER 优先级，当轮 context
+          可见）；``enqueue_message`` / :meth:`message` 入队的非 STEER
+          消息回合内不可察觉，只在回合间消费。
         - 崩溃 / ``destroy()`` 都不挂起调用方（resolve cancelled）。
         - 前置条件：实例未被 ``destroy()``。
-
-        .. rubric:: 测试案例
-
-        - 前置：Agent 空闲。操作：``await agent.query("hi")`` → 期望：
-          返回 ``TurnResult``，``_pending_turns`` 最终为空（finally
-          清理）。
-        - 前置：活跃回合中。操作：两个 ``query()`` 先后调用 → 期望：
-          各自 resolve 到**各自**回合的 ``TurnResult``（逐条 pop 按
-          各自 id，插队不影响关联）。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.agent.Agent.enqueue_message()``（时机：打包后
-          入队）
-        - 被调：``flowing.agent.Agent.invoke_subagent``（时机：
-          ``await child.query(prompt)`` 等待产出）、
-          ``flowing.plugins.workflow.Workflow`` 编排代码（时机：每次
-          驱动 Agent）、``flowing.plugins.cron``（时机：cron 触发投递
-          ``action.prompt``）
 
         .. seealso::
 
@@ -1852,37 +1814,21 @@ class Agent:
         （``source`` / ``priority`` / ``tags`` 等）。打包后委托
         :meth:`enqueue_message`，返回其 ``message_id``。
 
-        .. rubric:: 设计动机
-
-        与 :meth:`query` 的等待语义互补：不需要回合产物的投递（通知、
-        事件、steer 注入）不应付出 ``_pending_turns`` future 注册成本；
-        但调用方手上多半只有散装 content，手工打包是纯样板。本方法只
-        封装打包一步，入队语义与 :meth:`enqueue_message` 完全一致。
-
         .. rubric:: 使用示例
 
         .. code-block:: python
 
             message_id = await agent.message("稍后提醒我喝水")
             # 需要回合产物（最终文本 / token 用量）时改用：
-            result = await agent.query("帮我查订单 ORD-12345")
+            result = await agent.query("帮我查订单 4521")
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         - fire-and-forget：不注册 ``_pending_turns``、不等待任何回合；
           返回值仅是消息 id，可用于 :meth:`cancel_queued` 撤回。
         - 入队时序（``before_enqueue`` → enqueue → ``after_enqueue``）与
           :meth:`enqueue_message` 完全一致；``Intercepted`` 原样上抛。
-        - 非行为：不返回 ``TurnResult``——想要回合产物请用
-          :meth:`query`。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.agent.Agent.enqueue_message()``（时机：打包后
-          入队）
-        - 被调：``flowing.agent.Agent.steer``（时机：固定
-          ``priority=MessagePriority.STEER`` 委托）；应用层通知 / 事件
-          投递
+        - 不返回 ``TurnResult``——想要回合产物请用 :meth:`query`。
 
         .. seealso::
 
@@ -1899,7 +1845,8 @@ class Agent:
         return await self.enqueue_message(msg)   # 散装箱糖：不注册 _pending_turns、不等待
 
     async def steer(self, content: str | list[ContentBlock], **kwargs: Any) -> str:
-        """注入 steer 消息（不等回应）：``message(..., priority=MessagePriority.STEER)`` 的特例。
+        """注入 steer 消息（不等回应）：``message(..., priority=MessagePriority.STEER)``
+        的特例。
 
         .. rubric:: 功能介绍
 
@@ -1907,36 +1854,24 @@ class Agent:
         固定 ``priority=MessagePriority.STEER``，fire-and-forget，返回
         ``message_id``。
 
-        .. rubric:: 设计动机
-
-        「不打断、只递话」是 agent 交互的高频定式；优先级常量由框架
-        钉死，调用方不必记忆枚举值。
-
         .. rubric:: 使用示例
 
         .. code-block:: python
 
             await agent.steer("预算上限改为 500，别直接下单")
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
-        - 吸收语义（见 :meth:`_run_turn` 检查点 ②.5）：STEER 消息在内层
-          循环每轮 ``provider_gen`` 前被 drain 挂树，**当轮** context
-          即可见；不打断当前回合（对比 ``INTERRUPT`` 的 abort 语义）。
+        - 吸收语义：STEER 消息在回合内层循环每轮 ``provider_gen`` 前被
+          drain 挂树，当轮 context 即可见；不打断当前回合（对比
+          ``INTERRUPT`` 的 abort 语义）。
         - fire-and-forget：不注册 ``_pending_turns``、不等待回合产物。
-        - 非行为：不保证被哪个回合消费——若当前回合已收尾，由下一
-          回合的首轮吸收。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.agent.Agent.message()``（时机：每次调用，
-          固定 ``priority=MessagePriority.STEER``）
-        - 被调：应用层「不中断的途中干预」入口
+        - 不保证被哪个回合消费：若当前回合已收尾，由下一回合的首轮吸收。
 
         .. seealso::
 
             - :meth:`message` —— 散装直发的一般形。
-            - :meth:`_run_turn` —— STEER 吸收语义（检查点 ②.5）。
+            - :meth:`query` —— 需要回合产物时用。
         """
         return await self.message(content, priority=MessagePriority.STEER, **kwargs)
 
@@ -1945,15 +1880,9 @@ class Agent:
 
         .. rubric:: 功能介绍
 
-        接收**已构造的** ``Message`` 对象（打包责任上移到 ``query()`` /
-        ``message()`` 或调用方）。远程用户 / 第三方 / Cron / 异步工具最终结果的统一
-        投递入口。
-
-        .. rubric:: 设计动机
-
-        与 ``query()`` 的等待语义分离：不需要结果的投递（Cron 广播、
-        通知、异步最终结果）不应付出 future 注册成本。本方法是协程——
-        入队前 dispatch ``before_enqueue``（handler 可为 async）。
+        接收已构造的 ``Message`` 对象（打包责任上移到 ``query()`` /
+        ``message()`` 或调用方）。远程用户 / 第三方 / Cron / 异步工具最终
+        结果的统一投递入口。
 
         .. rubric:: 使用示例
 
@@ -1964,38 +1893,20 @@ class Agent:
                           priority=MessagePriority.HIGH)
             message_id = await agent.enqueue_message(msg)
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
-        - 时序：dispatch ``before_enqueue``（可检查 / 修改 /
-          ``raise Intercepted`` 拒绝——内容审核、速率限制、文件过大）→
+        - 时序：dispatch ``before_enqueue``（可检查 / 修改 / ``raise
+          Intercepted`` 拒绝——内容审核、速率限制、文件过大）→
           ``_message_queue.enqueue(msg)`` → dispatch ``after_enqueue``
           （纯观察，日志 / 审计）→ 返回 ``msg.id``。
         - 消费保证：入队即会被消费（常驻工作循环），无需「入队触发」逻辑。
-        - 七类入队：USER / EVENT / SYSTEM / PLUGIN / SUBAGENT / TOOL
-          （仅异步最终结果，以 ``EVENT`` kind 入队——content = 标注块 +
-          结果块列表，结果块由 ``flowing.tool.output_to_blocks`` 塑形，
-          EVENT 不参与 TOOL 配对）/ PEER；``PROVIDER`` **永远不进队列**
-          （回合内产生）。
+        - 可入队种类：USER / EVENT / SYSTEM / PLUGIN / SUBAGENT / TOOL
+          （仅异步最终结果，以 ``EVENT`` kind 入队）/ PEER；``PROVIDER``
+          永远不进队列（回合内产生）。
         - 优先级插队只影响消费顺序，不影响 ``_pending_turns`` 关联
           （逐条按 id pop）。
         - :raises flowing.errors.Intercepted: ``before_enqueue`` handler
           拒绝入队时原样上抛。
-
-        .. rubric:: 测试案例
-
-        - 前置：``before_enqueue`` handler 对含违规词的消息 ``raise
-          Intercepted`` → 操作：``await agent.enqueue_message(msg)`` →
-          期望：抛出 ``Intercepted``，队列长度不变，``after_enqueue``
-          不触发。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``before_enqueue`` / ``after_enqueue`` dispatch 与
-          ``flowing.message.MessageQueue.enqueue()``（时机：见本方法时序
-          规约）
-        - 被调：``flowing.agent.Agent.enqueue_messages``（时机：逐条
-          委托）、``flowing.agent.Agent.query`` / ``flowing.agent.Agent.message``
-          （时机：打包后）
 
         .. seealso::
 
@@ -2014,18 +1925,12 @@ class Agent:
     ) -> list[str]:
         """批量入队（接受单条或列表），返回 ``message_id`` 列表。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         - 逐条委托 :meth:`enqueue_message`（每条独立经过
           ``before_enqueue`` / ``after_enqueue``）；任一条被
           ``Intercepted`` 时异常上抛，已入队的不回滚。
         - 返回顺序与输入顺序一致。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.agent.Agent.enqueue_message()``（时机：逐条
-          委托，每条独立经过 ``before_enqueue`` / ``after_enqueue``）
-        - 被调：无
 
         .. seealso:: :meth:`enqueue_message`
         """
@@ -2037,44 +1942,26 @@ class Agent:
         return ids
 
     def cancel_queued(self, message_id: str) -> bool:
-        """撤回一条**未出队**的排队消息。
+        """撤回一条未出队的排队消息。
 
         .. rubric:: 功能介绍
 
-        从 ``_message_queue`` 移除指定消息；若该消息有 ``query()``
-        等待者（``_pending_turns`` 条目），联动 resolve
+        从消息队列移除指定消息；若该消息有 ``query()`` 等待者
+        （``_pending_turns`` 条目），联动 resolve
         （``TurnResult(status="cancelled")``，turn 字段为框架合成的空
         ``TurnContext``）并移除条目——调用方不挂起。
 
-        .. rubric:: 设计动机
-
-        「取消等待 ≠ 取消回合」的配套撤回通道：消息还没被消费时允许
-        反悔；已出队则木已成舟，走 ``abort_turn()`` / ``cancel()``。
-
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         - 返回 ``True``：消息在队列中，已移除（等待者已联动 resolve）。
         - 返回 ``False``：消息已出队（正在或已被回合消费）或不存在——
           不做任何动作。
         - 同步方法：不 dispatch 钩子、不 await；future 的 ``set_result``
           同步完成。
-        - 非行为：不影响其它排队消息；不触碰 ``current_turn``。
+        - 不影响其它排队消息；不触碰 ``current_turn``。
 
-        .. rubric:: 测试案例
-
-        - 前置：Agent 活跃回合中，消息 m 排队且有等待者 → 操作：
-          ``agent.cancel_queued(m.id)`` → 期望：返回 ``True``，等待者
-          resolve ``cancelled``，队列中无 m。
-        - 前置：m 已被出队 → 操作：同上 → 期望：返回 ``False``，
-          等待者仍由回合收尾正常 resolve。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：无（``_message_queue`` 移除与 future ``set_result`` 同步
-          完成，不 dispatch 钩子）
-        - 被调：无
-
-        .. seealso:: :meth:`query`、:meth:`abort_turn`、:meth:`set_queued_priority`
+        .. seealso:: :meth:`query`、:meth:`abort_turn`、
+            :meth:`set_queued_priority`
         """
         removed = self._message_queue.remove(message_id)   # 同步方法，不 dispatch 钩子
         if not removed:
@@ -2088,33 +1975,27 @@ class Agent:
         return True
 
     def track_background_task(self, task: asyncio.Task) -> str:
-        """注册一个后台任务并返回注册键（B9 唯一注册入口）。
+        """注册一个后台任务并返回注册键（后台机制的唯一注册入口）。
 
         .. rubric:: 功能介绍
 
-        后台机制（async generator 工具形态 / ``background`` 标记 / 返回 Task
-        路径）的驱动任务统一经本方法登记：生成 ``uuid4`` 注册键 → 写入
-        ``_background_tasks`` → 挂 done_callback **闭包**移除（完成/异常/取消
-        即弃）→ 返回注册键。注册键随 pending 收据交付（``ToolResult.
-        background_task_id``），调用方/LLM 可据此按 id 取消或查询。
+        后台机制（async generator 工具形态 / ``background`` 标记 / 返回
+        Task 路径）的驱动任务统一经本方法登记：生成 ``uuid4`` 注册键 →
+        写入 ``_background_tasks`` → 挂 done_callback 闭包移除（完成 /
+        异常 / 取消即弃）→ 返回注册键。注册键随 pending 收据交付
+        （``ToolResult.background_task_id``），调用方 / LLM 可据此按 id
+        取消或查询。
 
-        .. rubric:: 设计动机
-
-        注册表同时承担三件事：**按 id 精确取消**、**强引用防 GC**（后台任务
-        无其他持有者）、**destroy 统一覆盖**（B11）。
-
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         - 同步方法；同一任务重复注册产生两个不同键（调用方责任）。
-        - 注册键 ``uuid4().hex``（不引入 tool_call_id 派生——``Tool.__call__``
-          不接触 ToolCall 对象是 C-05 既有边界）。
-        - done_callback 用**闭包捕获 str 键**——直接传 ``dict.pop`` 会收到
+        - 注册表同时承担：按 id 精确取消、强引用防 GC（后台任务无其他
+          持有者）、destroy 统一覆盖。
+        - done_callback 用闭包捕获 str 键——直接传 ``dict.pop`` 会收到
           Task 参数而 KeyError。
 
-        .. rubric:: 调用关系（审计）
-
-        - 被调：``flowing.tool.Tool.__call__``（时机：async gen / background /
-          返回 Task 三条后台路径注册驱动任务）
+        .. seealso:: :meth:`cancel_background_task`、
+            :meth:`cancel_all_background_tasks`
         """
         task_id = uuid4().hex
         self._background_tasks[task_id] = task
@@ -2123,16 +2004,15 @@ class Agent:
         return task_id
 
     def cancel_background_task(self, task_id: str) -> bool:
-        """按注册键取消单个后台任务（B9）。
+        """按注册键取消单个后台任务。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
-        - 返回**是否命中注册表**（不在册 → ``False`` 幂等）；与
+        - 返回是否命中注册表（不在册 → ``False``，幂等）；与
           ``task.cancel()`` 的返回值无关——命中已完成任务时 ``cancel()``
           返回 ``False`` 但本方法仍返回 ``True``。
         - 同步方法：``task.cancel()`` 为协作式——执行体可在 await 点收
-          ``CancelledError`` 后自行决定收尾；驱动协程捕获后投递「已取消」
-          再裸 raise（B4）。
+          ``CancelledError`` 后自行决定收尾。
         """
         task = self._background_tasks.get(task_id)
         if task is None:
@@ -2141,12 +2021,12 @@ class Agent:
         return True
 
     def cancel_all_background_tasks(self) -> None:
-        """取消全部在册后台任务（B9/B11）。
+        """取消全部在册后台任务。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
-        - 遍历 ``task.cancel()``（**只 cancel 不 await**——执行体可忽略取消，
-          await 无界会让 destroy 挂起，见 B11）；幂等，空表 no-op。
+        - 遍历 ``task.cancel()``（只 cancel 不 await——执行体可忽略取消，
+          await 无界会让 ``destroy()`` 挂起）；幂等，空表 no-op。
         - 不清空注册表（移除由 done_callback 闭包完成；destroy 场景由
           destroy 显式 ``clear()``）。
         """
@@ -2154,35 +2034,30 @@ class Agent:
             task.cancel()
 
     def get_background_tasks(self) -> dict[str, asyncio.Task]:
-        """后台任务注册表快照（B9）。
+        """后台任务注册表快照（``task_id → Task``）。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
-        - **快照**：复制 dict，不返回内部引用——调用方改动不影响注册表。
-        - 直接暴露 Task 对象（裁决：不做防调用方包装）；task_id → Task。
+        - 快照：复制 dict，不返回内部引用——调用方改动不影响注册表。
+        - 直接暴露 Task 对象，不做防调用方包装。
         """
         return dict(self._background_tasks)
 
     def get_background_task(self, task_id: str) -> asyncio.Task | None:
-        """按注册键查询单个后台任务（B9）；不在册 → ``None``。"""
+        """按注册键查询单个后台任务；不在册 → ``None``。"""
+        
         return self._background_tasks.get(task_id)
 
     def set_queued_priority(self, message_id: str, priority: MessagePriority) -> bool:
-        """重设一条**未出队**排队消息的优先级（队列立即重排）。
+        """重设一条未出队排队消息的优先级（队列立即重排）。
 
         .. rubric:: 功能介绍
 
         :meth:`flowing.message.MessageQueue.set_priority` 的 Agent 层入口：
-        把排队中的消息提升 / 降低优先级，影响下一轮 ``_dequeue()`` 的消费
-        顺序。与 :meth:`cancel_queued` 对称——那个管「反悔撤回」，这个管
-        「催办 / 降级」。
-
-        .. rubric:: 设计动机
-
-        重排**保留原入队序号**（用户裁决）：被改优先级的消息插入新优先级带
-        时按原入队早晚定位，如同它入队时就带着新优先级——而非排到该带
-        末尾。改优先级无等待者牵连（消息仍会被正常消费、正常 resolve），
-        故本方法是纯转发，无联动逻辑。
+        把排队中的消息提升 / 降低优先级，影响下一轮出队的消费顺序。与
+        :meth:`cancel_queued` 对称——那个管「反悔撤回」，这个管「催办 /
+        降级」。重排保留原入队序号：被改优先级的消息插入新优先级带时按
+        原入队早晚定位，如同它入队时就带着新优先级。
 
         .. rubric:: 使用示例
 
@@ -2190,28 +2065,14 @@ class Agent:
 
             agent.set_queued_priority(msg_id, MessagePriority.HIGH)   # 催办
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         - 返回 ``True``：消息在队列中，``priority`` 已改写并重排。
         - 返回 ``False``：消息已出队（正在或已被回合消费）或不存在——
           不做任何动作。
         - 同步方法：不 dispatch 钩子、不 await。
-        - 非行为：不影响正在执行的回合与 ``current_turn``；不改写消息
-          其它字段（``id`` / ``timestamp`` 等）。
-
-        .. rubric:: 测试案例
-
-        - 前置：NORMAL 消息 m 排队中，其后无其它排队消息 → 操作：
-          ``agent.set_queued_priority(m.id, MessagePriority.HIGH)`` →
-          期望：返回 ``True``，下一轮 ``_dequeue`` 先于其它 NORMAL
-          消息消费 m。
-        - 前置：m 已出队 → 操作：同上 → 期望：返回 ``False``。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.message.MessageQueue.set_priority``（时机：
-          每次调用本方法，纯转发）
-        - 被调：无
+        - 不影响正在执行的回合与 ``current_turn``；不改写消息其它字段
+          （``id`` / ``timestamp`` 等）。
 
         .. seealso:: :meth:`cancel_queued`、:meth:`enqueue_message`
         """
@@ -2223,23 +2084,13 @@ class Agent:
         .. rubric:: 功能介绍
 
         回答「现在把上下文发给 LLM 大约多大」：沿 ``current_head_id`` 上溯
-        的当前路径上，找最近一条**有效锚点**（``kind == PROVIDER`` 且
-        ``usage is not None`` 且 ``usage.total_tokens > 0`` 的消息），
+        的当前路径上，找最近一条有效锚点（``kind == PROVIDER`` 且
+        ``usage`` 非 ``None`` 且 ``usage.total_tokens > 0`` 的消息），
         锚点覆盖部分用实测值（``measured``），之后的新内容用
         :func:`flowing.message.estimate_message_tokens` 逐条估算
         （``estimated``）；无有效锚点时全段估算（含 system prompt 与工具
-        schema，见行为规约）。
-
-        .. rubric:: 设计动机
-
-        混合计数模型（kimi-code 锚点账本 / pi 锚点+尾部估算的 Flowing 化，
-        用户确认引入）：实测管「已发送的过去」，估算管「从未被实测的现在」
-        ——锚点到下一次 provider_gen 之间积累的内容（工具结果、新入队消息、注入）
-        没有实测可用，而余量显示与（未来）压缩判断恰恰落在这个窗口。
-        **不维护持久锚点账本**：每次现场沿链扫描，锚点随 fork / 树手术
-        自动迁移（锚点消息被 ``chain.remove`` 后次近者自然顶上），无陈旧
-        锚点问题；代价是 O(路径长) 扫描，符合「无本地缓存、现场求值」
-        原则。
+        schema）。每次现场扫描，锚点随 fork / 树手术自动迁移——不维护
+        持久锚点账本，无陈旧锚点问题；代价是 O(路径长) 扫描。
 
         .. rubric:: 使用示例
 
@@ -2248,53 +2099,30 @@ class Agent:
             est = agent.estimate_context_tokens()
             print(est.tokens, est.usage_ratio)   # 比率不 clamp，>1 即溢出信号
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         - 同步、纯读取、无副作用：不 dispatch 钩子、不改任何状态。
-        - 路径收集口径与 ``_assemble_context()`` 相同（沿 ``current_head_id``
-          上溯）。
-        - 锚点命中时：``measured = 锚点.usage.total_tokens``（恒等式保证
-          含 cache_read——缓存读的 token 也占窗口）；``estimated`` 追加
+        - 路径收集口径与上下文组装相同（沿 ``current_head_id`` 上溯）。
+        - 锚点命中时：``measured = 锚点.usage.total_tokens``（含
+          cache_read——缓存读的 token 也占窗口）；``estimated`` 追加
           「当前启用工具中不在 ``_measured_tool_names`` 的 schema 估算」
-          （``llm_definition()`` JSON 序列化 ÷ 4）——锚点后新增工具的
-          补估规则。
+          ——锚点后新增工具的补估规则。
         - 无锚点时：``measured = None``，``estimated`` = system prompt 各
-          segment 文本估算 + 当前全部启用工具 schema 估算 + 路径全部
-          消息估算。
+          segment 文本估算 + 当前全部启用工具 schema 估算 + 路径全部消息
+          估算。
         - ``context_window`` 取 ``self.model.resolve(self).context_window``
           （现场求值；模型未声明为 ``None``，此时 ``usage_ratio`` 为
           ``None``）。
-        - 非行为：不设阈值、不触发压缩、不告警（策略归插件）；不缓存
-          结果；估算值**永不用于计费**；不做「溢出后学习收紧上限」
-          （kimi-code 的 overflow 学习属压缩策略，不进核心）。
+        - 不设阈值、不触发压缩、不告警（策略归插件）；不缓存结果；估算值
+          永不用于计费。
         - 边缘情况：路径为空 → 全零且 ``measured is None``；锚点消息的
           ``usage.total_tokens == 0``（异常响应）不算有效锚点，继续上溯。
-
-        .. rubric:: 测试案例
-
-        - 前置：路径上有一条 PROVIDER 消息（``usage.total_tokens == 5000``），
-          其后挂了两条工具结果 → 期望：``measured == 5000``、
-          ``anchor_message_id`` 指向该消息、``tokens == 5000 + 两条估算``。
-        - 前置：全新会话（路径无 PROVIDER 消息）→ 期望：
-          ``measured is None``，``estimated`` 含 system prompt 与全部
-          启用工具 schema。
-        - 前置：锚点消息被 ``chain.remove`` → 期望：下次调用锚点落到
-          次近的有效 PROVIDER 消息（无陈旧值）。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.message.estimate_message_tokens``（时机：对
-          估算范围内每条消息）；``flowing.model.ModelConfig.resolve``
-          （时机：取 ``context_window``）；当前启用工具条目的
-          ``llm_definition()``（时机：schema 估算）
-        - 被调：``flowing.agent.Agent.snapshot``（时机：每次快照，结果
-          投影进 ``AgentSnapshot.context_usage``）
 
         .. seealso::
 
             :class:`ContextUsageEstimate`、
             :func:`flowing.message.estimate_message_tokens`、
-            :class:`flowing.providers.Usage`、``Agent.snapshot``。
+            :class:`flowing.providers.Usage`
         """
         # 沿 current_head_id 上溯收集（与 _assemble_context 同口径；
         # 孤儿链断点容忍——上溯到断点即终止，同 MessageChain.remove 的语义）
