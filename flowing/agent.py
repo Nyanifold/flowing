@@ -751,15 +751,6 @@ class Agent:
     是 :meth:`flowing.runtime.Runtime.recover_agent`。两条管线都会执行
     ``setup()`` （可重入契约见 :meth:`setup`）。
 
-    .. rubric:: 设计要点
-
-    - ``.fya`` 元信息直接作为类属性：类型层面反映行为差异（traceback
-      显示真实类名）、手写子类与 ``.fya`` 是同一套类模型、无双份元数据源。
-    - 不持有父对象引用：只存 ``_parent_id`` 字符串——生命周期定位与
-      provide 上溯共用一条 UID 链。
-    - Agent 不只是树中节点：消息队列、异步执行条目、常驻工作循环使其
-      具备自治能力（对等 Agent 通信、池遍历、UI 挂载三场景）。
-
     .. rubric:: 使用示例
 
     ``.fya`` 声明式（``agents/order-agent/agent.fya``）：
@@ -2596,29 +2587,12 @@ class Agent:
         ``current_head_id`` → dispatch ``after_fork`` （纯观察，日志 /
         通知 UI 刷新分支列表）。
 
-        .. rubric:: 设计要点
-
-        - fork 是纯上下文操作，不碰执行：正在运行的工具 / 子 Agent 继续
-          运行、结果照常交付；执行追踪、生命周期子树、prompt 块、provide
-          存储、工具条目、消息队列均不被触碰（共享同一实例，不拷贝、不
-          冻结）。
-        - 全时合法、无守卫：head 即「添加节点的位置」（每条消息挂树即
-          前移），回合内 fork 的语义即 seek——本回合后续 append 与
-          ``provider_gen`` 改在新基址上继续。这是可预想的操作语义而非
-          损坏，框架不做家长式禁止；但调用方须自知三件事：① 嫁接——
-          fork 后的产物挂在目标所在链上，``turn.message_ids`` 可能跨链
-          （消费者均按 id 取消息，无机械故障）；② 上下文瞬移——下一轮
-          上下文组装从新 head 上溯；③ 配对断裂——仅当 fork 落在
-          「tool_call 已挂树、结果未 append」的工具执行相位，下一轮组装
-          出「有 result 无 call」，provider 会显式报错（响亮、可恢复，
-          append-only 保证数据完好）。
-        - 外部改方向的推荐定式仍是先终止执行再切上下文（时序可控）：
-          ``cancel()`` → 等回合收尾完成 → ``fork()`` → 发新消息。回合内
-          直接 fork 适合时序可知的钩子内调用者（如 compact）。
-        - 上下文压缩 = fork 的应用：压缩把摘要复制为 SYSTEM 新根后经本
-          方法切换 head，旧分支保留完整历史；何时压缩、如何摘要是
-          Composable / 应用层策略（内置 ``flowing.composables.compact``），
-          fork 只提供机制。
+        fork 是纯上下文操作，不碰执行：正在运行的工具 / 子 Agent 继续
+        运行、结果照常交付；执行追踪、生命周期子树、prompt 块、provide
+        存储、工具条目、消息队列均不被触碰（共享同一实例，不拷贝、不
+        冻结）。全时合法、无守卫：head 即「添加节点的位置」（每条消息挂树
+        即前移），回合内 fork 的语义即 seek——本回合后续 append 与
+        ``provider_gen`` 改在新基址上继续。
 
         .. rubric:: 使用示例
 
@@ -2631,13 +2605,25 @@ class Agent:
 
         .. rubric:: 行为要点
 
+        - 回合内 fork（seek 语义）合法、无 ``RuntimeError`` 守卫，但调用方
+          须自知三件事：① 嫁接——fork 后的产物挂在目标所在链上，
+          ``turn.message_ids`` 可能跨链（消费者均按 id 取消息，无机械
+          故障）；② 上下文瞬移——下一轮上下文组装从新 head 上溯；③
+          配对断裂——仅当 fork 落在「tool_call 已挂树、结果未 append」的
+          工具执行相位，下一轮组装出「有 result 无 call」，provider 会
+          显式报错（响亮、可恢复，append-only 保证数据完好）。这是可预想
+          的操作语义而非损坏，框架不做家长式禁止。
+        - 外部改方向的推荐定式仍是先终止执行再切上下文（时序可控）：
+          ``cancel()`` → 等回合收尾完成 → ``fork()`` → 发新消息。回合内
+          直接 fork 适合时序可知的钩子内调用者（如 compact）。
+        - 上下文压缩 = fork 的应用：压缩把摘要复制为 SYSTEM 新根后经本
+          方法切换 head，旧分支保留完整历史；何时压缩、如何摘要是
+          Composable / 应用层策略（内置 ``flowing.composables.compact``），
+          fork 只提供机制。
         - :raises ValueError: ``target_message_id`` 不在 ``_messages``
           中（含已被 ``chain.remove`` 移除的 id）。
         - :raises flowing.errors.Intercepted: ``before_fork`` handler
           阻止 fork。
-        - 回合内 fork（seek 语义）：合法，无 ``RuntimeError`` 守卫；后果
-          见设计要点——嫁接 / 上下文瞬移 / 工具相位配对断裂均属调用方
-          责任。
         - 不换 Agent 类型（换类型 = 换身份 = 子 Agent）；不创建第二个
           实例、不在两个分支上同时运行（需要并行用子 Agent）；不复制 /
           截断 tree.jsonl——只是切换游标。
@@ -2786,7 +2772,7 @@ class Agent:
         取消与正常结束）。空闲 Agent（无回合在跑）被 cancel 时
         ``after_cancel`` 照常触发：信号置位是事实，与有无回合无关。
 
-        .. rubric:: 设计要点
+        .. rubric:: 行为要点
 
         - 协作式：置位是请求不是命令——执行体三选一（立即停止返回已有
           / 空结果 / 忽略信号正常完成 / 关键收尾后返回部分结果）；Agent
@@ -2796,9 +2782,6 @@ class Agent:
         - 级联取消：父只操作自己的执行注册表与回合退出信号，子 Agent 在
           检查点检测到自己的信号后自行清理——每层只负责自己的执行，无
           中央调度器。
-
-        .. rubric:: 行为要点
-
         - 协程（dispatch 钩子）；不接受原因参数（无参）。
         - cancel 后队列中待处理消息不丢弃——交应用层（重新投递 / 记录
           日志 / 通知发送方三选一）。
@@ -2854,15 +2837,12 @@ class Agent:
     async def stop(self) -> None:
         """强制式停止——框架默认实现等价于 :meth:`cancel`，子类可覆写。
 
-        .. rubric:: 设计要点
-
-        ``cancel()`` 是协作式（执行体可忽略信号）；执行体卡死 / 超时兜底
-        需要更强手段。框架核心不提供强制 kill 通用实现——强制终止的手段
-        高度依赖执行体类型（进程 kill、HTTP 连接关闭等），由子类覆写本
-        方法注入。
-
         .. rubric:: 行为要点
 
+        - ``cancel()`` 是协作式（执行体可忽略信号）；执行体卡死 / 超时
+          兜底需要更强手段。框架核心不提供强制 kill 通用实现——强制终止
+          的手段高度依赖执行体类型（进程 kill、HTTP 连接关闭等），由子类
+          覆写本方法注入。
         - 默认实现 = ``await self.cancel()`` （含 before/after_cancel
           钩子）。
         - 覆写约定：先调默认逻辑或自行置位信号，再做强制动作；Agent
