@@ -2905,49 +2905,36 @@ class Agent:
 
         直接委托 ``runtime.create_agent(agent_type,
         parent_id=self.node_id, **kwargs)``——不提供别的，只提供「自己
-        的 ``node_id`` 作为 ``parent_id``」。
+        的 ``node_id`` 作为 ``parent_id``」。可选 ``name`` 为子代起语义
+        名（登记进 ``child_ids``，供 ``invoke_subagent(resume=...)`` 按名
+        续接；语义名只存在父侧表中，子实例不自持名字）。
 
-        .. rubric:: 设计动机（与 :meth:`invoke_subagent` 的分工）
-
-        - 谁调用：钩子回调、外部代码、回合内工具（要「创建并持有
-          实例」）。setup 内亦可调（无写闸门，D5）。
-        - 参数来源：调用方直接传完整 kwargs（``agent_type`` + 类型 args）；
-          可选 ``name`` 为子代起语义名（登记进 ``child_ids``，供
-          ``invoke_subagent(resume=...)`` 按名续接；语义名只存在父侧
-          表中，子实例不自持名字——A15 裁决）。
-        - **不做** ``SubagentEntry.resolve()``，**不经过**
-          ``before/after_subagent_invoke`` 钩子（仅走创建管线的
-          ``before/after_create``）；不支持 ``resume`` 续接。
-        - 生命周期：调用方自行管理——默认存续（agent 池），显式
-          ``destroy()`` 或随父销毁。
+        与 :meth:`invoke_subagent` 的分工：本方法不做
+        ``SubagentEntry.resolve()``、不经过 ``before_subagent_invoke`` /
+        ``after_subagent_invoke`` 钩子（仅走创建管线的 ``before_create`` /
+        ``after_create``）、不支持 ``resume`` 续接——适合「创建并持有
+        实例」的钩子回调 / 外部代码 / 回合内工具。
 
         .. rubric:: 使用示例
 
         .. code-block:: python
 
-            child = await self.create_subagent("payment-agent", order_id="456")
+            child = await self.create_subagent("payment", order_id="456")
             result = await child.query("发起退款")
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
-        - ``agent_type`` 是**字符串类型名**（统一裁决），由
-          ``get_agent_class`` 惰性解析为 Agent 类；与资源引用语法
-          一致（裸名引用）。
+        - ``agent_type`` 是字符串类型名，由 ``get_agent_class`` 惰性解析
+          为 Agent 类。
         - 创建即注册（``_nodes``）+ 进入 ``_children`` + provide 链可
           上溯到本实例。
-        - **语义名登记（S-34）**：``name`` 非空时创建成功后登记
-          ``child_ids[name] = node_id`` 并同步
-          写透核心键 ``child_ids``（整表覆写一行，末行合并防膨胀）。
-          未命名子 Agent 不入表。
-        - 异常（类型名解析失败 / PENDING 检查失败等）原样上抛，父
-          Agent 状态不变。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.runtime.Runtime.create_agent()``（时机：每次
-          调用直接委托，仅提供 ``parent_id=self.node_id``）
-        - 被调：``flowing.agent.Agent.invoke_subagent``（时机：新建
-          路径内部调用）
+        - ``name`` 非空时创建成功后登记 ``child_ids[name] = node_id``
+          并写透核心袋（整表覆写一行，末行合并防膨胀）；未命名子 Agent
+          不入表。
+        - 生命周期：调用方自行管理——默认存续（agent 池），显式
+          ``destroy()`` 或随父销毁。
+        - 异常（类型名解析失败 / PENDING 检查失败等）原样上抛，父 Agent
+          状态不变。
 
         .. seealso::
 
@@ -2980,35 +2967,22 @@ class Agent:
         时序（两段式，内部拆 :meth:`_prepare_subagent` /
         :meth:`_run_subagent`）：
 
-        - **准备段**（``:meth:`_prepare_subagent`，同步 await）：按别名查
-          ``_subagent_entries`` → ``SubagentEntry.resolve()``（LLM args →
-          完整 kwargs：别名映射 + specified 求值 + inject 注入）→ 构造
+        - 准备段（同步 await）：按别名查 ``_subagent_entries`` →
+          ``SubagentEntry.resolve()``（LLM args → 完整 kwargs：别名映射 +
+          specified 求值 + inject 注入）→ 构造
           :class:`SubagentInvocation` 并 dispatch 父 Agent 的
           ``before_subagent_invoke`` → 注册 ``Execution(kind="agent")`` →
           新建（内部调 :meth:`create_subagent`）或续接（``resume`` 按
           实例名找池中实例）。此段失败（``Intercepted`` / 校验 / 创建抛
-          异常）**同步上抛**——子 Agent 要么成功创建要么未创建，工具路径
-          由 ``ToolResult(status="error")`` 承载（LLM 可见）。
-        - **运行段**（``:meth:`_run_subagent`，可后台）：``await child.
-          message(prompt)`` 等待产出 → 构造 :class:`SubagentResult` →
-          dispatch ``after_subagent_invoke``（**先于交付**：handler 可
-          改写 result，改写对两条路径同时生效）→ 用改写后的 result
-          构造 ``Message(kind=SUBAGENT)`` 推入本实例队列（LLM 后续回合
-          感知）并 return（消息路径与代码路径同源）→ finally 清理
-          Execution。运行段结局走 ``TurnResult`` 四态正常通道
-          （``subagent_status`` 承载），只剩框架 bug 走框架错误通道。
-
-        .. rubric:: 设计动机
-
-        与 :meth:`create_subagent` 的分工见后者 docstring。「带 resolve +
-        钩子 + 生命周期策略的包装」 vs 「干净构造」。``subagent-invoke``
-        工具（LLM 调用面）是本方法的工具封装。本方法本身是同步 API：
-        调用方会同步拿到 ``SubagentResult``，因此**不**把结果作为
-        ``SUBAGENT`` 消息入队——真实产出由调用方决定如何交付（例如同步
-        工具把全字段填进自己的返回值）。需要“结果稍后以 SUBAGENT 消息
-        到达”的路径是 ``SubagentInvokeTool`` 的 ``asynchronized=True``，
-        它不走本方法，而是拆分 ``_prepare_subagent`` + 后台
-        ``_run_subagent(enqueue_result=True)``。
+          异常）同步上抛——子 Agent 要么成功创建要么未创建，工具路径由
+          ``ToolResult(status="error")`` 承载（LLM 可见）。
+        - 运行段（可后台）：``await child.query(prompt)`` 等待产出 →
+          构造 :class:`SubagentResult` → dispatch
+          ``after_subagent_invoke``（先于交付：handler 可改写 result，
+          改写对两条路径同时生效）→ 用改写后的 result 构造
+          ``Message(kind=SUBAGENT)`` 推入本实例队列（LLM 后续回合感知）
+          并返回。运行段结局走 ``TurnResult`` 四态正常通道
+          （``subagent_status`` 承载）。
 
         .. rubric:: 使用示例
 
@@ -3021,77 +2995,42 @@ class Agent:
             result2 = await self.invoke_subagent(
                 "coder", resume="my-reviewer", prompt="继续审查 payment 模块")
 
-            # 并行编排（各自注册为 Execution）
-            rec, discount = await asyncio.gather(
-                self.tool_call(ToolCall(name="recommend-products",
-                                        args={"category": "电子产品"})),
-                self.invoke_subagent("store-discount", store="京东"),
-            )
-
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         - ``resume`` 与新建参数互斥：续接保持原类型，``kwargs`` 忽略
-          （实例已存在）；``resume`` 找不到实例名 → ``ValueError``。
-          查找载体 = ``child_ids`` 语义名表（S-34）：目标实例活着
-          直接用，已销毁 / 未恢复则经 ``Runtime.get_agent`` 现场恢复
-          并重新进入 ``_children``。
+          （实例已存在）；``resume`` 找不到实例名 → ``ValueError``。查找
+          载体 = ``child_ids`` 语义名表：目标实例活着直接用，已销毁 /
+          未恢复则经 ``Runtime.get_agent`` 现场恢复并重新进入
+          ``_children``。
         - 子 Agent 注册为 ``Execution(kind="agent")``——``cancel()`` /
           级联取消可命中；子 Agent 被 cancel 的已产出部分结果作为正常
           产物返回父 Agent：``SubagentResult.subagent_status`` 标
-          ``"cancelled"``，``result`` 按统一填充规则（``finish_output``
-          已置位 → 载荷照返；有完整本轮 PROVIDER 消息 → 其文本；皆无
-          → ``None``，「仅返回取消信息」即由 ``subagent_status`` 承载）。
+          ``"cancelled"``，``result`` 按统一填充规则。
         - 唤起失败（创建 / 校验 / 运行抛异常）原样上抛调用方——无专属
           错误钩子（``on_subagent_error`` 已删除）；工具路径由
           ``ToolResult(status="error")`` 承载。
-        - ``after_subagent_invoke`` 在结果构造后、**交付前** dispatch
-          （value 为 :class:`SubagentInvocation`，``result`` 已回填）：
-          handler 可改写 ``invocation.result``，改写对 return 值与
-          SUBAGENT 消息**同时生效**（两条路径同源）；纯观察需求由不改写
-          的 handler 承担（``on_subagent_return`` 已删除并入）。本钩子
-          不接 ``Intercepted``——阻断闸在 ``before_subagent_invoke``，
-          答卷级处置用改写表达。
+        - ``after_subagent_invoke`` 在结果构造后、交付前 dispatch（value
+          为 :class:`SubagentInvocation`，``result`` 已回填）：handler
+          可改写 ``invocation.result``，改写对返回值与 SUBAGENT 消息同时
+          生效（两条路径同源）；纯观察需求由不改写的 handler 承担。本
+          钩子不接 ``Intercepted``——阻断闸在 ``before_subagent_invoke``。
         - 同步交付语义：本方法等待子 Agent 完成后，把改写后的
-          ``SubagentResult`` 作为返回值交给调用方；**不**再另发
-          ``SUBAGENT`` 消息入父队列。调用方（通常是同步工具路径）负责
-          把结果放进自己的返回值/树节点，避免同源结果二次入队。
-        - 外部代码需要“异步执行且不入队”时，用
-          ``asyncio.create_task(agent.invoke_subagent(...))``——本方法
-          是协程，可被后台执行；结果只交给该 Task，不会推入 Agent 队列。
-        - ``subagent-invoke`` 工具的 ``asynchronized=True`` 是**另一条
-          特殊路径**：它不走本方法，而是拆成 ``_prepare_subagent``（同步
-          创建）+ 后台 ``_run_subagent(enqueue_result=True)``；完成后
-          **必定** enqueue ``SUBAGENT`` 消息，工具只返回 ``started`` 收据。
-          外部代码若不想入队，不要走该工具异步路径，用
+          ``SubagentResult`` 作为返回值交给调用方；不再另发 SUBAGENT
+          消息入父队列。调用方（通常是同步工具路径）负责把结果放进自己
+          的返回值 / 树节点，避免同源结果二次入队。
+        - 外部代码需要异步执行且不入队时，用
+          ``asyncio.create_task(agent.invoke_subagent(...))``——本方法是
+          协程，可被后台执行；结果只交给该 Task，不会推入 Agent 队列。
+        - ``subagent-invoke`` 工具的 ``asynchronized=True`` 是另一条特殊
+          路径：它不走本方法，而是拆成 ``_prepare_subagent``（同步创建）
+          + 后台 ``_run_subagent(enqueue_result=True)``；完成后必定 enqueue
+          SUBAGENT 消息，工具只返回 ``started`` 收据。外部代码若不想
+          入队，不要走该工具异步路径，用
           ``asyncio.create_task(agent.invoke_subagent(...))``。
         - 无论是否入队，``after_subagent_invoke`` 都先于交付 dispatch，
-          改写后的结果同时是 return 值与后续交付内容。
-        - 非行为：不做 keep_alive 语义（已废弃）——生命周期由 agent 池
-          「默认存续 + 显式销毁」管理。
-
-        .. rubric:: 测试案例
-
-        - 前置：``.fya`` 声明 ``- payment as pay`` 且其 ``args:`` 含
-          ``user_id: "{{ self.inject('user_id') }}"``（注入表达式，R-4）
-          → 操作：``await self.invoke_subagent("pay", prompt="收款 99 元")``
-          → 期望：子 Agent ``setup`` 收到 ``user_id``（沿 provide 链），
-          LLM 的 catalog 中无 ``user_id`` 参数。
-        - 前置：``before_subagent_invoke`` handler ``raise Intercepted``
-          → 期望：异常上抛，未创建任何实例。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.subagents.SubagentEntry.resolve()``、
-          ``flowing.agent.Agent.create_subagent()``（新建路径）、
-          ``child.query()``（等待产出）、``before_subagent_invoke`` /
-          ``after_subagent_invoke`` dispatch（时机：均见本方法时序规约）；
-          ``Execution(kind="agent")`` 注册
-        - 被调：``subagent-invoke`` 工具（LLM 调用面封装；本体为
-          :class:`flowing.builtins.SubagentInvokeTool`，``Runtime.__init__``
-          经 :func:`flowing.builtins.register_builtins` 核心注册；注册保证在场，
-          但可见性须 Agent 级显式声明——核心特性 ≠ 静默附加）。
-          ``asynchronized=True`` 时工具经 :meth:`_prepare_subagent` +
-          ``asyncio.ensure_future(_run_subagent)`` 拆段调用
+          改写后的结果同时是返回值与后续交付内容。
+        - 不做 keep_alive 语义——生命周期由 agent 池「默认存续 + 显式
+          销毁」管理。
 
         .. seealso::
 
@@ -3115,34 +3054,17 @@ class Agent:
         kwargs: dict[str, Any],
     ) -> tuple[Agent, SubagentInvocation, Execution]:
         """``invoke_subagent`` 准备段（内部 API）：resolve + before 钩子 +
-        Execution 注册 + 创建/续接。
-
-        .. rubric:: 功能介绍
+        Execution 注册 + 创建 / 续接。
 
         同步 await 的唤起前半段。本段返回即保证「子 Agent 已成功创建
         （或续接）」；本段内任何失败（``before_subagent_invoke`` 的
-        ``Intercepted`` / 校验错误 / 创建抛异常）**同步上抛**调用方，
-        且 Execution 注册被回收——「成功创建或未创建」二态边界，无
-        半登记状态。``subagent-invoke`` 工具的 ``asynchronized=True``
-        分支在本段完成后才把 :meth:`_run_subagent` 包进后台任务，故
-        创建失败对该分支同样 LLM 可见（``ToolResult(status="error")``）。
-
-        .. rubric:: 行为规约
-
-        - 返回 ``(child, invocation, execution)`` 三元组，交由
-          :meth:`_run_subagent` 消费；Execution 清理由运行段 finally
-          承担（本段异常路径自清理）。
-        - ``name`` 经 ``SubagentInvocation.name`` 进创建管线：新建路径
-          透传 :meth:`create_subagent`（登记 ``child_ids``）；resume
-          路径忽略（实例已存在）。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.subagents.SubagentEntry.resolve()``、
-          ``before_subagent_invoke`` dispatch、:meth:`create_subagent`
-          （新建路径）、``flowing.runtime.Runtime.get_agent``（续接路径）
-        - 被调：:meth:`invoke_subagent`；``subagent-invoke`` 工具
-          ``asynchronized=True`` 分支（创建保证的同步边界）
+        ``Intercepted`` / 校验错误 / 创建抛异常）同步上抛调用方，且
+        Execution 注册被回收——「成功创建或未创建」二态边界，无半登记
+        状态。返回 ``(child, invocation, execution)`` 三元组，交由
+        :meth:`_run_subagent` 消费；Execution 清理由运行段 finally 承担
+        （本段异常路径自清理）。``name`` 经 ``SubagentInvocation.name``
+        进创建管线：新建路径透传 :meth:`create_subagent`（登记
+        ``child_ids``）；resume 路径忽略（实例已存在）。
         """
         entry = self._subagent_entries[agent_type]   # 按别名查（agent_type 形参承载别名）
         init_kwargs = entry.resolve(self, kwargs)   # LLM args -> 完整 kwargs
@@ -3191,35 +3113,19 @@ class Agent:
         """``invoke_subagent`` 运行段（内部 API，可后台）：等待产出 +
         after 钩子 + 交付 + Execution 清理。
 
-        .. rubric:: 功能介绍
-
         本段内不再有「创建失败」——结局只有 ``TurnResult`` 四态
-        （``subagent_status`` 承载）与框架 bug（走框架错误通道）。
-        ``asynchronized=True`` 时本方法整体被 ``asyncio.ensure_future``
-        包进后台任务，完成时 SUBAGENT 消息与 ``after_subagent_invoke``
-        照常发生，cancel 经 Execution 注册照常可命中。
+        （``subagent_status`` 承载）。``after_subagent_invoke`` 先于交付
+        dispatch：handler 改写 ``invocation.result`` 后，返回值与可选的
+        SUBAGENT 消息同源采用改写后的结果；本钩子不接 ``Intercepted``
+        （阻断闸在 before，答卷级处置用改写表达）。
 
-        .. rubric:: 行为规约
-
-        - ``after_subagent_invoke`` **先于交付** dispatch：handler 改写
-          ``invocation.result`` 后，return 值与可选的 SUBAGENT 消息
-          **同源**采用改写后的 result。本钩子不接 ``Intercepted``
-          （阻断闸在 before，答卷级处置用改写表达）。
-        - ``enqueue_result``：``True``（默认）→ dispatch 后构造独立
-          ``Message(kind=SUBAGENT, priority=STEER)`` 入本实例队列——
-          长 turn 可达天级，子代完成推送须即时注入：回合进行中于
-          检查点 ②.5 被吸收、当轮 context 可见、不打断（LLM 当轮
-          即可感知，不再等回合间）。``False`` → 跳过入队，只 return
-          结果；同步工具路径用 ``False`` 避免同一结果既作为 TOOL
-          消息挂树、又作为 SUBAGENT 消息再次入队。
-        - finally 清理 Execution 注册（无论结局）。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``child.query()``（等待产出）、``after_subagent_invoke``
-          dispatch（时机：结果构造后、交付前）
-        - 被调：:meth:`invoke_subagent`；``subagent-invoke`` 工具
-          ``asynchronized=True`` 分支经 ``asyncio.ensure_future`` 间接调
+        ``enqueue_result``：``True``（默认）→ dispatch 后构造独立
+        ``Message(kind=SUBAGENT, priority=STEER)`` 入本实例队列——长
+        turn 可达天级，子代完成推送须即时注入：回合进行中于检查点被
+        吸收、当轮 context 可见、不打断。``False`` → 跳过入队，只返回
+        结果；同步工具路径用 ``False`` 避免同一结果既作为 TOOL 消息挂
+        树、又作为 SUBAGENT 消息再次入队。finally 清理 Execution 注册
+        （无论结局）。
         """
         try:
             turn_result = await child.query(invocation.prompt or "")   # 等待产出（prompt 可为 None：纯参数唤起）
@@ -3256,67 +3162,45 @@ class Agent:
         .. rubric:: 功能介绍
 
         时序：dispatch ``before_tool_call``（可改写 ``ToolCall`` /
-        ``shortcut`` 短路 / ``raise Intercepted`` 硬阻断）→ 按**别名**
-        查 ``_tool_entries`` → :meth:`_normalize`（LLM 视角校验 /
-        别名映射与 ``ToolEntry.resolve()`` 聚合 / 默认值）→ ``Tool.__call__`` 调度（内部
-        校验（S-33 落点）/ 注册 ``Execution(kind="tool")``，finally 清理）→ dispatch
-        ``after_tool_call``（可改写结果；shortcut 路径照常触发）→
-        收尾归一（return 前幂等再跑一次 ``normalize_output``，封
-        shortcut 与钩子改写两条缝，D19）→ 返回。
+        ``shortcut`` 短路 / ``raise Intercepted`` 硬阻断）→ 按别名查
+        ``_tool_entries`` → :meth:`_normalize`（LLM 视角校验 / 别名映射
+        与 ``ToolEntry.resolve()`` 聚合 / 默认值填充）→ ``Tool.__call__``
+        调度（注册 ``Execution(kind="tool")``，finally 清理）→ dispatch
+        ``after_tool_call``（可改写结果；shortcut 路径照常触发）→ 收尾
+        归一（return 前幂等再跑一次 ``normalize_output``，封 shortcut 与
+        钩子改写两条缝）→ 返回。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         - 仅按别名查找；未命中 → ``UnknownToolError``（无规范名回退——
           回退会绕开 Agent 级绑定）。
         - ``Intercepted`` → 返回 ``ToolResult.blocked(...)``（LLM 可见
-          形态为 ``[TextBlock(reason)]``——``as_message`` 塑形的文本块，
-          不再是 ``{"status": "blocked", "reason": ...}`` JSON），不上抛。
-        - ``ToolResult(status="error")`` 是**正常产物**：LLM 可见、不
-          触发任何错误钩子（工具业务错误不走异常通道）。
-        - ``_normalize`` 的 **LLM 视角校验失败**同属正常产物：包装为
+          形态为 ``[TextBlock(reason)]``），不上抛。
+        - ``ToolResult(status="error")`` 是正常产物：LLM 可见、不触发
+          任何错误钩子（工具业务错误不走异常通道）。
+        - LLM 视角校验失败同属正常产物：包装为
           ``ToolResult(status="error", error=<LLM 命名空间的错误文本>)``，
-          ``after_tool_call`` **照常触发**（handler 可观察/改写），随后
-          正常返回进消息树——LLM 的自我修正反馈，不是回合异常。
-          **内部校验失败**（specified/inject/默认值的配置错误，在
-          `Tool.__call__` 触发）例外：
-          上抛框架错误通道 + 日志，不包成 ToolResult、不进 LLM 可见
-          文本。
+          ``after_tool_call`` 照常触发，随后正常返回进消息树——LLM 的
+          自我修正反馈，不是回合异常。内部校验失败（specified / inject /
+          默认值的配置错误，在 ``Tool.__call__`` 触发）例外：上抛框架
+          错误通道 + 日志，不包成 ToolResult、不进 LLM 可见文本。
         - abort 于工具调用循环中：正在执行的工具检测信号返回部分结果；
-          剩余工具被本包装层跳过（不 execute）。
-        - **本方法没有同步/异步开关**：同步还是异步由工具的 ``execute``
+          剩余工具被跳过（不 execute）。
+        - 本方法没有同步 / 异步开关：同步还是异步由工具的 ``execute``
           实现决定。``execute`` 是普通 ``async def`` → ``Tool.__call__``
-          await 到底，本方法返回最终 ``ToolResult``，**不 enqueue**；
-          ``execute`` 返回 ``asyncio.Task`` → 走下方「异步工具透明化」
-          的固定 enqueue 路径。因此“是否入队”只取决于工具实现形态，
-          不取决于本方法或调用上下文。
+          await 到底，本方法返回最终 ``ToolResult``，不 enqueue；
+          ``execute`` 返回 ``asyncio.Task`` → 走异步工具透明化的固定
+          enqueue 路径。因此「是否入队」只取决于工具实现形态。
         - 异步工具透明化：``execute()`` 返回 ``asyncio.Task`` 时
-          ``Tool.__call__`` 不等待，立即产 ``ToolResult(status="pending",
-          output=None)`` 收据（经 ``as_message`` 塑形为
-          ``tool_status="pending"``、``content=[]`` 的 TOOL 消息挂树，
-          **配对一次性封闭**）；同时给 Task 挂 ``add_done_callback``
-          ——**watcher 为框架固定行为，非扩展点**（不可覆写、不可注册，
-          要定制的插件走别的事件通道）。完成回调：取终值 →
-          ``normalize_output`` → ``output_to_blocks``（与
-          ``as_message`` 同一塑形实现）→ ``Message(kind=EVENT,
-          source="tool_result", content=[标注块, *结果块],
-          priority=STEER)`` 进队列（长 turn 可达天级，完成推送须
-          即时注入——检查点 ②.5 吸收、当轮 context 可见、不打断）；
-          任务异常 → 标注块 + 错误文本块（与同步 error 同语义，LLM
-          可见）——Turn 循环中不存在 ``if async`` 分支。
-
-        .. rubric:: 测试案例
-
-        - 前置：``before_tool_call`` handler 改写
-          ``tool_call.args["lang"] = "zh"`` → 操作：``await
-          agent.tool_call(tc)`` → 期望：``execute()`` 收到改写后的参数。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``before_tool_call`` / ``after_tool_call`` dispatch、
-          ``flowing.agent.Agent._normalize()``、``Tool.__call__`` 调度
-          （时机：见本方法时序规约）；``Execution(kind="tool")`` 注册
-        - 被调：``flowing.agent.Agent._run_turn``（时机：工具调用循环
-          每个 tool_call，检查点 ③ 之后）
+          ``Tool.__call__`` 不等待，立即产 ``ToolResult(status="pending")``
+          收据（经 ``as_message`` 塑形为 ``tool_status="pending"``、
+          ``content=[]`` 的 TOOL 消息挂树，配对一次性封闭）；同时给 Task
+          挂 ``add_done_callback``（框架固定行为，非扩展点）。完成回调：
+          取终值 → ``normalize_output`` → ``output_to_blocks`` →
+          ``Message(kind=EVENT, source="tool_result", ...,
+          priority=STEER)`` 进队列（长 turn 可达天级，完成推送须即时
+          注入——检查点吸收、当轮 context 可见、不打断）；任务异常 →
+          标注块 + 错误文本块（与同步 error 同语义，LLM 可见）。
 
         .. seealso::
 
@@ -3380,70 +3264,30 @@ class Agent:
     def _normalize(
         self, entry: ToolEntry, tool_call: ToolCall, tool: "Tool"
     ) -> dict[str, Any]:
-        """工具参数规范化（内部 API，不属稳定契约；M-60 裁决归属 Agent）。
-
-        .. rubric:: 功能介绍
+        """工具参数规范化（内部 API，不属稳定契约）。
 
         ``tool_call()`` 管线的中段：把（可能被钩子改写过的）
-        ``tool_call.args`` 聚合为 ``execute()`` 的最终参数字典。
-        归属 Agent 而非 ToolEntry，是因为聚合需要 Agent 上下文：
-        Parsable 渲染上下文、provide 链（``self.inject``）、以及
-        LLM 视角校验失败后的错误通道。
+        ``tool_call.args`` 聚合为 ``execute()`` 的最终参数字典。归属 Agent
+        而非 ToolEntry，是因为聚合需要 Agent 上下文：Parsable 渲染上下文、
+        provide 链（``self.inject``）、以及 LLM 视角校验失败后的错误通道。
 
-        .. rubric:: 行为规约（LLM 视角校验在此；内部校验已迁出）
+        三步：
 
-        1. **LLM 视角校验**（先于一切转换）：``tool_call.args`` 按 LLM
-           可见 schema 校验——校验模型由
-           ``entry.llm_definition(self.runtime, self).params_schema``
-           经 :func:`flowing.params.schema_to_model` 桥接（C-09 裁决：
-           推导**归属 ToolEntry**——隐藏参数（specified）排除、
-           ``override_params`` 覆写与 ``param_aliases`` 别名化都是
-           entry 级绑定，注册表 `ToolDefinition` 上没有无 entry 上下文
-           的 LLM 视图可言；允许实现层缓存桥接产物）。
-           校验失败：错误文本以 **LLM 命名空间**（别名）
-           进入 ``ToolResult.error``，LLM 可据以自我修正；LLM 传出
-           schema 未定义的参数（幻觉同名隐藏参数）→ 按「未定义参数」
-           校验错误处理（参数名由 LLM 自己提供，回指不构成泄漏）——
-           但 ``tool.definition.strict is False`` 的工具**不施加**未知键
-           拒绝（契约：strict=False 时工具层不限制参数，参数由下游自行
-           校验——如 ``run-workflow`` 把其余参数透传给
-           ``Workflow.run()``），未知键原样进入第 2 步聚合。
-        2. :meth:`flowing.tool.ToolEntry.resolve` —— 别名映射回规范名
-           → ``specified`` 惰性求值覆盖（固定值/注入表达式——注入
-           表达式在求值时沿 provide 链上溯，R-4：无独立 inject 步骤）；
-           ``params_schema`` 实参取 ``tool.definition.params_schema``
-           （注册表规范定义）。
-        3. **schema 默认值填充**（前两步均未给的参数）：按
-           ``tool.definition.params_schema`` 各 property 的 ``default``
-           补齐。
+        1. LLM 视角校验（先于一切转换）：``tool_call.args`` 按 LLM 可见
+           schema 校验（经 ``entry.llm_definition(...).params_schema``
+           桥接；``strict=False`` 的工具不施加未知键拒绝）。校验失败：
+           错误文本以 LLM 命名空间（别名）进入 ``ToolResult.error``；
+           LLM 传出 schema 未定义的参数（幻觉参数）按「未定义参数」校验
+           错误处理。
+        2. :meth:`flowing.tool.ToolEntry.resolve`——别名映射回规范名 →
+           ``specified`` 惰性求值覆盖（固定值 / 注入表达式——注入表达式
+           在求值时沿 provide 链上溯）。
+        3. schema 默认值填充：按 ``tool.definition.params_schema`` 各
+           property 的 ``default`` 补齐前两步均未给的参数。
 
-        **内部校验不在此处**（S-33 裁决）：specified/默认值的
-        配置错误由 `Tool.__call__` 在 caller 注入之后、``try`` 之外
-        按创建时的 ``_args_model`` 校验，失败上抛框架错误通道 +
-        日志，不进 LLM 可见文本。
-
-        子智能体唤起（``SubagentEntry.resolve``）与技能加载
-        （``skill_load``）遵循同一规则：校验以调用方（LLM）可见的参数
-        集与命名进行，specified（含注入表达式）参数不进调用方校验空间。
-
-        :param entry: 本 Agent 的工具绑定条目（别名/覆写/specified 等）。
-        :param tool_call: 钩子链之后的 `ToolCall`（args 键为 LLM 命名）。
-        :param tool: 注册表中的规范 `Tool` 实例（S-33 裁决：本方法持
-          tool 以完成第 1、3 步；ToolEntry 保持不依赖 Tool 的分层）。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.tool.ToolEntry.resolve()``（时机：管线第 2
-          步：别名映射 → specified 求值覆盖——注入表达式在求值时经
-          ``self.inject`` 沿 provide 链上溯）
-        - 被调：``flowing.agent.Agent.tool_call``（时机：
-          ``before_tool_call`` 钩子之后、``Tool.__call__`` 调度之前）
-
-        .. seealso::
-
-            - :meth:`tool_call` —— 所属管线。
-            - :meth:`flowing.tool.ToolEntry.resolve` —— 第 2 步本体。
-            - :meth:`flowing.tool.Tool.__call__` —— 内部校验落点。
+        内部校验（specified / 默认值的配置错误）不在此处——由
+        ``Tool.__call__`` 在 caller 注入之后按创建时的 ``_args_model``
+        校验，失败上抛框架错误通道 + 日志，不进 LLM 可见文本。
         """
         # 1. LLM 视角校验（先于一切转换）：校验模型由
         #    entry.llm_definition(self.runtime, self).params_schema 经
@@ -3475,16 +3319,13 @@ class Agent:
     def source_dir(self) -> Path | None:
         """本 Agent 的文件上下文：``source_file`` 所在目录。
 
-        ``source_file`` 是 ``@/`` 格式字符串（``__init_subclass__`` 推算），
-        经 ``runtime.resolve_path`` 落地为绝对路径后取 ``.parent``；
-        ``source_file is None`` → ``None``（无文件上下文，下游裸名解析
-        退化为纯注册表查询；FILE_REF 用 ``./`` 相对路径时由
-        ``resolve_path`` 报错）。
-
-        「文件 → 所在目录」换算的**唯一承担者**（P3-11 裁决，公共 API）：
-        ``get_tool`` / ``get_agent_class``、插件挂载的 ``skill_get`` /
-        ``skill_add``、以及 Parsable 的 FILE_REF 求值（两处）一律经
-        本属性，不允许调用方自行对 ``source_file`` 取 parent。
+        ``source_file`` 是 ``@/`` 格式字符串，经 ``runtime.resolve_path``
+        落地为绝对路径后取 ``.parent``；``source_file`` 为 ``None`` →
+        返回 ``None``（无文件上下文，下游裸名解析退化为纯注册表查询；
+        FILE_REF 用 ``./`` 相对路径时由 ``resolve_path`` 报错）。「文件 →
+        所在目录」换算的唯一承担者：``get_tool`` / ``get_agent_class``、
+        插件挂载的技能工具、以及 Parsable 的 FILE_REF 求值一律经本方法，
+        不允许调用方自行对 ``source_file`` 取 parent。
         """
         if type(self).source_file is None:
             return None
@@ -3496,28 +3337,19 @@ class Agent:
         .. rubric:: 功能介绍
 
         薄委托 ``runtime.tool_registry.get(name_or_path,
-        source_dir=self.source_dir())``——与直接调注册表的区别仅在
-        文件上下文：裸名先查**本 Agent 定义文件所在目录**的定向文件
-        查找链（文件覆盖 ``default::``/``builtin::``），``./``/``../``
-        相对路径可用。无文件上下文（``source_file is None``）时退化为
-        纯注册表查询。
+        source_dir=self.source_dir())``——与直接调注册表的区别仅在文件
+        上下文：裸名先查本 Agent 定义文件所在目录的定向文件查找链（文件
+        覆盖 ``default::`` / ``builtin::``），``./`` / ``../`` 相对路径
+        可用。无文件上下文（``source_file`` 为 ``None``）时退化为纯注册
+        表查询。
 
-        .. rubric:: 设计动机
+        .. rubric:: 行为要点
 
-        「文件覆盖默认」需要一个锚定目录，而锚定目录天然属于 Agent
-        （``source_file``）。把门面放在 Agent 上，调用方不必关心
-        ``source_dir`` 的换算；Runtime 侧注册表保持无上下文（裸名只查
-        ``default::``/``builtin::``，相对路径报错）。
+        - 未找到 → 抛 :class:`flowing.errors.ToolNotFoundError`（注册表与
+          文件链均不命中）。
 
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.tool.ToolRegistry.get``（每次调用，携带
-          ``source_dir``）；``self.source_dir()``（每次调用）
-        - 被调：``.fya`` ``tools:`` 条目装配（声明期）；
-          :meth:`add_tool`（运行期 / ``setup()`` 期）
-
-        .. seealso:: :meth:`flowing.tool.ToolRegistry.get`（完整解析
-            语义与候选链）、:meth:`get_agent_class`（同构门面）
+        .. seealso:: :meth:`flowing.tool.ToolRegistry.get`（完整解析语义
+            与候选链）、:meth:`get_agent_class`（同构门面）
         """
         return self.runtime.tool_registry.get(name_or_path, source_dir=self.source_dir())
 
@@ -3525,19 +3357,18 @@ class Agent:
         """上下文感知的 Agent 类型解析门面：自动携带本 Agent 的
         ``source_dir``。
 
+        .. rubric:: 功能介绍
+
         薄委托 ``runtime.get_agent_class(agent_type,
-        source_dir=self.source_dir())``——语义与 :meth:`get_tool`
-        同构（裸名文件链优先、文件覆盖注册表；无文件上下文退化为
-        纯注册表查询）。Agent 侧**只有** ``get_agent_class``，没有
-        ``get_agent``——取活实例/现场恢复统一走
-        :meth:`flowing.runtime.Runtime.get_agent`（用户裁决）。
+        source_dir=self.source_dir())``——语义与 :meth:`get_tool` 同构
+        （裸名文件链优先、文件覆盖注册表；无文件上下文退化为纯注册表
+        查询）。Agent 侧只有 ``get_agent_class``，没有 ``get_agent``——
+        取活实例 / 现场恢复统一走
+        :meth:`flowing.runtime.Runtime.get_agent`。
 
-        .. rubric:: 调用关系（审计）
+        .. rubric:: 行为要点
 
-        - 调用：``flowing.runtime.Runtime.get_agent_class``（每次调用，
-          携带 ``source_dir``）；``self.source_dir()``（每次调用）
-        - 被调：``invoke_subagent`` 的类型解析路径（每次唤起子 Agent）
-          ；插件/用户代码
+        - 未找到 → 抛 ``KeyError``（``get_agent_class`` 的失败形态）。
 
         .. seealso:: :meth:`flowing.runtime.Runtime.get_agent_class`、
             :meth:`flowing.runtime.Runtime.get_agent`
