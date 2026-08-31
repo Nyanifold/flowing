@@ -2173,22 +2173,15 @@ class Agent:
     # ────────────────────────── 模型调用与副线 ────────────────────────────
 
     def _resolve_model_tag(self, tag: str) -> ModelConfig:
-        """模型标签 → ``ModelConfig`` 的现场解析（**内部 API，不属稳定契约**）。
+        """模型标签 → ``ModelConfig`` 的现场解析（内部 API，不属稳定契约）。
 
-        R-08 落实（解析器未见具名符号）：``model_tag`` →
-        :func:`flowing.model.load_model_tags` 标签映射 → 模型条目名 →
-        :func:`flowing.model.load_models` 条目表 → ``ModelConfig``，两跳
-        现场求值无缓存。来源路径读 ``runtime._model_tags_path`` /
-        ``runtime._models_path``（Runtime 的登记字段，见
-        ``Runtime.set_model_tags`` / ``set_models``）；未设定按 Runtime 侧
-        默认路径语义属 runtime 批次职责——本方法在两者缺失时报错（fail
-        fast，不静默回退）。标签未定义回退 ``default``；``default`` 也未
-        定义 → 报错（与 ``model_tag`` 类属性规约一致）。
-
-        本方法是 ``self.model`` 初始解析与 ``side_query(model_tag=...)`` 的
-        同一代码路径（R-08 推测方案）；调用方负责把产物落到
-        ``self.model``（创建管线 / ``model_tag`` 赋值）或仅作一次性使用
-        （副线）。
+        两跳现场求值、无缓存：``model_tag`` → 标签映射
+        （:func:`flowing.model.load_model_tags`）→ 模型条目名 → 条目表
+        （:func:`flowing.model.load_models`）→ ``ModelConfig``。来源路径
+        读 Runtime 的登记字段；两者缺失时报错（fail fast，不静默回退）。
+        标签未定义回退 ``default``；``default`` 也未定义 → 报错。本方法是
+        ``self.model`` 初始解析与 ``side_query(model_tag=...)`` 的同一代码
+        路径；调用方负责把产物落到 ``self.model`` 或仅作一次性使用。
         """
         tags_path = getattr(self.runtime, "_model_tags_path", None)
         models_path = getattr(self.runtime, "_models_path", None)
@@ -2217,22 +2210,11 @@ class Agent:
 
         时序：``_turn_abort`` 检查（置位 → 直接返回
         ``ProviderResponse(message=None, finish=False, cancelled=True)``，
-        **不抛异常**）→ ``self.model.resolve(self)`` 字段级惰性求值 →
-        provider 懒获取（``provider_registry.get(model.provider)``）→
-        dispatch ``before_provider_gen``（可改写完整 ``Context``）→ Provider
-        调用（注册 ``Execution(kind="request")``）→ dispatch
+        不抛异常）→ ``self.model.resolve(self)`` 字段级惰性求值 → provider
+        懒获取（``provider_registry.get(model.provider)``）→ dispatch
+        ``before_provider_gen``（可改写完整 ``Context``）→ Provider 调用
+        （注册 ``Execution(kind="request")``）→ dispatch
         ``after_provider_gen``（可改写 ``ProviderResponse``）→ 返回。
-
-        .. rubric:: 设计动机
-
-        - **流式挡在回合循环外**：无论底层是否流式，本方法返回**完整**
-          ``ProviderResponse``——``_run_turn`` 只见完整消息，工具调用 /
-          abort / 收尾逻辑与流式正交。
-        - **模型当场解析**：每次调用前重新 ``resolve`` + 懒取 provider——
-          钩子在回合中改 ``model_tag`` / ``self.model`` 后，同 Turn 内
-          下一次请求立即生效。
-        - **无候选列表、无内置重试、无 fallback**：单模型、单 provider、
-          单次调用；错误处理在回合层面（``on_provider_error``）。
 
         .. rubric:: 使用示例
 
@@ -2241,62 +2223,33 @@ class Agent:
             # 默认流式；显式关闭
             response = await self.provider_gen(context, stream=False)
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
-        - ``stream=True``（默认，S-17 最终裁决：显式参数决定，不由
-          订阅者存在性决定）：流式路径——逐 delta 累积进
+        - ``stream=True``（默认）：流式路径——逐 delta 累积进
           ``Message.content`` 并经 ``on_provider_delta`` dispatch
-          （**纯观察，调用时序保证**：累积只认 Provider 原始 delta，
-          dispatch 的返回值被本方法丢弃、不回写——改写单条 delta
-          无意义，需改写走 ``after_provider_gen`` 改整条消息；delta 本身
-          volatile 不落盘）；
-          ``stream=False``：非流式一次性请求，拿到完整响应后合成
-          **一条**全量 delta 同样 dispatch——两种路径的 delta 数据
-          格式完全一致（用户裁决），订阅者永远能依赖「每次 provider_gen
-          至少一条 delta」。
+          （纯观察：累积只认 Provider 原始 delta，dispatch 的返回值被
+          丢弃、不回写——改写单条 delta 无意义，需改写走
+          ``after_provider_gen`` 改整条消息；delta 本身不落盘）；
+          ``stream=False``：非流式一次性请求，拿到完整响应后合成一条
+          全量 delta 同样 dispatch——两种路径的 delta 数据格式完全一致，
+          订阅者永远可以依赖「每次 ``provider_gen`` 至少一条 delta」。
         - ``by``：来源标记，透写到每条 ``ProviderDelta`` 与返回的
           ``ProviderResponse``（adapter 不填，由本方法盖写）。主 Turn
-          内层循环传 ``"_turn"``，``side_query`` 传 ``"_side"``；
-          下划线开头为框架保留值，插件自定义来源勿用。``after_provider_gen``
+          内层循环传 ``"_turn"``，``side_query`` 传 ``"_side"``；下划线
+          开头为框架保留值，插件自定义来源勿用。``after_provider_gen``
           与 ``on_provider_delta`` 钩子点以 ``match_on="by"`` 声明，
-          handler 可按来源模式过滤注册；``before_provider_gen`` 的 value 是
-          ``Context``，暂不携带 ``by``（如需过滤，后续给 Context 加
-          字段再开——当前注释约定）。
+          handler 可按来源模式过滤注册。
         - 流式中断（abort）：已累积内容保留为 ``partial=True`` 的消息
-          随响应返回（**保留落盘**，对应中断保留行为），
-          ``cancelled=True``；取消点起不再 dispatch delta。
-        - 不变量：不捕获任何异常——Provider 异常分类（``RateLimitedError``
-          等）原样上抛给 ``_run_turn``；``ContextLengthError`` 同样上抛
-          （且不经过 ``on_provider_error``）。
-        - 非行为：不重试、不缓存、不聚合用量——turn 级聚合是
-          ``_run_turn`` 的职责（追加 ``TurnContext.usages``）；本方法
-          只保证响应消息上附着的 ``message.usage`` 原样抵达
-          ``after_provider_gen`` 钩子与调用方（S-13 裁决：无消费者不等于丢弃）。
-        - 边缘情况：abort 于 Provider 调用期间——adapter 检测信号返回
-          空响应而非抛异常（cancel 是正常终止不是错误）。
-
-        .. rubric:: 测试案例
-
-        - 前置：无 ``on_provider_delta`` 订阅者 → 操作：``provider_gen(context)``
-          → 期望：仍走流式路径（默认 ``stream=True``），delta dispatch
-          空表为空转。
-        - 前置：``provider_gen(context, stream=False)`` → 期望：非流式请求，
-          且 ``on_provider_delta`` 恰好收到一条全量 delta（格式与流式
-          路径一致）。
-        - 前置：``_turn_abort`` 已置位 → 操作：``provider_gen(context)`` →
-          期望：返回 ``finish=False, cancelled=True, message=None``，未
-          发起 Provider 调用。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.model.ModelConfig.resolve()``（时机：每次调用
-          前当场求值）、provider 懒获取（``provider_registry.get``，
-          时机：每次调用）、``before_provider_gen`` / ``after_provider_gen`` /
-          ``on_provider_delta`` dispatch（时机：见本方法时序规约）、
-          ``Execution(kind="request")`` 注册
-        - 被调：``flowing.agent.Agent._run_turn``（时机：内层循环每轮）、
-          ``flowing.agent.Agent.side_query``（时机：每次副线调用，
-          ``stream=False``）
+          随响应返回（保留落盘），``cancelled=True``；取消点起不再
+          dispatch delta。
+        - 不捕获任何异常：Provider 异常分类（``RateLimitedError`` 等）
+          原样上抛给回合层；``ContextLengthError`` 同样上抛（且不经过
+          ``on_provider_error``）。
+        - 不重试、不缓存、不聚合用量——回合级聚合是回合执行体的职责；
+          本方法只保证响应消息上附着的 ``message.usage`` 原样抵达
+          ``after_provider_gen`` 钩子与调用方。
+        - 边缘情况：abort 于 Provider 调用期间——adapter 检测信号返回空
+          响应而非抛异常（cancel 是正常终止不是错误）。
 
         .. seealso::
 
@@ -2403,83 +2356,47 @@ class Agent:
         .. rubric:: 功能介绍
 
         旁路快速查询（guardrail、内容检查、摘要、情绪推断）：把散装
-        ``content`` / ``kind`` / ``**kwargs`` 打包为一条 ``Message``（与
-        :meth:`query` 外部视角同构的打包规则：``str`` →
+        ``content`` / ``kind`` / ``**kwargs`` 打包为一条 ``Message``
+        （与 :meth:`query` 相同的打包规则：``str`` →
         ``[TextBlock(text=content)]``），追加到本次临时 context，直接
-        ``provider_gen(context, stream=False, by="_side")`` 一次，返回响应文本；
-        不产生任何持久化痕迹。``model_tag`` 调用时传参（请求前当场解析）；
-        ``None`` 时复用 ``self.model``（即 ``model_tag`` 声明的解析结果）。
-
-        .. rubric:: 设计动机
-
-        与主路径（队列 → 回合 → 挂树 → 落盘）完全分离：副线消息（本方法
-        内部打包的普通 ``Message``，无 ``side`` 标记——「副线」
-        是**调用路径属性**而非消息属性，裁决后 ``Message.side`` 字段删除）
-        不进树、不写 tree.jsonl、用完即弃；token 用量由调用方（插件 /
-        日志）自行记录，核心不为其持久化任何内容。**对象（agent 实例）
-        不是用完即弃**——一个实例承载多次副线调用。固定非流式：副线对
-        实时渲染无需求；非流式路径同样合成一条全量 delta（
-        ``by="_side"``）经 ``on_provider_delta`` 发出——订阅者可按
-        ``by`` 过滤副线来源。
+        ``provider_gen(context, stream=False, by="_side")`` 一次，返回响应
+        文本；不产生任何持久化痕迹。``model_tag`` 调用时传参（请求前当场
+        解析，不改写 ``self.model``）；``None`` 时复用 ``self.model``。
 
         .. rubric:: 使用示例
 
         .. code-block:: python
 
             emotion = (await self.side_query(
-                "推断当前情绪，只输出一个词：\\n" + window,
+                "推断当前情绪，只输出一个词：\n" + window,
                 model_tag="fast")).strip()
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         - 注册 ``Execution(kind="side_query")``（可被 ``cancel_by_tag`` /
           级联取消命中）；abort 时返回空文本（不抛异常）。
-        - 上下文组装基于当前消息级树（``_assemble_context`` 同一机制），
-          **与主路径完全一致——不剥离工具 schema、不做任何副线特化**
-          （保证 prompt 缓存命中率）；但本次交换的请求 / 响应消息
-          **均不挂树**。
+        - 上下文组装基于当前消息级树（与主路径同一机制，不剥离工具
+          schema、不做任何副线特化——保证 prompt 缓存命中率）；但本次
+          交换的请求 / 响应消息均不挂树。
         - 响应消费规则（单次交换，无续轮）：返回值 = 仅拼接响应中的
-          ``TextBlock.text``；``ThinkingBlock`` 与 ``ToolCallBlock``
-          一律丢弃——副线消息不落盘、不再进任何上下文，thinking 无
-          passback 义务、工具请求无执行机制。``finish`` 字段不读
-          （它是 Turn 循环的结束判断，副线不是 Turn）。
+          ``TextBlock.text``；``ThinkingBlock`` 与 ``ToolCallBlock`` 一律
+          丢弃——副线消息不落盘、不再进任何上下文，thinking 无 passback
+          义务、工具请求无执行机制。``finish`` 字段不读（它是 Turn 循环
+          的结束判断，副线不是 Turn）。
         - 空文本二义性：abort 与「响应无 TextBlock」（如 thinking 烧光
-          预算、模型只想调工具）都返回 ``""``，不区分——调用方对空值
-          做幂等兜底。
+          预算、模型只想调工具）都返回 ``""``，不区分——调用方对空值做
+          幂等兜底。
         - 截断：不设独立参数，输出上限由本次调用解析出的
           ``ModelConfig.max_output_tokens`` 决定；``stop_reason=length``
           的被截断文本是合法返回值，不报错。
-        - 非行为：不 dispatch turn 族钩子（``before_turn`` 等——副线不是
-          逻辑 Turn）；不更新 ``current_head_id``；不触碰
-          ``_pending_turns``；不写 ``last_result``；固定非流式
-          （``stream=True`` 无入口）；**不记入** turn 用量累加器
-          （``TurnContext.usages``——副线不经 ``_run_turn``，
-          ``TurnResult.token_usage`` 不含副线消耗；S-13 边缘语义。
-          副线用量的观察点是 ``after_provider_gen`` 钩子——副线走
-          ``provider_gen()``，钩子照常触发）。
+        - 不 dispatch turn 族钩子（``before_turn`` 等——副线不是逻辑
+          Turn）；不更新 ``current_head_id``；不触碰 ``_pending_turns``；
+          不写 ``last_result``；固定非流式（``stream=True`` 无入口）；
+          不记入 turn 用量累加器（``TurnResult.token_usage`` 不含副线
+          消耗）。副线用量的观察点是 ``after_provider_gen`` 钩子——副线
+          走 ``provider_gen()``，钩子照常触发。
         - 异常：Provider 异常直接上抛调用方（副线无 ``on_provider_error``
           回合层兜底——调用方自行决定重试 / 降级）。
-
-        .. rubric:: 测试案例
-
-        - 前置：Agent 有历史消息 → 操作：``await agent.side_query("……")``
-          → 期望：``_messages`` / tree.jsonl / ``current_head_id`` /
-          ``last_result`` 均无变化，返回非空字符串。
-        - 前置：``model_tag="fast"`` → 期望：本次调用使用 fast 解析的
-          模型，``self.model`` 不被改写。
-        - 前置：响应为 ``[ThinkingBlock, TextBlock("ok")]`` → 期望：
-          返回 ``"ok"``（thinking 不参与返回值）。
-        - 前置：响应含 ``ToolCallBlock``（``finish=False``）→ 期望：
-          不执行工具、不续轮，返回其中 TextBlock 拼接或 ``""``。
-        - 前置：响应仅含 ThinkingBlock（预算烧光）→ 期望：返回 ``""``，
-          不抛异常（与 abort 返回空文本同值，调用方兜底）。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.agent.Agent._assemble_context()`` 与
-          ``flowing.agent.Agent.provider_gen()``（时机：每次副线调用，
-          ``stream=False``）；``Execution(kind="side_query")`` 注册
-        - 被调：应用层与各插件直接调用（副线唯一入口）
 
         .. seealso::
 
@@ -2528,42 +2445,24 @@ class Agent:
     # 以下方法把「删除当前 head 时 head 回退到父节点」等策略固定在 Agent 上。
 
     def remove(self, message_id: str) -> None:
-        """删除一条消息；若删的是 ``current_head_id``，head 回退到其 ``parent_id``。
+        """删除一条消息；若删的是 ``current_head_id``，head 回退到其
+        ``parent_id``。
 
         .. rubric:: 功能介绍
 
-        对 :meth:`MessageChain.remove` 的 Agent 层包装。``MessageChain``
-        保持纯手术语义（不移动 head）；本方法补上 head 维护：当被删除的
+        对 :meth:`MessageChain.remove` 的 Agent 层包装：``MessageChain``
+        保持纯手术语义（不移动 head）；本方法补上 head 维护——当被删除的
         消息正好是 ``current_head_id`` 时，先把 head 回退到该消息的
         ``parent_id``，再执行删除。``parent_id`` 为 ``None`` 时 head 变为
         ``None``——下一条消息将作为新根挂树。
 
-        .. rubric:: 设计动机
-
-        head 是 Agent 的字段，不应由 MessageChain 直接维护；把「删除当前
-        head 时怎么办」的策略收口在 Agent 方法里，MessageChain 继续只做
-        「改内存链 + 提交变更记录」的机制。
-
-        .. rubric:: 使用示例
-
-        .. code-block:: python
-
-            agent.remove(msg_id)          # 删普通消息，head 不动
-            agent.remove(agent.current_head_id)   # 删当前 head，head 回退
-
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         - 同步方法，不 dispatch 钩子。
         - ``message_id`` 不存在时由 :meth:`MessageChain.remove` 抛
           ``KeyError``。
         - 删除非 head 消息时，行为与 :meth:`MessageChain.remove` 完全一致
           （head 不动，子树不级联）。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.message.MessageChain.remove``（时机：每次调用，
-          完成实际删除与 tombstone 提交）
-        - 被调：:meth:`pop`、应用 / 策略层（时机：消息树手术）
 
         .. seealso:: :meth:`pop`、:meth:`MessageChain.remove`
         """
@@ -2589,18 +2488,13 @@ class Agent:
             while agent.current_head_id is not None:
                 agent.pop()          # 从最新消息一路删到根；head 最终为 None
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         - 同步方法，不 dispatch 钩子。
         - 连续 ``pop()`` 会把 head 链从新到旧逐条删除；全部删完后
           ``current_head_id is None``，下一条消息成为新根。
 
         :return: 被删除的消息 id；空树返回 ``None``。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：:meth:`remove`（时机：每次调用，删除当前 head）
-        - 被调：应用 / 策略层（时机：上下文重置、消息树回退）
 
         .. seealso:: :meth:`remove`、:meth:`push`
         """
@@ -2616,12 +2510,12 @@ class Agent:
         .. rubric:: 功能介绍
 
         回合外的消息树追加入口：``msg.parent_id = current_head_id`` →
-        挂入 ``_messages`` → 落盘 → ``current_head_id = msg.id``（写透 core 袋）。
-        它也是回合内 :meth:`_append_message` 的**核心写路径**；
-        本方法不 dispatch turn 族钩子、不写 ``turn.message_ids``——
-        这两部分由 :meth:`_append_message` 在调用本方法前后补齐。
+        挂入 ``_messages`` → 落盘 → ``current_head_id = msg.id``（写透
+        core 袋）。它也是回合内挂树的核心写路径；本方法不 dispatch turn
+        族钩子、不写 ``turn.message_ids``——这两部分由回合内的挂树入口
+        在调用本方法前后补齐。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         - 同步方法，不 dispatch 钩子。
         - ``msg.id`` 已存在于 ``_messages`` 时抛 ``ValueError``。
@@ -2630,13 +2524,7 @@ class Agent:
 
         :return: ``msg.id``。
 
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.agent.Agent._persist_message``（时机：每次调用，
-          提交新消息行）
-        - 被调：应用 / 策略层（时机：回合外挂树）
-
-        .. seealso:: :meth:`pop`、:meth:`_append_message`
+        .. seealso:: :meth:`pop`、:meth:`branch`
         """
         if msg.id in self._messages:
             raise ValueError(msg.id)
@@ -2654,7 +2542,7 @@ class Agent:
         :meth:`MessageChain.branch` 的 Agent 层透传。调用方传入新消息
         与基点；只创建节点并落盘，不改变 ``current_head_id``。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         - 同步方法，不 dispatch 钩子。
         - ``parent_id`` 为 ``None`` 时开新根；非 ``None`` 时须存在。
@@ -2662,38 +2550,26 @@ class Agent:
 
         :return: ``msg.id``。
 
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.message.MessageChain.branch``（时机：每次调用）
-        - 被调：应用 / 策略层（时机：开分支 / 开新根）
-
         .. seealso:: :meth:`MessageChain.branch`、:meth:`fork`
         """
         return self.chain.branch(parent_id, msg)
 
     def remove_by_tags(self, tags: set[str]) -> int:
-        """按 tags 批量删除消息；透传 :meth:`MessageChain.remove_by_tags`，
-        并保持 head 语义。
+        """按 tags 批量删除消息，并保持 head 语义。
 
         .. rubric:: 功能介绍
 
-        先记录当前 head 及其父节点，再透传批量删除；若当前 head 被删除，
-        则把 ``current_head_id`` 回退到它删除前的父节点。其余被删消息
-        不触发 head 变化。
+        先记录当前 head 及其父节点，再透传 :meth:`MessageChain.remove_by_tags`
+        批量删除；若当前 head 被删除，则把 ``current_head_id`` 回退到它
+        删除前的父节点。其余被删消息不触发 head 变化。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         - 同步方法，不 dispatch 钩子。
         - 匹配 / 删除 / 返回计数语义由
           :meth:`MessageChain.remove_by_tags` 承担。
 
         :return: 删除条数（透传）。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.message.MessageChain.remove_by_tags``
-          （时机：每次调用）
-        - 被调：应用 / 策略层（时机：按 tags 清洗临时注入消息）
 
         .. seealso:: :meth:`remove`、:meth:`MessageChain.remove_by_tags`
         """
@@ -2714,87 +2590,58 @@ class Agent:
         .. rubric:: 功能介绍
 
         消息上下文最基本的组织方式（核心机制，非扩展特性）。时序：
-        dispatch ``before_fork``（可改写 target /
-        ``raise Intercepted`` 阻止）→ 目标合法性检查 → 记录
-        ``previous_head_id`` → 切换 ``current_head_id`` → dispatch
-        ``after_fork``（纯观察，日志 / 通知 UI 刷新分支列表）。
+        dispatch ``before_fork``（可改写 target / ``raise Intercepted``
+        阻止）→ 目标合法性检查 → 记录切换前的原 head → 切换
+        ``current_head_id`` → dispatch ``after_fork``（纯观察，日志 /
+        通知 UI 刷新分支列表）。
 
-        .. rubric:: 设计动机
+        .. rubric:: 设计要点
 
-        - **fork 是纯上下文操作，不碰执行**：正在运行的工具 / 子 Agent
-          继续运行、结果照常交付；``_executions`` / ``_children`` /
-          ``prompt_blocks`` / ``_provided`` / ``_tool_entries`` /
-          ``_message_queue`` 均不被触碰（共享同一实例，不拷贝、不冻结）。
-        - **全时合法，无守卫**（裁决）：head 即「添加节点的位置」（每条
-          消息挂树即前移），回合内 fork 的语义即 seek——本回合后续
-          append 与 provider_gen 改在新基址上继续。这是可预想的操作语义而非
+        - fork 是纯上下文操作，不碰执行：正在运行的工具 / 子 Agent 继续
+          运行、结果照常交付；执行追踪、生命周期子树、prompt 块、provide
+          存储、工具条目、消息队列均不被触碰（共享同一实例，不拷贝、不
+          冻结）。
+        - 全时合法、无守卫：head 即「添加节点的位置」（每条消息挂树即
+          前移），回合内 fork 的语义即 seek——本回合后续 append 与
+          ``provider_gen`` 改在新基址上继续。这是可预想的操作语义而非
           损坏，框架不做家长式禁止；但调用方须自知三件事：① 嫁接——
           fork 后的产物挂在目标所在链上，``turn.message_ids`` 可能跨链
           （消费者均按 id 取消息，无机械故障）；② 上下文瞬移——下一轮
-          ``_assemble_context`` 从新 head 上溯；③ 配对断裂——仅当
-          fork 落在「tool_call 已挂树、结果未 append」的工具执行相位，
-          下一轮组装出「有 result 无 call」，provider 会显式报错（响亮、
-          可恢复，append-only 保证数据完好）。
-        - **外部改方向的推荐定式**仍是先终止执行再切上下文（时序可控）：
-          ``cancel()`` → 等回合收尾完成 → ``fork()`` → 发新消息。
-          回合内直接 fork 适合时序可知的钩子内调用者（如 compact）。
-        - 上下文压缩 = fork 的应用：压缩把摘要复制为 SYSTEM 新根
-          （``chain.branch(None, 副本)``，森林模型）后经本方法切换 head，
-          旧分支保留完整历史；何时压缩、如何摘要是 Composable / 应用层
-          策略（内置 ``flowing.composables.compact.use_compact``——
-          在 ``after_provider_gen`` 的干净点调用：此前配对完整、响应未挂树），
-          fork 只提供机制。**开发者责任**：挂 ``before_fork`` handler
-          时须显式考虑 compact 换链会经过它，拦截（``Intercepted``）或
-          改写 target 会打断 compact 的收尾（建了根没切过去 / head 被
-          指向别处）；框架不为此设强制保护，「是否压缩」的拦截点应挂在
-          ``on_compact`` 而非 ``before_fork``。
-        - 无 LLM 可调 fork 工具：「回合内不分支」约定 + LLM 推理必在
-          回合内 → fork 由代码触发（用户 / UI 分支导航、compact 换链）。
+          上下文组装从新 head 上溯；③ 配对断裂——仅当 fork 落在
+          「tool_call 已挂树、结果未 append」的工具执行相位，下一轮组装
+          出「有 result 无 call」，provider 会显式报错（响亮、可恢复，
+          append-only 保证数据完好）。
+        - 外部改方向的推荐定式仍是先终止执行再切上下文（时序可控）：
+          ``cancel()`` → 等回合收尾完成 → ``fork()`` → 发新消息。回合内
+          直接 fork 适合时序可知的钩子内调用者（如 compact）。
+        - 上下文压缩 = fork 的应用：压缩把摘要复制为 SYSTEM 新根后经本
+          方法切换 head，旧分支保留完整历史；何时压缩、如何摘要是
+          Composable / 应用层策略（内置 ``flowing.composables.compact``），
+          fork 只提供机制。
 
         .. rubric:: 使用示例
 
         .. code-block:: python
 
-            # goal 模式中途改方向的推荐定式：先终止执行，等回合收尾完成，再切上下文
+            # 中途改方向的推荐定式：先终止执行，等回合收尾完成，再切上下文
             await agent.cancel()   # 协作式置位——回合自行走向收尾，此调用返回 ≠ 收尾完成
             # …等待回合收尾完成（如 await 该回合 query() 的 TurnResult）…
             await agent.fork(msg_id)
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         - :raises ValueError: ``target_message_id`` 不在 ``_messages``
           中（含已被 ``chain.remove`` 移除的 id）。
         - :raises flowing.errors.Intercepted: ``before_fork`` handler
           阻止 fork。
-        - 回合内 fork（seek 语义）：合法，无 ``RuntimeError`` 守卫；
-          后果见设计动机——嫁接 / 上下文瞬移 / 工具相位配对断裂均属
-          调用方责任。
-        - 非行为：不换 Agent 类型（换类型 = 换身份 = 子 Agent：先 fork
-          切回历史点，再 ``create_subagent`` 从该点继承上下文）；不创建
-          第二个实例、不在两个分支上同时运行（需要并行用子 Agent）；
-          不复制 / 截断 tree.jsonl——只是切换游标。
+        - 回合内 fork（seek 语义）：合法，无 ``RuntimeError`` 守卫；后果
+          见设计要点——嫁接 / 上下文瞬移 / 工具相位配对断裂均属调用方
+          责任。
+        - 不换 Agent 类型（换类型 = 换身份 = 子 Agent）；不创建第二个
+          实例、不在两个分支上同时运行（需要并行用子 Agent）；不复制 /
+          截断 tree.jsonl——只是切换游标。
         - 边缘情况：兄弟分支无顺序信息（互斥分支），UI 排序用
           ``Message.timestamp``。
-
-        .. rubric:: 测试案例
-
-        - 前置：m6 有两条子消息 m7 / m8（分支）→ 操作：
-          ``await agent.fork(m8.id)`` → 期望：``current_head_id ==
-          m8.id``，``_assemble_context()`` 的路径含 m8 不含 m7。
-        - 前置：回合内（钩子中）fork 到历史点 x → 期望：合法；后续
-          append 挂在 x 所在链上，下一轮 ``_assemble_context`` 从 x
-          上溯；``turn.message_ids`` 跨链（按 id 消费不受影响）。
-        - 前置：fork 落在工具执行相位（tool_call 已挂树、结果未
-          append）→ 期望：下一轮 provider_gen 组装出配对断裂序列，provider
-          显式报错走 ``on_provider_error``；旧链数据完好。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``before_fork`` / ``after_fork`` dispatch（时机：见本
-          方法时序规约）
-        - 被调：无（回合外由用户 / UI 分支导航触发；回合内由时序可知的
-          钩子调用者触发——compact 换链在 ``after_provider_gen`` 调用，见
-          ``flowing.composables.compact.use_compact``）
 
         .. seealso::
 
@@ -2810,58 +2657,39 @@ class Agent:
         await self.hooks.after_fork.dispatch(self, previous_head_id)   # 纯观察（value 为原 head id）
 
     def pause(self) -> None:
-        """协作式暂停：关闭工作循环 gate（``_pause_gate.clear()``）。
+        """协作式暂停：关闭工作循环 gate。
 
         .. rubric:: 功能介绍
 
         三个检查点（dequeue 前 / provider_gen 前 / 每个 tool_call 前）均
-        ``await self._pause_gate.wait()``——回合之间与回合内关键操作前
-        都可暂停；**恢复后从暂停点继续**（pause 是挂起等待，可恢复；
-        abort 是终止退出，不可恢复）。
+        等待工作循环 gate——回合之间与回合内关键操作前都可暂停；恢复后
+        从暂停点继续（pause 是挂起等待，可恢复；abort 是终止退出，不可
+        恢复）。暂停期间队列不丢消息——可继续 ``enqueue_message`` 调整
+        方向，恢复后按序消费。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         - 同步方法，幂等（重复调用无额外效果）；不 dispatch 钩子。
-        - 暂停期间队列不丢消息——可继续 ``enqueue_message`` 调整方向，
-          恢复后按序消费；暂停期间可查看上下文（快照 / 消息树遍历）。
-        - 优先级：``pause()`` 与 abort 同时发生时**先挂起**——
-          ``resume()`` 后才判定终止（每处检查点 pause 在前、abort 在后）。
-        - 非行为：不置位任何 ``Execution.pause``（Execution 层暂停是
-          另一个正交通道，由 Tool 覆写 / Composable 自管，不级联）。
-        - **作用范围声明**：仅控制**本 Agent** 的工作循环 turn 检查点——
-          不递归子 Agent（子树暂停用 :meth:`pause_recursive`）；不影响
-          任何 ``Execution``——执行条目的框架级控制信号只有取消
-          （``abort``），``Execution.pause`` 是保留给执行体自管的通道。
-
-        .. rubric:: 测试案例
-
-        - 前置：回合进行中（工具调用循环内）→ 操作：``agent.pause()`` →
-          期望：下一个 tool_call 前挂起；``agent.resume()`` 后从该
-          tool_call 继续，已执行工具的结果不丢。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``_pause_gate.clear()``（时机：每次调用，同步幂等）
-        - 被调：无
+        - 优先级：``pause()`` 与 abort 同时发生时先挂起——``resume()``
+          后才判定终止（每处检查点 pause 在前、abort 在后）。
+        - 不置位任何 ``Execution.pause``（Execution 层暂停是另一个正交
+          通道，由 Tool 覆写 / Composable 自管，不级联）。
+        - 作用范围：仅控制本 Agent 的工作循环 turn 检查点——不递归子
+          Agent（子树暂停用 :meth:`pause_recursive`）。
 
         .. seealso:: :meth:`resume`、:attr:`paused`、:meth:`abort_turn`
         """
         self._pause_gate.clear()
 
     def resume(self) -> None:
-        """恢复：打开工作循环 gate（``_pause_gate.set()``）。
+        """恢复：打开工作循环 gate。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         同步、幂等；打开后所有挂在检查点上的等待继续，随后立即判定
-        abort 信号（pause 在前、abort 在后的检查点顺序）。仅恢复
-        **本 Agent**（不递归子 Agent——子树恢复用
-        :meth:`resume_recursive`）；不触碰任何 ``Execution``。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``_pause_gate.set()``（时机：每次调用，同步幂等）
-        - 被调：无
+        abort 信号（pause 在前、abort 在后的检查点顺序）。仅恢复本
+        Agent（不递归子 Agent——子树恢复用 :meth:`resume_recursive`）；
+        不触碰任何 ``Execution``。
 
         .. seealso:: :meth:`pause`、:meth:`resume_recursive`
         """
@@ -2873,23 +2701,16 @@ class Agent:
         .. rubric:: 功能介绍
 
         ``self.pause()`` 后对 ``_children`` 中每个活子 Agent 递归调用
-        ``pause_recursive()``（深度优先，与 :meth:`destroy` 的递归
-        先例同构）。典型场景：UI 的「暂停整个工作流」按钮。
+        ``pause_recursive()``（深度优先）。典型场景：UI 的「暂停整个工作
+        流」按钮。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         - 同步、幂等；不 dispatch 钩子。
-        - 只递归**生命周期子树**的 turn 循环（``_children`` 只装活
-          实例）；不触碰任何 ``Execution``（执行条目的框架级控制
-          信号只有取消）。
-        - 与 ``cancel()`` 的级联不同：cancel 经 ``_executions`` 逐层
-          传播终止信号；本方法只挂起各 Agent 的 ``_pause_gate``。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``self.pause()`` 与子 Agent ``pause_recursive()``
-          （时机：每次调用，深度优先递归）
-        - 被调：应用 / UI 层「暂停整个工作流」入口
+        - 只递归生命周期子树的 turn 循环（``_children`` 只装活实例）；
+          不触碰任何 ``Execution``。
+        - 与 ``cancel()`` 的级联不同：cancel 经执行注册表逐层传播终止
+          信号；本方法只挂起各 Agent 的工作循环 gate。
 
         .. seealso:: :meth:`pause`、:meth:`resume_recursive`
         """
@@ -2900,16 +2721,10 @@ class Agent:
     def resume_recursive(self) -> None:
         """恢复整棵生命周期子树（与 :meth:`pause_recursive` 对称）。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         同步、幂等；``self.resume()`` 后对 ``_children`` 每个活子 Agent
         递归 ``resume_recursive()``；不触碰任何 ``Execution``。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``self.resume()`` 与子 Agent ``resume_recursive()``
-          （时机：每次调用，深度优先递归）
-        - 被调：应用 / UI 层「恢复整个工作流」入口
 
         .. seealso:: :meth:`resume`、:meth:`pause_recursive`
         """
@@ -2919,15 +2734,9 @@ class Agent:
 
     @property
     def paused(self) -> bool:
-        """是否暂停中（``not self._pause_gate.is_set()``）。
+        """是否暂停中——工作循环 gate 当前为关闭状态的只读派生视图。
 
-        只读派生视图；快照层据此展示暂停状态。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：无（只读派生：``not self._pause_gate.is_set()``）
-        - 被调：``flowing.snapshot.AgentSnapshot.paused`` 投影（时机：
-          每次 ``snapshot()``）
+        快照层据此展示暂停状态。
 
         .. seealso:: :meth:`pause`、:meth:`resume`
         """
@@ -2936,107 +2745,71 @@ class Agent:
     # ────────────────────────── 取消与停止 ────────────────────────────────
 
     def abort_turn(self) -> None:
-        """只置位当前逻辑 Turn 的退出信号（``_turn_abort.set()``）。
+        """只置位当前逻辑 Turn 的退出信号。
 
         .. rubric:: 功能介绍
 
         最小粒度的终止：当前 Turn 在下一个检查点退出，Agent 继续消费
-        队列。收尾由 ``_run_turn`` 的 ``finally`` 接管
-        （幂等置位 ``turn.aborted`` → abort 钩子 → resolve waiters）。
+        队列。收尾由回合执行体的 ``finally`` 接管（幂等置位
+        ``turn.aborted`` → abort 钩子 → resolve waiters）。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         - 同步、幂等；无活跃 Turn 时置位也安全（下一条消息到达时 Turn
-          启动、``provider_gen()`` 立即返回 cancelled，空 Turn 不产生新树节点）。
+          启动、``provider_gen()`` 立即返回 cancelled，空 Turn 不产生新
+          树节点）。
         - 可覆写：子类可改为丢弃 Turn 消息或额外清理。
         - 与 ``cancel()`` 的分工：``abort_turn()`` 只终止当前 Turn；
           ``cancel()`` 终止整个 Agent（幂等拆解；Agent 无生命周期状态机，
-          无 ``stopping/stopped`` 中间态可读，见 M-77）。
+          无 ``stopping/stopped`` 中间态可读）。
 
-        .. rubric:: 测试案例
-
-        - 前置：``on_provider_error`` handler 决定放弃本回合 → 操作：
-          handler 内 ``agent.abort_turn()`` + ``can_continue=True`` →
-          期望：下一次 ``provider_gen()`` 开头检测信号返回 cancelled，回合走
-          abort 收尾，``TurnResult.status == "cancelled"``。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``_turn_abort.set()``（时机：每次调用，同步幂等）
-        - 被调：``flowing.agent.Agent._run_turn``（时机：检查点 ②.5
-          吸收到 ``INTERRUPT`` 消息时，置 Event 由紧随的 abort 判定统一
-          收口）；规约场景为 ``on_provider_error`` handler 内由用户 /
-          Composable 调用
-
-        .. seealso:: :meth:`cancel`、:meth:`_run_turn`
+        .. seealso:: :meth:`cancel`、:meth:`pause`
         """
         self._turn_abort.set()
 
     async def cancel(self) -> None:
-        """协作式终止整个 Agent：全部 ``_executions`` abort + ``_turn_abort``。
+        """协作式终止整个 Agent：全部执行条目 abort + 当前回合退出信号。
 
         .. rubric:: 功能介绍
 
         时序：dispatch ``before_cancel``（value 为 :class:`CancelContext`，
         handler ``raise Intercepted`` 阻止取消）→ 置位 ``_executions``
-        全部 ``abort`` + 置位 ``_turn_abort``
-        → dispatch ``after_cancel``（**信号置位后**——「取消请求已被
-        接受」的事实事件；纯观察，日志 / 通知 / 审计）。无状态值迁移
-        （M-77：无生命周期状态机）。
+        全部 abort + 置位回合退出信号 → dispatch ``after_cancel``（信号
+        置位后立即触发——「取消请求已被接受」的事实事件；纯观察，日志 /
+        通知 / 审计）。无状态值迁移（Agent 无生命周期状态机）。
 
-        **观察点分工（S-35 裁决）**：``after_cancel`` 表达的是「取消已
-        被接受、信号已置位」，dispatch 点在本方法体内——协作式取消禁止
-        本方法等待回合退出（回合内的代码调 ``cancel()`` 时等待即自
-        死锁）。「回合真正退出」的观察归 ``after_turn``（全路径，
-        handler 读 ``turn.aborted`` 区分取消与正常结束——abort 专用
-        收尾钩子已删除，路径分流由 ``aborted`` 字段承担），在
-        ``_run_turn`` 的 finally 中触发。空闲 Agent（无回合在跑）被
-        cancel 时 ``after_cancel`` 照常触发：信号置位是事实，与有无
-        回合无关。
+        观察点分工：``after_cancel`` 表达的是「取消已被接受、信号已置
+        位」，dispatch 点在本方法体内——协作式取消禁止本方法等待回合退出
+        （回合内的代码调 ``cancel()`` 时等待即自死锁）。「回合真正退出」
+        的观察归 ``after_turn``（全路径，handler 读 ``turn.aborted`` 区分
+        取消与正常结束）。空闲 Agent（无回合在跑）被 cancel 时
+        ``after_cancel`` 照常触发：信号置位是事实，与有无回合无关。
 
-        .. rubric:: 设计动机
+        .. rubric:: 设计要点
 
-        - 协作式：``abort.set()`` 是请求不是命令——执行体三选一（立即
-          停止返回已有/空结果 / 忽略信号正常完成 / 关键收尾后返回部分
-          结果）；**Agent 接收所有返回**，不因曾被 cancel 丢弃返回值。
+        - 协作式：置位是请求不是命令——执行体三选一（立即停止返回已有
+          / 空结果 / 忽略信号正常完成 / 关键收尾后返回部分结果）；Agent
+          接收所有返回，不因曾被 cancel 丢弃返回值。
         - cancel 是正常终止不是错误：工具返回部分输出作正常
-          ``ToolResult``，Provider 返回空 ``ProviderResponse``——不抛
-          异常。
-        - 级联取消：父只操作自己的 ``_executions`` 与 ``_turn_abort``，
-          子 Agent 在检查点检测到自己的 abort 后自行清理——每层只负责
-          自己的 ``_executions``，无中央调度器。
+          ``ToolResult``，Provider 返回空 ``ProviderResponse``——不抛异常。
+        - 级联取消：父只操作自己的执行注册表与回合退出信号，子 Agent 在
+          检查点检测到自己的信号后自行清理——每层只负责自己的执行，无
+          中央调度器。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
-        - 协程（dispatch 钩子）；**不接受原因参数**（无参定稿）。
-        - cancel 后队列中**待处理消息不丢弃**——交应用层（重新投递 /
-          记录日志 / 通知发送方三选一）。
+        - 协程（dispatch 钩子）；不接受原因参数（无参）。
+        - cancel 后队列中待处理消息不丢弃——交应用层（重新投递 / 记录
+          日志 / 通知发送方三选一）。
         - 工具被 cancel ≠ Turn 被 cancel：``cancel_children()`` 影响的
           工具返回正常 ``ToolResult``，Turn 循环照常。
         - :raises flowing.errors.Intercepted: ``before_cancel`` handler
           阻止取消（信号不置位）。
 
-        .. rubric:: 测试案例
-
-        - 前置：一个 ``kind="tool"`` 与一个 ``kind="agent"`` 执行中 →
-          操作：``await agent.cancel()`` → 期望：两条 ``Execution.cancel``
-          与 ``_turn_abort`` 均置位，随后实例经 ``destroy()`` 清理。
-        - 前置：``before_cancel`` handler ``raise Intercepted`` → 期望：
-          异常上抛，所有信号未置位。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``before_cancel`` / ``after_cancel`` dispatch（时机：
-          见本方法时序规约）、``_executions`` 遍历置位 + ``_turn_abort``
-          置位
-        - 被调：``flowing.agent.Agent.stop``（时机：默认实现等价
-          ``cancel``）
-
         .. seealso::
 
             - :meth:`stop` —— 强制式对称入口（默认等价本方法）。
-            - :meth:`cancel_children` / :meth:`cancel_by_tag` —— 更细
-              粒度。
+            - :meth:`cancel_children` / :meth:`cancel_by_tag` —— 更细粒度。
             - :meth:`abort_turn` —— 只终止当前 Turn。
         """
         await self.hooks.before_cancel.dispatch(self, CancelContext())   # Intercepted 阻止取消（信号不置位）；普通异常上抛
@@ -3049,21 +2822,14 @@ class Agent:
         await self.hooks.after_cancel.dispatch(self, CancelContext())
 
     def cancel_children(self) -> None:
-        """只协作式取消全部子执行，不动 ``_turn_abort``（自己继续）。
+        """只协作式取消全部子执行，不动回合退出信号（自己继续）。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
-        - 置位 ``_executions`` 全部 ``abort``；Turn 循环照常。
+        - 置位 ``_executions`` 全部 abort；Turn 循环照常。
         - 典型场景：父 Agent 推理到一半想调整方向——终止正在跑的子
           Agent / 工具，更新提示词，重新发起。
         - 同步方法（不 dispatch 钩子）。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：无（置位 ``_executions`` 全部 ``abort``，不 dispatch
-          钩子）
-        - 被调：``flowing.agent.Agent.stop_children``（时机：默认实现
-          等价本方法）
 
         .. seealso:: :meth:`cancel`、:meth:`cancel_by_tag`
         """
@@ -3071,19 +2837,12 @@ class Agent:
             execution.cancel.set()   # 不动 _turn_abort（自己继续），不 dispatch 钩子
 
     def cancel_by_tag(self, tag: str) -> None:
-        """只置位 ``tags`` 匹配 ``tag`` 的执行条目的 ``abort``。
+        """只置位 ``tags`` 匹配 ``tag`` 的执行条目的取消信号。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         精细控制：如只取消 ``"bash"`` 标签的工具执行，留 ``"agent"``
-        继续；不动 ``_turn_abort``，不匹配任何条目时为空操作。同步方法。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：无（置位 ``tags`` 匹配条目的 ``abort``，不 dispatch
-          钩子）
-        - 被调：``flowing.agent.Agent.stop_by_tag``（时机：默认实现
-          等价本方法）
+        继续；不动回合退出信号，不匹配任何条目时为空操作。同步方法。
 
         .. seealso:: :attr:`Execution.tags`、:meth:`cancel_children`
         """
@@ -3092,28 +2851,22 @@ class Agent:
                 execution.cancel.set()   # 不匹配任何条目时为空操作；不动 _turn_abort
 
     async def stop(self) -> None:
-        """强制式停止——框架默认实现**等价于** :meth:`cancel`，子类可覆写。
+        """强制式停止——框架默认实现等价于 :meth:`cancel`，子类可覆写。
 
-        .. rubric:: 设计动机
+        .. rubric:: 设计要点
 
-        ``cancel()`` 是协作式（执行体可忽略信号）；执行体卡死 / 超时
-        兜底需要更强手段。框架核心**不提供**强制 kill 通用实现——强制
-        终止的手段高度依赖执行体类型（进程 kill、HTTP 连接关闭等），
-        由子类覆写本方法注入。
+        ``cancel()`` 是协作式（执行体可忽略信号）；执行体卡死 / 超时兜底
+        需要更强手段。框架核心不提供强制 kill 通用实现——强制终止的手段
+        高度依赖执行体类型（进程 kill、HTTP 连接关闭等），由子类覆写本
+        方法注入。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         - 默认实现 = ``await self.cancel()``（含 before/after_cancel
           钩子）。
         - 覆写约定：先调默认逻辑或自行置位信号，再做强制动作；Agent
           可覆写 ``cancel()`` 为空操作以完全无视协作信号（此时
           ``stop()`` 是唯一的停止通道）。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.agent.Agent.cancel()``（时机：默认实现 =
-          ``await self.cancel()``）
-        - 被调：无（强制式兜底入口，供用户 / 子类覆写）
 
         .. seealso:: :meth:`cancel`、:meth:`stop_children`
         """
@@ -3122,16 +2875,10 @@ class Agent:
     def stop_children(self) -> None:
         """与 :meth:`cancel_children` 对称的强制式版本；默认等价，可覆写。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
-        默认实现 = ``self.cancel_children()``；自己继续（不动
-        ``_turn_abort``）。同步方法。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.agent.Agent.cancel_children()``（时机：默认
-          实现等价）
-        - 被调：无
+        默认实现 = ``self.cancel_children()``；自己继续（不动回合退出
+        信号）。同步方法。
 
         .. seealso:: :meth:`cancel_children`、:meth:`stop`
         """
@@ -3140,15 +2887,9 @@ class Agent:
     def stop_by_tag(self, tag: str) -> None:
         """与 :meth:`cancel_by_tag` 对称的强制式版本；默认等价，可覆写。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         默认实现 = ``self.cancel_by_tag(tag)``。同步方法。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.agent.Agent.cancel_by_tag()``（时机：默认实现
-          等价）
-        - 被调：无
 
         .. seealso:: :meth:`cancel_by_tag`、:meth:`stop`
         """
