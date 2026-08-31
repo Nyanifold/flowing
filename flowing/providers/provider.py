@@ -1,18 +1,23 @@
-"""Provider 机制层：抽象基类、调用产物、注册表与懒实例化（``flowing.providers.provider``）。
+"""``flowing.providers.provider`` —— Provider 机制层：抽象基类、调用产物、注册与懒实例化。
 
-本模块承载 :class:`Provider` 抽象基类、调用产物 :class:`ProviderResponse` /
-:class:`ProviderDelta`、条目配置 :class:`ProviderConfig`、内置测试替身
-:class:`FakeProvider`、进程级 adapter 注册（:func:`register_provider` /
-``_provider_adapters``）、Runtime 级懒实例化表 :class:`ProviderRegistry`
-与 providers.yaml 加载器 :func:`load_provider_candidates`。
+.. rubric:: 功能介绍
+
+本模块承载 Provider 侧机制层的核心符号：抽象基类 :class:`Provider`、
+一次调用的完整产物 :class:`ProviderResponse` / 流式增量
+:class:`ProviderDelta` / token 用量记录 :class:`Usage`、条目配置
+:class:`ProviderConfig`、内置测试替身 :class:`FakeProvider`、adapter
+注册装饰器 :func:`register_provider`、Runtime 级懒实例化表
+:class:`ProviderRegistry` 与 providers.yaml 加载器
+:func:`load_provider_candidates`。
 
 adapter 继承树的两个格式家族基类与内置厂商 adapter 分别在
 :mod:`flowing.providers.openai` 与 :mod:`flowing.providers.anthropic`；
-包级设计动机（显式继承树、懒创建、adapter/条目两层术语、providers.yaml
-schema、异常分类、凭证安全边界）见 :mod:`flowing.providers` 包 docstring。
+包级契约（显式继承树、懒创建、adapter 与条目两层术语、providers.yaml
+schema、异常分类、凭证安全边界）见 :mod:`flowing.providers` 包
+docstring。
 """
 
-from __future__ import annotations   # S-43 裁决③：注解延迟求值
+from __future__ import annotations
 
 import os
 import re
@@ -23,7 +28,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar
 
-from ruamel.yaml import YAML   # 与 flowing.model 同一 yaml 库（R-10 澄清选定 ruamel）
+from ruamel.yaml import YAML  # 与 flowing.model 共用同一 yaml 库
 
 from flowing.context import Context
 from flowing.errors import (
@@ -37,60 +42,43 @@ from flowing.model import ModelConfig
 
 
 class ProviderConfig(dict[str, Any]):
-    """Provider 条目配置：构造时绑定的 dict 风格配置包。
+    """单个 provider 条目解析后的配置容器（``dict`` 子类）。
 
     .. rubric:: 功能介绍
 
-    单个 provider 条目（``providers.yaml`` 中的一个 key）解析后的全部
-    字段容器。作为 :class:`Provider` 的初始化属性在构造时绑定，
-    ``generate()`` 不再接收 config 参数；``get_credential()`` 默认从
-    ``self.config.get("api_key")`` 读取。
+    一个 provider 条目（``providers.yaml`` 中的一个 key）解析后的全部
+    字段的容器。作为 :class:`Provider` 的初始化属性在构造时绑定；
+    :meth:`Provider.generate` 不再接收 config 参数，adapter 在方法内经
+    ``self.config`` 读取。默认凭证读取
+    :meth:`Provider.get_credential` 从 ``self.config.get("api_key")``
+    取值。
 
-    .. rubric:: 设计动机
-
-    provider 配置在进程生命周期内静态（api_key / base_url 不变），因此
-    在加载时完成 ``{{env.VAR}}`` 纯字符串替换后一次成型，无需 Parsable。
-    继承 ``dict`` 而非自定义结构，是因为字段集合开放——``adapter`` /
-    ``api_key`` / ``base_url`` 之外全是 adapter 自读字段，框架核心不
-    解释。
+    字段集合是开放的：``adapter`` / ``api_key`` / ``base_url`` 之外的
+    字段全部由 adapter 自行读取（如 Bedrock 的 ``aws_region``），框架
+    核心不解释任何字段的含义。
 
     .. rubric:: 使用示例
 
     .. code-block:: python
 
-        # 由 Runtime 的 provider 加载器构造；用户代码通常不直接实例化
+        # 通常由 load_provider_candidates 在加载时构造；程序化装配时
+        # 也可直接实例化
         config = ProviderConfig({
             "adapter": "deepseek",
-            "api_key": "sk-...",            # {{env.VAR}} 已在加载时替换
+            "api_key": "sk-...",        # {{env.VAR}} 已在加载时替换
             "base_url": "https://proxy.company.com/deepseek",
         })
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
-    - 前置条件：构造传入的 ``{{env.VAR}}`` 必须已被加载器替换完毕；
-      替换失败（env 缺失）在加载期抛
+    - 前置条件：构造传入的 ``{{env.VAR}}`` 引用必须已在加载期替换完毕；
+      环境变量缺失在加载期抛
       :class:`flowing.errors.MissingEnvironmentVariableError`，本类不会
-      见到未替换的 ``{{env.`` 引用。
-    - 不变量：实例化 Provider 后按只读对待；运行期修改 config 不属于
-      支持的行为。
-    - 非行为：不做 schema 校验；``adapter`` 键仅由加载器用于选类，
-      Provider 实现不应依赖它存在。
-    - 安全边界：含凭证，禁止写入消息、``_provided`` 与任何落盘文件。
-
-    .. rubric:: 测试案例
-
-    - 前置：``api_key: "{{env.MISSING_KEY}}"`` 且环境变量不存在。操作：
-      加载 providers.yaml。期望：加载期抛
-      ``MissingEnvironmentVariableError``，ProviderConfig 不产生。
-    - 前置：字段值为 ``"{{other.x}}"``（非 ``{{env.`` 前缀）。操作：
-      加载。期望：保持原样，不报错不替换。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``Provider.__init__``（懒创建链构造时绑定为初始化属性，
-      每条目一次）
-    - 实例化方：providers.yaml 加载器 :func:`load_provider_candidates`
-      （S-03 裁决具名；加载时一次性构造，``{{env.VAR}}`` 替换完成后）
+      见到未替换的 ``{{env.`` 前缀引用。
+    - 实例化 Provider 后按只读对待：运行期修改 config 不属于支持的行为。
+    - 不做 schema 校验；``adapter`` 键只由加载器用于选类。
+    - 安全边界：本配置含凭证，禁止写入消息、``_provided`` 与任何落盘
+      文件（详见包 docstring「安全边界」）。
 
     .. seealso::
 
@@ -102,71 +90,50 @@ class ProviderConfig(dict[str, Any]):
 
 @dataclass
 class ProviderDelta:
-    """流式增量：``on_provider_delta`` 钩子的 value。
+    """流式增量：``on_provider_delta`` 钩子收到的 value。
 
     .. rubric:: 功能介绍
 
-    流式模式下 Provider 每产生一小段输出就产出一个 ``ProviderDelta``，
-    由 ``Agent.provider_gen()`` 逐条累积进 ``Message.content`` 并转发给
-    ``on_provider_delta`` 钩子——这是 delta 的**唯一观察点**。
-    **非流式路径同样产生一条**：``stream=False`` 时 ``provider_gen()`` 在拿到
-    完整响应后合成一条全量 delta dispatch（「增量」语义成立——从空到
-    全量即一个增量），两种路径的 delta **数据格式完全一致**（用户
-    裁决）；订阅者因此永远能依赖「每次 provider_gen 至少一条 delta」。
+    流式模式下，Provider 每产出一小段输出就产生一个本实例；
+    ``Agent.provider_gen()`` 逐条把增量累积进 ``Message.content``，并把
+    每条 delta 分发给 ``on_provider_delta`` 钩子——这是 delta 的唯一
+    观察点。
 
-    .. rubric:: 设计动机
+    非流式路径同样产生一条：``stream=False`` 时 ``provider_gen()`` 在
+    拿到完整响应后合成一条全量 delta 分发（从空到全量即一个增量），
+    两种路径的 delta 数据格式完全一致。订阅者因此永远可以依赖「每次
+    ``provider_gen()`` 至少收到一条 delta」。
 
-    流式被「provider_gen() 返回完整 ProviderResponse」的契约挡在逻辑 Turn
-    循环之外；UI/观测层消费 delta 做实时渲染，Turn 循环、持久化、
-    工具调用完全不感知流式。delta 本身 **volatile，不落盘**——落盘的
-    是累积完成（或中断时 ``partial=True`` 保留）的 ``Message``。
+    delta 本身是易失的：不落盘、不进消息树。落盘的是累积完成（或流式
+    中断时以 ``partial=True`` 保留）的消息。
 
     .. rubric:: 使用示例
 
     .. code-block:: python
 
-        @on("on_provider_delta")
-        def render(agent, delta: ProviderDelta) -> ProviderDelta:
-            if delta.kind == "text" and delta.by != "_side":
-                ui.write(delta.text)
-            return delta
+        from flowing import Agent, on
 
-    .. rubric:: 行为规约
+        class RenderAgent(Agent):
+            @on("on_provider_delta")
+            def _print_text(self, delta):
+                if delta.kind == "text" and delta.by == "_turn":
+                    print(delta.text, end="")
 
-    - 期待行为：同一响应内 ``content_index`` 单调不减；同一 content
-      block 的 delta 按序到达，拼接 ``text`` 即得该 block 完整文本。
-    - ``by``：来源标记，由 ``provider_gen()`` 盖写（adapter 不填、无法伪造）——
-      主 Turn 内调用为 ``"_turn"``，副线为 ``"_side"``，下划线开头为
-      框架保留值；``on_provider_delta`` 钩子点以 ``match_on="by"``
-      声明，handler 可按来源模式过滤注册。
-    - 边缘情况：流式中 abort——已累积内容保留为 ``partial=True`` 的
-      消息落盘，未到达的 delta 不再产生（取消点起不再 dispatch）。
-    - 非行为：delta 不进消息树、不进 ``tree.jsonl``；钩子 handler 对
-      delta 的改写不影响已累积内容（纯观察语义，调用时序保证：
-      ``provider_gen()`` 丢弃 dispatch 返回值、不回写累积——改写单条 delta
-      无意义，需改写走 ``after_provider_gen`` 改整条消息）。
+    .. rubric:: 行为要点
 
-    .. rubric:: 测试案例
-
-    - 前置：订阅 ``on_provider_delta`` 后发起 ``provider_gen()``（默认
-      ``stream=True``）。操作：流式返回 "hello world" 分两个 delta。
-      期望：钩子收到两条 ``ProviderDelta``，最终 ``Message.content``
-      文本为完整拼接。
-    - 前置：``provider_gen(context, stream=False)`` → 期望：钩子恰好收到
-      **一条**全量 delta，字段格式与流式路径一致。
-    - 前置：注册 ``on_provider_delta["_side"]`` 的 pattern handler →
-      操作：主 Turn 产生 delta → 期望：该 handler 不触发；
-      ``side_query`` 时触发。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``flowing.agent.Agent.provider_gen()``（流式路径逐条累积进
-      ``Message.content``，每次 delta 到达；非流式路径合成单条全量
-      delta）；``on_provider_delta`` 钩子 dispatch（每次 delta 到达，
-      value 即本类，volatile 不落盘，见 ``flowing.hooks``）
-    - 实例化方：``Provider.generate_stream()``（流式模式下每产出一段
-      输出构造一条；默认实现将完整文本包成单条）；非流式路径的合成
-      delta 由 ``Agent.provider_gen()`` 构造
+    - 同一响应内 ``content_index`` 单调不减；同一 content block 的
+      delta 按到达顺序排列，按序拼接 ``text`` 即得该 block 的完整文本。
+    - ``by`` 是来源标记，由 ``provider_gen()`` 盖写（adapter 不填、无法
+      伪造）：主 Turn 内为 ``"_turn"``，副线查询为 ``"_side"``，下划线
+      开头为框架保留值。``on_provider_delta`` 钩子点以
+      ``match_on="by"`` 声明，handler 可按来源模式过滤注册。
+    - 纯观察语义：钩子 handler 对 delta 的改写不影响已累积内容——
+      ``provider_gen()`` 丢弃分发返回值、不回写累积。需要改写输出内容
+      时走 ``after_provider_gen`` 钩子改整条消息。
+    - 流式中断（abort）：已累积内容保留为 ``partial=True`` 的消息落盘；
+      取消点起不再分发 delta。
+    - ``usage`` / ``provider_data`` 仅末帧携带（其余帧为 ``None``），
+      是流式路径下把它们并入组装响应消息的传输通道。
 
     .. seealso::
 
@@ -186,40 +153,35 @@ class ProviderDelta:
     响应（文本 + 思考 + 工具调用）借此归位。从 0 起单调不减。
     """
     by: str | None = None
-    """来源标记（``provider_gen()`` 盖写，adapter 不填）：主 Turn ``"_turn"``、
-    副线 ``"_side"``；下划线开头为框架保留值。钩子过滤依据
-    （``on_provider_delta`` 以 ``match_on="by"`` 声明）。
+    """来源标记（``provider_gen()`` 盖写，adapter 不填）：主 Turn
+    ``"_turn"``、副线 ``"_side"``；下划线开头为框架保留值。钩子过滤
+    依据（``on_provider_delta`` 以 ``match_on="by"`` 声明）。
     """
     usage: "Usage | None" = None
-    """本次调用的最终用量（**仅末帧**携带，其余帧为 ``None``）。
+    """本次调用的最终用量，仅末帧携带（其余帧为 ``None``）。
 
-    spec 未写清处的落实（R-11 补充）：流式路径的完整响应由
-    ``provider_gen()`` 组装，``ProviderDelta`` 原四字段无 usage 载体——
-    「adapter 末帧提取的 usage 只进入组装消息的 ``message.usage``」
-    的契约需要一个传输通道，本字段即该通道（末帧附着）。非流式路径
-    不经过本字段（usage 直接附着在 ``generate()`` 的响应消息上）。
+    流式路径的完整响应由 ``provider_gen()`` 组装——adapter 在末帧把
+    usage 附在本字段上，``provider_gen()`` 将其并入组装消息的
+    ``message.usage``。非流式路径不经过本字段（usage 直接附着在
+    :meth:`Provider.generate` 的响应消息上）。
     """
     block: ContentBlock | None = None
-    """非文本类内容的**完整块**载体（如流式末端拼装完成的
+    """非文本类内容的完整块载体（如流式末端拼装完成的
     ``ToolCallBlock``）。
 
-    spec 未写清处的落实（R-11 补充）：文本/思考类 delta 经 ``text`` 逐段
-    累积；工具调用等结构化内容无法从文本分片在 ``provider_gen()`` 侧
-    无损重建，adapter 在流式末端以完整块形态交付（``provider_gen()``
-    按 ``content_index`` 归位进组装消息）。携带本字段的 delta 其
-    ``text`` 为空字符串。
+    文本/思考类 delta 经 ``text`` 逐段累积；工具调用等结构化内容无法
+    从文本分片在 ``provider_gen()`` 侧无损重建，adapter 在流式末端以
+    完整块形态交付（``provider_gen()`` 按 ``content_index`` 归位进组装
+    消息）。携带本字段的 delta 其 ``text`` 为空字符串。
     """
     provider_data: dict[str, Any] | None = None
-    """本次响应的 provider 特有元信息（至少含原始 ``stop_reason``；
-    **仅末帧**携带，其余帧为 ``None``）。
+    """本次响应的 provider 特有元信息（至少含原始 ``stop_reason``），
+    仅末帧携带（其余帧为 ``None``）。
 
-    spec 未写清处的落实（R-09 补充，与 ``usage`` / ``block`` 同形态）：
-    ``TurnResult.finish_reason`` 的口径是「completed 时取末次
-    ``provider_gen`` 响应的 ``provider_data.stop_reason``」，而流式路径的
-    完整响应由 ``provider_gen()`` 组装——``provider_data`` 需要一个随
-    delta 的传输通道，本字段即该通道（末帧附着，``provider_gen()``
-    并入组装响应）。非流式路径不经过本字段（``generate()`` 响应直接
-    携带 ``provider_data``）。
+    流式路径的完整响应由 ``provider_gen()`` 组装——adapter 在末帧把
+    provider_data 附在本字段上，``provider_gen()`` 将其并入组装响应。
+    非流式路径不经过本字段（:meth:`Provider.generate` 的响应直接携带
+    ``provider_data``）。
     """
 
 
@@ -233,91 +195,39 @@ class Usage:
     产出并归一到统一口径。消费方（成本、预算、统计、UI）只依赖计数
     字段，无需知道 provider。
 
-    .. rubric:: 设计动机
-
-    字段集 = 七个计数 + ``raw`` 兜底（S-13 修订，取代 spec-draft 07
-    §21.6「cache 字段降为 raw」的旧裁决）：
-
-    - cache 读/写为一等字段：它们是可求和的正交桶，且有真实消费方
-      （成本拆分——cache 读与新鲜输入单价不同；缓存断裂遥测）。
-      「不是所有 provider 都有 cache 概念」由**零填充**解决，不构成
-      降级理由（kimi-code / pi 两个参考实现均如此）。
-    - ``input`` 与 ``fresh_input`` 并存：``input`` 回答「总共读了
-      多少」，``fresh_input`` 回答「其中多少是新算的」——计费与缓存
-      分析各取所需。
-    - ``reasoning`` 是 ``output`` 的**子集标注**，不是正交桶——参与
-      聚合（「本 turn 累计推理 token」），但不参与下面的恒等式。
-    - 恒等式由 adapter 归一保证（违反属 adapter 缺陷，框架不运行时
-      校验）：
-
-      ``input == fresh_input + cache_read + cache_write``
-
-      ``total_tokens == input + output``
-
     .. rubric:: 使用示例
 
     .. code-block:: python
 
-        # adapter 内部（Anthropic：原生 input_tokens 不含 cache）
-        usage = Usage(
-            input=resp.usage.input_tokens
-                  + resp.usage.cache_read_input_tokens
-                  + resp.usage.cache_creation_input_tokens,
-            fresh_input=resp.usage.input_tokens,
-            output=resp.usage.output_tokens,
-            cache_read=resp.usage.cache_read_input_tokens,
-            cache_write=resp.usage.cache_creation_input_tokens,
-            reasoning=getattr(resp.usage, "reasoning_tokens", 0) or 0,
-            total_tokens=0,   # 按恒等式 = input + output 回填
-            raw={**resp.usage.__dict__},   # 原始字段全保留
-        )
+        from flowing.providers import Usage
 
-        # adapter 内部（OpenAI 系：prompt_tokens 含 cache 读）
-        cached = resp.usage.prompt_tokens_details.cached_tokens
-        usage = Usage(input=resp.usage.prompt_tokens,
-                      fresh_input=resp.usage.prompt_tokens - cached,
-                      cache_read=cached, ...)
+        usage = Usage(input=10, fresh_input=6, output=5,
+                      cache_read=4, cache_write=0, reasoning=0,
+                      total_tokens=15)
+        assert usage.total_tokens == usage.input + usage.output
+        assert usage.input == (usage.fresh_input + usage.cache_read
+                               + usage.cache_write)
 
-        # 消费方（after_provider_gen 钩子：读响应消息上附着的 usage）
-        cost = estimate(response.message.usage.fresh_input,
-                        response.message.usage.output)
+    .. rubric:: 行为要点
 
-    .. rubric:: 行为规约
-
-    - 期待行为：七个计数字段为非负 int；provider 无某概念（如无
-      cache、不报告推理 token）时对应字段**零填充**——「未上报」
-      信号只存在于整体层（``message.usage is None``），
-      不做逐字段 None 区分。
-    - 边缘情况：provider 未返回用量时 ``message.usage`` 为
-      ``None``，不产生 ``Usage`` 实例；``raw`` 为空 dict 合法。
-    - 非行为：框架核心不读 ``raw`` 做任何决策；``raw`` 中未文档化
-      字段不属于稳定契约。
-    - **存续面唯一**（S-13 裁决，单源化修订——用户确认：事实只存在
-      一处）：``Message.usage``（PROVIDER 消息携带，随树落盘）是
-      唯一权威；``TurnResult.token_usage`` 仍由 ``TurnContext.usages``
-      累加器聚合（管线不变），但累加器持有的是消息上同一 ``Usage``
-      对象的**引用**，不是第二处存储。框架核心不产生副作用——
-      「未注入 Composable 则静默丢弃」的旧措辞废止：无消费者 ≠ 丢弃。
-
-    .. rubric:: 测试案例
-
-    - 前置：OpenAI 原始响应 ``prompt_tokens=10``（其中 cached 4）、
-      ``completion_tokens=5``。操作：adapter 映射。期望：
-      ``input == 10``、``fresh_input == 6``、``cache_read == 4``、
-      ``output == 5``、``total_tokens == 15``、``raw`` 含原始全部
-      字段。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``after_provider_gen`` 钩子消费方（成本 / 预算 / 统计
-      Composable，每次 provider_gen 后，经 ``response.message.usage`` 读取）；
-      ``flowing.agent`` 回合结果的 ``token_usage`` 字段
-      （``Usage | None``，经 ``TurnContext.usages`` 累加器聚合，
-      见 ``flowing.agent.build_turn_result``）；
-      ``flowing.agent.Agent.estimate_context_tokens``（锚点实测值，
-      每次估计时读取）
-    - 实例化方：Provider adapter（每次 ``generate()`` 响应映射时，于
-      adapter 实现内部构造并附着到 ``message.usage``）
+    - 七个计数字段为非负 ``int``；provider 无某概念（如无 cache、不
+      报告推理 token）时对应字段零填充。「未上报」信号只存在于整体层
+      （``message.usage is None``），不做逐字段 ``None`` 区分。
+    - 恒等式由 adapter 归一保证（违反属 adapter 缺陷，框架不运行时
+      校验）：``input == fresh_input + cache_read + cache_write``；
+      ``total_tokens == input + output``。
+    - ``reasoning`` 是 ``output`` 的子集标注，不是正交桶——参与聚合
+      （「本 turn 累计推理 token」），但不重复计入 ``total_tokens``。
+    - provider 未返回用量时 ``message.usage`` 为 ``None``，不产生
+      ``Usage`` 实例；``raw`` 为空 dict 合法。
+    - 唯一权威：``Message.usage``（仅 PROVIDER 消息携带，随消息落盘）
+      是本结构的唯一权威落点；``ProviderResponse`` 不携带 usage。
+      回合层把每次成功调用响应消息上附着的 usage 追加进
+      ``TurnContext.usages``（持有同一对象的引用），收尾时逐字段求和
+      为 ``TurnResult.token_usage``（累加器为空时为 ``None``）——聚合
+      总是发生，不因没有消费方而跳过。
+    - 框架核心不读 ``raw`` 做任何决策；``raw`` 中未文档化字段不属于
+      稳定契约。
 
     .. seealso::
 
@@ -348,10 +258,11 @@ class Usage:
     total_tokens: int
     """总 token 数。恒等式：``total_tokens == input + output``。
     """
-    raw: dict[str, Any] = field(default_factory=dict)   # R-10 落实：= ... 占位 → 空 dict 工厂
+    raw: dict[str, Any] = field(default_factory=dict)
     """provider 返回的全部原始用量字段原样保留（未文档化字段不稳定）。
     行为边界：框架核心不依赖其内容；turn 聚合时不求和（聚合体为空
-    dict——逐次原始字段的消费方走 ``after_provider_gen``）。参见 :class:`Usage`。
+    dict——逐次原始字段的消费方走 ``after_provider_gen``）。参见
+    :class:`Usage`。
     """
 
 
@@ -361,93 +272,65 @@ class ProviderResponse:
 
     .. rubric:: 功能介绍
 
-    ``Provider.generate()`` 的返回类型，也是 ``Agent.provider_gen()`` 的返回
-    类型。无论底层是否流式，Turn 循环只见完整的 ``ProviderResponse``
-    ——「provider_gen() 返回完整响应」是把流式挡在逻辑 Turn 循环外的契约。
-
-    .. rubric:: 设计动机
-
-    - ``finish: bool`` 取代旧 ``finish_reason: str`` 四值枚举：框架只
-      定义「本 Turn 是否结束」一个布尔，原始停止原因（``end_turn`` /
-      ``length`` 等）如需保留放 :attr:`provider_data`，不占独立字段。
-    - abort 语义显式化：Turn 被取消时返回
-      ``ProviderResponse(message=None, finish=False, cancelled=True)``
-      **而非抛异常**——cancel 是正常终止，不是错误。
-    - ``model`` 保持 ``str``：它是**响应侧记录**（实际响应的模型 ID，
-      如 OpenRouter ``auto`` → ``anthropic/claude-sonnet-4-6``），不是
-      请求侧规格，不回填 ``ModelConfig``。
+    ``Provider.generate()`` 的返回类型，也是 ``Agent.provider_gen()``
+    的返回类型。无论底层是否流式，Turn 循环只见完整的本结构——
+    「``provider_gen()`` 返回完整响应」是把流式挡在逻辑 Turn 循环外的
+    契约。
 
     .. rubric:: 使用示例
 
     .. code-block:: python
 
-        # adapter 正常返回（usage 不交给 Response——直接附着在消息上）
-        msg = Message(kind=MessageKind.PROVIDER, content=blocks)
-        msg.usage = usage   # 唯一权威落点：锚点机制载体，随消息落盘
-        return ProviderResponse(
-            message=msg,
-            model=resp.model,
-            finish=not has_tool_call,   # 默认准则：有 tool_call → False
-            provider_data={"stop_reason": "end_turn"},
-        )
+        from flowing.message import Message, MessageKind, TextBlock
+        from flowing.providers import ProviderResponse, Usage
 
-        # provider_gen() 内 abort 检查命中（无需 adapter 参与）
-        return ProviderResponse(message=None, finish=False, cancelled=True)
+        # adapter 的 generate() 内：构造消息并附着用量
+        msg = Message(kind=MessageKind.PROVIDER,
+                      content=[TextBlock(text="你好")])
+        msg.usage = Usage(input=12, fresh_input=7, output=5,
+                          cache_read=5, cache_write=0, reasoning=0,
+                          total_tokens=17)
+        response = ProviderResponse(message=msg,
+                                    model="claude-sonnet-4-6",
+                                    finish=True)
+        assert response.message.usage.total_tokens == 17
 
-    .. rubric:: 行为规约
+        # provider_gen() 内 abort 检查命中（无需 adapter 参与）：
+        # 不抛异常，返回取消响应
+        response = ProviderResponse(message=None, finish=False,
+                                    cancelled=True)
 
-    各字段消费者（框架内的唯一权威分工）：
+    .. rubric:: 行为要点
 
-    - ``message``：Turn 循环追加进消息级树（``_append_message``），参与
-      后续上下文组装；``None`` 时跳过 append。
-    - ``usage``：**本结构不再携带**（单源化裁决，用户确认）——usage
-      的唯一家是 ``message.usage``（adapter 构造时附着，随消息落盘）。
-      钩子 / Composable 经 ``response.message.usage`` 读取（先判
-      ``message`` 非 None）；回合聚合管线不变——``_run_turn`` 把消息上
-      同一对象的引用追加进 ``TurnContext.usages``，由
-      ``build_turn_result`` 求和。边缘代价：abort 于消息成形前
-      （``message=None``）的已耗 token 框架内不留痕——逐次不漏的计费
-      属插件策略，可在 adapter 层自行拦截。
-    - ``model``：观测与计费记录；框架核心不据此做路由决策。
-    - ``finish``：**provider 层**概念——「provider 完成了本次响应（无
-      待执行 tool_call）」；是 turn 关闭的**原因之一**（另一原因是
-      cancel/abort）。turn 关闭判断与 ``turn_end`` 写入在 agent 层
-      （``_run_turn``），本字段不直接承担（S-14 裁决）。
-    - ``cancelled``：``after_turn`` handler 据此区分正常结束与取消。
-    - ``provider_data``：透明传递 provider 特有元信息；框架核心**不
-      依赖其内容做任何决策**；未文档化字段不属于稳定契约。
-
-    边缘情况与不变量：
-
-    - 不变量：``cancelled=True`` 时 ``finish`` 保持 ``False``（中断的
-      流式没有 finish——provider 从未完成；S-14 翻转旧不变量），且
-      ``message`` 允许为 ``None``；其余路径 ``message`` 非 None。
-    - ``finish`` 的得出方式**框架不强制**——adapter 可覆写判断逻辑；
-      推荐默认准则：响应含 ``tool_call`` block → ``False``，其它
-      （stop / length / error）→ ``True``。
-    - 非行为：本结构不携带异常；错误一律以 :mod:`flowing.errors` 中的
-      分类异常抛出，不包装进响应。
-
-    .. rubric:: 测试案例
-
-    - 前置：``_turn_abort`` 已置位。操作：``provider_gen()`` 开头检查。期望：
-      返回 ``message=None, finish=False, cancelled=True``，Turn 循环
-      跳过 append 并走 abort 收尾。
-    - 前置：adapter 响应含两个 tool_call block。操作：``generate()``。
-      期望：``finish is False``，Turn 循环进入工具调用循环。
-    - 前置：OpenRouter ``model="auto"``。操作：``generate()``。期望：
-      ``response.model`` 为实际响应模型 ID 字符串。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``flowing.agent.Agent._run_turn``（Turn 循环消费
-      ``message`` / ``finish``，每次 provider_gen 返回）；``after_provider_gen``
-      钩子（可改写本结构，每次 provider_gen）；``after_turn`` handler（读
-      ``cancelled`` 区分结局，每 Turn 收尾）
-    - 实例化方：``Provider.generate()``（每次非流式调用，adapter 构造）；
-      ``flowing.agent.Agent.provider_gen()``（abort 检查命中时直接构造
-      ``message=None, finish=False, cancelled=True``；流式路径结束时由
-      provider_gen 组装完整响应）
+    - ``message``：模型产生的消息（``kind=MessageKind.PROVIDER``，永远
+      回合内产生、不进队列），Turn 循环把它追加进消息级树；abort 路径
+      为 ``None``，调用方必须先判 ``response.message is not None`` 再
+      append。
+    - ``usage``：本结构不携带 usage——usage 的唯一落点是
+      ``message.usage``（adapter 构造时附着，随消息落盘）。钩子 /
+      Composable 经 ``response.message.usage`` 读取（先判 ``message``
+      非 ``None``）。回合聚合管线不变：消息上同一对象的引用会被追加进
+      ``TurnContext.usages``，收尾时求和为 ``TurnResult.token_usage``。
+      边缘代价：abort 于消息成形前（``message=None``）的已耗 token
+      框架内不留痕——逐次不漏的计费属插件策略，可在 adapter 层自行
+      拦截。
+    - ``model``：实际响应的模型 ID（响应侧记录），观测与计费用；不
+      要求与请求侧 ``ModelConfig.model`` 相同，不回填任何结构体。
+    - ``finish``：provider 层概念——「provider 完成了本次响应（无待
+      执行 tool_call）」。turn 是否关闭由 agent 层判断
+      （``finish or cancelled`` → ``Message.turn_end``），本字段不直接
+      承担。得出方式框架不强制，adapter 可覆写；推荐默认准则：响应含
+      ``tool_call`` block → ``False``，其它（stop / length / error）
+      → ``True``。
+    - ``cancelled``：Turn 被取消标记。``True`` 时 ``finish`` 保持
+      ``False``（中断的流式没有 finish——provider 从未完成），且
+      ``message`` 允许为 ``None``；其余路径 ``message`` 非 ``None``。
+      ``after_turn`` handler 据此区分正常结束与取消。
+    - ``provider_data``：透明传递 provider 特有元信息（原始
+      ``stop_reason`` 等）；框架核心不依赖其内容做任何决策；未文档化
+      字段不属于稳定契约。
+    - 本结构不携带异常：错误一律以 :mod:`flowing.errors` 中的分类异常
+      抛出，不包装进响应。
 
     .. seealso::
 
@@ -463,29 +346,28 @@ class ProviderResponse:
     :class:`flowing.message.Message`。
     """
     finish: bool
-    """**provider 层**概念：``True`` = provider 完成本次响应（无待执行
-    工具调用）；``False`` = 有工具调用（进入工具循环后继续 provider_gen）
-    或本次响应被中断（中断的流式没有 finish）。turn 是否关闭是
-    agent 层判断（``finish or cancelled`` → ``Message.turn_end``，
-    S-14 分层），本字段不直接承担。得出方式由 adapter 决定（推荐
-    准则见类 docstring）。
+    """provider 层概念：``True`` = provider 完成本次响应（无待执行工具
+    调用）；``False`` = 有工具调用（进入工具循环后继续 provider_gen）
+    或本次响应被中断（中断的流式没有 finish）。turn 是否关闭由 agent
+    层判断（``finish or cancelled`` → ``Message.turn_end``），本字段不
+    直接承担。得出方式由 adapter 决定（推荐准则见类 docstring）。
     """
-    model: str = ""   # R-10 落实：= ... 占位 → 空串（docstring 未明示缺省）
+    model: str = ""
     """实际响应的模型 ID（响应侧记录，保持 ``str``）。行为边界：不要求
     与请求侧 ``ModelConfig.model`` 相同；不回填任何结构体。
     """
-    cancelled: bool = False   # R-10 落实：= ... 占位 → False（docstring 明示缺省 False）
+    cancelled: bool = False
     """Turn 被取消标记。``True`` 时 ``finish`` 保持 ``False``（provider
-    未完成，S-14）、``message`` 可为 ``None``；``after_turn`` 据此
-    区分结局。缺省 ``False``。
+    未完成）、``message`` 可为 ``None``；``after_turn`` 据此区分结局。
+    缺省 ``False``。
     """
     by: str | None = None
-    """来源标记（``provider_gen()`` 盖写，adapter 不填、无法伪造）：主 Turn
-    ``"_turn"``、副线 ``"_side"``；下划线开头为框架保留值。
-    ``after_provider_gen`` 钩子点以 ``match_on="by"`` 声明，handler 可按
-    来源模式过滤注册。缺省 ``None``。
+    """来源标记（``provider_gen()`` 盖写，adapter 不填、无法伪造）：主
+    Turn ``"_turn"``、副线 ``"_side"``；下划线开头为框架保留值。
+    ``after_provider_gen`` 钩子点以 ``match_on="by"`` 声明，handler 可
+    按来源模式过滤注册。缺省 ``None``。
     """
-    provider_data: dict[str, Any] = field(default_factory=dict)   # R-10 落实：= ... 占位 → 空 dict 工厂
+    provider_data: dict[str, Any] = field(default_factory=dict)
     """provider 特有元信息（原始 stop_reason 等），透明传递。行为边界：
     框架核心不依赖其内容做决策；未文档化字段不稳定。缺省空 dict。
     """
