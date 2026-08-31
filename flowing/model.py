@@ -62,7 +62,7 @@ Agent 对模型只做「持有 + 机械传递」：持有 ``self.model: ModelCon
   模型配置（运行时 Parsable 求值）的解析表、``{{env.VAR}}`` 替换规则
   全文见 :mod:`flowing.providers` 包 docstring。要点：providers.yaml
   中的 ``{{env.VAR}}`` 缺失在加载时抛
-  :class:`flowing.errors.MissingEnvironmentVariableError`（fail-fast，
+  :class:`flowing.errors.MissingEnvironmentVariableError` （fail-fast，
   不静默降级）；``ModelConfig`` 字段中的 ``{{env.VAR}}`` 是运行时
   Parsable 求值，其失败按普通求值异常处理，不属该异常。
 - 最小行为：用户只写 ``model_tag: fast`` + 三个配置文件时：标签 →
@@ -213,7 +213,7 @@ class ModelConfig:
     ) -> None:
         """构造一份完整模型规格。
 
-        :func:`load_models`（models.yaml 加载器）与「命令式直接改结构体」路径
+        :func:`load_models` （models.yaml 加载器）与「命令式直接改结构体」路径
         （``agent.model = ModelConfig(...)``）共用此入口。关键字参数强制调用方
         明确每个元信息字段。
 

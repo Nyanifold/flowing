@@ -673,6 +673,8 @@ class StateView:
 
     .. code-block:: python
 
+        from flowing import Agent
+
         class MyAgent(Agent):
             async def setup(self, **args):
                 self.state.register("tracker_count", 0)   # 登记键：缺省即写落盘
