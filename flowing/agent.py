@@ -3318,7 +3318,7 @@ class Agent:
 
         .. rubric:: 功能介绍
 
-        薄委托 ``runtime.tool_registry.get``（``name_or_path`` +
+        薄委托 ``runtime.tool_registry.get`` （``name_or_path`` +
         ``source_dir=self.source_dir()``）——与直接调注册表的区别仅在文件
         上下文：裸名先查本 Agent 定义文件所在目录的定向文件查找链（文件
         覆盖 ``default::`` / ``builtin::``），``./`` / ``../`` 相对路径
@@ -3341,7 +3341,7 @@ class Agent:
 
         .. rubric:: 功能介绍
 
-        薄委托 ``runtime.get_agent_class``（``agent_type`` +
+        薄委托 ``runtime.get_agent_class`` （``agent_type`` +
         ``source_dir=self.source_dir()``）——语义与 :meth:`get_tool` 同构
         （裸名文件链优先、文件覆盖注册表；无文件上下文退化为纯注册表
         查询）。Agent 侧只有 ``get_agent_class``，没有 ``get_agent``——
