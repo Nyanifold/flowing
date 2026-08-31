@@ -51,7 +51,7 @@ Agent 对模型只做「持有 + 机械传递」：持有 ``self.model: ModelCon
 
 - adapter 类（类型层）：:class:`Provider` 的具体子类，如
   ``DeepSeekProvider``。它回答「怎么和这种 API 说话」——请求/响应
-  格式、字段解释、错误归类。以类属性 ``name``（如 ``"deepseek"``）
+  格式、字段解释、错误归类。以类属性 ``name`` （如 ``"deepseek"``）
   经 :func:`register_provider` 注册进进程级全局注册表；adapter 名是
   类型标识，全局唯一。
 - provider 条目（实例层）：``providers.yaml`` 里的一个 key，如
@@ -84,7 +84,7 @@ Agent 对模型只做「持有 + 机械传递」：持有 ``self.model: ModelCon
 环境变量引用规则（provider / 模型条目所有字段值）：``{{env.VAR}}`` →
 ``os.environ["VAR"]``；不以 ``{{env.`` 开头的 ``{{`` 保持原样（不报错、
 不替换）。环境变量不存在时：provider 条目加载时抛
-:class:`flowing.errors.MissingEnvironmentVariableError`（fail-fast：
+:class:`flowing.errors.MissingEnvironmentVariableError` （fail-fast：
 出错即刻抛异常、不静默降级——避免运行到第一次调用才 401）；模型配置
 字段运行时求值时经 Parsable 求值错误路径报错。该字符串替换机制完全
 独立于 Parsable 的 Jinja2 渲染——凭证引用是纯静态操作，总在加载时
@@ -93,7 +93,7 @@ Agent 对模型只做「持有 + 机械传递」：持有 ``self.model: ModelCon
 .. rubric:: 配置文件 schema：providers.yaml
 
 默认 ``$FLOWING_CONFIG_HOME/providers.yaml``，用户私有、含密钥，文件
-权限必须 ``chmod 600``（模型侧文件 schema 见 :mod:`flowing.model`）::
+权限必须 ``chmod 600`` （模型侧文件 schema 见 :mod:`flowing.model`）::
 
     deepseek-personal:          # 条目名 = 身份标识
       adapter: deepseek         # 必填，register_provider 的注册键
@@ -116,8 +116,8 @@ adapter 必须把底层错误归类为 :mod:`flowing.errors` 中的明确类型�
   ``ProviderTimeoutError``——是否退避重试由策略层（如 ``use_retry()``）
   决定。
 - 不可重试类：``AuthenticationError`` / ``InvalidRequestError`` /
-  ``ContentPolicyError`` / ``RequestTooLargeError``（413 字节超限；
-  媒体剥离后重发属 handler 职责）/ ``QuotaExhaustedError``（429 配额
+  ``ContentPolicyError`` / ``RequestTooLargeError`` （413 字节超限；
+  媒体剥离后重发属 handler 职责）/ ``QuotaExhaustedError`` （429 配额
   耗尽，与瞬时限流的 ``RateLimitedError`` 对偶——内置两个格式家族对
   429 一律归类为 ``RateLimitedError``，不区分配额耗尽）。
 - ``ContextLengthError``：不可重试，且不经过 ``on_provider_error``
@@ -182,7 +182,7 @@ API key 等凭证只存在于 :class:`ProviderConfig` 与 Provider 实例内部�
     :mod:`flowing.errors`
         Provider 异常分类的统一异常层次。
     :class:`flowing.runtime.Runtime`
-        ``provider_registry``（懒创建候选清单）的宿主。
+        ``provider_registry`` （懒创建候选清单）的宿主。
 """
 
 from flowing.providers.anthropic import (

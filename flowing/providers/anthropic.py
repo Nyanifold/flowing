@@ -11,7 +11,7 @@ docstring。
 本格式家族的工具结果映射约定：TOOL/EVENT 消息的 ``content`` 块直接
 映射进 user 消息内的 ``tool_result`` 块——消息级 ``tool_call_id`` →
 ``tool_use_id``，``tool_status="error"`` → ``is_error: true``；媒体块
-原生内嵌于 ``tool_result.content``（image / document），无需转移；
+原生内嵌于 ``tool_result.content`` （image / document），无需转移；
 ``StructBlock`` 恒投影为 ``json.dumps(ensure_ascii=False)`` 文本。
 同一连续段的多条 TOOL 消息归并为一条 user 消息的多 ``tool_result``
 块（Anthropic 对并行 tool_use 的配对要求），遇到非 TOOL 消息即断段。
@@ -108,7 +108,7 @@ class AnthropicMessagesProvider(Provider):
       → ``finish=True``；原始 ``stop_reason`` 保留在
       ``provider_data["stop_reason"]``。
     - Usage 映射：``fresh_input`` / ``output`` 直取原生 ``input_tokens``
-      / ``output_tokens``（Anthropic 原生 input 不含 cache）；
+      / ``output_tokens`` （Anthropic 原生 input 不含 cache）；
       ``input = fresh_input + cache_read + cache_write`` 按恒等式组装；
       ``cache_creation_input_tokens`` / ``cache_read_input_tokens`` 升入
       一等字段，同时原样保留在 ``Usage.raw``。
@@ -297,7 +297,7 @@ class AnthropicMessagesProvider(Provider):
     # ── 响应映射 ─────────────────────────────────────────────────────────
 
     def _map_response(self, resp: dict) -> ProviderResponse:
-        """录制/真实响应 dict → ``ProviderResponse``（usage 附着到消息）。"""
+        """录制/真实响应 dict → ``ProviderResponse`` （usage 附着到消息）。"""
         blocks: list = []
         for raw in resp.get("content") or []:
             btype = raw.get("type")

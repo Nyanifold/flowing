@@ -220,11 +220,11 @@ class Usage:
       （「本 turn 累计推理 token」），但不重复计入 ``total_tokens``。
     - provider 未返回用量时 ``message.usage`` 为 ``None``，不产生
       ``Usage`` 实例；``raw`` 为空 dict 合法。
-    - 唯一权威：``Message.usage``（仅 PROVIDER 消息携带，随消息落盘）
+    - 唯一权威：``Message.usage`` （仅 PROVIDER 消息携带，随消息落盘）
       是本结构的唯一权威落点；``ProviderResponse`` 不携带 usage。
       回合层把每次成功调用响应消息上附着的 usage 追加进
-      ``TurnContext.usages``（持有同一对象的引用），收尾时逐字段求和
-      为 ``TurnResult.token_usage``（累加器为空时为 ``None``）——聚合
+      ``TurnContext.usages`` （持有同一对象的引用），收尾时逐字段求和
+      为 ``TurnResult.token_usage`` （累加器为空时为 ``None``）——聚合
       总是发生，不因没有消费方而跳过。
     - 框架核心不读 ``raw`` 做任何决策；``raw`` 中未文档化字段不属于
       稳定契约。
@@ -236,8 +236,8 @@ class Usage:
     """
 
     input: int
-    """全部输入 token。恒等式：``input == fresh_input + cache_read +
-    cache_write``（adapter 归一保证）。
+    """全部输入 token。恒等式：``input == fresh_input + cache_read + cache_write``
+    （由 adapter 归一保证）。
     """
     fresh_input: int
     """排除 cache 的新输入（实际新算的部分）；计费与缓存分析的主口径。
@@ -307,7 +307,7 @@ class ProviderResponse:
       为 ``None``，调用方必须先判 ``response.message is not None`` 再
       append。
     - ``usage``：本结构不携带 usage——usage 的唯一落点是
-      ``message.usage``（adapter 构造时附着，随消息落盘）。钩子 /
+      ``message.usage`` （adapter 构造时附着，随消息落盘）。钩子 /
       Composable 经 ``response.message.usage`` 读取（先判 ``message``
       非 ``None``）。回合聚合管线不变：消息上同一对象的引用会被追加进
       ``TurnContext.usages``，收尾时求和为 ``TurnResult.token_usage``。
@@ -323,7 +323,7 @@ class ProviderResponse:
       ``tool_call`` block → ``False``，其它（stop / length / error）
       → ``True``。
     - ``cancelled``：Turn 被取消标记。``True`` 时 ``finish`` 保持
-      ``False``（中断的流式没有 finish——provider 从未完成），且
+      ``False`` （中断的流式没有 finish——provider 从未完成），且
       ``message`` 允许为 ``None``；其余路径 ``message`` 非 ``None``。
       ``after_turn`` handler 据此区分正常结束与取消。
     - ``provider_data``：透明传递 provider 特有元信息（原始
@@ -357,7 +357,7 @@ class ProviderResponse:
     与请求侧 ``ModelConfig.model`` 相同；不回填任何结构体。
     """
     cancelled: bool = False
-    """Turn 被取消标记。``True`` 时 ``finish`` 保持 ``False``（provider
+    """Turn 被取消标记。``True`` 时 ``finish`` 保持 ``False`` （provider
     未完成）、``message`` 可为 ``None``；``after_turn`` 据此区分结局。
     缺省 ``False``。
     """
@@ -413,7 +413,7 @@ class Provider(ABC):
 
     .. rubric:: 测试替身建议
 
-    内置最小测试替身 :class:`FakeProvider`（实例化后注入 ``generate_fn``
+    内置最小测试替身 :class:`FakeProvider` （实例化后注入 ``generate_fn``
     / ``stream_fn``，内置 ``received`` 记录）覆盖最简单的同构形态；带
     领域逻辑的替身推荐各测试文件自行子类化本类、经
     :func:`register_provider` 以测试专属 adapter 名注册（import 期
@@ -522,7 +522,7 @@ class Provider(ABC):
 
         .. rubric:: 行为要点
 
-        - 前置条件：``model`` 已经过 ``ModelConfig.resolve()``（全部字段
+        - 前置条件：``model`` 已经过 ``ModelConfig.resolve()`` （全部字段
           静态化）；``context`` 由调用方现场组装。``context.messages``
           为空合法（纯系统提示调用）。
         - 期待行为：把 ``context.system_prompt`` / ``context.tools`` /
@@ -530,13 +530,13 @@ class Provider(ABC):
           字段映射为请求参数（字段含义的唯一解释方）；按
           :class:`ProviderResponse` 的默认准则设置 ``finish``。
         - usage 附着：usage 不进入 ``ProviderResponse``——adapter 把
-          本次用量直接附着到 ``message.usage``（唯一权威落点，随消息
+          本次用量直接附着到 ``message.usage`` （唯一权威落点，随消息
           落盘）；provider 未返回用量时 ``message.usage`` 保持
-          ``None``。``message`` 为 ``None``（abort）时本次用量无载体、
+          ``None``。``message`` 为 ``None`` （abort）时本次用量无载体、
           不留痕。
         - abort 语义：调用期间检测到 abort（如 HTTP 会话被取消）时，
-          返回 ``ProviderResponse(message=None, finish=False,
-          cancelled=True)`` 而非抛异常——cancel 是正常终止。
+          返回 ``ProviderResponse(message=None, finish=False, cancelled=True)``
+          而非抛异常——cancel 是正常终止。
         - 异常：底层错误必须归类为 :mod:`flowing.errors` 的明确类型
           上抛（分类表见包 docstring）；本方法不做兜底捕获、不重试。
         - 不读写消息树、不落盘、不触发钩子（钩子在 Agent 层）。
@@ -579,7 +579,7 @@ class Provider(ABC):
         .. rubric:: 功能介绍
 
         流式变体。异步迭代器逐个产出 :class:`ProviderDelta`；
-        ``Agent.provider_gen()`` 在 ``stream=True``（默认值）时选择本
+        ``Agent.provider_gen()`` 在 ``stream=True`` （默认值）时选择本
         方法，把 delta 累积进一条 ``partial=True`` 的消息并逐条分发
         ``on_provider_delta`` 钩子，结束后返回完整
         :class:`ProviderResponse`。
@@ -603,7 +603,7 @@ class Provider(ABC):
         - 默认实现行为：等价于 ``generate()`` 成功后把消息文本包成一条
           ``ProviderDelta(kind="text", ...)`` 产出；结构化 block（无
           ``text`` 属性者）逐块补发 ``block`` delta。
-        - 本方法不返回 ``ProviderResponse``（完整响应由 ``provider_gen()``
+        - 本方法不返回 ``ProviderResponse`` （完整响应由 ``provider_gen()``
           组装——组装时同样履行 usage 附着契约：adapter 末帧提取的
           ``usage`` 只进入组装消息的 ``message.usage``，同
           :meth:`generate`）；delta 不落盘、不进消息树。
@@ -673,7 +673,7 @@ class Provider(ABC):
 
         .. rubric:: 行为要点
 
-        - 返回当前可用凭证字符串；无凭证返回 ``None``（是否报错由请求
+        - 返回当前可用凭证字符串；无凭证返回 ``None`` （是否报错由请求
           路径决定，通常映射为
           :class:`flowing.errors.AuthenticationError`）。
         - 安全边界：返回值禁止写入消息、``_provided``、日志与任何落盘
@@ -696,8 +696,8 @@ class FakeProvider(Provider):
     .. rubric:: 功能介绍
 
     框架内置的最小测试替身（Fake = 带简单逻辑的测试替身，区别于纯队列
-    回放的 Stub / Scripted）。构造后给实例属性 ``generate_fn``（必需）
-    与 ``stream_fn``（可选）赋值，``generate()`` / ``generate_stream()``
+    回放的 Stub / Scripted）。构造后给实例属性 ``generate_fn`` （必需）
+    与 ``stream_fn`` （可选）赋值，``generate()`` / ``generate_stream()``
     委托给注入函数执行；同时内置 Spy 成分：每次调用把收到的
     :class:`Context` 追加进 ``received`` 供断言。
 
@@ -740,11 +740,11 @@ class FakeProvider(Provider):
       :mod:`flowing.errors` 类型、usage 附着到 ``message.usage``、
       ``finish`` 判定等 :class:`Provider` 契约由测试作者自负，框架不
       校验注入函数的输出合法性。
-    - ``config`` 缺省为空 :class:`ProviderConfig`（测试无凭证概念）；
+    - ``config`` 缺省为空 :class:`ProviderConfig` （测试无凭证概念）；
       不自建网络连接；``received`` 只追加不清理（清理由测试自行
       ``provider.received.clear()``）。
     - ``generate_fn`` 未注入时调用 ``generate()`` 抛
-      :class:`flowing.errors.FlowingError`（显式失败防漏配，消息指明
+      :class:`flowing.errors.FlowingError` （显式失败防漏配，消息指明
       缺失的属性名）；``stream_fn`` 未注入不报错（基类回退即合理默认）。
       运行中途换绑 ``generate_fn`` 合法，下一次调用生效。
 
@@ -794,7 +794,7 @@ class FakeProvider(Provider):
 
         .. rubric:: 行为要点
 
-        - 先 ``self.received.append(context)``（记录先于委托，注入函数
+        - 先 ``self.received.append(context)`` （记录先于委托，注入函数
           抛异常时记录仍在），再 ``await self.generate_fn(...)`` 原样
           返回。
         - ``generate_fn is None`` → :class:`flowing.errors.FlowingError`
@@ -817,7 +817,7 @@ class FakeProvider(Provider):
 
         - ``stream_fn is not None`` → 先记录 ``received`` 再返回
           ``self.stream_fn(context, model)``；``None`` → 直接
-          ``super().generate_stream(...)``（记录由回退路径上的
+          ``super().generate_stream(...)`` （记录由回退路径上的
           ``generate()`` 完成，不重复追加）。
         """
         if self.stream_fn is not None:
@@ -829,7 +829,7 @@ class FakeProvider(Provider):
 _provider_adapters: dict[str, type[Provider]] = {}
 """进程级 adapter 注册表（adapter 名 → Provider 类）。
 
-写入方仅 :func:`register_provider`（import 期）；读取方仅
+写入方仅 :func:`register_provider` （import 期）；读取方仅
 :class:`ProviderRegistry` 的懒实例化（按 providers.yaml 条目的
 ``adapter`` 字段选类）。内部 API，不导出、不属稳定契约——adapter 类
 是类型层资产故为进程级；条目实例属 Runtime（见
@@ -867,7 +867,7 @@ class ProviderRegistry:
     .. rubric:: 行为要点
 
     - ``get(name)``：已缓存 → 返回缓存实例；未缓存 → 现场实例化并缓存
-      后返回；条目名不在候选清单 → ``KeyError``（dict 语义快速失败）。
+      后返回；条目名不在候选清单 → ``KeyError`` （dict 语义快速失败）。
       注意本方法的 ``get`` 是「取或建」语义，不是 ``dict.get`` 的返回
       ``None`` 语义。
     - 不做 adapter 自动发现（adapter 类由 :func:`register_provider` 在
@@ -895,9 +895,8 @@ class ProviderRegistry:
     def __init__(self, candidates: dict[str, tuple[type[Provider], ProviderConfig]]) -> None:
         """构造懒实例化表。
 
-        :param candidates: 候选清单（条目名 → ``(adapter 类,
-            ProviderConfig)``），通常为 :func:`load_provider_candidates`
-            的产物。
+        :param candidates: 候选清单（条目名 → ``(adapter 类, ProviderConfig)``），
+            通常为 :func:`load_provider_candidates` 的产物。
         """
         self._candidates = candidates
         self._instances = {}
@@ -912,11 +911,11 @@ class ProviderRegistry:
 
         - 已缓存 → 直接返回；未缓存 → ``adapter_cls(config)`` 实例化并
           缓存后返回。
-        - 条目名不在候选清单 → ``KeyError``（不做 ``dict.get`` 式的
+        - 条目名不在候选清单 → ``KeyError`` （不做 ``dict.get`` 式的
           ``None`` 返回）。
         - 实例化失败 → 异常原样上抛，失败结果不缓存（下次调用重试）。
 
-        .. seealso:: :class:`ProviderRegistry` 类 docstring 的完整行为规约
+        .. seealso:: :class:`ProviderRegistry` 类 docstring 的完整行为要点
         """
         if name in self._instances:
             return self._instances[name]
@@ -935,7 +934,7 @@ def _substitute_env(value: Any, *, entry: str) -> Any:
     """对字符串值做 ``{{env.VAR}}`` 全局替换；缺失即抛，非字符串原样返回。
 
     仅 ``str`` 类型值参与替换（全局替换）；环境变量缺失抛
-    :class:`flowing.errors.MissingEnvironmentVariableError`（消息含变量名
+    :class:`flowing.errors.MissingEnvironmentVariableError` （消息含变量名
     与条目名）。凭证不经 Jinja2 / Parsable（凭证口径见包 docstring）。
     内部 API，不属稳定契约。
     """

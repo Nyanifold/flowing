@@ -68,7 +68,7 @@ from flowing.providers.provider import (
 class _HttpResponseError(Exception):
     """传输层非 2xx 响应的内部载体（归类前的原始事实；不属异常层次）。
 
-    ``_post``（唯一网络点）在非 2xx 时抛出；``generate()`` 捕获后经
+    ``_post`` （唯一网络点）在非 2xx 时抛出；``generate()`` 捕获后经
     ``_classify_error`` 归类为 :mod:`flowing.errors` 类型。mock
     transport 测试以抛出本异常模拟各状态码。
     """
@@ -92,8 +92,9 @@ class OpenAICompletionsProvider(Provider):
     :class:`flowing.context.Context` 的三个字段映射为 chat/completions
     请求体（system 消息、messages 数组、tools 声明），把响应映射为
     :class:`ProviderResponse`，并把原始用量归一为 :class:`Usage`
-    （``prompt_tokens`` → ``input``，``fresh_input = prompt_tokens -
-    cached_tokens``）。子类只覆写差异：默认端点（``default_base_url``）、
+    （``prompt_tokens`` → ``input``，
+    ``fresh_input = prompt_tokens - cached_tokens``）。子类只覆写差异：
+    默认端点（``default_base_url``）、
     凭证来源、厂商特有字段。
 
     本类不直接实例化使用——实例化发生在具体厂商子类的懒创建链上
@@ -150,7 +151,7 @@ class OpenAICompletionsProvider(Provider):
     async def _post(self, path: str, body: dict) -> dict:
         """发起一次 POST 并返回解析后的 JSON（唯一网络点，子类/测试可覆写）。
 
-        行为边界：非 2xx → :class:`_HttpResponseError`（归类在调用方）；
+        行为边界：非 2xx → :class:`_HttpResponseError` （归类在调用方）；
         超时 → :class:`ProviderTimeoutError`；传输层失败 →
         :class:`NetworkError`。每次调用新建 ``httpx.AsyncClient``，
         不跨请求复用连接池。
@@ -297,7 +298,7 @@ class OpenAICompletionsProvider(Provider):
     """思考无官方字段的线上方言四种——入站扫描顺序（先见者胜出并记住）。"""
 
     def _map_response(self, resp: dict) -> ProviderResponse:
-        """录制/真实响应 dict → ``ProviderResponse``（usage 附着到消息）。"""
+        """录制/真实响应 dict → ``ProviderResponse`` （usage 附着到消息）。"""
         choice = resp["choices"][0]
         raw_msg = choice.get("message") or {}
         blocks: list = []
