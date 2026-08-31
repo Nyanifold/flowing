@@ -158,7 +158,7 @@ dispatch 点为准）：
      - 观察队列
    * - ``after_dequeue``
      - 出队之后、回合开始之前
-     - ``list``[:class:`flowing.message.Message`]
+     - ``list[Message]``
      - 可改写（变换本逻辑 turn 消费的消息列表）
    * - ``before_fork``
      - ``fork()`` 切换 head 之前
