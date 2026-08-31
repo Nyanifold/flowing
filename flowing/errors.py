@@ -75,8 +75,10 @@ import 期作者笔误刻意用内置 ``ValueError``，不入本层次——如
 
 .. code-block:: python
 
+    import asyncio
+
     from flowing.errors import (
-        AuthenticationError, Intercepted, RateLimitedError,
+        Intercepted, RateLimitedError,
     )
 
     # 策略层：on_provider_error handler 按错误分类决定是否重试
@@ -277,7 +279,7 @@ class ConfigNotReadyError(ConfigError):
 
         # 配置就绪后任何时机可调用（如 setup() 中）
         async def setup(self):
-            self.timeout = self.get_config("agent.timeout", default=60)
+            self.timeout = self.runtime.get_config("agent.timeout", default=60)
 
     .. rubric:: 行为要点
 
@@ -511,6 +513,8 @@ class DuplicateHookPointError(HookError):
 
     - 字段 ``name``（冲突的钩子点名）、``existing_by``（已注册声明者的 ``by``
       标识）、``new_by``（本次冲突声明者的 ``by`` 标识）。
+    - ``declare()`` 的 ``by`` 参数必填（框架核心预填钩子点固定为
+      ``by="core"``）。
     - 安装期编程错误：调用方不捕获。
     - 钩子点声明独占：语义（value 类型、dispatch 时机）由首个声明者拥有。
 
@@ -1435,15 +1439,17 @@ class DependencyError(FlowingError):
     """
 
     plugin: str
-    """环闭合点所在插件名。"""
+    """环闭合点所在插件名（即引入环的那次 ``use()`` 的插件）。"""
     missing: list[str]
-    """构成环回边的依赖名列表。"""
+    """构成环回边的依赖名列表（即使依赖环闭合的那条依赖）。"""
 
     def __init__(self, plugin: str, missing: list[str]) -> None:
         """构造异常实例。
 
-        :param plugin: 环闭合点所在插件名；与 ``plugin`` 字段一致。
-        :param missing: 构成环回边的依赖名列表；与 ``missing`` 字段一致。
+        :param plugin: 环闭合点所在插件名（即引入环的那次 ``use()`` 的插件）；
+          与 ``plugin`` 字段一致。
+        :param missing: 构成环回边的依赖名列表（即使依赖环闭合的那条依赖）；
+          与 ``missing`` 字段一致。
         """
         # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Plugin {plugin!r} has unresolved dependencies: {missing}")
@@ -1527,7 +1533,7 @@ class SignalDeliveryError(CommError):
     .. rubric:: 行为要点
 
     - 字段 ``target``（未命中的目标端点 ID）与 ``signal_type``（投递失败的信号
-      类型，信封的 ``type`` 字段）。
+      类型，即信号消息的 ``type`` 字段）。
     - 调用方可捕获（如降级为日志）；是否重试由应用层决定（框架不重试）。
 
     .. seealso::
@@ -1540,7 +1546,7 @@ class SignalDeliveryError(CommError):
     target: str
     """未命中的目标端点 ID。"""
     signal_type: str
-    """投递失败的信号类型（信封的 ``type`` 字段）。"""
+    """投递失败的信号类型（即信号消息的 ``type`` 字段）。"""
 
     def __init__(self, target: str, signal_type: str) -> None:
         """构造异常实例。
