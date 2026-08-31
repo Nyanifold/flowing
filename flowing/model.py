@@ -40,8 +40,8 @@ Agent 对模型只做「持有 + 机械传递」：持有 ``self.model: ModelCon
       high: sonnet
       default: fast
 
-标签优先级：``runtime.set_model_tags(path)`` （代码级，``@/`` 前缀指向
-项目根）> ``FLOWING_MODEL_TAGS`` 环境变量 > 默认
+标签优先级从高到低：``runtime.set_model_tags(path)`` （代码级，``@/``
+前缀指向项目根）、``FLOWING_MODEL_TAGS`` 环境变量指向的文件、默认
 ``$FLOWING_CONFIG_HOME/model-tags.yaml``。未定义标签回退 ``default``；
 ``default`` 也未定义 → 报错（不静默回退）。
 

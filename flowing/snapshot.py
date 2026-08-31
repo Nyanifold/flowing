@@ -338,10 +338,10 @@ class TurnContextInfo:
 
     .. rubric:: 行为要点
 
-    - 仅当回合物质存活期间（``_run_turn`` 入口到 finally 置
-      ``current_turn = None`` 为止）``AgentSnapshot.current_turn`` 非
-      ``None``；收尾观察钩子（``after_turn``）与交付期快照即无此项——
-      「快照无此字段」不等于「回合钩子已跑完」。
+    - 仅当逻辑 turn 执行期间（从 turn 开始到收尾清理为止）
+      ``AgentSnapshot.current_turn`` 非 ``None``；收尾观察钩子
+      （``after_turn``）与交付期快照即无此项——「快照无此字段」不等于
+      「回合钩子已跑完」。
     - ``message_count`` 含 turn 首条（触发消息）在内；逻辑标识可用 turn
       首条消息 id（树中真实节点），快照不提供独立的逻辑 turn 标识符。
     - ``aborted`` 反映 TurnContext 的取消标记（协作式 cancel 已请求）；它
@@ -384,8 +384,9 @@ class MessageTreeInfo:
 
     .. rubric:: 行为要点
 
-    - ``count`` 为树中消息节点总数（含各分支；不含 tombstone 已移除项；
-      副线消息不落盘不进树，不计入）。
+    - ``count`` 为树中消息节点总数（含各分支；不含已删除的消息——删除
+      以 tombstone（删除标记）记录，被标记的消息不计入；副线消息不落盘
+      不进树，不计入）。
     - ``head_id`` 即 ``current_head_id`` 的值（消息 id）；空树（尚无已挂树
       消息）时为 ``None``。
     - fork 只切游标不动树：fork 后 ``head_id`` 变化、``count`` 不变。
@@ -403,7 +404,8 @@ class MessageTreeInfo:
     """
 
     count: int
-    """树中消息节点总数（含各分支；不含 tombstone 移除项与副线消息）。"""
+    """树中消息节点总数（含各分支；不含已删除（tombstone 标记）的消息与
+    副线消息）。"""
     head_id: str | None
     """树游标（``current_head_id`` 的值，消息 id）；空树为 ``None``。"""
 

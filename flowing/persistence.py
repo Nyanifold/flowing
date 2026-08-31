@@ -23,7 +23,7 @@
 文件格式契约（jsonl）：每个文件第一行恒为元数据记录
 ``{"type": "meta", "format_version": <int>}``，之后每行一条 JSON 记录。
 ``tree.jsonl`` 的消息行与变更记录行格式由 :mod:`flowing.message`
-（``Message.to_record`` / ``MessageChain`` 五 op）定义；``state.jsonl``
+（``flowing.message.to_record`` / ``MessageChain`` 五 op）定义；``state.jsonl``
 与 ``<namespace>.jsonl`` 的状态行格式由 :class:`StateView` 定义
 （``{"op": "set", "key": ..., "value": ...}`` / ``{"op": "delete", "key": ...}``）。
 
@@ -65,10 +65,14 @@
 - 容错：撕裂末行（崩溃半截写产物，无换行结尾）截断丢弃；中间行 JSON
   损坏抛 :class:`flowing.errors.CorruptionError` （数据事故，报警不
   容忍）。
-- 维护对调用方透明：末行合并（同 key 连续写就地重写末行，文件大小
-  不随写入次数增长）、墓碑压缩（``tree.jsonl`` 的删除标记行
-  （tombstone）累积到阈值后整文件重写）、状态全量压缩，均不改变任何
-  逻辑内容——重放结果永远等于「全部操作的顺序重放结果」。
+- 维护对调用方透明：末行合并、墓碑压缩与状态全量压缩都不会改变任何
+  逻辑内容，重放结果永远等于「全部操作的顺序重放结果」。
+- 末行合并（``state.jsonl`` 开、``tree.jsonl`` 关）：同 key 连续写就
+  地重写末行，文件大小不随写入次数增长。
+- 墓碑压缩（仅 ``tree.jsonl``）：删除标记行（tombstone）累积到阈值
+  （默认 256）后整文件原子重写，物理清除墓碑行与被标记删除的消息行。
+- 状态全量压缩：状态文件行数超阈值或属主收尾 / 恢复重放后整文件原子
+  重写。
 - 恢复 = 重放重建：进程重启后内存为空，文件是唯一事实来源——重放
   记录序列即可重建出与崩溃前一致的对象状态（消息树经 ``tree.jsonl``、
   状态经 ``state.jsonl`` / ``<namespace>.jsonl``）。TurnContext 不落盘，
@@ -183,8 +187,9 @@ class FileRecordStore:
     常规使用不直接接触本类：Agent / Runtime 侧的状态读写经
     :class:`StateView` （``agent.state`` / ``agent.register_state`` /
     ``runtime.register_state``），消息落盘由 ``flowing.agent.Agent`` 内部
-    完成。直接使用本类属框架集成面（构造点：Agent 的 ``__init__`` 经
-    ``_open_stores``，Runtime 的 ``register_state``）。
+    完成。本类供框架内部与持久化集成使用，也可被宿主工程直接复用；其
+    公开方法（五动词与构造参数）属稳定契约。构造点：Agent 的
+    ``__init__`` 经 ``_open_stores``，Runtime 的 ``register_state``。
 
     .. rubric:: 使用示例
 
