@@ -1126,52 +1126,27 @@ class Agent:
     # ────────────────────────── 构造与内部初始化 ──────────────────────────
 
     def __init__(self) -> None:
-        """同步骨架（不可 await）——只做赋值，不做任何 I/O。
+        """同步骨架——只做赋值，不做任何 I/O（内部 API，不属稳定契约）。
 
-        **内部 API，不属稳定契约。** 实例化不由用户直接调用：创建走
-        ``Runtime.create_agent`` 管线（前处理已分配 ``node_id`` /
-        ``runtime`` / ``_parent_id``），恢复走 ``Runtime.recover_agent``。
+        实例化不由用户直接调用：创建走 ``Runtime.create_agent`` 管线
+        （前处理已分配 ``node_id`` / ``runtime`` / ``_parent_id`` /
+        ``_session_dir``），恢复走 ``Runtime.recover_agent``。
 
-        **初始化分工总原则（S-26 用户裁决）**：一切**核心必要**的 Agent
-        初始化（框架自身运转必需的空结构、队列、树手术入口、钩子注册
-        等）全部放在 ``__init__``；只有**开发者自己引入**的逻辑（装配
-        args、注册业务钩子、启用 Composable）放在 :meth:`setup`。
-        ``__init__`` 不依赖任何外部输入，因此 create 与 recover 两条
-        管线得到完全相同的骨架。
+        职责（顺序不敏感，全部同步）：
 
-        .. rubric:: 行为规约
-
-        职责清单（顺序不敏感，全部同步）：
-
-        - 赋值 ``_children`` / ``_provided`` / ``hooks`` /
-          ``prompt_blocks`` / ``_message_queue`` / ``_messages`` /
-          ``chain`` / ``_executions`` / ``_pending_turns`` /
-          ``_tool_entries`` / ``_subagent_entries`` 等空结构；
-          ``current_turn = None``、``_pause_gate`` 初始 set。
-        - 建立 ``_extra``（实例级静默仓库）与**持久化后端**——经
-          :meth:`_open_stores`（换装点）。管线第 2 步（``__new__`` 绑
-          ``node_id`` / ``runtime`` / ``_parent_id`` / ``_session_dir``）先于
-          ``__init__`` 执行，session 目录（``_session_dir``——
-          ``create_agent(session_dir=...)`` 指定或默认
-          ``persist_dir / node_id``）骨架期即可知（P3-03 裁决，
-          「骨架阶段尚不可知」的旧表述作废）。
-          两后端建立即完成，``register_state`` 在随后的 ``setup()`` 中
-          天然可用（无写闸门，D5）。
+        - 建立全部空结构：``_children`` / ``_provided`` / ``hooks`` /
+          ``prompt_blocks`` / ``_message_queue`` / ``_messages`` / ``chain`` /
+          ``_executions`` / ``_pending_turns`` / ``_tool_entries`` /
+          ``_subagent_entries`` 等；``current_turn = None``、``_pause_gate``
+          初始放行。
+        - 建立 ``_extra``（实例级静默仓库）与持久化后端——经
+          :meth:`_open_stores`（session 目录由管线预绑，骨架期即可知）。
         - 注入 ``system_prompt`` 惰性引用块（``prompt_blocks[0]``，
           ``by="core"``）。
-        - 调 ``_init_hooks()``（同步注册 ``@on()`` 声明的钩子）。
+        - 调 :meth:`_init_hooks` 同步注册 ``@on()`` 声明的钩子。
 
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.agent.Agent._init_hooks()``（时机：``__init__``
-          阶段，同步注册 ``@on()`` 声明的钩子）
-        - 被调：``flowing.runtime.Runtime.create_agent`` /
-          ``flowing.runtime.Runtime.recover_agent`` 管线（时机：同步
-          骨架阶段，不可 await；前处理已分配 ``node_id`` / ``runtime``
-          / ``_parent_id``）
-
-        .. seealso:: :meth:`setup`、:meth:`_init_hooks`、
-            :meth:`flowing.runtime.Runtime.create_agent`
+        开发者自己引入的装配逻辑（依赖 args / inject 的赋值、业务钩子
+        注册、Composable 启用）放 :meth:`setup`。
         """
         # P3-03 裁决（用户）：_extra 与状态袋在 __init__ 建立——管线第 2 步
         # （__new__ 绑 node_id / runtime / _parent_id）先于 __init__，
@@ -1209,17 +1184,9 @@ class Agent:
     def __init_subclass__(cls, **kwargs: Any) -> None:
         """``source_file`` 自动推算（内部 API，不属稳定契约）。
 
-        类创建时执行：``source_file is _UNSET`` → 从 ``__module__.__file__``
-        推算为 ``@/`` 格式（失败 → ``None``）；非 ``_UNSET`` → 尊重显式值
-        （含 ``None``；``.fya`` 装配层显式注入的值优先级最高）。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：无
-        - 被调：Python 类创建机制（时机：每次子类定义；``.fya`` 装配层
-          显式注入 ``source_file`` 优先级最高）
-
-        .. seealso:: :attr:`source_file`
+        类创建时执行：``source_file`` 未显式赋值 → 从 ``__module__.__file__``
+        推算为 ``@/`` 格式（项目根之外或无法推算 → ``None``）；已显式赋值
+        则尊重（含 ``None``；``.fya`` 装配层显式注入的值优先级最高）。
         """
         super().__init_subclass__(**kwargs)
         # source_file is _UNSET -> 从 __module__.__file__ 推算为 "@/" 格式
@@ -1250,23 +1217,12 @@ class Agent:
     def __getattr__(self, name: str) -> Any:
         """回退查找链：``_extra``（内部 API，不属稳定契约）。
 
-        ``name in self._extra`` → 返回 ``_extra[name]``（原值返回，不做
-        隐式 Parsable 解包）；否则 ``AttributeError``。**状态量不在回退
-        链上**（P3-03 配套裁决：读写统一走 ``agent.state`` 显式视图，
-        ``agent.xxx`` 只对应普通实例属性与 ``_extra``）。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：无（仅查 ``_extra`` 表）
-        - 被调：无（属性查找失败时由 Python 机制触发；扩展读 ``_extra``
-          字段的通道）
-
-        .. rubric:: 递归护栏（P3-03 裁决）
-
-        体内探表**只经 ``self.__dict__.get``，不经属性查找**——子类
-        ``__init__`` 在 ``super().__init__()`` 之前赋值等场景下
-        ``_extra`` 尚未建立，护栏使回退路径整体短路，干净抛
-        ``AttributeError`` 而非 RecursionError。
+        ``name`` 在 ``_extra`` 中 → 返回 ``_extra[name]``（原值返回，不做
+        隐式 Parsable 解包）；否则 ``AttributeError``。状态量不在回退链上
+        ——读写统一走 ``agent.state`` 显式视图。体内只经 ``__dict__.get``
+        探查 ``_extra``：子类在 ``super().__init__()`` 之前赋值等场景下
+        ``_extra`` 尚未建立，回退路径整体短路，干净抛 ``AttributeError``
+        而非递归错误。
         """
         extra = self.__dict__.get("_extra")   # 护栏：未建立 -> 跳过（不经属性查找，天然无递归）
         if extra is not None and name in extra:
@@ -1274,37 +1230,21 @@ class Agent:
         raise AttributeError(name)
 
     def _init_hooks(self) -> None:
-        """把 ``@on()`` 声明的钩子注册到实例 ``hooks``（同步）。
+        """把 ``@on()`` 声明的钩子注册到实例 ``hooks``（同步；内部 API）。
 
-        **内部 API，不属稳定契约。** ``__init__`` 阶段执行，早于
-        ``setup()``——``before_create`` 只能经 ``@on('before_create')``
-        声明的原因（setup 尚未运行时无法 ``self.hooks`` 注册）。
+        ``__init__`` 阶段执行，早于 ``setup()``——这就是 ``before_create``
+        只能经 ``@on('before_create')`` 声明的原因（setup 尚未运行时无法
+        ``self.hooks`` 注册）。
 
-        .. rubric:: 行为规约（收集原语，S-29 定稿）
-
-        - 扫 ``type(self).__mro__`` 逐名解析：每个属性名以**派生优先**
-          取最终定义（子类覆写未标记的同名方法，基类的标记**不生效**——
-          覆写即覆盖，与 Python 方法解析一致）。
-        - 最终定义带 ``__flowing_hooks__`` 的成员：按绑定方法逐条记录
-          注册，顺序**基类 → 派生类**（同名钩子点上父类 handler 先挂）。
-        - **两段式注册**：钩子点已存在（核心预填点）→ 立即注册；尚未
-          声明（插件点）→ 记入 ``self.hooks._pending_on``，待
-          :meth:`flowing.hooks.HookRegistry.declare` 冲刷（``@on``
-          handler 天然排最前）。
-        - 结算：``setup()`` 后 PENDING 检查发现 ``_pending_on`` 非空 →
-          ``UnknownHookPointError``（见 ``Runtime.create_agent`` 管线
-          第 6 步）。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.hooks.HookList.__call__`` /
-          ``PatternRegistrar.__call__``（时机：立即注册路径，每条记录
-          一次）；``HookRegistry._pending_on`` 暂记（时机：钩子点未
-          声明路径）
-        - 被调：``flowing.agent.Agent.__init__``（时机：同步骨架阶段，
-          早于 ``setup()``）
-
-        .. seealso:: :func:`flowing.hooks.on`、:attr:`hooks`
+        - 扫 ``type(self).__mro__`` 逐名解析：每个属性名以派生优先取最终
+          定义（子类覆写未标记的同名方法，基类的标记不生效——覆写即覆盖，
+          与 Python 方法解析一致）。
+        - 最终定义带 ``__flowing_hooks__`` 标记的成员：按绑定方法逐条记录
+          注册，顺序为基类 → 派生类（同名钩子点上父类 handler 先挂）。
+        - 两段式注册：钩子点已存在（核心预填点）→ 立即注册；尚未声明
+          （插件点）→ 记入 ``self.hooks._pending_on``，待
+          :meth:`flowing.hooks.HookRegistry.declare` 冲刷。``setup()`` 后
+          PENDING 检查发现暂记列表非空 → ``UnknownHookPointError``。
         """
         # S-29 收集原语：MRO 派生→基类方向判覆写（每个名字只认最派生的
         # 最终定义），收集后按基类→派生类顺序注册
@@ -1338,11 +1278,11 @@ class Agent:
 
     @property
     def child_ids(self) -> dict[str, str]:
-        """语义名 → agent_id 翻译表——core 袋唯一真值（D7 property 透传）。
+        """语义名 → agent_id 翻译表——core 袋唯一真值（内部 API）。
 
-        **内部 API，不属稳定契约。** 只读（getter-only，S10：用户写 →
-        ``AttributeError``）；框架内部写经 ``_core_state["child_ids"]``
-        整表写透。骨架期（袋未建立）返回空表。
+        只读（用户写 → ``AttributeError``）；框架内部写经
+        ``_core_state["child_ids"]`` 整表写透落盘。骨架期（袋未建立）返回
+        空表。
         """
         bag = self.__dict__.get("_core_state")
         if bag is None:
@@ -1354,12 +1294,11 @@ class Agent:
 
     @property
     def current_head_id(self) -> str | None:
-        """消息级树游标——core 袋真值（D7：落盘、property 透传）。
+        """消息级树游标——core 袋真值（内部 API）。
 
-        **内部 API，不属稳定契约。** 只读（getter-only，S10：用户写 →
-        ``AttributeError``）；框架内部写经
-        ``_core_state["current_head_id"]``（写透落盘，恢复读袋为准、不树
-        校验——决策 9）。骨架期（袋未建立）返回 ``None``。
+        只读（用户写 → ``AttributeError``）；框架内部写经
+        ``_core_state["current_head_id"]`` 写透落盘，恢复以袋值为准、不
+        校验树。骨架期（袋未建立）返回 ``None``。
         """
         bag = self.__dict__.get("_core_state")
         if bag is None:
@@ -1370,50 +1309,23 @@ class Agent:
             return None
 
     def _open_stores(self, session_dir: Path) -> None:
-        """建立本 Agent 的持久化后端（**内部 API，不属稳定契约**）。
+        """建立本 Agent 的持久化后端（内部 API，不属稳定契约）。
 
-        .. rubric:: 功能介绍
+        构造点为 ``__init__``：session 目录由管线预绑
+        （``create_agent(session_dir=...)`` 或默认 ``persist_dir / node_id``），
+        骨架期即可知。建立三个后端：
 
-        构造点为 ``__init__``（P3-03 裁决：管线第 2 步已绑 ``node_id`` /
-        ``runtime`` 与 ``_session_dir``——经 ``create_agent(session_dir=...)``
-        指定或默认 ``persist_dir / node_id``，session 目录骨架期即可知，故
-        后端随骨架建立，不再独立成管线阶段）。**双内建袋（D1）**：
+        - ``_tree_store`` —— ``tree.jsonl`` 的
+          :class:`~flowing.persistence.FileRecordStore`；
+        - ``_core_state`` —— 核心状态袋（``core.jsonl`` 内嵌，
+          ``merge_last_line=True``；框架私有：child_ids / current_head_id）；
+        - ``_state_bag`` —— 默认状态袋（``state.jsonl`` 内嵌，
+          ``merge_last_line=True``；:attr:`state` property 返回）。
 
-        - ``_tree_store = FileRecordStore(session_dir / "tree.jsonl")``
-          （``session_dir`` 即管线预绑的 :attr:`_session_dir`）；
-        - ``_core_state = StateView(FileRecordStore(session_dir /
-          "core.jsonl", merge_last_line=True))`` —— **核心状态袋**（框架
-          私有：child_ids / current_head_id，property 透传，阶段 C）；
-        - ``_state_bag = StateView(FileRecordStore(session_dir /
-          "state.jsonl", merge_last_line=True))`` —— **默认状态袋**
-          （业务/插件状态，:attr:`state` property 返回）。
-
-        身份四键（agent_type / parent_agent_id / created_at / args）**不在
-        本方法**——独立 ``meta.json`` 由 Runtime 管线整写（D12，见
-        :meth:`flowing.runtime.Runtime.create_agent`）。
-
-        .. rubric:: 行为规约
-
-        - 调用时点固定：``__init__`` 首段（两管线同一骨架，各一次）。
-        - 建立后 ``register_state`` 开启的命名袋不在此（D3：独立文件、
-          即时 replay）；default 袋键登记经 ``agent.state.register``
-          （D4，缺省即写）；框架核心键在 ``_core_state``（初始槽直写
-          _persisted）。
-        - 幂等性不要求（骨架保证单次）；重复调用属用法错误。
-        - 本方法是后端**换装点**（模块 docstring「后端演进缝」）：
-          未来非文件后端在此替换 ``FileRecordStore`` 构造（字段标注
-          保持契约形态 :class:`flowing.persistence.RecordStore`）。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.persistence.FileRecordStore()`` 三次与
-          ``flowing.persistence.StateView()``（时机：两袋建立）
-        - 被调：``Agent.__init__``（时机：骨架首段，session 目录由
-          管线第 2 步预绑的 :attr:`_session_dir` 给出——``create_agent(
-          session_dir=...)`` 指定或默认 ``persist_dir / node_id``）
-
-        .. seealso:: :meth:`_restore`、:meth:`register_state`、
-            :class:`flowing.persistence.FileRecordStore`
+        身份四键（agent_type / parent_agent_id / created_at / args）不在
+        本方法——独立 ``meta.json`` 由 Runtime 管线整写。命名状态空间
+        （:meth:`register_state`）也不在此（独立文件、即时重放）。本方法
+        是后端换装点：未来非文件后端在此替换 ``FileRecordStore`` 构造。
         """
         self._tree_store = FileRecordStore(session_dir / "tree.jsonl")
         self._core_state = StateView(
@@ -1427,44 +1339,30 @@ class Agent:
         self._core_state._persisted.setdefault("current_head_id", None)
 
     def register_state(self, name: str, backend: str = "file") -> StateView:
-        """开启/注册一个**命名状态空间**（D3），返回其 :class:`StateView`。
+        """开启一个命名状态空间，返回其 :class:`StateView`（公共 API）。
 
         .. rubric:: 功能介绍
 
-        打开/注册本 Agent 的一个命名状态袋：``<session_dir>/<name>.jsonl``
-        （``'file'`` 后端细节——``.jsonl`` 是 file 后端专属；暂不支持任意
-        path）。与 :attr:`state`（default 袋）对称的扩展通道：命名袋是
-        插件/领域的独立状态空间（独立文件、独立压缩/崩溃边界），
-        **不挂载任何 agent 属性**——调用方自行持有返回的袋对象。
+        打开本 Agent 的一个命名状态袋：``<session_dir>/<name>.jsonl``。
+        与 :attr:`state`（默认袋）对称的扩展通道：命名袋是插件 / 领域的
+        独立状态空间（独立文件、独立压缩 / 崩溃边界），不挂载任何 agent
+        属性——调用方自行持有返回的袋对象。
 
-        **幂等**：同 ``name`` 重复调用返回同一视图（同一文件一视图，
-        防双写队列）；``name`` 是逻辑身份，物理映射归 backend。
+        .. rubric:: 行为要点
 
-        .. rubric:: 行为规约
-
-        - ``backend`` 当前仅 ``'file'``（未来非文件后端换装点）；
-          其它值 → ``ValueError``。
-        - ``name`` 校验：合法文件名（不含路径分隔符 / ``..``）；
-          不与保留文件 ``state`` / ``core`` / ``tree`` / ``meta`` 重名
-          （保留名是 file 后端相关）→ 否则 ``ValueError``。
-        - **即时恢复**：打开即 ``replay`` 重放持久值进 ``_persisted``
-          （开空间即恢复——与 Runtime 侧对称；无 use() 后引导）。
-        - 键登记走 ``view.register(key, default)``（D4 公开 API）。
+        - 幂等：同 ``name`` 重复调用返回同一视图（同一文件一视图）。
+        - ``backend`` 当前仅 ``"file"``；其它值 → ``ValueError``。
+        - ``name`` 校验：合法文件名（不含路径分隔符 / ``..``）；不与
+          保留文件 ``state`` / ``core`` / ``tree`` / ``meta`` 重名 →
+          否则 ``ValueError``。
+        - 打开即重放：持久值立即装袋（开空间即恢复）。
+        - 键登记走 ``view.register(key, default)``。
 
         :param name: 命名状态空间名。
-        :param backend: 后端（当前仅 ``'file'``）。
+        :param backend: 后端（当前仅 ``"file"``）。
         :return: 命名袋的 :class:`StateView`。
 
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.persistence.StateView()`` /
-          ``flowing.persistence.FileRecordStore()``（时机：开启状态空间）；
-          ``RecordStore.replay()``（即时恢复）
-        - 被调：无框架内调用方（公共 API，插件/用户开启扩展状态空间；
-          幂等同 name 返回同视图）
-
-        .. seealso:: :attr:`state`、:class:`StateView`、
-            :meth:`flowing.runtime.Runtime.register_state`
+        .. seealso:: :attr:`state`、:class:`flowing.persistence.StateView`
         """
         if backend != "file":
             raise ValueError(f"register_state backend 仅支持 'file': {backend!r}")
@@ -1496,79 +1394,30 @@ class Agent:
 
     @property
     def state(self) -> StateView:
-        """本 Agent **默认状态袋**的视图（显式读写通道）。
+        """本 Agent 默认状态袋的视图——钩子 / 工具 / 插件代码里以 agent
+        视角读写持久化状态的唯一默认通道（公共 API）。
 
-        .. rubric:: 功能介绍
-
-        钩子 handler / 工具 / 插件代码里以 **agent 视角**读写持久化状态的
-        **唯一默认通道**（P3-03 配套裁决：读写统一走显式视图，不再经
-        ``agent.xxx`` 回退）：``agent.state.cron_jobs`` 属性式，
-        ``agent.state["weird-key"]`` 字典式。写透不触发 watcher
-        （决策 5：watch 不再察觉 state）。扩展状态空间经
-        :meth:`register_state` 开启（命名袋，独立文件，不挂载属性）。
-
-        .. rubric:: 设计动机
-
-        语义上每个状态量就是该智能体的一个特殊属性；把访问做成
-        「Agent 身上的视图」而非 Runtime 上的 ``store[agent_id][key]``，
-        是因为插件改状态的现场几乎都在钩子里、手里拿的是 agent——不应
-        再回插件对象找句柄、拼 id。
-
-        .. rubric:: 行为规约
-
-        读写语义（写透、defaults 回退、fail fast）全部继承
-        :class:`StateView` 的类级契约。本 property 自身无副作用。
-
-        .. rubric:: 测试案例
-
-        - 前置：setup 中 ``agent.state.register("tracker_count", 0)`` →
-          操作：钩子中 ``agent.state.tracker_count += 1`` → 期望：写透
-          落盘，崩溃恢复后值在；写不触发 ``watch``（决策 5）。
-        - 前置：未声明 ``"tracke"``（typo）→ 操作：``agent.state[
-          "tracke"]`` → 期望：``KeyError``；``agent.tracke`` →
-          ``AttributeError``。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：无（返回单袋视图，无副作用）
-        - 被调：无框架内固定调用方（插件钩子 handler 内调用，如
-          ``flowing.plugins.cron`` 经 ``agent.state`` 读写，时机：每次
-          状态读写）；:meth:`get` / :meth:`set` / :meth:`delete`
-          的状态键分支（时机：key 为已注册状态键）
+        ``agent.state.cron_jobs`` 属性式、``agent.state["weird-key"]``
+        字典式；读写语义（写透落盘、defaults 回退、fail fast）全部继承
+        :class:`flowing.persistence.StateView` 的类级契约。写透不触发
+        watcher（watch 不察觉 state）。扩展状态空间经 :meth:`register_state`
+        开启（命名袋，独立文件，不挂载属性）。本 property 自身无副作用。
 
         .. seealso:: :meth:`register_state`、:meth:`get`、:meth:`set`、
-            :meth:`delete`、:class:`StateView`
+            :meth:`delete`
         """
         return self._state_bag   # 单袋视图（_open_stores 建立，无副作用）
 
     def get(self, key: str, default: Any = None) -> Any:
         """动态键统一读——状态键 / 实例与类属性 / ``_extra`` 三域兼容。
 
-        .. rubric:: 功能介绍
-
-        字符串键的通用读取入口（key 是变量的场景：插件写通用逻辑、
-        slash 命令、调试工具）。查找序：已注册状态键 → ``agent.state``
-        读出（``持久值 ?? default``）；否则 ``getattr``（实例 ``__dict__``
-        → 类属性 → ``_extra`` 回退，与属性协议完全同序）；仍无 →
-        返回 ``default``。
-
-        .. rubric:: 行为规约
-
-        - 查找序无歧义（状态域 → 属性域）；状态域 = default 袋
-          （``_state_bag``，决策 8）。
-        - 骨架期护栏（P3-03）：``_state_bag`` 只经 ``__dict__.get``
-          探查，未建立 → 跳过状态域。
-        - 读``_extra`` 原值返回，不做隐式 Parsable 解包（同
-          ``__getattr__``）。
+        字符串键的通用读取入口（key 是变量的场景：插件写通用逻辑、slash
+        命令、调试工具）。查找序：已注册状态键 → 从 ``agent.state`` 读出
+        （持久值，无则回退 ``default``）；否则 ``getattr``（实例属性 →
+        类属性 → ``_extra`` 回退）；仍无 → 返回 ``default``。
 
         :param key: 字符串键。
         :param default: 三域均未命中时的返回值（默认 ``None``）。
-
-        .. rubric:: 测试案例
-
-        - 前置：``agent.state.register("count", 0)`` 且实例属性
-          ``self.mode = "x"`` → 期望：``get("count") == 0``、
-          ``get("mode") == "x"``、``get("nope", -1) == -1``。
 
         .. seealso:: :meth:`set`、:meth:`delete`、:attr:`state`
         """
@@ -1580,21 +1429,11 @@ class Agent:
     def set(self, key: str, value: Any) -> None:
         """动态键统一写——状态键 / ``_extra`` / 实例属性三域路由。
 
-        .. rubric:: 行为规约
-
         - 已注册状态键 → ``self.state[key] = value``（写透落盘 + JSON
-          校验；写不触发 watcher——决策 5）。
-        - ``key in _extra`` → 原地更新 ``_extra[key]``（静默仓库，不
-          触发 watcher 通道）。
+          校验；写不触发 watcher）。
+        - ``key`` 在 ``_extra`` 中 → 原地更新（静默仓库，不触发 watcher）。
         - 否则 ``setattr(self, key, value)``——普通实例属性路径
           （``__setattr__`` 的 watcher 通知照常）。
-        - 骨架期护栏同 :meth:`get`。
-
-        .. rubric:: 测试案例
-
-        - 前置：声明 ``"count"`` → 操作：``set("count", 5)`` → 期望：
-          ``state.count == 5`` 且 ``watch("count")`` **不**触发（决策 5）；
-          ``set("mode", "y")`` → 实例属性，watcher 通知照常。
 
         .. seealso:: :meth:`get`、:meth:`delete`
         """
@@ -1611,15 +1450,11 @@ class Agent:
     def delete(self, key: str) -> None:
         """动态键统一删——三域路由（语义同 :meth:`set` 的镜像）。
 
-        .. rubric:: 行为规约
-
-        - 已注册状态键 → ``del self.state[key]``（删持久值，读回退
-          default；不触发 watcher——删除不是赋值事件）。
-        - ``key in _extra`` → 移除该键。
-        - 否则 ``delattr(self, key)``（普通实例属性删除；类属性 /
-          方法删不掉，``AttributeError`` 原样上抛）。
-        - 三域均未命中 → ``AttributeError``（经 delattr 末路）。
-        - 骨架期护栏同 :meth:`get`。
+        - 已注册状态键 → ``del self.state[key]``（删持久值，读回退 default；
+          不触发 watcher——删除不是赋值事件）。
+        - ``key`` 在 ``_extra`` 中 → 移除该键。
+        - 否则 ``delattr(self, key)``（普通实例属性删除；类属性 / 方法删
+          不掉，``AttributeError`` 原样上抛）。
 
         .. seealso:: :meth:`get`、:meth:`set`
         """
@@ -1639,25 +1474,13 @@ class Agent:
         .. rubric:: 功能介绍
 
         创建管线内被调用（``before_create`` 之后、PENDING 检查之前）；
-        **恢复管线同样调用本方法**（args 为持久化值，可被 ``recover_agent``
+        恢复管线同样调用本方法（args 为持久化值，可被 ``recover_agent``
         的 ``override_args`` 覆盖，触发的是 ``before_recover`` /
         ``after_recover`` 钩子对）。签名即 args 来源（与 ``args_model``
-        对照：``.fya`` 显式 ``args:`` 优先，签名仅作校验对照——参数必须
-        有对应字段、类型标注必须兼容；``.fya`` 未写 ``args:`` 时签名是
-        ``args_model`` 的推导来源，见 :attr:`args_model`）。
-
-        .. rubric:: 设计动机
-
-        ``setup()`` ↔ ``destroy()`` 是对等对（各自被 before/after 钩子
-        包裹）；``create_agent()`` 不是 destroy 的对偶——它是工厂管线。
-        轻量约束让创建 / 恢复廉价（agent 池现场恢复、并行编排依赖大量
-        快速创建）。创建与恢复共用同一装配入口：恢复不另立 ``recover()``
-        方法，两条管线的差异全部由钩子对与管线步骤表达。
-
-        **与 ``__init__`` 的分工（S-26 用户裁决）**：核心必要的初始化
-        全部在 ``__init__``（无外部输入，同步骨架）；``setup`` 只承载
-        **开发者引入**的装配逻辑——依赖 args 与 inject 的赋值、业务钩子
-        注册、Composable 启用。
+        对照，见 :attr:`args_model`）。与 ``__init__`` 的分工：核心必要
+        的初始化全部在 ``__init__``（同步骨架，无外部输入）；``setup``
+        只承载开发者引入的装配逻辑——依赖 args 与 inject 的赋值、业务
+        钩子注册、Composable 启用。
 
         .. rubric:: 使用示例
 
@@ -1669,60 +1492,29 @@ class Agent:
                 self.locale = locale
                 self.provide("user_id", user_id)     # 敏感信息走注入通道
                 use_retry(self, max_retries=2)       # 可选 Composable（幂等注册）
-                self.watch("locale", self._on_locale_change)
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
-        - **可重入（统一契约）**：``setup()`` 在 create 与 recover 两条管线
-          **各跑一次**——两次一定是**不同实例**（recover 管线是新建实例上
-          重跑，注册表随实例重建），因此契约是「不同实例上每次调用作用
-          相同」而非「同一实例上重复执行不出错」：
-          ① ``setup()`` 重建一切运行期结构（declare 钩子点、注册
-          handler、provide、Composable），这些都幂等——``declare`` 同名
-          + 同 ``by`` 幂等返回已有 ``HookList``（见
-          :meth:`flowing.hooks.HookRegistry.declare`），幂等 Composable
-          （如 ``use_retry``）同参数重复调用去重；
-          ② 普通实例属性赋值（``self.user_id = user_id``）是运行期配置，
-          **不落盘、不加限制**；
-          ③ 持久化 state 经 ``agent.state.register`` 键登记、:meth:`state`
-          访问；**setup 中写 state 合法**（D5 删写闸门——create 无重放
-          不冲突；recover 重放先于 setup 完成，写入不被覆盖）；
-          ④ 副作用操作（创建文件、操作外部对象）由用户自行做存在性校验，
-          框架不兜底。
+        - 可重入：``setup()`` 在 create 与 recover 两条管线各跑一次——
+          两次一定是不同实例（recover 管线是新建实例上重跑），因此契约
+          是「不同实例上每次调用作用相同」而非「同一实例上重复执行不出
+          错」：重建一切运行期结构（declare 钩子点、注册 handler、
+          provide、Composable）都幂等；普通实例属性赋值是运行期配置，
+          不落盘、不加限制；持久化 state 经 ``agent.state.register`` 键
+          登记、setup 中写 state 合法（recover 先重放后 setup，写入不被
+          覆盖）。
         - 期待行为：状态赋值、钩子注册、inject 读取、Composable 调用。
-        - 非行为：网络请求 / 文件 I/O / 大量计算——移到工具调用或按需
-          阶段；重资源获取走 Resource（惰性按需）。
-        - 边缘情况：第一个 ``await`` 之前的代码不被其它协程打断——关键
-          初始化放第一个 ``await`` 前；需让出控制权显式
-          ``await asyncio.sleep(0)``。
+        - 轻量约束：网络请求 / 文件 I/O / 大量计算移到工具调用或按需
+          阶段。第一个 ``await`` 之前的代码不被其它协程打断——关键初始化
+          放第一个 ``await`` 前。
         - 后置条件：返回后框架做 PENDING 检查——仍有 PENDING 字段（如
           必填 ``system_prompt`` 未赋值）→ ``MissingFieldError``。
-
-        .. rubric:: 测试案例
-
-        - 前置：``.fya`` 声明 ``system_prompt: _`` 且 ``setup`` 未赋值
-          → 操作：``create_agent`` → 期望：PENDING 检查点抛
-          ``MissingFieldError``，``after_create`` 不触发。
-        - 前置：``setup()`` 内 ``declare`` + ``use_retry`` → 操作：
-          ``create_agent`` 后 ``recover_agent``（新建实例上重跑
-          ``setup()``）→ 期望：钩子点与 handler 均不重复注册（幂等），
-          行为与单次执行一致。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：子类覆写自定（框架无固定调用；轻量约束见行为规约）
-        - 被调：``flowing.runtime.Runtime.create_agent`` 管线（时机：
-          ``before_create`` 之后、PENDING 检查之前）、
-          ``flowing.runtime.Runtime.recover_agent`` 管线（时机：
-          ``before_recover`` 之后，重跑本方法，可重入契约）
 
         .. seealso::
 
             - :meth:`flowing.runtime.Runtime.recover_agent` —— 恢复管线
               宿主（重跑本方法）。
             - :meth:`destroy` —— 对等销毁入口。
-            - :class:`flowing.parsable.PENDING` —— 延迟定义哨兵
-              （见 :mod:`flowing.parsable`）。
         """
         # 基类空实现（契约注释）：子类覆写承载装配逻辑——状态赋值、钩子注册、
         # inject 读取、Composable 调用；setup 中写 state 合法（D5）；可重入
@@ -1730,74 +1522,44 @@ class Agent:
         ...
 
     async def destroy(self) -> None:
-        """递归销毁管线入口——实例丢弃，session 记录保留。
+        """递归销毁管线入口——实例丢弃，session 记录保留（公共 API）。
 
         .. rubric:: 功能介绍
 
-        销毁本实例及其整个生命周期子树。时序（不变量顺序）：
+        销毁本实例及其整个生命周期子树。时序（顺序为不变量）：
 
-        1. resolve 所有 ``_pending_turns``（``TurnResult(status="cancelled")``）
+        1. resolve 全部 ``_pending_turns``（``TurnResult(status="cancelled")``）
            ——调用方不挂起；
-        2. 取消工作循环 Task + **取消并清空后台任务**（B11：后台任务不在
-           工作循环栈内须显式取消；只 cancel 不 await——执行体可忽略取消，
-           await 无界会让 destroy 挂起）→ **关闭持久化后端**（``_tree_store``
-           与双袋 ``_core_state`` / ``_state_bag`` 的 ``close()`` = drain
-           排空 + 停写任务——write-behind 契约②钉死的排空屏障点，
-           不排空即销毁会静默丢尾部记录）；
+        2. 取消常驻工作循环 Task + 取消全部后台任务（只 cancel 不 await，
+           await 无界会让 destroy 挂起）→ 关闭持久化后端（``close()`` =
+           排空写队列 + 停写任务——不排空即销毁会静默丢尾部记录）；
         3. dispatch ``before_destroy``；
-        4. 深度优先递归 ``child.destroy()``（子树收集双来源：``_children``
-           ∪ ``_nodes`` 按 ``_parent_id`` 扫描——覆盖「destroy 后现场
-           恢复」重新注册的同 id 新实例），清空 ``_children``；
-        5. 从 ``_nodes`` 摘除（池移除实例值）——死活由在册与否表达；
+        4. 深度优先递归 ``child.destroy()``（子树收集：``_children`` ∪
+           ``_nodes`` 按 ``_parent_id`` 扫描），清空 ``_children``；
+        5. 从 ``_nodes`` 摘除（池移除实例值）；
         6. dispatch ``after_destroy``。
 
-        ``_parent_id`` **不**在销毁时改写：id 是创建时绑定的历史事实
-        （「父是谁」不因销毁变成「无父」），本字段不承担死活语义
-        （S-12 衍生裁决）。
+        .. rubric:: 行为要点
 
-        .. rubric:: 设计动机
-
-        - **destroy ≠ 删除**：只丢实例；session（tree.jsonl +
-          state.jsonl）与池 key 保留到显式删除目录——「有 key 无 value
-          → 现场恢复」（``Runtime.get_agent`` 触发），匿名子 Agent
-          销毁后仍可带记忆恢复。
-        - 生命周期严格绑定：父销毁 → 子递归销毁；Agent 实例不跨任务
-          复用（跨任务复用的是 Resource）。
-
-        .. rubric:: 行为规约
-
+        - destroy ≠ 删除：只丢实例；session（tree.jsonl + state.jsonl）
+          与池 key 保留到显式删除目录——「有 key 无 value → 现场恢复」
+          （``Runtime.get_agent`` 触发）。
         - 幂等：重复调用安全（二次调用时子树已空、已摘除，直接返回）。
         - 与回合收尾窗口的关系：destroy 不以 ``current_turn`` 为守卫，
           回合收尾观察窗口（``after_turn`` 钩子运行期间）调用 destroy
           合法——取消工作循环 Task 可能中断 finally 的交付段，但第 1 步
-          会把 ``_pending_turns`` 全部 resolve（cancelled），等待者
-          不挂起；``after_turn`` 钩子可能被中断跳过，调用方须自知。
+          会把 ``_pending_turns`` 全部 resolve（cancelled），等待者不挂起；
+          ``after_turn`` 钩子可能被中断跳过，调用方须自知。
+        - 注意：``before_destroy`` 触发时持久化后端已关闭——handler 中
+          写状态不会落盘。
         - 销毁后实例不可用：``inject`` / ``message`` / ``tool_call`` 等
-          行为无契约保证（三正交结构均已清空）。
-        - 非行为：不删除 session 目录、不移除池 key、不持久化任何
-          「已销毁」标记——记录保留是显式语义。
-
-        .. rubric:: 测试案例
-
-        - 前置：两个 ``query()`` 等待中。操作：``await agent.destroy()``
-          → 期望：两个 future 均 resolve ``status="cancelled"``，不挂起。
-        - 前置：父含两级子树。操作：``await parent.destroy()`` → 期望：
-          深度优先全部销毁，``_nodes`` 中三个 id 均无实例值，池 key 保留。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``before_destroy`` / ``after_destroy`` dispatch（时机：
-          管线第 3/6 步）、子 Agent ``destroy()``（时机：第 4 步深度
-          优先递归）
-        - 被调：``flowing.runtime.Runtime.shutdown``（时机：进程级收尾
-          递归 destroy）、父 Agent ``destroy()``（时机：父销毁时递归
-          销毁子树）
+          行为无契约保证。
+        - ``_parent_id`` 不在销毁时改写：id 是创建时绑定的历史事实。
 
         .. seealso::
 
             - :meth:`flowing.runtime.Runtime.get_agent` —— 现场恢复入口。
-            - :meth:`flowing.runtime.Runtime.shutdown` —— 进程级收尾
-              进程级收尾（递归 destroy 的调用方）。
+            - :meth:`flowing.runtime.Runtime.shutdown` —— 进程级收尾。
         """
         # 幂等守卫（spec 行为规约：重复调用安全，二次调用「直接返回」）：
         # **本实例**已摘除即二次调用，直接返回——按身份比较而非 id：本 id
@@ -1854,42 +1616,19 @@ class Agent:
         # _parent_id 不改写：id 是历史事实，不承担死活语义（见 docstring 时序说明）
 
     async def _restore(self) -> None:
-        """从自己 session 目录重放持久化记录（**只有 recover 管线调用**）。
-        **内部 API，不属稳定契约**。
+        """从自己 session 目录重放持久化记录（内部 API，不属稳定契约）。
 
-        功能与动机：读自己目录的 ``tree.jsonl`` 逐行重建**消息级树**
-        （``Message.id`` + ``parent_id`` 链；撕裂末行丢弃——重放前
-        按首行 ``format_version`` 判读版本，低版本经
-        :data:`flowing.persistence.MIGRATIONS` 迁移链升级并回写，
-        见 :mod:`flowing.persistence`「格式版本与迁移」）→ 读
-        ``core.jsonl`` 恢复核心袋（``child_ids`` 等框架私有键；
-        ``current_head_id`` 阶段 C 起落盘此袋并以袋为准）→ 读
-        ``state.jsonl`` 将全部持久化行重放进默认袋（逐键覆盖
-        default）。**双袋重放（D1）**。恢复边界 =
-        已持久化消息；进行中的逻辑 Turn 丢弃不续跑。纯数据之外派生的
-        运行时结构
-        （如 cron 的定时器）由随后的 ``after_recover`` 钩子重建——
-        恢复回调不再是 ``register_state`` 的参数（单袋化最终裁决）。
-
-        行为边界：调用时点固定在 recover 管线的 ``__init__`` 之后、
-        ``before_recover`` 之前（D2 重排：restore 是读/加载，放钩子前
-        无碍——阻断只丢内存重建，磁盘状态未动）；session 目录
-        不存在（池元数据与目录不一致）时按空 session 处理并报出可诊断
-        错误。物理格式逻辑（行结构 / 末行合并）在内部
-        persistence 模块，本方法只是驱动者。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.persistence.RecordStore.replay()``（时机：
-          tree.jsonl / core.jsonl / state.jsonl 三路重放，经
-          ``_tree_store`` / ``_core_state._store`` / ``_state_bag._store``）
-        - 被调：``flowing.runtime.Runtime.recover_agent`` 管线（时机：
-          ``__init__`` 之后、``before_recover`` 之前——只有 recover
-          管线调用）
-
-        .. seealso:: :meth:`flowing.runtime.Runtime.recover_agent`、
-            :meth:`register_state`、:class:`StateView`、
-            :class:`flowing.message.Message`
+        只有恢复管线调用，时机固定在 ``__init__`` 之后、``before_recover``
+        之前：读自己目录的 ``tree.jsonl`` 逐行重建消息级树（``Message.id``
+        + ``parent_id`` 链；撕裂末行丢弃；低版本经
+        :data:`flowing.persistence.MIGRATIONS` 迁移链升级并回写）→ 读
+        ``core.jsonl`` 恢复核心袋（child_ids / current_head_id，head 以
+        袋值为准）→ 读 ``state.jsonl`` 将全部持久化行重放进默认袋。恢复
+        边界 = 已持久化消息；进行中的逻辑 Turn 丢弃不续跑。孤立 tool_call
+        （PROVIDER 消息引用、但结果消息缺失）合成 ``synthetic=True``
+        占位 TOOL 消息封闭配对。纯数据之外派生的运行时结构（如 cron
+        定时器）由随后的 ``after_recover`` 钩子重建。session 目录不存在
+        时按空 session 处理并报出可诊断错误。
         """
         # ① self._tree_store.replay() 逐行重建消息级树（Message.id +
         #    parent_id 链；消息行建树、tombstone/update/move 变更行按序
