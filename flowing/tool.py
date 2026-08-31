@@ -132,6 +132,7 @@ import logging
 import mimetypes
 import os
 import shlex
+import uuid
 import warnings
 from collections.abc import Callable, Iterator
 from contextlib import asynccontextmanager
@@ -219,8 +220,10 @@ ToolStatus = Literal["completed", "pending", "blocked", "error"]
 """工具执行结果状态四值（定稿）。
 
 - ``"completed"``：正常完成，``output`` 承载返回值。
-- ``"pending"``：异步收据——``execute`` 返回了 ``asyncio.Task``，框架只回
-收据，真正结果稍后以独立消息到达（fire-and-forget 语义边界）。
+- ``"pending"``：异步收据——三种形态产生：``execute`` 返回 ``asyncio.Task``；
+  ``execute`` 是 async generator（首 yield = 收据内容）；``background = True``
+  标记的普通 async ``execute``。框架只回收据，真正结果稍后以独立消息到达
+  （fire-and-forget 语义边界）。
 - ``"blocked"``：被 ``before_tool_call`` 钩子 ``raise Intercepted`` 硬阻断，
 工具**未执行**；只能经 `ToolResult.blocked` 工厂产生。
 - ``"error"``：执行抛异常的**正常产物**——LLM 可见、**不触发**任何错误
@@ -864,8 +867,9 @@ class ToolResult:
     - ``status="blocked"`` 与 ``"error"`` 区分：blocked 表示「工具根本没执行
       （被审批/守卫阻断）」，error 表示「执行了但失败」；二者对 LLM 的语义
       与审计含义不同，不可合并。
-    - ``pending`` 承载 fire-and-forget 边界：框架只回收据，不阻塞逻辑 Turn
-      等待异步任务。
+    - ``pending`` 承载 fire-and-forget 边界（三种形态：返回 ``asyncio.Task`` /
+      async generator 首 yield / ``background`` 标记）：框架只回收据，不阻塞
+      逻辑 Turn 等待异步任务。
     - ``output`` 单字段五形态（D4）：归一化只做非做不可的转换（原料→块），
       纯 JSON/str 原样放行让钩子消费方拿到自然形态；配对元数据
       （``tool_call_id`` / ``tool_status``）在消息层，不在本对象上（D1/D3）。
@@ -960,6 +964,11 @@ class ToolResult:
     携带但不进入 ``as_message`` 产物——LLM 不可见）。消费方：
     ``after_tool_call`` handler、审计日志、测试断言。
     """
+    background_task_id: str | None = None
+    """后台任务注册键（B10，后台机制裁决）：``status="pending"`` 且经
+    `Agent.track_background_task` 注册时非 None；其余状态恒 None。调用方/
+    LLM 可据此按 id 取消或查询后台任务。
+    """
 
     @classmethod
     def blocked(cls, reason: str | None = None) -> "ToolResult":
@@ -1046,10 +1055,12 @@ class ToolResult:
           ``TextBlock(error)``）。
         - 非行为：本方法**不**负责 append 落盘与 ``parent_id`` 接线——那是
           ``Agent._append_message`` 的职责；本方法只产出未接线的 `Message`。
-        - 边缘情况：``status="pending"`` 也产生消息（收据消息，
-          ``output=None`` → ``content=[]``；空 tool_result 的 API 层兜底
-          属 adapter 职责）；异步任务真正完成时的结果由框架另行产生多块
-          EVENT 消息（D13/D14），与本收据互不覆盖。
+        - 边缘情况：``status="pending"`` 也产生消息（收据消息）——返回 Task
+          路径 ``output=None`` → ``content=[]``（空 tool_result 的 API 层兜底
+          属 adapter 职责）；async gen 路径 ``output=首 yield`` → content 带
+          内容，并（注册键非 None 时）末尾**附加**「后台任务 ID」文本块
+          （B10，不动作者 yield 的内容）；异步任务真正完成时的结果由框架另行
+          产生多块 EVENT 消息（D13/D14），与本收据互不覆盖。
 
         .. rubric:: 调用关系（审计）
 
@@ -1068,11 +1079,17 @@ class ToolResult:
         """
         # D22：塑形统一出口 output_to_blocks；配对元数据（tool_call_id /
         # tool_status）在消息字段，content 只含纯内容块（D1/D3）
+        blocks = output_to_blocks(self.output, error=self.error)  # error 仅 error 态非 None，直接透传
+        if self.status == "pending" and self.background_task_id:
+            # B10：pending 收据附加「后台任务 ID」块（不动作者 yield 的内容——
+            # 附加块而非并入，避免污染作者数据；LLM/调用方可据此按 id 引用）
+            blocks = [*blocks,
+                      TextBlock(text=f"后台任务 ID：{self.background_task_id}")]
         return Message(
             kind=MessageKind.TOOL,
             tool_call_id=tool_call_id,   # 由 Agent.tool_call 管线接线（ToolCall.id），见 docstring
             tool_status=self.status,
-            content=output_to_blocks(self.output, error=self.error),  # error 仅 error 态非 None，直接透传
+            content=blocks,
             # S-15 裁决：source 缺省 "tool_result"（与异步 EVENT 结果同值）
             source=source if source is not None else "tool_result",
             synthetic=False,
@@ -1592,9 +1609,9 @@ class Tool:
 
     .. rubric:: 设计动机
 
-    调度职责（awaitable 检测、Task 包装、caller 注入、返回值包装）集中在
-    `__call__`，让 `execute()` 保持「零散参数进、普通值出」的最简单签名——
-    工具作者不需要知道 `ToolResult` 的存在。
+    调度职责（awaitable / async generator 检测、Task 包装、caller 注入、
+    返回值包装）集中在 `__call__`，让 `execute()` 保持「零散参数进、普通值
+    出」的最简单签名——工具作者不需要知道 `ToolResult` 的存在。
 
     .. rubric:: 使用示例
 
@@ -1728,8 +1745,9 @@ class Tool:
         ``Agent.tool_call()`` 在 ``_normalize()`` 之后经本方法执行工具。
         职责固定五项：
 
-        1. **awaitable 检测**：``inspect.isawaitable``——同步 ``execute``
-           直接调用，异步 ``execute`` await；
+        1. **形态检测**：``inspect.isasyncgen``（async generator 后台形态
+           ——首 yield 收据 + 后台驱动，B1）→ ``inspect.isawaitable``——
+           同步 ``execute`` 直接调用，异步 ``execute`` await；
         2. **Task 包装**：异步执行包装为 ``asyncio.Task`` 并关联
            ``execution``（cancel 注入的落点——置 abort 信号而非强杀协程）；
         3. **caller 自动传入**：依 ``_has_caller``（注册时 inspect 检测）决定
@@ -1750,12 +1768,16 @@ class Tool:
            :class:`flowing.errors.Intercepted` → ``ToolResult.blocked``
            （硬阻断信号语义即 blocked，与 ``before_tool_call`` 拦截同一
            出口、同一 reason 塑形——「有意拒绝」与「意外故障」不进同一
-           LLM 可见通道）；返回 ``asyncio.Task`` →
-           ``ToolResult(pending)``，并给 Task 挂 ``add_done_callback``
-           （**固定行为，非扩展点**，D13）——完成回调取终值 →
+           LLM 可见通道）；三种后台形态 → ``ToolResult(pending)``：①
+           ``execute`` 是 async generator（首 yield = 收据内容，剩余部分
+           后台驱动逐段投递 EVENT——B1/B3/B4/B7/B8）；② 普通 async
+           ``execute`` + ``background = True``（仅 script 型，B6/B13——
+           不 await，直接落 Task 分支）；③ 返回 ``asyncio.Task``（挂
+           ``add_done_callback`` 固定 watcher，D13——完成回调取终值 →
            `normalize_output` → `output_to_blocks` → 标注块 + 结果块的
-           多块 EVENT 入队；任务异常 → 标注块 + 错误文本块（与同步
-           error 同语义，LLM 可见）。
+           多块 EVENT 入队；任务异常 → 标注块 + 错误文本块，与同步
+           error 同语义）。三条后台路径统一经 ``Agent.track_background_task``
+           注册（B9：强引用 + 按 id 取消/查询 + destroy 覆盖）。
 
         :param resolved_args: `ToolEntry.resolve()` 产出并经默认值填充的
           规范名参数字典；已经过 LLM 视角校验，但**尚未**过内部校验
@@ -1773,10 +1795,11 @@ class Tool:
         - 前置条件：``resolved_args`` 已经过 LLM 视角校验（``_normalize``
           第 1 步）与默认值填充（第 3 步）。
         - **enqueue 契约**：普通 ``async def execute`` 被 await 到底，结果
-          只作为返回值交给 ``Agent.tool_call``，**不 enqueue**。仅当
-          ``execute`` 返回 ``asyncio.Task`` 时，本方法返回 ``pending``
-          收据，并由固定 watcher 在 Task 完成时 **enqueue EVENT**
-          （``source="tool_result"``）。因此工具结果是否入队，只由
+          只作为返回值交给 ``Agent.tool_call``，**不 enqueue**。三种后台
+          形态（async generator / ``background`` 标记 / 返回 ``asyncio.Task``）
+          返回 ``pending`` 收据：async gen 的后续 yield 与 Task 完成由
+          驱动方逐段 **enqueue EVENT**（``source="tool_result"``）；
+          ``background`` 标记复用 Task 分支。因此工具结果是否入队，只由
           ``execute`` 的返回形态决定，与调用上下文无关。
         - 非行为：不重试、不超时兜底、不审批——重试由可选的
           ``use_retry()`` 提供，审批在 ``before_tool_call``。
@@ -1824,10 +1847,37 @@ class Tool:
                 or type(self).__name__)
             raise
         try:
-            result = self.execute(**resolved_args)  # -> Any（同步）或 awaitable（异步）
+            result = self.execute(**resolved_args)  # -> Any（同步）/ awaitable（异步）/ async gen（后台形态）
+            if inspect.isasyncgen(result):
+                # B1/B2：async generator 形态——等待首 yield（准备完成哨兵，
+                # 可空）作 pending 收据；剩余部分 ensure_future 后台驱动（B3/
+                # B4/B7/B8，每个后续 yield 逐段投递 EVENT）。首 yield 前异常
+                # 在此上抛，按 except 顺序分派：Intercepted → blocked（1833）；
+                # 其余 → error（1838，工具调用错误，LLM 立即可见，不挂 pending）
+                try:
+                    receipt = await anext(result)
+                except StopAsyncIteration:
+                    receipt = None                # 条件性空 yield：无收据（纯副作用）
+                if caller is not None:
+                    drive_task = asyncio.ensure_future(
+                        self._drive_asyncgen(result, caller))
+                    task_id = caller.track_background_task(drive_task)   # B9：注册（强引用 + 按 id 取消/查询 + destroy 覆盖）
+                    return ToolResult(status="pending", output=receipt,
+                                      background_task_id=task_id)
+                # 编程路径（无 caller）：不注册、不驱动——后台主体不执行；
+                # 弃置的 generator 须 aclose() 关闭（否则 GC 触发
+                # "async generator ignored GeneratorExit" 警告）
+                await result.aclose()
+                return ToolResult(status="pending", output=receipt,
+                                  background_task_id=None)
             if inspect.isawaitable(result):
-                task = asyncio.ensure_future(result)  # Task 包装（abort 为协作式，不强杀）
-                value = await task
+                if getattr(self, "background", False) and isinstance(self, ScriptTool):
+                    # B6：background 标记——普通 async execute 的后台化入口，
+                    # 不 await，落下方 Task/pending 分支（仅 script 型生效，B13）
+                    value = asyncio.ensure_future(result)
+                else:
+                    task = asyncio.ensure_future(result)  # Task 包装（abort 为协作式，不强杀）
+                    value = await task
             else:
                 value = result
         except Intercepted as exc:
@@ -1840,6 +1890,27 @@ class Tool:
             return ToolResult(status="error", error=str(exc))
         finally:
             self._execution = None  # 不变量：_execution 仅 __call__ 期间有效
+        if inspect.isasyncgen(value):
+            # 嵌套形态（B14 实现细化）：async def execute 返回 async gen 对象
+            # ——与 execute 自身即 async gen 同一条后台管线（B1/B2 同语义）。
+            # 本分支在 try 之外——首 yield 前异常在此自行按 except 顺序分派
+            try:
+                receipt = await anext(value)
+            except StopAsyncIteration:
+                receipt = None
+            except Intercepted as exc:
+                return ToolResult.blocked(reason=str(exc))
+            except Exception as exc:
+                return ToolResult(status="error", error=str(exc))
+            if caller is not None:
+                drive_task = asyncio.ensure_future(
+                    self._drive_asyncgen(value, caller))
+                task_id = caller.track_background_task(drive_task)
+                return ToolResult(status="pending", output=receipt,
+                                  background_task_id=task_id)
+            await value.aclose()
+            return ToolResult(status="pending", output=receipt,
+                              background_task_id=None)
         if isinstance(value, asyncio.Task):
             # fire-and-forget 收据；Task 挂 add_done_callback 固定 watcher
             # （D13，非扩展点）：完成回调取终值 → normalize_output →
@@ -1849,6 +1920,11 @@ class Tool:
                 value.add_done_callback(
                     lambda t: asyncio.ensure_future(
                         self._deliver_async_result(t, caller)))
+                # B9：补既有缺口——返回 Task 路径此前无强引用持有者（GC 隐患），
+                # 现统一入注册表（完成/异常/取消即弃）
+                task_id = caller.track_background_task(value)
+                return ToolResult(status="pending", output=None,
+                                  background_task_id=task_id)
             return ToolResult(status="pending", output=None)
         # 职责 5（D5/D12/D19）：归一化在 try 之外——浅层判别、幂等；
         # 违禁块（ToolCallBlock/ThinkingBlock）ValueError 属作者 bug，
@@ -1874,6 +1950,71 @@ class Tool:
         await caller.enqueue_message(Message(
             kind=MessageKind.EVENT, source="tool_result",
             content=blocks, priority=MessagePriority.STEER))
+
+    async def _drive_asyncgen(self, agen: "AsyncGenerator", caller: "Agent") -> None:
+        """后台驱动 async generator（B1/B3/B4/B7/B8，`_deliver_async_result` 的
+        兄弟）：后续 yield 逐段投递 EVENT（``source="tool_result"``、STEER 优先
+        级）；中途异常投递错误块 + 诊断日志（与同步 error 同语义，LLM 可见）；
+        取消投递「已取消」后**裸 raise**（任务以 cancelled 终态结束）。
+
+        **内部 API，不属稳定契约。**
+        """
+        marker = TextBlock(text=f"异步工具 {self.definition.name}：")
+        try:
+            async for item in agen:
+                blocks = await self._background_blocks(marker, item)
+                try:
+                    await caller.enqueue_message(Message(
+                        kind=MessageKind.EVENT, source="tool_result",
+                        content=blocks, priority=MessagePriority.STEER))
+                except Exception:
+                    # 投递失败不掩盖原结局（B3/B4 边界——enqueue_message 只入
+                    # 内存队列，失败仅钩子/极端场景）
+                    _logger.warning(
+                        "异步工具 %s 报告投递失败", self.definition.name)
+        except asyncio.CancelledError:
+            try:
+                await caller.enqueue_message(Message(
+                    kind=MessageKind.EVENT, source="tool_result",
+                    content=[marker, TextBlock(text="异步任务被取消")],
+                    priority=MessagePriority.STEER))
+            except Exception:
+                pass   # B4：统一尝试投递「已取消」，失败静默
+            raise      # 裸 raise：Task 真正进入 cancelled 终态（取消失效的
+                       # 唯一保证——不 raise 则任务继续跑）
+        except Exception as exc:
+            try:
+                await caller.enqueue_message(Message(
+                    kind=MessageKind.EVENT, source="tool_result",
+                    content=[marker, TextBlock(text=str(exc))],
+                    priority=MessagePriority.STEER))
+            except Exception:
+                pass
+            _logger.exception("异步工具 %s 后台运行失败", self.definition.name)
+
+    async def _background_blocks(self, marker: TextBlock, item: Any) -> list[ContentBlock]:
+        """B7/B8：yield 值归一化塑形（与 `_deliver_async_result`、`as_message`
+        同一实现）；浅层违禁块（``ToolCallBlock`` / ``ThinkingBlock``）**容错
+        转普通文本错误说明**——后台任务已脱离调用栈，「抛异常」无人接收
+        （与 completed 路径的 ``ValueError`` 框架错误通道区分）。
+
+        **内部 API，不属稳定契约。**
+        """
+        if _has_forbidden_block(item):
+            return [marker, TextBlock(
+                text="报告内容含违禁块（工具调用/思考块），已省略")]
+        return [marker, *output_to_blocks(await normalize_output(item))]
+
+
+def _has_forbidden_block(value: Any) -> bool:
+    """浅层违禁块检测（与 `normalize_output` 的浅层判别同口径——顶层值或
+    list/tuple 成员；深层埋藏由塑形期 ``StructBlock`` 构造校验兜底，D5）。
+    内部 API，不属稳定契约。"""
+    if isinstance(value, (ToolCallBlock, ThinkingBlock)):
+        return True
+    if isinstance(value, (list, tuple)):
+        return any(_has_forbidden_block(v) for v in value)
+    return False
 
 
 class ScriptTool(Tool):
@@ -1942,6 +2083,51 @@ class ScriptTool(Tool):
         type: script
         description: 对指定订单发起支付。仅在用户明确确认支付意图后调用。
         callable: ./impl.py::make_payment   # {路径}::{函数名或类名}
+
+    async generator 形态（后台工具，B1/B5/B6）：``execute`` 写成
+    async generator——**第一个 ``yield`` = 「准备完成」哨兵（可空值）**，
+    `Tool.__call__` 等待它作为 pending 收据（TOOL 消息带内容，
+    ``tool_status="pending"``）；后续每个 ``yield`` 由框架后台驱动并逐段
+    投递 EVENT 消息（LLM 可见）；**首 yield 前只允许轻量准备**（长任务
+    必须放在首 yield 之后；违反的后果是收据延迟——作者责任）。「只要
+    后台、不要中间报告」的普通 async ``execute`` 可声明类属性
+    ``background = True``（**仅 script 型生效**，B13）走同一 pending 通道。
+
+    .. code-block:: python
+
+        # 形态一：仅收据（nohup 启动后静默，无后续 yield——合法）
+        class NoHupTool(ScriptTool):
+            async def execute(self, *, cmd: str, caller: Agent, **args):
+                pid = await launch_nohup(cmd)      # 轻量准备（首 yield 前）
+                yield {"pid": pid}                 # ① 收据（可空值）
+
+        # 形态二：收据 + 最终呈现（后台结束后再 yield 一次 → EVENT）
+        class RunWorkflowTool(ScriptTool):
+            async def execute(self, *, path: str, caller: Agent, **args):
+                wf = resolve_workflow(path)        # 轻量准备
+                instance = wf(caller, caller.runtime)
+                yield {"status": "started", "workflow": path}   # ① 收据
+                await instance.run(**args)         # 长任务（后台）
+                yield {"status": "done", "workflow": path}      # ② EVENT
+
+        # 形态三：循环推回（流式工具典型——每轮验证自动把结果推回）
+        class TrainNetTool(ScriptTool):
+            async def execute(self, *, dataset: str, epochs: int, caller: Agent, **args):
+                yield {"status": "started", "dataset": dataset, "epochs": epochs}   # ① 收据（任务信息）
+                model = load_model(dataset)        # 后台阶段（首 yield 后）
+                for epoch in range(epochs):
+                    await train_one_epoch(model)
+                    if (epoch + 1) % 10 == 0:
+                        val_loss, val_acc = await validate(model)
+                        yield {"epoch": epoch + 1, "val_loss": val_loss,
+                               "val_acc": val_acc}   # ② 进度 → EVENT
+                yield {"status": "done", "final_val_acc": val_acc}   # ③ 最终呈现
+
+    语义要点：async generator **禁止带值 ``return``**（PEP 525 只允许裸
+    ``return``）——最终呈现 = 最后一条 ``yield``；没有 ``yield`` 的函数
+    不是 async generator（走普通执行路径，行为不变）；``background = True``
+    类属性只对**普通 async ``execute``**（单次返回）生效——async gen 无需
+    标记（``isasyncgen`` 检测即后台，B5，标记正交冗余）。
 
     .. rubric:: 行为规约
 
@@ -2875,11 +3061,12 @@ def _dir_candidates(name: str) -> list[str]:
 _TOOL_FYA_RESERVED = frozenset({
     "type", "name", "description", "args", "output", "callable", "command",
     "shell", "url", "method", "headers", "auth", "query", "body",
-    "expected_status", "timeout", "env", "tools", "overrides",
+    "expected_status", "timeout", "env", "tools", "overrides", "background",
 })
 """TOOL.fya 保留字段集——其余字段原样落为 tool 实例的普通属性（如
 ``requires_approval``，见 `Tool` 行为规约「实例属性开放」；框架不解析、
-不据此做任何自动行为）。"""
+不据此做任何自动行为）。``background`` 是 B13 新增保留字段（仅 script
+型合法；cli/request/mcp 声明 → ``FormatError``，见 `_tool_from_fya`）。"""
 
 
 def _tool_from_fya(path: Path, identity: str) -> Tool:
@@ -2949,6 +3136,16 @@ def _tool_from_fya(path: Path, identity: str) -> Tool:
     for key, value in fields.items():
         if key not in _TOOL_FYA_RESERVED:
             setattr(tool, key, value)
+    # B13：background 仅 script 型合法——script 显式落属性（值须布尔），
+    # 其他型声明 → FormatError（解析期 fail fast，不静默忽略）
+    if "background" in fields:
+        if tool_type == "script":
+            if not isinstance(fields["background"], bool):
+                raise FormatError(f"{path} 的 background 须为布尔值")
+            tool.background = fields["background"]   # 显式 False 与缺省等价，但为一致性落属性无害
+        else:
+            raise FormatError(
+                f"{path} 的 background 字段仅 script 型工具支持（当前 type: {tool_type}）")
     return tool
 
 

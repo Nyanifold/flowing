@@ -1487,6 +1487,7 @@ class Agent:
         self.chain = MessageChain(self)   # S-26：构造收属主 Agent——五 op
         # 直接操作 Agent._messages 并经 Agent._persist_message 落盘
         self._executions = {}
+        self._background_tasks: dict[str, asyncio.Task] = {}   # 后台任务注册表（B9：按 id 取消/查询 + 强引用防 GC + destroy 统一覆盖；cancel_by_tag 不涉及）
         self._pending_turns = {}
         self._tool_entries = {}
         self._subagent_entries = {}
@@ -2036,8 +2037,10 @@ class Agent:
 
         1. resolve 所有 ``_pending_turns``（``TurnResult(status="cancelled")``）
            ——调用方不挂起；
-        2. 取消工作循环 Task → **关闭持久化后端**（``_tree_store`` 与
-           双袋 ``_core_state`` / ``_state_bag`` 的 ``close()`` = drain
+        2. 取消工作循环 Task + **取消并清空后台任务**（B11：后台任务不在
+           工作循环栈内须显式取消；只 cancel 不 await——执行体可忽略取消，
+           await 无界会让 destroy 挂起）→ **关闭持久化后端**（``_tree_store``
+           与双袋 ``_core_state`` / ``_state_bag`` 的 ``close()`` = drain
            排空 + 停写任务——write-behind 契约②钉死的排空屏障点，
            不排空即销毁会静默丢尾部记录）；
         3. dispatch ``before_destroy``；
@@ -2108,6 +2111,12 @@ class Agent:
                     final_text="", status="cancelled", token_usage=None,
                     finish_reason="cancelled"))
         self._pending_turns.clear()
+        # 1.5（B11）：后台任务统一取消 + 显式清空——后台任务不在工作循环栈内，
+        # loop_task.cancel() 覆盖不到，必须显式取消；只 cancel 不 await（执行体
+        # 可忽略取消，await 无界会让 destroy 挂起）；clear() 不依赖 done_callback
+        # 时序（destroy 后注册表立即为空）
+        self.cancel_all_background_tasks()
+        self._background_tasks.clear()
         # 2. 取消工作循环 Task（具名句柄 _loop_task，由管线第 10 步赋值）；
         # 幂等与骨架期护栏：loop 未启动（__dict__ 无句柄）时跳过
         loop_task = self.__dict__.get("_loop_task")
@@ -2637,6 +2646,86 @@ class Agent:
                 final_text="", status="cancelled", token_usage=None,
                 finish_reason="cancelled"))
         return True
+
+    def track_background_task(self, task: asyncio.Task) -> str:
+        """注册一个后台任务并返回注册键（B9 唯一注册入口）。
+
+        .. rubric:: 功能介绍
+
+        后台机制（async generator 工具形态 / ``background`` 标记 / 返回 Task
+        路径）的驱动任务统一经本方法登记：生成 ``uuid4`` 注册键 → 写入
+        ``_background_tasks`` → 挂 done_callback **闭包**移除（完成/异常/取消
+        即弃）→ 返回注册键。注册键随 pending 收据交付（``ToolResult.
+        background_task_id``），调用方/LLM 可据此按 id 取消或查询。
+
+        .. rubric:: 设计动机
+
+        注册表同时承担三件事：**按 id 精确取消**、**强引用防 GC**（后台任务
+        无其他持有者）、**destroy 统一覆盖**（B11）。
+
+        .. rubric:: 行为规约
+
+        - 同步方法；同一任务重复注册产生两个不同键（调用方责任）。
+        - 注册键 ``uuid4().hex``（不引入 tool_call_id 派生——``Tool.__call__``
+          不接触 ToolCall 对象是 C-05 既有边界）。
+        - done_callback 用**闭包捕获 str 键**——直接传 ``dict.pop`` 会收到
+          Task 参数而 KeyError。
+
+        .. rubric:: 调用关系（审计）
+
+        - 被调：``flowing.tool.Tool.__call__``（时机：async gen / background /
+          返回 Task 三条后台路径注册驱动任务）
+        """
+        task_id = uuid4().hex
+        self._background_tasks[task_id] = task
+        task.add_done_callback(
+            lambda t: self._background_tasks.pop(task_id, None))
+        return task_id
+
+    def cancel_background_task(self, task_id: str) -> bool:
+        """按注册键取消单个后台任务（B9）。
+
+        .. rubric:: 行为规约
+
+        - 返回**是否命中注册表**（不在册 → ``False`` 幂等）；与
+          ``task.cancel()`` 的返回值无关——命中已完成任务时 ``cancel()``
+          返回 ``False`` 但本方法仍返回 ``True``。
+        - 同步方法：``task.cancel()`` 为协作式——执行体可在 await 点收
+          ``CancelledError`` 后自行决定收尾；驱动协程捕获后投递「已取消」
+          再裸 raise（B4）。
+        """
+        task = self._background_tasks.get(task_id)
+        if task is None:
+            return False
+        task.cancel()
+        return True
+
+    def cancel_all_background_tasks(self) -> None:
+        """取消全部在册后台任务（B9/B11）。
+
+        .. rubric:: 行为规约
+
+        - 遍历 ``task.cancel()``（**只 cancel 不 await**——执行体可忽略取消，
+          await 无界会让 destroy 挂起，见 B11）；幂等，空表 no-op。
+        - 不清空注册表（移除由 done_callback 闭包完成；destroy 场景由
+          destroy 显式 ``clear()``）。
+        """
+        for task in list(self._background_tasks.values()):
+            task.cancel()
+
+    def get_background_tasks(self) -> dict[str, asyncio.Task]:
+        """后台任务注册表快照（B9）。
+
+        .. rubric:: 行为规约
+
+        - **快照**：复制 dict，不返回内部引用——调用方改动不影响注册表。
+        - 直接暴露 Task 对象（裁决：不做防调用方包装）；task_id → Task。
+        """
+        return dict(self._background_tasks)
+
+    def get_background_task(self, task_id: str) -> asyncio.Task | None:
+        """按注册键查询单个后台任务（B9）；不在册 → ``None``。"""
+        return self._background_tasks.get(task_id)
 
     def set_queued_priority(self, message_id: str, priority: MessagePriority) -> bool:
         """重设一条**未出队**排队消息的优先级（队列立即重排）。
