@@ -1683,12 +1683,12 @@ class MissingContextError(FormatError):
 
     .. rubric:: 功能介绍
 
-    类级别（未绑定实例）或手动创建未绑定 Agent 实例的 ``Parsable`` 调用
-    ``str()``（触发自动 ``resolve()``）时抛出——求值需要实例属性 / env / config
-    渲染上下文，无绑定则上下文缺失。求值面内（框架在固定时机对绑定实例求值）
-    自动进行；求值面外（用户手动 ``str()`` 类属性）必须显式 ``resolve(context)``
-    或先绑定。隐式返回原始模板会让 prompt 里出现未渲染的 ``{{ }}``，比报错更
-    难排查。
+    类级别（未绑定实例）或手动创建未绑定 Agent 实例的 ``Parsable`` 被强制
+    求值——调用 ``resolve()`` 而不传上下文，或读取 ``resolved`` 属性——时抛出：
+    求值需要实例属性 / env / config 渲染上下文，无绑定则上下文缺失。求值面内
+    （框架在固定时机对绑定实例求值）自动进行；求值面外（用户手动求值类属性）
+    必须显式 ``resolve(context)`` 或先绑定。隐式返回原始模板会让 prompt 里
+    出现未渲染的 ``{{ }}``，比报错更难排查。
 
     .. rubric:: 使用示例
 
@@ -1697,14 +1697,17 @@ class MissingContextError(FormatError):
         class MyAgent(Agent):
             system_prompt = Parsable("你好，{{ user_name }}")
 
-        str(MyAgent.system_prompt)                              # 未绑定 → 抛出
-        MyAgent.system_prompt.resolve({"user_name": "甲"})      # 显式上下文 → 正常
+        MyAgent.system_prompt.resolved                    # 未绑定 → 抛出
+        MyAgent.system_prompt.resolve({"user_name": "甲"})   # 显式上下文 → 正常
 
     .. rubric:: 行为要点
 
     - 无结构化字段；消息为固定的英文提示。
     - 用法错误：改用显式 ``resolve(context)``；调用方不捕获。
-    - ``repr()`` 始终显示原始模板，不触发求值、不抛本异常。
+    - ``str()`` 只展示模板源、不求值、不抛本异常（未绑定也可以 ``str()``）；
+      ``repr()`` 始终显示原始模板，同样不触发求值。
+    - ``FILE_REF`` 形式在未绑定时即使传了 ``context`` 映射也会抛出（路径
+      解析需要绑定实例的 runtime）。
 
     .. seealso::
 
