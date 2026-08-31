@@ -339,7 +339,7 @@ def load_models(path: Path) -> dict[str, ModelConfig]:
     :param path: models.yaml 的已解析路径。
     :return: 模型条目名 → ``ModelConfig``。
 
-    行为要点：
+    .. rubric:: 行为要点
 
     - 每个条目必须含 ``model`` / ``provider`` 两个必填字段（缺失时
       ``ModelConfig`` 构造报 ``TypeError``）。
@@ -399,7 +399,7 @@ def load_model_tags(path: Path) -> dict[str, str]:
     :param path: model-tags.yaml 的已解析路径。
     :return: 模型标签 → 模型条目名。
 
-    行为要点：
+    .. rubric:: 行为要点
 
     - 文件顶层必须含 ``tags`` 映射键；缺失时抛 ``KeyError`` （fail-fast，
       不静默回退）。
