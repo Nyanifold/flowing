@@ -1,168 +1,186 @@
-"""flowing.message —— 对象层消息模型、消息队列与消息级树手术（最终 API 规约）.
+"""``flowing.message`` —— 对象层消息模型、消息队列与消息级树手术。
 
-.. rubric:: 模块定位
+.. rubric:: 功能介绍
 
-本模块定义 Flowing 的**对象层消息表示**（与任何 Provider API 的 ``role`` 字段、任何 UI
-渲染样式彻底解耦）、Agent 的**消息队列**（优先级排序 + 同级 FIFO），以及消息级树的
-**任意手术入口** ``MessageChain``。本模块属于框架核心层。
+本模块定义 Flowing 的对象层消息表示（与任何 Provider API 的 ``role``
+字段、任何 UI 渲染样式解耦）、Agent 的消息队列（优先级排序 + 同级 FIFO），
+以及消息级树的手术入口 :class:`MessageChain`。
 
-消息子系统的职责边界（五条）：
+职责边界：
 
-1. 消息的产生与表示：任意来源（用户、LLM、工具、外部 Agent、系统事件）的新信息统一
-   表示为 :class:`Message`。
-2. 消息的组织结构：**消息级树（允许多根的森林）**——树节点 = 消息，
-   ``Message.id`` + ``Message.parent_id`` 链；``parent_id=None`` 是**根标记**，
-   一棵树允许多个根（根集合 = 所有 ``parent_id=None`` 的消息），新根由
-   ``MessageChain.branch(None, msg)`` 开启（典型场景：上下文压缩换链——摘要
-   作为新根开新链，旧树完整保留）；**不设虚拟根节点**（裁决：统一性收益抵不上
-   对持久化 / 恢复 / 上下文组装的侵入）。``Agent.current_head_id`` 指向
-   **某条消息的 id**；fork 可切到任意消息（含根——fork 只切视角，从不创建
-   节点，「开新根」归 ``MessageChain``）
-   （fork 的钩子与回合内 seek 语义见 ``flowing.agent.Agent.fork``）。
-3. 逻辑 Turn 只是**执行概念**：消费一条消息 → ``finish=True`` 的执行过程；执行期载体是
-   ``flowing.agent.TurnContext``（不落盘、不进树、崩溃后不恢复）。本模块的
-   ``Message.turn_end`` 是「逻辑 turn 关闭」的**边界标记**（agent 层写入，
-   含取消关闭——见 S-14 分层）。
-4. 消息的排队与调度：外部消息经 :class:`MessageQueue` 按优先级排序消费；
-   ``MessageKind.PROVIDER`` **永不进队列**（永远在逻辑 turn 内由 Provider adapter 产生）。
-5. 消息的持久化与手术：一行一个 Message，消息完整后 append；任意历史修改走
-   :class:`MessageChain` 五 op + tombstone + 撕裂末行容忍（无 checkpoint）。
+1. 消息的产生与表示：任意来源（用户、LLM、工具、外部 Agent、系统事件）
+   产生的新信息统一表示为 :class:`Message`。
+2. 消息的组织结构：消息级树（允许多根的森林）——树节点 = 消息，
+   ``Message.id`` + ``Message.parent_id`` 构成父链；``parent_id=None``
+   是根标记，一棵树允许多个根（根集合 = 全部 ``parent_id=None`` 的
+   消息），新根由 :meth:`MessageChain.branch` 以 ``parent_id=None``
+   开启（典型场景：上下文压缩换链——摘要作为新根开新链，旧树完整保留）。
+   不设虚拟根节点。``Agent.current_head_id`` 指向某条消息的 id；fork
+   只切视角、从不创建节点。
+3. 消息的排队与调度：外部消息经 :class:`MessageQueue` 按优先级排序消费；
+   ``MessageKind.PROVIDER`` 永不进队列（永远在逻辑 turn 内由 Provider
+   adapter 产生）。
+4. 消息的持久化与手术：一行一个 Message、消息完整后 append（append-only）；
+   任意历史修改走 :class:`MessageChain` 五 op。tombstone（删除标记行）/
+   撕裂末行容忍 / 压缩等持久化机制属 :mod:`flowing.persistence` 与
+   ``flowing.agent`` 的职责，本模块只约束「消息对象 ↔ 行」的映射语义
+   （:func:`to_record` / :func:`from_record`）。
 
-.. rubric:: Message 字段规约总表
+逻辑 Turn 只是执行概念：消费一条消息 → 产生一条 ``turn_end=True`` 的
+PROVIDER 消息（或被 abort）的过程；执行期载体是
+``flowing.agent.TurnContext``（不落盘、不进树、崩溃后不恢复）。
 
-================ ================================================================================
-字段             规约要点
-================ ================================================================================
-``id``           全局唯一消息 id（UUID），同时是消息级树的节点 id
-``parent_id``    消息级父链；``None`` = 根标记（允许多根，森林模型）；树上溯与上下文组装的唯一依据
-``kind``         对象层唯一角色判别，八值枚举 :class:`MessageKind`；**无** ``role`` 属性
-``content``      :class:`ContentBlock` 列表，不同 type **交错排列**
-``turn_end``     逻辑 turn 关闭的边界标记；**agent 层**写入（turn 随本条消息关闭 → ``True``）
-``partial``      流式中断的未完成消息标记；中断时已累积内容**保留落盘**（非丢弃）
-``synthetic``    ``True`` = 恢复时合成的占位消息（孤立 tool_call 的占位 TOOL 消息），非真实产物
-``tool_call_id`` 配对锚（仅 ``kind=TOOL`` 非 ``None``）：与 PROVIDER 消息 ``ToolCallBlock.id`` 1:1 严格成对
-``tool_status``  工具结果状态四值（仅 ``kind=TOOL`` 非 ``None``）；``__post_init__`` 双向强制
-``source``       自由字符串二级分类（框架不枚举），投递方填写
-``tags``         任意标签列表，用于分组 / 过滤 / 清洗
-``priority``     队列排序依据，``INTERRUPT > STEER > HIGH > NORMAL > LOW``
-``timestamp``    时区无关（UTC / epoch）；附着于消息，**是否进 LLM 上下文由 adapter 决定**
-================ ================================================================================
+Message 字段规约总表：
 
-.. rubric:: kind → API role 发送映射（Provider adapter 职责）
+.. list-table::
+   :header-rows: 1
+   :widths: 16 84
 
-========== ====================================== ========== ============
-kind       Anthropic                              OpenAI     Gemini
-========== ====================================== ========== ============
-USER       user                                   user       user
-PROVIDER   assistant                              assistant  model
-TOOL       user（tool_result）                    tool       tool
-SYSTEM     user（XML 包裹）                       system     user
-PEER       user（XML 包裹）                       user       user
-EVENT      user（XML 包裹）                       user       user
-PLUGIN     独立消息，XML 包裹（格式 adapter 定）  user       同左
-SUBAGENT   独立消息，XML 包裹（格式 adapter 定）  user       同左
-========== ====================================== ========== ============
+   * - 字段
+     - 规约要点
+   * - ``id``
+     - 全局唯一消息 id（UUID），同时是消息级树的节点 id
+   * - ``parent_id``
+     - 消息级父链；``None`` = 根标记（允许多根，森林模型）；树上溯与上下文组装的唯一依据
+   * - ``kind``
+     - 对象层唯一角色判别，八值枚举 :class:`MessageKind`；消息没有 ``role`` 属性
+   * - ``content``
+     - :class:`ContentBlock` 列表，不同 type 可交错排列
+   * - ``turn_end``
+     - 逻辑 turn 关闭的边界标记；由 agent 层在挂树时写入（turn 随本条消息关闭 → ``True``）
+   * - ``partial``
+     - 流式中断的未完成消息标记；中断时已累积内容保留落盘（非丢弃）
+   * - ``synthetic``
+     - ``True`` = 恢复时合成的占位消息（孤立 tool_call 的占位 TOOL 消息），非真实产物
+   * - ``tool_call_id``
+     - 配对锚（仅 ``kind=TOOL`` 非 ``None``）：与 PROVIDER 消息 ``ToolCallBlock.id`` 1:1 严格成对
+   * - ``tool_status``
+     - 工具结果状态四值（仅 ``kind=TOOL`` 非 ``None``）；``__post_init__`` 双向强制
+   * - ``source``
+     - 自由字符串二级分类（框架不枚举），投递方填写
+   * - ``tags``
+     - 任意标签列表，用于分组 / 过滤 / 清洗
+   * - ``priority``
+     - 队列排序依据（``INTERRUPT > STEER > HIGH > NORMAL > LOW``）
+   * - ``timestamp``
+     - 时区无关（UTC / epoch）；附着于消息，是否进 LLM 上下文由 adapter 决定
+   * - ``usage``
+     - 本消息对应的 Provider 实测用量（仅 PROVIDER 消息携带），随消息落盘、恢复后仍在
 
-- **OpenAI 列的裁决**：PLUGIN / SUBAGENT 落 ``user`` role（XML 包裹）——
-  依据官方 role 语义（OpenAI prompt engineering 指南：``assistant`` =
-  模型自产消息、``developer``/``system`` = 应用开发者的指令与规则、
-  ``user`` = 输入与配置）：外部结果回喂属「输入」，不落 developer
-  （避免给外部数据提指令权），更不伪造 assistant（会破坏轮次语义与
-  tool_calls 配对）。官方未定义 system 消息合并/重排行为，该风险仅
-  存在于第三方兼容层，不作为裁决依据。
-- SYSTEM / PEER / EVENT / PLUGIN / SUBAGENT 的 XML 包裹格式由 adapter 按 Provider 能力
-  决定，框架核心不约束具体格式。
-- 「某 block type 出现在哪些 kind 中」一律是**典型情况**而非硬约束；不合法排列
-  （如 PROVIDER 消息含 image block）由 **Provider adapter 在组装 API 请求时**验证并报错，
-  框架核心不验证。
+kind → API role 发送映射（Provider adapter 职责）：
 
-.. rubric:: 入队规则（七类 + SYSTEM 双通道）
+.. list-table::
+   :header-rows: 1
+
+   * - kind
+     - Anthropic
+     - OpenAI
+     - Gemini
+   * - ``USER``
+     - ``user``
+     - ``user``
+     - ``user``
+   * - ``PROVIDER``
+     - ``assistant``
+     - ``assistant``
+     - ``model``
+   * - ``TOOL``
+     - ``user``（tool_result）
+     - ``tool``
+     - ``tool``
+   * - ``SYSTEM``
+     - ``user``（XML 包裹）
+     - ``system``
+     - ``user``
+   * - ``PEER``
+     - ``user``（XML 包裹）
+     - ``user``
+     - ``user``
+   * - ``EVENT``
+     - ``user``（XML 包裹）
+     - ``user``
+     - ``user``
+   * - ``PLUGIN``
+     - 独立消息，XML 包裹（格式由 adapter 定）
+     - ``user``
+     - 同左
+   * - ``SUBAGENT``
+     - 独立消息，XML 包裹（格式由 adapter 定）
+     - ``user``
+     - 同左
+
+- OpenAI 侧 PLUGIN / SUBAGENT 落 ``user`` role（XML 包裹）：外部结果
+  回喂属「输入」，不落 ``developer``（避免给外部数据提指令权），更不伪造
+  ``assistant``（会破坏轮次语义与 tool_calls 配对）。
+- SYSTEM / PEER / EVENT / PLUGIN / SUBAGENT 的 XML 包裹格式由 adapter
+  按 Provider 能力决定，框架核心不约束具体格式。
+- 「某 block type 出现在哪些 kind 中」是典型情况而非硬约束；不合法排列
+  （如 PROVIDER 消息含 image block）由 Provider adapter 在组装 API
+  请求时验证并报错，框架核心不验证。
+
+入队规则：
 
 - 进队列：``USER`` / ``EVENT`` / ``PEER`` / ``PLUGIN`` / ``SUBAGENT`` /
-  ``SYSTEM``（可选）/ 异步工具最终结果（**以 ``EVENT`` kind 入队**，
-  ``source="tool_result"``，多块 content = 标注块 + 结果块；``TOOL``
-  kind 本身不入队）。
-- 不进队列：``PROVIDER``——永远在逻辑 turn 内产生，经 ``Agent._append_message`` 直接挂树。
-- ``SYSTEM`` 双通道：经队列投递（触发新逻辑 turn）**或**由 ``_assemble_context()``
-  内部注入本 turn 的 system prompt 段（不触发新 turn）。
-- **kind 无行为含义**（P3-02 裁决）：消息类型只决定 adapter 的呈现映射
-  （见上表），不改变 turn 语义——任何入队批次都正常开回合、正常
-  query；不存在「纯系统消息不触发 LLM 调用」之类的短路。回合级
-  system 信息的三条正规路径：启动注入（``_assemble_context``）、
-  随时入队 SYSTEM 消息、``before_turn`` 钩子向 ``pending_messages``
-  附加 system reminder。
+  ``SYSTEM``（可选）/ 异步工具最终结果（以 ``EVENT`` kind 入队，
+  ``source="tool_result"``，多块 content = 标注块 + 结果块）。``TOOL``
+  kind 本身不入队——同步工具结果在逻辑 turn 内经挂树直接进入消息树。
+- 不进队列：``PROVIDER``——永远在逻辑 turn 内产生。
+- ``SYSTEM`` 双通道：经队列投递（触发新逻辑 turn），或由上下文组装内部
+  注入本 turn 的 system prompt 段（不触发新 turn）。
+- kind 无行为含义：消息类型只决定 adapter 的呈现映射（见上表），不改变
+  turn 语义——任何入队批次都正常开回合、正常调用 LLM，不存在「纯系统
+  消息不触发 LLM 调用」之类的短路。
 
-.. rubric:: 持久化分层（tombstone + 撕裂末行容忍）
+流式与 partial：
 
-文件 A（``tree.jsonl``）一行一个 Message，**消息完整后 append**（append-only）：
+- 流式中断（abort）时，已累积内容以 ``partial=True`` 的消息保留落盘，
+  而不是丢弃；正常完成的消息恒为 ``partial=False``。
+- ``on_provider_delta`` 钩子收到的 delta 本身不落盘（volatile），中断时
+  的已累积内容作为持久化状态保留。
 
-- **运行期**：手术（:class:`MessageChain` 五 op）只改内存链（内存链是唯一权威）+
-  **append 变更记录行**（``{"op":"remove","id":...}`` tombstone / update / move 等），
-  零截断、零重写。
-- **压缩期（恢复 / compact）**：重放变更记录得权威链 → 按权威链**整文件**
-  重写（FileRecordStore drain 任务内执行，tmp + rename 原子替换，见
-  :mod:`flowing.persistence` 模块 docstring「原子重写统一规约」）——
-  物理清除墓碑行与被标记删除的消息行。
-- **压缩触发**（两个条件同时满足）：tombstone 数量 ≥ 256（默认值，可调）
-  **且** Agent 空闲（``current_turn is None``；含回合收尾观察
-  窗口——此时本回合消息已全部落盘，墓碑压缩在此期间触发是安全的）。
-- **崩溃恢复（无 checkpoint，N-06 裁决）**：撕裂末行（崩溃半截写的
-  产物）截断丢弃——至多丢失最后一次写入，语义等价于断电；中间行
-  损坏按 corruption 报警，不容忍。checkpoint（链式 hash）机制已删除：
-  其定位/校验收益在 tmp+rename 原子重写与撕裂容忍之下无增量
-  （参考框架 kimi/pi 同以撕裂容忍覆盖）。
-- 副线（``side_query``）消息不落盘；半截 message 因「完整后才 append」天然不在文件中。
-- 行格式的字段级 schema 属持久化规约（参见 ``flowing.agent.Agent._persist_message``
-  与 ``flowing.persistence`` 相关章节），本模块只约束**消息对象 ↔ 行**的映射语义。
+.. rubric:: 使用示例
 
-.. rubric:: 恢复三条规则（摘要）
+.. code-block:: python
 
-1. **半截 message 天然丢弃**：流式中未完整 append 的消息不在文件里，恢复时不存在。
-2. **半截 turn 消息保留，不续跑**：已 append 的完整消息是历史；最后一个
-   ``turn_end=True`` 之后的消息 = 半截 turn——在树上可观测、可审计，且
-   **照常进入 LLM 上下文**（M-28 裁决：已放弃半截 turn 截断，仅保留
-   规则一的半截消息丢弃）；孤立 tool_call 由规则三封闭成对后上下文合法；
-   执行状态不恢复、不续跑，新 turn 正常开始。
-3. **孤立 tool_call 合成占位 TOOL 消息**：恢复扫描发现 tool_call 的结果消息
-   缺失（工具执行中崩溃）时，合成 ``Message(kind=TOOL, tool_call_id=<孤立调用 id>,
-   tool_status="error", synthetic=True, content=[TextBlock(占位说明)])``，
-   保证严格成对匹配。
+    # 构造一条用户消息并入队；enqueue_message 返回消息 id
+    msg = Message(
+        kind=MessageKind.USER,
+        content=[TextBlock(text="帮我查订单 4521")],
+        source="chat_input",
+        tags=["order"],
+    )
+    message_id = await agent.enqueue_message(msg)
 
-恢复后 ``current_head_id`` 指向**最后持久化的消息**（不论其是否
-``turn_end=True``——半截 turn 的消息照常在上溯路径上，M-28）。
-完整恢复管线见 ``flowing.runtime.Runtime.recover_agent`` 与
-``flowing.agent.Agent._restore``。
+    # 历史手术：在 m5 之后插入一条 SYSTEM 提醒（永久）
+    agent.chain.insert("m5", Message(kind=MessageKind.SYSTEM,
+                                     content=[TextBlock(text="...")]))
 
-.. rubric:: 流式与 partial（仅三处影响面）
+.. rubric:: 行为要点
 
-流式被 ``query()`` 的「返回完整 ProviderResponse」契约挡在逻辑 turn 循环之外，
-真正影响的只有三处：``query()`` 内部双模式（由 ``stream: bool = True`` 显式参数
-决定，S-17——``on_provider_delta`` 订阅者**纯观察**，不影响流式 / 非流式选择）、
-``on_provider_delta`` 钩子（volatile，不落盘）、``Message.partial`` 字段。
-流式中断（abort）时已累积内容以 ``partial=True`` 的消息**保留落盘**，而非丢弃——
-这是对「半截 message 天然丢弃」的唯一修正（delta 本身 volatile，中断时的
-已累积内容作为持久化状态保留）。
-
-.. rubric:: 机制 vs 策略
-
-本模块只提供机制：媒体 base64 统一编码（**消息层不做文件大小检查**——前端校验 /
-``before_enqueue`` 钩子 / adapter 的 ``ContextLengthError`` 分层兜底）、优先级排序队列、
-五 op 手术原语。**策略**（防饿死加权、drain 合并、何时压缩上下文、摘要如何生成）
-由覆写 ``Agent._dequeue()``、Composable 或应用层决定。
+- 媒体块一律 base64 内联（``data`` 必填且是权威表示）：消息层不感知
+  「文件最初从哪来」，也不做文件大小检查（大小治理分层：前端上传前校验 /
+  ``before_enqueue`` 钩子 / Provider adapter 的 ``ContextLengthError``
+  兜底）。
+- 历史消息不可在应用层直接修改——修改历史走 :class:`MessageChain` 五 op
+  或 fork（切分支）。
+- 本模块只提供机制：优先级排序队列、五 op 手术原语、媒体 base64 统一编码。
+  策略（防饿死加权、drain 合并、何时压缩上下文、摘要如何生成）由覆写
+  ``Agent._dequeue()``、Composable 或应用层决定。
 
 .. seealso::
-   :class:`flowing.agent.Agent`
-       消息队列与工作循环的宿主；``Agent.chain`` 是 :class:`MessageChain` 的访问入口。
-   :class:`flowing.agent.TurnContext`
-       逻辑 turn 的执行期临时对象（``started_at`` / ``message_ids`` / ``aborted`` /
-       ``pending_messages`` / ``usages``）。
-   :mod:`flowing.tool`
-       ``ToolCall`` / ``ToolResult`` 的定义处（与 block 形式互转）。
-   :mod:`flowing.context`
-       ``Context`` / ``PromptBlock`` / ``PromptSegment``——上下文组装产物。
+
+   :class:`flowing.agent.Agent`（消息队列与工作循环的宿主；
+   ``Agent.chain`` 是 :class:`MessageChain` 的访问入口）
+   :class:`flowing.agent.TurnContext`（逻辑 turn 的执行期临时对象：
+   ``started_at`` / ``message_ids`` / ``aborted`` / ``pending_messages`` /
+   ``usages``）
+   :mod:`flowing.tool`（``ToolCall`` / ``ToolResult`` 的定义处，与 block
+   形式互转）
+   :mod:`flowing.context`（``Context`` / ``PromptBlock`` / ``PromptSegment``
+   ——上下文组装产物）
 """
 
-from __future__ import annotations   # S-43 裁决③：注解延迟求值（message→model 为注解级边）
+from __future__ import annotations   # 注解延迟求值（message→model 为注解级边）
 
 import asyncio
 import bisect
@@ -203,23 +221,21 @@ __all__ = [
 
 
 class MessageKind(enum.Enum):
-    """消息来源枚举：对象层**唯一的角色判别**（八值，跨版本稳定契约）.
+    """消息来源枚举：判别「这条消息来自谁」（八值，跨版本稳定契约）。
 
     .. rubric:: 功能介绍
 
-    判别「这条消息**来自谁**」。``Message`` **没有 ``role`` 属性**——Provider adapter
-    负责把 ``kind`` 映射为各 API 的 role（Anthropic ``assistant``、OpenAI ``assistant``、
-    Gemini ``model`` 等），UI 通过 ``kind`` + ``tags`` 自行决定渲染方式。
+    消息对象没有 ``role`` 属性——Provider adapter 负责把 ``kind`` 映射
+    为各 API 的 role（Anthropic ``assistant``、OpenAI ``assistant``、
+    Gemini ``model`` 等），UI 通过 ``kind`` 与 ``tags`` 自行决定渲染
+    方式。
 
-    .. rubric:: 设计动机
-
-    命名原则：所有 kind 描述「**来自谁**」而非「扮演什么角色」。旧名 ``ASSISTANT``
-    更名为 ``PROVIDER`` 的三个理由：它是 API 的历史命名、在 Flowing 自己的消息模型中
-    不自然；它破坏命名一致性（其余 kind 都描述来源）；它隐含「纯文本 LLM」假设，
-    无法覆盖文生图 / 语音 / 视频等多模态 Provider。``PLUGIN`` / ``SUBAGENT`` 的存在
-    是因为 Skill 渲染结果与子 Agent 返回结果**永远是独立消息**——不能合并进
-    tool_result 消息（尽管 LLM 经 ``skill-load`` / ``subagent-invoke`` 工具调用语法触发；
-    工具结果摊平后 TOOL 消息只承载纯内容块，更无包装块可合并）。
+    命名原则：所有 kind 描述「来自谁」而非「扮演什么角色」。旧名
+    ``ASSISTANT`` 更名为 ``PROVIDER``：它是 API 的历史命名、在 Flowing
+    自己的消息模型中不自然，且隐含「纯文本 LLM」假设、无法覆盖文生图 /
+    语音 / 视频等多模态 Provider。``PLUGIN`` / ``SUBAGENT`` 的存在是因为
+    Skill 渲染结果与子 Agent 返回结果永远是独立消息，不能合并进工具结果
+    消息。
 
     .. rubric:: 使用示例
 
@@ -229,65 +245,50 @@ class MessageKind(enum.Enum):
         event = Message(
             kind=MessageKind.EVENT,               # 异步工具最终结果
             source="tool_result",
-            content=[TextBlock(text="<标注>"), StructBlock(data={...})],   # 标注块 + 结果块
+            content=[TextBlock(text="<标注>"), StructBlock(data={...})],
         )
 
-    .. rubric:: 行为规约
-
-    期待行为：
+    .. rubric:: 行为要点
 
     - 枚举值跨版本稳定；序列化（``tree.jsonl`` 行）使用成员的字符串值
-      （``"user"`` / ``"provider"`` / ……）。
-    - 各 kind 的典型 ``content`` 组合：
+      （``"user"`` / ``"provider"`` 等）。
+    - 各 kind 的典型 ``content`` 组合（典型情况而非硬约束，框架核心不
+      验证「某 kind 可否含某 block type」，合法性由 Provider adapter 在
+      组装 API 请求时验证）：
 
-      ============ ============================================================
-      kind         content 中 block type 的典型排列
-      ============ ============================================================
-      ``USER``     ``[text]`` / ``[image]`` / ``[text, image]`` / ``[text, file]``
-      ``PROVIDER`` ``[thinking, text]`` / ``[thinking, tool_call]`` / 交错组合
-      ``TOOL``     ``[text]`` / ``[struct]`` / ``[struct, image]``（纯内容块，无协议块）
-      ``SYSTEM``   ``[text]``
-      ``PEER``     ``[text]`` / ``[text, file]``
-      ``EVENT``    ``[text]`` / ``[text, image]`` / ``[text, struct]``（异步最终结果：标注块 + 结果块）
-      ============ ============================================================
+      .. list-table::
+         :header-rows: 1
 
-    非行为：
+         * - kind
+           - content 中 block type 的典型排列
+         * - ``USER``
+           - ``[text]`` / ``[image]`` / ``[text, image]`` / ``[text, file]``
+         * - ``PROVIDER``
+           - ``[thinking, text]`` / ``[thinking, tool_call]`` / 交错组合
+         * - ``TOOL``
+           - ``[text]`` / ``[struct]`` / ``[struct, image]``（纯内容块，无协议块）
+         * - ``SYSTEM``
+           - ``[text]``
+         * - ``PEER``
+           - ``[text]`` / ``[text, file]``
+         * - ``EVENT``
+           - ``[text]`` / ``[text, image]`` / ``[text, struct]``（异步最终结果：标注块 + 结果块）
 
-    - 上表是**典型情况**而非硬约束；框架核心不验证「某 kind 可否含某 block type」，
-      合法性验证在 Provider adapter 组装 API 请求时进行。
-    - ``kind`` 不携带 UI 渲染信息（折叠 / 颜色 / 字体是应用层概念）。
-    - 框架不枚举 ``source``（二级分类自由字符串，由投递方填写）。
-
-    边缘情况：
-
-    - ``PEER`` vs ``EVENT``：PEER = 另一个 **Agent 实例**有意图地主动发送（语义上
-      更接近用户消息，``source`` 典型值 ``"message_to"`` / ``"agent_delegate"`` /
-      ``"agent_steer"``）；EVENT = 非 Agent 实体触发的「某事发生了」（辅助信息，
-      ``source`` 典型值 ``"scheduled_task"`` / ``"plugin_event"`` / ``"tool_result"``）。
-      语义区分让钩子（如 ``before_turn``）可以按触发来源做精准决策。
-    - ``TOOL`` kind 不入队：同步工具结果在逻辑 turn 内经 ``_append_message``
-      直接挂树（``kind=TOOL``，携带 ``tool_call_id`` / ``tool_status``，不经过队列）；
-      异步最终结果以 ``EVENT`` kind 入队（标注块 + 结果块，不参与配对）。
-
-    .. rubric:: 测试案例
-
-    - 前置：无 → 操作：``len(MessageKind)`` → 期望：8，且存在
-      ``USER / PROVIDER / TOOL / SYSTEM / PEER / EVENT / PLUGIN / SUBAGENT``。
-    - 前置：无 → 操作：``MessageKind.PROVIDER.value`` → 期望：``"provider"``。
-    - 前置：无 → 操作：``hasattr(MessageKind, "ASSISTANT")`` → 期望：``False``。
-
-    .. rubric:: 调用关系（审计）
-
-    - 调用：无（枚举，纯判别值）
-    - 被调：``flowing.agent.Agent.enqueue_message``（时机：每次入队，
-      入队 kind 判定）；``flowing.model`` Provider adapter（时机：每次
-      组装 API 请求，kind → role 映射）；``flowing.plugins.skills`` /
-      ``flowing.plugins.cron`` / ``flowing.plugins.comm`` /
-      ``flowing.plugins.workflow``（时机：各插件每次投递时选定 kind）
-    - 实例化方：不适用（枚举，无实例化方）
+    - ``kind`` 不携带 UI 渲染信息（折叠 / 颜色 / 字体是应用层概念）；
+      框架不枚举 ``source``（二级分类自由字符串，由投递方填写）。
+    - ``PEER`` 与 ``EVENT`` 的区分：PEER = 另一个 Agent 实例有意图地
+      主动发送（语义上更接近用户消息，``source`` 典型值 ``"message_to"`` /
+      ``"agent_delegate"`` / ``"agent_steer"``）；EVENT = 非 Agent 实体
+      触发的「某事发生了」（辅助信息，``source`` 典型值
+      ``"scheduled_task"`` / ``"plugin_event"`` / ``"tool_result"``）。
+      钩子（如 ``before_turn``）可据此按触发来源做精准决策。
+    - ``TOOL`` kind 不入队：同步工具结果在逻辑 turn 内经挂树直接进入
+      消息树（携带 ``tool_call_id`` / ``tool_status``，不经过队列）；异步
+      最终结果以 ``EVENT`` kind 入队（标注块 + 结果块，不参与配对）。
 
     .. seealso::
-       :class:`flowing.message.Message`、:class:`flowing.message.MessageQueue`、
+       :class:`flowing.message.Message`、
+       :class:`flowing.message.MessageQueue`、
        :mod:`flowing.model`（Provider adapter 的映射职责）。
     """
 
@@ -295,17 +296,18 @@ class MessageKind(enum.Enum):
     """用户输入。进队列；LLM 视为对话中的用户消息。
     """
     PROVIDER = "provider"
-    """LLM / 多模态模型 / 任意 Provider 的响应。**永远在逻辑 turn 内产生，不进队列**；
-    ``turn_end`` 边界标记只对本 kind 有语义。
+    """LLM / 多模态模型 / 任意 Provider 的响应。永远在逻辑 turn 内产生、
+    不进队列；``turn_end`` 边界标记只对本 kind 有语义。
     """
     TOOL = "tool"
-    """工具执行结果（摊平形态：``content`` 只装纯内容块，配对元数据在消息级
-    ``tool_call_id`` / ``tool_status`` 字段，``__post_init__`` 双向强制）。
-    同步结果在 turn 内直接挂树；异步最终结果以 ``EVENT`` kind 入队。
+    """工具执行结果（摊平形态：``content`` 只装纯内容块，配对元数据在
+    消息级 ``tool_call_id`` / ``tool_status`` 字段，``__post_init__``
+    双向强制）。同步结果在 turn 内直接挂树；异步最终结果以 ``EVENT``
+    kind 入队。
     """
     SYSTEM = "system"
     """框架 / Composable 的上下文注入。双通道：经队列（触发新 turn）或
-    ``_assemble_context()`` 内部注入（不触发新 turn）。
+    由上下文组装内部注入（不触发新 turn）。
     """
     PEER = "peer"
     """来自另一个 Agent 实例的有意图消息。
@@ -317,7 +319,7 @@ class MessageKind(enum.Enum):
     """
     PLUGIN = "plugin"
     """扩展产生的内容（Skill 渲染结果等）；永远以独立消息入队，不合并进
-    tool_result 消息（摊平后工具结果无包装块，见 :class:`MessageKind` 设计动机）。
+    工具结果消息。
     """
     SUBAGENT = "subagent"
     """子 Agent 返回结果；永远以独立消息入队，与普通工具结果明确分离。
@@ -325,29 +327,25 @@ class MessageKind(enum.Enum):
 
 
 class MessagePriority(enum.IntEnum):
-    """消息优先级：:class:`MessageQueue` 的排序依据（数值越小越优先）.
+    """消息优先级：:class:`MessageQueue` 的排序依据（数值越小越优先）。
 
     .. rubric:: 功能介绍
 
-    五级优先级，决定工作循环 ``dequeue`` 的消费顺序与 ``_run_turn`` 的
-    urgent 吸收行为：``INTERRUPT (0) > STEER (1) > HIGH (2) > NORMAL (3)
-    > LOW (4)``。
+    五级优先级，决定工作循环的出队消费顺序：``INTERRUPT (0) > STEER (1)
+    > HIGH (2) > NORMAL (3) > LOW (4)``。同优先级按入队顺序（FIFO）。
 
-    .. rubric:: 设计动机
-
-    用 ``IntEnum`` 且让「更优先 = 更小数值」，使排序实现就是普通的数值升序 +
-    入队序号（FIFO tie-break），无需自定义比较器。``INTERRUPT`` 用于打断当前
-    回合的插队场景，``STEER`` 仅弱于它——回合内吸收、当轮 provider_gen 的 context
-    即可见但不打断（吸收语义见下）；``HIGH`` 的典型场景是人工催办、外部
-    高优告警等紧急但不打断当前回合的通知。
+    用 ``IntEnum`` 且「更优先 = 更小数值」使排序实现为普通数值升序 + 入队
+    序号，无需自定义比较器。``INTERRUPT`` 用于打断当前回合的插队场景；
+    ``STEER`` 仅弱于它——回合进行中入队的 STEER 消息被当轮吸收，当轮
+    LLM 调用的上下文即可见但不打断；``HIGH`` 的典型场景是人工催办、
+    外部高优告警等紧急但不打断当前回合的通知。
 
     .. rubric:: 使用示例
 
     .. code-block:: python
 
-        # 亲 Agent steer 子 Agent：目录已改动，请重新读取——
-        # 当轮 context 可见、不打断（ steer() 糖即此形态：
-        # await child_agent.steer("目录 src/ 已改动，请重新读取后再继续") ）
+        # 亲 Agent 引导子 Agent：目录已改动，请重新读取——
+        # 当轮 context 可见、不打断（Agent.steer 糖即此形态）
         steer = Message(
             kind=MessageKind.PEER,
             content=[TextBlock(text="目录 src/ 已改动，请重新读取后再继续")],
@@ -356,51 +354,32 @@ class MessagePriority(enum.IntEnum):
         )
         await child_agent.enqueue_message(steer)
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
     - 排序语义：按枚举数值升序；同优先级按入队顺序（FIFO）。排序发生在
       :class:`MessageQueue` 内部，``Message`` 本身不可比较。
-    - ``INTERRUPT`` / ``STEER`` 构成「urgent 带」，其吸收语义由
-      ``flowing.agent.Agent._run_turn`` 检查点 ②.5 实现：回合进行中 peek 到
-      ``INTERRUPT`` 则连 drain 两带、挂树并 abort 本回合；仅有 ``STEER``
-      则只 drain 本带、挂树继续当轮 provider_gen。普通 ``dequeue`` 路径只认排序，
-      不区分 urgent 带的吸收语义。
-    - 非行为：优先级不防饿死、不按来源加权——具体调度策略由队列内部实现
-      或覆写 ``Agent._dequeue()`` 决定，不在框架核心。
-    - 边缘情况：副线消息不入队（副线走 ``Agent.side_query``，不经队列），
-      ``priority`` 对其无意义；``PROVIDER``
-      消息不入队，``priority`` 附着但无调度效果。
+    - ``INTERRUPT`` / ``STEER`` 的回合内吸收语义由 Agent 层实现：回合
+      进行中入队的 ``INTERRUPT`` 消息会中断当前回合并挂树、下一回合
+      上下文可见；``STEER`` 消息不中断回合，当轮 LLM 调用的上下文即可见。
+      普通 ``dequeue`` 路径只认排序，不区分吸收语义。
+    - 优先级只是排序依据：不防饿死、不按来源加权——具体调度策略由覆写
+      ``Agent._dequeue()`` 或应用层决定，不在框架核心。
+    - 副线消息不入队（副线走 ``Agent.side_query``，不经队列），``priority``
+      对其无意义；``PROVIDER`` 消息不入队，``priority`` 附着但无调度效果。
     - 落盘耦合：枚举数值即消息的落盘值（恢复时按附着值重建），调整枚举
       取值即变更持久化格式。
 
-    .. rubric:: 测试案例
-
-    - 前置：队列含 NORMAL 消息 A（先入）、HIGH 消息 B、NORMAL 消息 C（后入）
-      → 操作：连续 ``dequeue`` → 期望：顺序为 B、A、C。
-    - 前置：回合进行中，``INTERRUPT`` 消息入队 → 期望：当前回合 abort、
-      该消息挂树，下一回合 context 可见；改入 ``STEER`` 消息 → 期望：
-      回合不 abort，当轮 provider_gen 的 context 即可见。
-
-    .. rubric:: 调用关系（审计）
-
-    - 调用：无（IntEnum，纯排序值）
-    - 被调：``flowing.message.MessageQueue.enqueue``（时机：每次入队，按
-      数值升序定位）；``flowing.message.MessageQueue.set_priority``
-      （时机：每次重设未出队消息优先级，按新值重新定位）；
-      ``flowing.agent.Agent.enqueue_message``（时机：
-      每次入队透传）；``flowing.agent.Agent._run_turn``（时机：检查点
-      ②.5 urgent 吸收，``peek`` / ``take_while`` 按带过滤）
-    - 实例化方：不适用（枚举，无实例化方）
-
     .. seealso::
-       :class:`flowing.message.MessageQueue`、:meth:`flowing.agent.Agent.enqueue_message`。
+       :class:`flowing.message.MessageQueue`、
+       :meth:`flowing.agent.Agent.enqueue_message`。
     """
 
     INTERRUPT = 0
-    """打断：最优先消费；回合进行中被吸收并 abort 当前回合（检查点 ②.5）。
+    """打断：最优先消费；回合进行中入队会中断当前回合。
     """
     STEER = 1
-    """引导：仅弱于 INTERRUPT；回合进行中被吸收、当轮 context 可见但不打断。
+    """引导：仅弱于 INTERRUPT；回合进行中入队会被当轮吸收、上下文可见
+    但不打断。
     """
     HIGH = 2
     """紧急性事件（如人工催办、外部高优告警）——紧急但不打断当前回合。
@@ -415,67 +394,60 @@ class MessagePriority(enum.IntEnum):
 
 @dataclass(kw_only=True)
 class ContentBlock:
-    """消息内容片段基类：``type`` 字段判别「这一段是什么」（八种 type）.
+
+    """消息内容片段基类：``type`` 字段判别「这一段是什么」（八种 type）。
 
     .. rubric:: 功能介绍
 
-    一条 :class:`Message` 的 ``content`` 数组可含多种 type 的 ContentBlock，
-    **交错排列**（Anthropic 原生支持；OpenAI / Gemini 由 adapter 做映射转换，
-    如 OpenAI 的 ``tool_calls[]`` 逐项转回 block 以保持交错顺序）。
+    一条 :class:`Message` 的 ``content`` 列表可含多种 type 的
+    ContentBlock，交错排列（Anthropic 原生支持；OpenAI / Gemini 由
+    adapter 做映射转换，如 OpenAI 的 ``tool_calls[]`` 逐项转回 block
+    以保持交错顺序）。
 
-    .. rubric:: 设计动机
+    block 化的消息内容使多模态（文本 + 图像 + 文件混排）、思考过程
+    （thinking）、工具调用（tool_call）在同一个消息模型内统一表达，与
+    具体 Provider API 的内容结构解耦。媒体块一律 base64 内联（``data``
+    必填且是权威表示）：文件路径、URL、剪贴板进入消息层后是同一格式，
+    adapter 从统一 base64 出发做各 API 转换。
 
-    block 化的消息内容使多模态（文本 + 图像 + 文件混排）、思考过程（thinking）、
-    工具调用（tool_call）在同一个消息模型内统一表达，与具体 Provider
-    API 的内容结构解耦。媒体块**一律 base64 内联**（``data`` 必填且是权威表示）：
-    统一性（文件路径 / URL / 剪贴板进入消息层后是同一格式）+ Provider 适配
-    （adapter 从统一 base64 出发做各 API 转换，无需知道原始来源）。
-    旧的「``data=None`` 时 ``name`` 作为路径引用」模式**已废弃，不存在**。
+    .. rubric:: 行为要点
 
-    .. rubric:: 行为规约
-
-    - 框架核心只接纳 base64 数据，**不做文件大小检查**，不引入分块 / 流式读取 /
-      引用传递机制。大小问题分层处理：前端上传前校验 → ``before_enqueue`` 钩子
-      reject → Provider adapter 的 ``ContextLengthError`` 兜底。
-    - ``mime_type`` 始终可选：adapter 缺失时按文件扩展名或内容魔数推断；显式指定优先。
-    - 降级策略属 UI / Provider 层（非框架核心）：video → 首帧截图或文件引用；
-      audio → 占位文本或 STT 转文字。
-    - 边界区分：``text`` vs ``file``（可读字符串 vs 二进制）；``image`` vs ``video``
-      （单帧 vs 连续帧）；``image`` vs ``file``（多模态视觉输入 vs 仅作文件传递）；
-      ``audio`` vs ``file``（需语音理解 vs 仅传 mp3）；``struct`` vs ``text``
-      （程序可读的 JSON 结构 vs 纯文本——对 LLM 的投影同为文本）。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``flowing.model`` Provider adapter（时机：每次组装 API
-      请求，逐 ``type`` 映射）；``flowing.message.Message``
-      （``content`` 字段的元素类型）
-    - 实例化方：不直接实例化（基类；实例化见各子类）
+    - 框架核心只接纳 base64 数据，不做文件大小检查（大小治理分层：
+      前端上传前校验 → ``before_enqueue`` 钩子 → Provider adapter 的
+      ``ContextLengthError`` 兜底）。
+    - ``mime_type`` 始终可选：缺失时由 adapter 按文件扩展名或内容魔数
+      推断；显式指定优先。
+    - 降级策略属 UI / Provider 层（非框架核心）：video → 首帧截图或
+      文件引用；audio → 占位文本或语音转文字。
+    - 边界区分：``text`` 与 ``file``（可读字符串与二进制）；``image``
+      与 ``video``（单帧与连续帧）；``image`` 与 ``file``（多模态视觉
+      输入与仅作文件传递）；``audio`` 与 ``file``（需语音理解与仅传
+      mp3）；``struct`` 与 ``text``（程序可读的 JSON 结构与纯文本——
+      对 LLM 的投影同为文本）。
 
     .. seealso::
-       :class:`flowing.message.Message`、:mod:`flowing.model`（adapter 逐 type 映射）。
+       :class:`flowing.message.Message`、
+       :mod:`flowing.model`（adapter 逐 type 映射）。
     """
 
     type: str = ""
-    """片段类型判别，八值之一：``"text" | "thinking" | "tool_call" | "struct" |
-    "image" | "video" | "audio" | "file"``。子类将其收窄为对应的 ``Literal``。
-    序列化时作为 ``tree.jsonl`` 行内 content 项的判别字段。
+    """片段类型判别，八值之一：``"text" | "thinking" | "tool_call" |
+    "struct" | "image" | "video" | "audio" | "file"``。子类将其收窄为
+    对应的 ``Literal``。序列化时作为 ``tree.jsonl`` 行内 content 项的
+    判别字段。
     """
 
 
 @dataclass(kw_only=True)
 class TextBlock(ContentBlock):
-    """纯文本内容块.
+    """纯文本内容块。
 
     .. rubric:: 功能介绍
 
-    直接可读的字符串片段；``message("...")`` 的 str 入参即自动打包为
-    ``[TextBlock(text=content)]``。最典型的 block type，可能出现在任何 kind 中。
-
-    .. rubric:: 设计动机
-
-    文本是对话的主载体；单独成块（而非 Message 上的字段）使文本可与其他类型
-    block 交错混排（如 ``[thinking, text, tool_call, text]``）。
+    直接可读的字符串片段；``Agent.message("...")`` 的 ``str`` 入参自动
+    打包为 ``[TextBlock(text=content)]``。最典型的 block type，可能
+    出现在任何 kind 中。文本单独成块（而非 Message 上的字段）使其可与
+    其它类型 block 交错混排（如 ``[thinking, text, tool_call, text]``）。
 
     .. rubric:: 使用示例
 
@@ -483,24 +455,14 @@ class TextBlock(ContentBlock):
 
         msg = Message(kind=MessageKind.USER, content=[TextBlock(text="帮我查订单")])
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
     - ``text`` 为空字符串是合法的（语义由上层决定，框架不拒绝）。
-    - 非行为：不做长度限制、不做内容审核（审核走 ``before_enqueue`` 钩子）。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``flowing.agent.Agent.side_query``（时机：每次副线响应收尾，
-      拼接 ``TextBlock.text``）
-    - 实例化方：``flowing.agent.Agent.message``（时机：每次调用，str
-      入参自动打包）；``flowing.plugins.skills``（时机：每次 Skill
-      渲染投递）；``flowing.plugins.cron``（时机：每次 job 触发投递）；
-      ``flowing.plugins.comm``（时机：每次收信转入对话）；
-      ``flowing.plugins.workflow``（时机：轮次通知投递）；Provider
-      adapter（时机：每次解析响应文本 block）
+    - 不做长度限制、不做内容审核（审核走 ``before_enqueue`` 钩子）。
 
     .. seealso::
-       :class:`flowing.message.ContentBlock`、:meth:`flowing.agent.Agent.message`。
+       :class:`flowing.message.ContentBlock`、
+       :meth:`flowing.agent.Agent.message`。
     """
 
     type: Literal["text"] = "text"
@@ -513,34 +475,25 @@ class TextBlock(ContentBlock):
 
 @dataclass(kw_only=True)
 class ThinkingBlock(ContentBlock):
-    """LLM 思考 / 推理过程内容块.
+    """LLM 思考 / 推理过程内容块。
 
     .. rubric:: 功能介绍
 
     承载 Provider 返回的推理过程（Anthropic ``thinking`` block、OpenAI
-    ``reasoning_content`` 等）；典型出现在 ``PROVIDER`` 消息中，UI 通常折叠或淡化显示。
+    ``reasoning_content`` 等）；典型出现在 ``PROVIDER`` 消息中，UI 通常
+    折叠或淡化显示。思考过程是 Provider 响应的一等部分：持久化后可审计、
+    可在后续上下文中回传（Anthropic 要求 thinking 块原样回传并校验
+    签名）。
 
-    .. rubric:: 设计动机
+    .. rubric:: 行为要点
 
-    思考过程是 Provider 响应的一等部分：持久化后可审计、可在后续上下文中回传
-    （Anthropic 要求 thinking 块原样回传并校验签名）。``signature`` 字段即为此保留。
-
-    .. rubric:: 行为规约
-
-    - ``signature``：Anthropic 的签名（校验思考内容未被篡改）；不适用此机制的
-      Provider 为 ``None``。
-    - 非行为：UI 的折叠 / 淡化是应用层策略，框架不预设渲染方式。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``flowing.agent.Agent.side_query``（时机：每次副线响应消费，
-      一律丢弃）；``flowing.providers.ProviderDelta`` 流式路径（时机：流式
-      响应期间按 ``content_index`` 归位累积）
-    - 实例化方：Provider adapter（时机：每次响应含 thinking block 时；
-      逐字构造点未见规约）
+    - ``signature``：Provider 签发的完整性签名（校验思考内容未被篡改，
+      如 Anthropic）；不适用此机制的 Provider 为 ``None``。
+    - UI 的折叠 / 淡化是应用层策略，框架不预设渲染方式。
 
     .. seealso::
-       :class:`flowing.message.ContentBlock`、:class:`flowing.providers.ProviderDelta`。
+       :class:`flowing.message.ContentBlock`、
+       :class:`flowing.providers.ProviderDelta`。
     """
 
     type: Literal["thinking"] = "thinking"
@@ -556,22 +509,21 @@ class ThinkingBlock(ContentBlock):
 
 @dataclass(kw_only=True)
 class ToolCallBlock(ContentBlock):
-    """工具调用请求内容块（LLM 侧）.
+    """工具调用请求内容块（LLM 侧）。
 
     .. rubric:: 功能介绍
 
-    PROVIDER 消息中的一个工具调用请求。``id`` 由 Provider 分配（如 Anthropic
-    ``tool_use.id``、OpenAI ``tool_calls[].id``），作为配对锚点：与同分支后续
-    TOOL 消息的 :attr:`Message.tool_call_id` 严格配对（1:1）。
+    ``PROVIDER`` 消息中的一个工具调用请求。``id`` 由 Provider 分配（如
+    Anthropic ``tool_use.id``、OpenAI ``tool_calls[].id``），作为配对
+    锚点：与同分支后续 TOOL 消息的 :attr:`Message.tool_call_id` 严格
+    配对（1:1）。
 
-    .. rubric:: 设计动机
-
-    block 形式是**消息层的权威表示**（持久化、上下文组装都用它）；
-    :class:`flowing.tool.ToolCall` 是它的「解析后」形式——剥离通用字段，只保留
-    ``id`` / ``name`` / ``args``（+ 通用短路字段 ``shortcut``），供 ``Agent.tool_call()``
-    与工具钩子使用。两者经 :meth:`flowing.tool.ToolCall.from_block` 单向转换
-    （**转换点定在 ToolCall 侧**，S-43 裁决④：message 不再 import tool，
-    「tool 认识 message、message 不认识 tool」，模块依赖保持单向）。
+    block 形式是消息层的权威表示（持久化、上下文组装都用它）；
+    :class:`flowing.tool.ToolCall` 是它的「解析后」形式——剥离通用字段，
+    只保留 ``id`` / ``name`` / ``args``（+ 通用短路字段 ``shortcut``），
+    供 ``Agent.tool_call()`` 与工具钩子使用。两者经
+    :meth:`flowing.tool.ToolCall.from_block` 单向转换（模块依赖保持
+    单向：``flowing.tool`` 认识 ``flowing.message``，反之不认识）。
 
     .. rubric:: 使用示例
 
@@ -581,27 +533,20 @@ class ToolCallBlock(ContentBlock):
             if block.type == "tool_call":
                 result = await agent.tool_call(ToolCall.from_block(block))
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
-    - 恢复不变量：tool_call block 必须有对应的 TOOL 结果消息（同分支、严格成对，
-      锚点为本 block 的 ``id`` ↔ 结果消息的 ``Message.tool_call_id``）；
-      缺失时恢复流程合成 ``synthetic=True`` 的占位 TOOL 消息（见模块级
-      docstring「恢复三条规则」规则三）。
-    - ``args`` 是 LLM 填写的原始参数字典；参数合并优先级（**inject >
-      specified > LLM args > 默认值**——inject 最高，M-54 安全不变量，
-      C-07 裁决回正）与 ``inject`` 防篡改通道在 ``flowing.tool.ToolEntry``
-      层处理，block 本身只是载体。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：逻辑 Turn 循环经 :meth:`flowing.tool.ToolCall.from_block` 转换后交
-      ``flowing.agent.Agent.tool_call``（时机：响应含 tool_call block
-      时，逐字调用点见 ``flowing.agent.Agent._run_turn`` 工具调用循环）
-    - 实例化方：Provider adapter（时机：每次响应含 tool_call 时；逐字
-      构造点未见规约）
+    - 恢复不变量：tool_call block 必须有对应的 TOOL 结果消息（同分支、
+      严格成对，锚点为本 block 的 ``id`` 与结果消息的
+      ``Message.tool_call_id``）；缺失时恢复流程合成 ``synthetic=True``
+      的占位 TOOL 消息（见 :attr:`Message.synthetic`）。
+    - ``args`` 是 LLM 填写的原始参数字典，未合并；参数合并（specified
+      （含注入表达式）> LLM args > schema 默认值，specified 最高）与
+      防篡改通道在 ``flowing.tool.ToolEntry`` 层处理，block 本身只是
+      载体。
 
     .. seealso::
-       :class:`flowing.tool.ToolCall`、:attr:`flowing.message.Message.tool_call_id`、
+       :class:`flowing.tool.ToolCall`、
+       :attr:`flowing.message.Message.tool_call_id`、
        :meth:`flowing.agent.Agent.tool_call`。
     """
 
@@ -622,47 +567,36 @@ class ToolCallBlock(ContentBlock):
 
 @dataclass(kw_only=True)
 class StructBlock(ContentBlock):
-    """结构数据内容块：对程序是结构、对 LLM 是 dumps 文本（D18）.
+    """结构数据内容块：对程序是结构、对 LLM 是 dumps 文本。
 
     .. rubric:: 功能介绍
 
-    承载工具结果 / 框架内部产生的 JSON 兼容结构数据（dict / list / dataclass /
-    BaseModel 等的序列化形态）。对程序是结构（``block.data`` 直读，无需
-    ``json.loads`` 回解）；对 LLM 是文本——adapter 恒投影为
-    ``json.dumps(data, ensure_ascii=False)``，LLM 可见面与纯文本方案逐字节相同。
+    承载工具结果 / 框架内部产生的 JSON 兼容结构数据（dict / list /
+    dataclass / BaseModel 等的序列化形态）。对程序是结构（``block.data``
+    直读，无需 ``json.loads`` 回解）；对 LLM 是文本——adapter 恒投影为
+    ``json.dumps(data, ensure_ascii=False)``，LLM 可见面与纯文本方案
+    逐字节相同。
 
-    .. rubric:: 设计动机
+    工具结果摊平后，混合结果序列里的结构数据若就地转成 ``TextBlock``，
+    机器可读形态只剩 JSON 文本；``StructBlock`` 让结构随行而不丢程序
+    可读性。分工：文本与标量装 ``TextBlock``，复合结构装
+    ``StructBlock``，媒体装媒体块。
 
-    工具结果摊平（删除 ``ToolResultBlock``，配对元数据上移到消息级
-    ``tool_call_id`` / ``tool_status``）后，混合结果序列里的结构数据若就地
-    textify 成 ``TextBlock``，机器可读形态只剩 JSON 文本；``StructBlock``
-    让结构随行而不丢程序可读性。分工口诀：「文本与标量装 ``TextBlock``
-    （str 原样、标量 dumps 成 JSON 拼写可解析回），复合结构装 ``StructBlock``，
-    媒体装媒体块」。
+    .. rubric:: 行为要点
 
-    .. rubric:: 行为规约
-
-    - ``data`` 恒 JSON 兼容（``json.dumps`` 可序列化）；构造时校验，违反 →
-      ``ValueError``（框架错误通道，作者 bug——如深层埋藏的非 JSON 对象在
-      塑形时于此诚实失败）。
+    - ``data`` 恒 JSON 兼容（``json.dumps`` 可序列化）；构造时校验，
+      违反抛 ``ValueError``（作者 bug 的诚实失败点，如深层埋藏的非
+      JSON 对象在塑形时于此报错）。
     - adapter 不对 ``StructBlock`` 做任何原生结构化映射，恒投影为
       ``json.dumps(ensure_ascii=False)`` 文本（所有 adapter 统一）。
-    - 作者不直接构造本块：它由归一化 / 塑形（``flowing.tool.normalize_output`` /
-      ``flowing.tool.output_to_blocks``）与框架内部产生；工具 ``execute``
-      签名中禁止出现 Block 类。
+    - 作者不直接构造本块：它由归一化 / 塑形
+      （``flowing.tool.normalize_output`` / ``flowing.tool.output_to_blocks``）
+      与框架内部产生；工具 ``execute`` 签名中禁止出现 Block 类。
     - token 估算按 ``json.dumps`` 长度计（见 :func:`estimate_message_tokens`）。
 
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``flowing.model`` Provider adapter（时机：每次组装 API
-      请求，恒投影为 dumps 文本）；``flowing.message.estimate_message_tokens``
-      （时机：每次估算，按 dumps 长度计）
-    - 实例化方：``flowing.tool.output_to_blocks``（时机：每次塑形工具结果，
-      dict / dataclass / BaseModel / 纯基础 list / tuple → 本块）；
-      其余框架内部产出处未见规约
-
     .. seealso::
-       :class:`flowing.message.ContentBlock`、:class:`flowing.message.TextBlock`、
+       :class:`flowing.message.ContentBlock`、
+       :class:`flowing.message.TextBlock`、
        :class:`flowing.tool.ToolResult`。
     """
 
@@ -676,7 +610,7 @@ class StructBlock(ContentBlock):
 
     def __post_init__(self) -> None:
         # 校验 data 为 JSON 兼容（json.dumps 可序列化），违反 → ValueError
-        # （作者 bug 的诚实失败点，见本类行为规约）
+        # （作者 bug 的诚实失败点）
         try:
             json.dumps(self.data)
         except TypeError as e:
@@ -685,22 +619,18 @@ class StructBlock(ContentBlock):
 
 @dataclass(kw_only=True)
 class MediaBlock(ContentBlock):
-    """媒体内容块基类：``data`` base64 **必填**且为权威表示.
+    """媒体内容块基类：``data`` base64 必填且为权威表示。
 
     .. rubric:: 功能介绍
 
-    ``image`` / ``video`` / ``audio`` / ``file`` 四种媒体块的共同字段基座。
-    无论原始来源是文件路径、URL 还是内存 buffer，进入消息层时**统一转换为 base64**，
-    ``data`` 持有权威表示；``name``（必填，缺省合成）/ ``mime_type`` 仅是元数据，
-    不替代 ``data``。
+    ``image`` / ``video`` / ``audio`` / ``file`` 四种媒体块的共同字段
+    基座。无论原始来源是文件路径、URL 还是内存 buffer，进入消息层时统一
+    转换为 base64，``data`` 持有权威表示；``name``（必填，缺省合成）与
+    ``mime_type`` 只是元数据，不替代 ``data``。
 
-    .. rubric:: 设计动机
-
-    - 统一性：来源无关的单一格式，消息层不感知「文件最初从哪来」。
-    - Provider 适配：各 API 接收方式不同（base64 内联 / URL / multipart），
-      adapter 从统一 base64 出发转换。
-    - 旧的 ``data=None`` 路径引用模式**已废弃**（安全与一致性理由：消息层不应
-      隐式读盘；``data`` 必填使消息对象自包含、可序列化、可持久化）。
+    统一 base64 的意义：消息层不感知「文件最初从哪来」（消息对象自包含、
+    可序列化、可持久化，不会隐式读盘），adapter 从统一 base64 出发做各
+    API 转换（base64 内联 / URL / multipart）。
 
     .. rubric:: 使用示例
 
@@ -718,36 +648,34 @@ class MediaBlock(ContentBlock):
             ],
         )
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
-    - ``data`` 必填：构造时不校验 base64 合法性（机制从简——非法数据由 adapter
-      或 Provider 报错），但缺失 ``data`` 是契约违反。
-    - ``name`` 必填（恒非 ``None``）：填充链 = 显式 ``name`` > ``path`` 文件名 >
-      合成 ``<sha256(data)[:12]>.<ext>``（ext 由 MIME 反推，MIME 未知 → ``.bin``）。
-      规则**全局统一**：不只工具结果转换层（``flowing.tool.normalize_output``），
-      adapter 从 provider 响应 / 用户上传建媒体块时同守。
-    - **消息层不做文件大小检查**：超大 base64 字符串直接存储；大小治理分层
-      （前端校验 / ``before_enqueue`` 钩子 / adapter ``ContextLengthError``）。
-    - ``mime_type`` 可选：缺失时 adapter 按扩展名或内容魔数推断；显式指定优先。
-    - 非行为：不做病毒扫描、不做格式转码、不做缩略图生成。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``flowing.model`` Provider adapter（时机：每次组装多模态
-      请求，从统一 base64 出发转换）
-    - 实例化方：不直接实例化（基类；实例化见各子类）
+    - ``data`` 必填：构造时不校验 base64 合法性（非法数据由 adapter 或
+      Provider 报错），但缺失 ``data`` 是契约违反。
+    - ``name`` 必填（恒非 ``None``）：填充链为 显式 ``name`` > ``path``
+      文件名 > 合成 ``<sha256(data)[:12]>.<ext>``（ext 由 MIME 反推，
+      MIME 未知 → ``.bin``）。规则全局统一：不只工具结果转换层
+      （``flowing.tool.normalize_output``），adapter 从 provider 响应 /
+      用户上传建媒体块时同守。
+    - 消息层不做文件大小检查：超大 base64 字符串直接存储；大小治理分层
+      （前端校验 / ``before_enqueue`` 钩子 / adapter 的
+      ``ContextLengthError``）。
+    - ``mime_type`` 可选：缺失时 adapter 按扩展名或内容魔数推断；显式
+      指定优先。
+    - 不做病毒扫描、不做格式转码、不做缩略图生成。
 
     .. seealso::
-       :class:`flowing.message.ImageBlock`、:class:`flowing.message.FileBlock`、
+       :class:`flowing.message.ImageBlock`、
+       :class:`flowing.message.FileBlock`、
        :class:`flowing.message.ContentBlock`。
     """
 
     data: str
-    """媒体内容的 base64 编码，**必填**，权威表示。路径引用模式不存在。
+    """媒体内容的 base64 编码，必填，权威表示。路径引用模式不存在。
     """
     name: str
-    """文件名等元数据，**必填**（恒非 ``None``）；不替代 ``data``。缺省时由转换 /
-    构造层按填充链合成：显式 ``name`` > ``path`` 文件名 >
+    """文件名等元数据，必填（恒非 ``None``）；不替代 ``data``。缺省时由
+    转换 / 构造层按填充链合成：显式 ``name`` > ``path`` 文件名 >
     ``<sha256(data)[:12]>.<ext>``（MIME 未知 → ``.bin``）。
     """
     mime_type: str | None = None
@@ -757,29 +685,22 @@ class MediaBlock(ContentBlock):
 
 @dataclass(kw_only=True)
 class ImageBlock(MediaBlock):
-    """图像内容块（单帧静态，多模态视觉输入）.
+    """图像内容块（单帧静态，多模态视觉输入）。
 
     .. rubric:: 功能介绍
 
-    用户上传图片且**希望多模态视觉理解**时使用；仅作文件传递（不做图像识别）
-    时用 :class:`FileBlock`。映射：Anthropic ``image`` block、OpenAI ``image_url``
-    content part。
+    用户上传图片且希望多模态视觉理解时使用；仅作文件传递（不做图像识别）
+    时用 :class:`FileBlock`。映射：Anthropic ``image`` block、OpenAI
+    ``image_url`` content part。
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
     - 字段与 :class:`MediaBlock` 一致；``type`` 固定 ``"image"``。
-    - 非行为：框架不校验数据确实是图像（adapter / Provider 负责）。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``flowing.model`` Provider adapter（时机：每次组装 API
-      请求，映射为 Anthropic ``image`` / OpenAI ``image_url``——本类
-      docstring 自述）
-    - 实例化方：用户代码（公共 API）；框架内未见逐字构造点（时机：
-      未见规约）
+    - 框架不校验数据确实是图像（adapter / Provider 负责）。
 
     .. seealso::
-       :class:`flowing.message.MediaBlock`、:class:`flowing.message.VideoBlock`。
+       :class:`flowing.message.MediaBlock`、
+       :class:`flowing.message.VideoBlock`。
     """
 
     type: Literal["image"] = "image"
@@ -789,28 +710,22 @@ class ImageBlock(MediaBlock):
 
 @dataclass(kw_only=True)
 class VideoBlock(MediaBlock):
-    """视频内容块（时间维度连续帧）.
+    """视频内容块（时间维度连续帧）。
 
     .. rubric:: 功能介绍
 
-    视频输入。多数 Provider 不原生支持视频——**降级策略属 adapter / UI 层**
-    （首帧截图、转为文件引用或略过），框架核心只做承载。
+    视频输入。多数 Provider 不原生支持视频——降级策略属 adapter / UI
+    层（首帧截图、转为文件引用或略过），框架核心只做承载。
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
     - 字段与 :class:`MediaBlock` 一致；``type`` 固定 ``"video"``。
-    - 与 :class:`ImageBlock` 的边界：单帧静态用 image；连续帧用 video。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``flowing.model`` Provider adapter（时机：每次组装 API
-      请求；不支持视频的 Provider 由 adapter 降级——本类 docstring
-      自述）
-    - 实例化方：用户代码（公共 API）；框架内未见逐字构造点（时机：
-      未见规约）
+    - 与 :class:`ImageBlock` 的边界：单帧静态用 ``image``；连续帧用
+      ``video``。
 
     .. seealso::
-       :class:`flowing.message.MediaBlock`、:class:`flowing.message.ImageBlock`。
+       :class:`flowing.message.MediaBlock`、
+       :class:`flowing.message.ImageBlock`。
     """
 
     type: Literal["video"] = "video"
@@ -820,27 +735,21 @@ class VideoBlock(MediaBlock):
 
 @dataclass(kw_only=True)
 class AudioBlock(MediaBlock):
-    """音频内容块（需要语音理解时使用）.
+    """音频内容块（需要语音理解时使用）。
 
     .. rubric:: 功能介绍
 
-    语音 / 音频输入。不支持的 Provider 由 adapter 降级（``<audio>`` 占位文本或
-    STT 转文字）；仅传递 ``.mp3`` 等文件而无需理解时用 :class:`FileBlock`。
+    语音 / 音频输入。不支持的 Provider 由 adapter 降级（``<audio>``
+    占位文本或语音转文字）；仅传递 ``.mp3`` 等文件而无需理解时用
+    :class:`FileBlock`。
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
     - 字段与 :class:`MediaBlock` 一致；``type`` 固定 ``"audio"``。
 
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``flowing.model`` Provider adapter（时机：每次组装 API
-      请求；不支持的 Provider 由 adapter 降级为占位文本或 STT——本类
-      docstring 自述）
-    - 实例化方：用户代码（公共 API）；框架内未见逐字构造点（时机：
-      未见规约）
-
     .. seealso::
-       :class:`flowing.message.MediaBlock`、:class:`flowing.message.FileBlock`。
+       :class:`flowing.message.MediaBlock`、
+       :class:`flowing.message.FileBlock`。
     """
 
     type: Literal["audio"] = "audio"
@@ -850,32 +759,25 @@ class AudioBlock(MediaBlock):
 
 @dataclass(kw_only=True)
 class FileBlock(MediaBlock):
-    """文件内容块（不直接可读的二进制或大型结构化数据）.
+    """文件内容块（不直接可读的二进制或大型结构化数据）。
 
     .. rubric:: 功能介绍
 
-    与 tool_call 无绑定关系的文件载体——一条 USER 消息可同时含 ``text`` 与多个
-    ``file`` block。与媒体块的区别在**意图**：用户上传图片但只希望作为文件处理
-    （不做图像识别）时用 ``file``；tool 结果附带的产物文件亦可直接出现于
-    TOOL 消息 content（摊平形态，如 ``[struct, file]``）。
+    与 tool_call 无绑定关系的文件载体——一条 USER 消息可同时含 ``text``
+    与多个 ``file`` block。与媒体块的区别在意图：用户上传图片但只希望
+    作为文件处理（不做图像识别）时用 ``file``；tool 结果附带的产物文件
+    亦可直接出现于 TOOL 消息 content（摊平形态，如 ``[struct, file]``）。
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
-    - ``name`` **必填**（文件名是文件块的核心元数据）；``data`` base64 必填
-      （路径引用模式已废弃）；``mime_type`` 可选。
-    - adapter 映射示例：Anthropic 转文本引用或 ``document`` API；OpenAI 经
-      ``file`` attachment / ``data`` content part。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``flowing.model`` Provider adapter（时机：每次组装 API
-      请求，映射示例见本类 docstring）
-    - 实例化方：用户代码 / 工具结果附带产物（TOOL 消息 content 直接含
-      ``file`` 块，如 ``[struct, file]``，时机：工具产出文件时——本类
-      docstring 自述；框架内逐字构造点未见规约）
+    - ``name`` 必填（文件名是文件块的核心元数据）；``data`` base64 必填
+      （路径引用模式不存在）；``mime_type`` 可选。
+    - adapter 映射示例：Anthropic 转文本引用或 ``document`` API；OpenAI
+      经 ``file`` attachment / ``data`` content part。
 
     .. seealso::
-       :class:`flowing.message.MediaBlock`、:class:`flowing.message.StructBlock`。
+       :class:`flowing.message.MediaBlock`、
+       :class:`flowing.message.StructBlock`。
     """
 
     type: Literal["file"] = "file"
@@ -885,26 +787,19 @@ class FileBlock(MediaBlock):
 
 @dataclass
 class Message:
-    """对象层消息：所有来源信息的统一表示，**消息级树的节点**.
+    """对象层消息：所有来源信息的统一表示，消息级树的节点。
 
     .. rubric:: 功能介绍
 
-    任意来源（用户、LLM、工具、外部 Agent、系统事件、扩展）产生的新信息统一表示
-    为 ``Message``。它同时是消息级树的**节点**——``id`` 是节点 id，``parent_id``
-    是父链，``Agent.current_head_id`` 指向某条消息的 id，上下文组装沿 ``parent_id``
-    上溯收集路径。
+    任意来源（用户、LLM、工具、外部 Agent、系统事件、扩展）产生的新信息
+    统一表示为 ``Message``。它同时是消息级树的节点——``id`` 是节点 id，
+    ``parent_id`` 是父链；``Agent.current_head_id`` 指向某条消息的 id，
+    上下文组装沿 ``parent_id`` 上溯收集路径。
 
-    .. rubric:: 设计动机
-
-    - **无 ``role`` 属性**：kind 替代 API 层 role，与 Provider 解耦（见
-      :class:`MessageKind` 设计动机）。
-    - **消息级树**（取代旧 Turn 粒度树）：goal 模式下一条指令可连续工作数天，
-      Turn 粒度下树只有一个巨大节点、数天不落盘、中途不能 fork——消息级让
-      fork / 压缩 / 恢复都落在任意消息上。代价是放弃「当前 turn
-      内存缓冲区」这个免费手术区，历史手术需要 :class:`MessageChain` + tombstone
-      支撑。
-    - **字段复用**：``id`` 直接用作节点 id；``turn_end`` 恰好就是「完整逻辑 turn
-      结束」的边界标记；新增仅 ``parent_id`` / ``partial`` 两个字段。
+    消息没有 ``role`` 属性（kind 替代 API 层 role，与 Provider 解耦，
+    见 :class:`MessageKind`）。消息级树取代了旧 Turn 粒度树：fork /
+    压缩 / 恢复都落在任意消息上；代价是历史修改需要 :class:`MessageChain`
+    的五 op 支撑。
 
     .. rubric:: 使用示例
 
@@ -912,138 +807,103 @@ class Message:
 
         msg = Message(
             kind=MessageKind.USER,
-            content=[TextBlock(text="帮我查订单 ORD-12345")],
+            content=[TextBlock(text="帮我查订单 4521")],
             source="chat_input",
             tags=["order"],
         )
         message_id = await agent.enqueue_message(msg)   # 返回 msg.id
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
-    期待行为：
-
-    - ``id`` 默认由框架分配（UUID）；``enqueue_message`` 返回 ``msg.id``，
-      ``Agent.query()`` 的等待与该 id 绑定（``_pending_turns`` 出队绑定）。
-    - ``parent_id`` 由 ``Agent._append_message`` 在挂树时设置（首条消息链到
-      ``current_head_id``，后续链到上一条）；手动构造的消息入队前通常为 ``None``。
-    - ``turn_end``：**agent 层概念**（turn 是 agent 层概念），由
-      ``_run_turn`` 在挂树时写入：本条 PROVIDER 消息落盘时 turn 随之关闭
-      （自然 ``finish`` 或取消/abort）→ ``True``；与 provider 层的
-      ``ProviderResponse.finish`` 分层——中断的流式没有 finish，但 turn
-      照样关闭（S-14 裁决）。恢复时「最后一个 ``turn_end=True`` 的
-      PROVIDER 消息」之后的已落盘消息 = 半截 turn（崩溃撕裂或异常终结；
-      保留不续跑，但按 M-28 裁决**照常进入 LLM 上下文**，不截断）。
-    - ``partial``：流式中断时置 ``True``，已累积内容**保留落盘**（对应中断保留
-      行为）；正常完成的消息恒为 ``False``。
-    - ``synthetic``：仅恢复流程合成的占位消息为 ``True``（孤立 tool_call 的
-      占位 TOOL 消息），标记「不是真实结果」；其余消息恒为 ``False``。
-    - ``tool_call_id`` / ``tool_status``：**仅 ``kind=TOOL`` 非 None**；
-      ``__post_init__`` 双向强制（``kind=TOOL`` ⟺ 两字段非 ``None``，违反 →
-      ``ValueError``）——把「孤儿结果」消灭在构造点，不等上下文组装才发现。
-      既有 kind 条件字段（``turn_end`` / ``synthetic`` / ``priority``）维持
-      文档约定，不追溯校验（追溯可能误伤存量构造路径）。
-    - ``timestamp``：时区无关（UTC / epoch）——统一排序基准、延迟测量可比较、
-      跨机器审计对齐、夏令时稳健；显示转换由 UI / 日志层负责；**是否进入发给
-      LLM 的消息记录由 Provider adapter 决定**（多数 adapter 不带）。
-
-    非行为：
-
-    - 历史消息**不可变**于应用层直接修改——修改历史走 :class:`MessageChain`
+    - ``id`` 默认由框架分配（UUID）；``enqueue_message`` 返回
+      ``msg.id``，``Agent.query()`` 的等待与该 id 绑定。
+    - ``parent_id`` 由 ``Agent._append_message`` 在挂树时设置（首条消息
+      链到 ``current_head_id``，后续链到上一条）；手动构造的消息入队前
+      通常为 ``None``。
+    - ``turn_end``：由 agent 层在挂树时写入——本条 PROVIDER 消息落盘时
+      turn 随之关闭（自然完成或取消 / abort）→ ``True``；与 provider 层
+      的 ``ProviderResponse.finish`` 分层（中断的流式没有 finish，但
+      turn 照样关闭）。恢复时「最后一个 ``turn_end=True`` 的 PROVIDER
+      消息」之后的已落盘消息 = 半截 turn（崩溃撕裂或异常终结；保留不
+      续跑，照常进入 LLM 上下文，不截断）。
+    - ``partial``：流式中断时置 ``True``，已累积内容保留落盘；正常完成
+      的消息恒为 ``False``。
+    - ``synthetic``：仅恢复流程合成的占位消息为 ``True``（孤立 tool_call
+      的占位 TOOL 消息），标记「不是真实结果」；其余消息恒为 ``False``。
+    - ``tool_call_id`` / ``tool_status``：仅 ``kind=TOOL`` 非 None；
+      ``__post_init__`` 双向强制（``kind=TOOL`` 与两字段非 ``None`` 互为
+      充要条件，违反抛 ``ValueError``）——把「孤儿结果」消灭在构造点。
+      其余 kind 条件字段（``turn_end`` / ``synthetic`` / ``priority``）
+      维持文档约定，不追溯校验。
+    - ``timestamp``：时区无关（UTC / epoch）——统一排序基准、延迟测量可
+      比较、跨机器审计对齐；显示转换由 UI / 日志层负责；是否进入发给
+      LLM 的消息记录由 Provider adapter 决定（多数 adapter 不带）。
+    - 历史消息不可在应用层直接修改——修改历史走 :class:`MessageChain`
       五 op（持久化手术）或 fork（切分支）。
-    - 消息对象不携带执行状态 / 等待标记（``_pending_turns`` 是纯运行时结构，
-      future 不可序列化，不落盘）。
+    - 消息对象不携带执行状态 / 等待标记（等待绑定是纯运行时结构，不落盘）。
     - 兄弟分支无顺序信息（互斥分支）；分支列表 UI 排序用 ``timestamp``，
       树结构不需要显式排序字段。
-
-    不变量：
-
-    - 树上任意消息的 ``parent_id`` 为 ``None``（根标记）或指向另一条已落盘消息；
-      **允许多个根**（森林模型）——新根由 ``MessageChain.branch(None, msg)``
-      开启（如压缩换链），旧根链完整保留、不再进入上下文。
-    - 一个逻辑 turn = 一条消费消息开始，到一条 ``turn_end=True`` 的 PROVIDER
-      消息结束（或被 abort）。
-    - 配对锚（新锚点）：同一分支上，PROVIDER 消息 ``ToolCallBlock.id`` ↔
-      后续 TOOL 消息的 ``tool_call_id``，1:1 严格成对；孤立调用由恢复合成的
-      ``synthetic`` 占位 TOOL 消息封闭。
-    - 副线（``side_query``）消息从不进树——「副线」是调用路径属性而非
-      消息属性（``side`` 字段已删除）。
-
-    .. rubric:: 测试案例
-
-    - 前置：空树 Agent → 操作：``enqueue_message`` 一条 USER 消息后等待 turn
-      完成 → 期望：树为 ``user(parent=None) → provider(parent=user.id,
-      turn_end=True)``，``current_head_id == provider.id``。
-    - 前置：流式 turn 执行中 → 操作：abort → 期望：已累积内容以
-      ``partial=True`` 的 PROVIDER 消息落盘，``timestamp`` 为 UTC。
-    - 前置：``side_query`` 完成 → 期望：消息树与 ``tree.jsonl`` 均无新行。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``flowing.agent.Agent.enqueue_message``（时机：每次入队）；
-      ``flowing.agent.Agent._append_message``（时机：每次挂树落盘，
-      五步统一入口）；``flowing.message.MessageChain`` 五 op（时机：
-      每次手术）；``flowing.context`` 组装沿 ``parent_id`` 上溯
-      （时机：每次组装上下文）
-    - 实例化方：``flowing.providers.Provider.generate`` 的 adapter 实现
-      （时机：每次模型响应，产出 ``kind=PROVIDER`` 消息）；
-      ``flowing.tool.ToolResult.as_message``（时机：逻辑 Turn 收尾，
-      每次工具结果转 TOOL 消息，``tool_call_id`` 由 ``Agent.tool_call``
-      管线接线，C-05 裁决）；``flowing.agent`` 异步完成回调（时机：
-      fire-and-forget Task 完成，产出标注块 + 结果块的 EVENT 消息；
-      固定行为，非扩展点）；``flowing.agent.Agent._restore``（时机：每次
-      恢复遇孤立 tool_call，合成 ``synthetic=True`` 占位 TOOL 消息）；
-      ``flowing.plugins.skills`` / ``flowing.plugins.cron`` /
-      ``flowing.plugins.comm`` / ``flowing.plugins.workflow``（时机：
-      各插件每次投递）；用户代码经 ``Agent.message`` /
-      ``enqueue_message`` 投递
+    - 不变量：树上任意消息的 ``parent_id`` 为 ``None``（根标记）或指向
+      另一条已落盘消息；允许多个根（森林模型）——新根由
+      :meth:`MessageChain.branch` 以 ``parent_id=None`` 开启（如压缩换
+      链），旧根链完整保留、不再进入上下文。
+    - 不变量：一个逻辑 turn = 一条消费消息开始，到一条 ``turn_end=True``
+      的 PROVIDER 消息结束（或被 abort）。
+    - 不变量：配对锚——同一分支上，PROVIDER 消息 ``ToolCallBlock.id`` 与
+      后续 TOOL 消息的 ``tool_call_id`` 1:1 严格成对；孤立调用由恢复合成
+      的 ``synthetic`` 占位 TOOL 消息封闭。
+    - 副线（``Agent.side_query``）消息从不进树（「副线」是调用路径属性
+      而非消息属性）。
 
     .. seealso::
-       :class:`flowing.message.MessageKind`、:class:`flowing.message.MessageChain`、
-       :class:`flowing.message.MessageQueue`、:class:`flowing.agent.TurnContext`、
-       :meth:`flowing.agent.Agent._append_message`。
+       :class:`flowing.message.MessageKind`、
+       :class:`flowing.message.MessageChain`、
+       :class:`flowing.message.MessageQueue`、
+       :class:`flowing.agent.TurnContext`。
     """
 
     kind: MessageKind
-    """消息来源（对象层唯一角色判别），见 :class:`MessageKind`。**必填**。
+    """消息来源（对象层唯一角色判别），见 :class:`MessageKind`。必填。
     """
     content: list[ContentBlock]
-    """内容片段列表（不同 type 交错排列），见 :class:`ContentBlock`。**必填**。
-    TOOL 消息中只装纯内容块（text / struct / 媒体），无协议块。
+    """内容片段列表（不同 type 可交错排列），见 :class:`ContentBlock`。
+    必填。TOOL 消息中只装纯内容块（text / struct / 媒体），无协议块。
     """
     tool_call_id: str | None = None
-    """配对锚（默认 ``None``）：**仅 ``kind=TOOL`` 非 None**，值为对应 PROVIDER
-    消息 :attr:`ToolCallBlock.id`；由 ``Agent.tool_call`` 管线在
-    ``ToolResult.as_message`` 时接线（C-05 裁决）。``__post_init__`` 双向强制。
+    """配对锚（默认 ``None``）：仅 ``kind=TOOL`` 非 None，值为对应
+    PROVIDER 消息 :attr:`ToolCallBlock.id`。``__post_init__`` 双向强制。
     """
     tool_status: Literal["completed", "pending", "blocked", "error"] | None = None
-    """工具结果状态四值（默认 ``None``）：**仅 ``kind=TOOL`` 非 None**。
-    用内联 ``Literal`` 而非 import ``flowing.tool.ToolStatus``——避免
-    message↔tool 循环依赖（「tool 认识 message、message 不认识 tool」单向依赖）。
+    """工具结果状态四值（默认 ``None``）：仅 ``kind=TOOL`` 非 None。
+    用内联 ``Literal`` 而非 import ``flowing.tool.ToolStatus``——保持
+    「tool 认识 message、message 不认识 tool」的单向依赖。
     ``__post_init__`` 双向强制。
     """
     id: str = field(default_factory=lambda: uuid4().hex)
     """全局唯一消息 id（默认 UUID），同时是消息级树的节点 id；
-    ``enqueue_message`` 的返回值与 ``_pending_turns`` 的绑定键。
+    ``enqueue_message`` 的返回值。
     """
     parent_id: str | None = None
     """消息级父链：``None`` = 根标记（森林模型，一棵树允许多个根——新根经
-    ``MessageChain.branch(None, msg)`` 开启）；挂树时由 ``_append_message``
-    设置（首条链到 ``current_head_id``，后续链到上一条）。
-    fork 目标、上下文上溯、恢复重建的唯一依据。
+    :meth:`MessageChain.branch` 以 ``None`` 开启）；挂树时由
+    ``Agent._append_message`` 设置（首条链到 ``current_head_id``，后续
+    链到上一条）。fork 目标、上下文上溯、恢复重建的唯一依据。
     """
     turn_end: bool = False
-    """「逻辑 turn 关闭」边界标记（默认 ``False``）；仅 PROVIDER 消息上有语义。
-    **agent 层写入**（``_run_turn`` 挂树时：turn 随本条消息关闭——自然
-    ``finish`` 或取消/abort——→ ``True``），与 provider 层的
-    ``ProviderResponse.finish`` 分层（S-14）。恢复时定位完整 turn 边界
-    与 ``current_head_id`` 锚点的依据。
+    """「逻辑 turn 关闭」边界标记（默认 ``False``）；仅 PROVIDER 消息上
+    有语义。由 agent 层写入（``_run_turn`` 挂树时：turn 随本条消息关闭
+    ——自然完成或取消 / abort → ``True``），与 provider 层的
+    ``ProviderResponse.finish`` 分层。恢复时定位完整 turn 边界与
+    ``current_head_id`` 锚点的依据。
     """
     partial: bool = False
-    """流式中断标记（默认 ``False``）；``True`` 表示该消息内容不完整但保留落盘。
+    """流式中断标记（默认 ``False``）；``True`` 表示该消息内容不完整但
+    保留落盘。
     """
     synthetic: bool = False
     """合成占位标记（默认 ``False``）；仅恢复流程为孤立 tool_call 合成的
-    占位 TOOL 消息（``tool_status="error"`` + ``TextBlock`` 占位说明）为 ``True``。
+    占位 TOOL 消息（``tool_status="error"`` + ``TextBlock`` 占位说明）
+    为 ``True``。
     """
     source: str = ""
     """二级分类自由字符串（默认 ``""``；框架不枚举，投递方填写），
@@ -1053,24 +913,21 @@ class Message:
     """任意标签列表（默认空），用于分组 / 过滤 / 清洗（如 reminder 清洗）。
     """
     priority: MessagePriority = MessagePriority.NORMAL
-    """队列排序依据（默认 ``MessagePriority.NORMAL``）；仅对入队消息有调度效果。
+    """队列排序依据（默认 ``MessagePriority.NORMAL``）；仅对入队消息有
+    调度效果。
     """
     timestamp: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None)
     )
-    """产生时间戳（默认构造时的当前 UTC），**时区无关**；附着于消息供查询 /
+    """产生时间戳（默认构造时的当前 UTC），时区无关；附着于消息供查询 /
     日志 / 审计 / 排序，是否进 LLM 上下文由 adapter 决定。
     """
     usage: Usage | None = None
-    """本消息对应的 provider 实测用量（默认 ``None``）。**仅 PROVIDER 消息
-    携带**：adapter 构造响应消息时附着（见 ``flowing.providers.Provider``
-    契约；``ProviderResponse`` **不携带** usage——本字段是唯一权威
-    落点，单源化裁决），随消息落盘、恢复后仍在——它是
-    :meth:`flowing.agent.Agent.estimate_context_tokens` 锚点机制的载体：
-    挂在树节点上使锚点天然跟随 fork / 树手术 / 跨进程恢复，无需任何
-    失效逻辑。非 PROVIDER 消息恒为 ``None``；框架核心不读它做计费决策
-    （计费走 ``TurnResult.token_usage`` 聚合——其累加器持有的正是
-    本字段对象的引用）。
+    """本消息对应的 Provider 实测用量（默认 ``None``）。仅 PROVIDER 消息
+    携带：adapter 构造响应消息时附着（``ProviderResponse`` 不携带
+    usage——本字段是唯一权威落点），随消息落盘、恢复后仍在。非 PROVIDER
+    消息恒为 ``None``；框架核心不读它做计费决策（计费走
+    ``TurnResult.token_usage`` 聚合）。
     """
 
     def __post_init__(self) -> None:
@@ -1089,7 +946,7 @@ class Message:
 
 
 # ---------------------------------------------------------------------------
-# 消息 ↔ 持久化行（X2：行格式 schema 的唯一序列化点，L3 _persist_message 复用）
+# 消息 ↔ 持久化行（行格式 schema 的唯一序列化点；Agent._persist_message 复用）
 # ---------------------------------------------------------------------------
 
 _BLOCK_TYPES: dict[str, type[ContentBlock]] = {
@@ -1120,33 +977,47 @@ def _block_from_record(data: dict) -> ContentBlock:
 
 
 def to_record(msg: Message) -> dict:
-    """``Message`` → ``tree.jsonl`` 消息行（JSON 兼容 dict）。
+    """把 ``Message`` 序列化为 ``tree.jsonl`` 的一行（JSON 兼容 dict）。
 
     .. rubric:: 功能介绍
 
-    消息对象 ↔ 行映射的**唯一序列化点**（X2 落实：spec 把行格式的字段级
-    schema 归属持久化规约，本模块只约束映射语义——schema 冻结在
-    本函数与 :func:`from_record` 一对中，L3 ``Agent._persist_message``
-    以本函数为唯一序列化点）。
+    消息对象与持久化行映射的序列化点（:func:`from_record` 的逆映射）。
+    行格式的字段级 schema 冻结在本函数与 :func:`from_record` 一对中，
+    ``Agent._persist_message`` 以本函数为唯一序列化点。
 
-    .. rubric:: 行为规约
+    落盘行格式（JSON 对象）：
 
-    - schema：``{"type": "message", "id", "parent_id", "kind": <字符串值>,
-      "content": [{"type", ...}], "tool_call_id", "tool_status", "turn_end",
-      "partial", "synthetic", "source", "tags", "priority": <int>,
-      "timestamp": <ISO 8601>, "usage": None}``。
+    .. code-block:: python
+
+        {
+            "type": "message",
+            "id": "...",
+            "parent_id": None,
+            "kind": "user",
+            "content": [{"type": "text", "text": "..."}],
+            "tool_call_id": None,
+            "tool_status": None,
+            "turn_end": False,
+            "partial": False,
+            "synthetic": False,
+            "source": "",
+            "tags": [],
+            "priority": 3,
+            "timestamp": "2026-01-01T00:00:00",
+            "usage": None,
+        }
+
+    .. rubric:: 行为要点
+
     - ``kind`` 落盘为枚举字符串值；``priority`` 落盘为枚举数值；
       ``timestamp`` 落盘为 ISO 格式（naive UTC）。
-    - ``usage`` 序列化为七计数字段 + ``raw`` 的 dict
-      （``None`` 保持 ``None``；存量 v0/v1 行的 ``"usage": null``
-      天然兼容）。message 不认识 providers（单向依赖），序列化按
-      ``Usage`` 的字段名鸭子类型读取，还原端在函数内局部 import。
+    - ``content`` 逐块序列化，每块含 ``type`` 判别字段。
+    - ``usage`` 为 ``None`` 或七计数字段 + ``raw`` 的 dict（存量行的
+      ``"usage": null`` 兼容）。message 不 import providers（单向依赖），
+      序列化按 ``Usage`` 的字段名读取，还原端在函数内局部 import。
 
-    .. rubric:: 调用关系（审计）
-
-    - 调用：``_block_to_record``（逐 content 块）
-    - 被调：L3 ``flowing.agent.Agent._persist_message``（时机：每次
-      挂树落盘）
+    .. seealso::
+       :func:`from_record`、:meth:`flowing.agent.Agent._persist_message`。
     """
     return {
         "type": "message",
@@ -1163,7 +1034,7 @@ def to_record(msg: Message) -> dict:
         "tags": list(msg.tags),
         "priority": int(msg.priority),
         "timestamp": msg.timestamp.isoformat(),
-        # Usage 已接通（X2 收尾）：鸭子类型读取七字段 + raw，不 import providers
+        # 鸭子类型读取七字段 + raw，不 import providers
         "usage": None if msg.usage is None else {
             "input": msg.usage.input,
             "fresh_input": msg.usage.fresh_input,
@@ -1178,28 +1049,28 @@ def to_record(msg: Message) -> dict:
 
 
 def from_record(record: dict) -> Message:
-    """``tree.jsonl`` 消息行 → ``Message``（:func:`to_record` 的逆映射）。
+    """把 ``tree.jsonl`` 的一行（dict）还原为 ``Message``。
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
-    - 要求 ``record["type"] == "message"``，否则 ``ValueError``。
-    - 逐字段还原（``kind`` / ``priority`` 重建为枚举，``timestamp``
-      经 ``datetime.fromisoformat`` 还原）；``usage`` 为 ``None`` 或
-      重建为 ``providers.Usage``（局部 import——message 不认识
+    - 要求 ``record["type"] == "message"``，否则抛 ``ValueError``。
+    - 逐字段还原：``kind`` / ``priority`` 重建为枚举，``timestamp`` 经
+      ``datetime.fromisoformat`` 还原；``usage`` 为 ``None`` 或重建为
+      ``flowing.providers.Usage``（局部 import——message 不 import
       providers 的单向依赖在运行期无环）。
 
-    .. rubric:: 调用关系（审计）
+    :raises ValueError: ``record`` 不是消息行（``type`` 字段不是
+        ``"message"``）。
 
-    - 调用：``_block_from_record``（逐 content 块）
-    - 被调：L3 ``flowing.agent.Agent._restore`` 的重放驱动（时机：
-      恢复管线重放 tree.jsonl）
+    .. seealso::
+       :func:`to_record`、:meth:`flowing.agent.Agent._restore`。
     """
     if record.get("type") != "message":
         raise ValueError(f"不是消息行: type={record.get('type')!r}")
     raw_usage = record.get("usage")
     usage = None
     if raw_usage is not None:
-        # Usage 已接通（X2 收尾）；局部 import 破 message→providers 方向
+        # 局部 import 破 message→providers 方向
         from flowing.providers.provider import Usage
 
         usage = Usage(**raw_usage)
@@ -1222,32 +1093,32 @@ def from_record(record: dict) -> Message:
 
 
 MEDIA_TOKEN_ESTIMATE: int = 2000
-"""单个媒体块的固定 token 估算值。消息层媒体一律 base64 内联，但其 token
-成本由 provider 按图像/媒体规格定档，与 base64 长度无关——按字符数
-估会失真几个数量级，故 :func:`estimate_message_tokens` 对
-:class:`MediaBlock` 及其子类固定计此常数、不看内容（kimi-code 同值口径）。
+"""单个媒体块的固定 token 估算值。
+
+消息层媒体一律 base64 内联，但其 token 成本由 provider 按图像 / 媒体
+规格定档，与 base64 长度无关——按字符数估会失真几个数量级，故
+:func:`estimate_message_tokens` 对 :class:`MediaBlock` 及其子类固定计
+此常数、不看内容。
 """
 
 
 def estimate_message_tokens(msg: Message) -> int:
-    """估算一条消息的 token 数（字符启发式，仅供上下文窗口预算观测）.
+    """估算一条消息的 token 数（字符启发式，仅供上下文窗口预算观测）。
 
     .. rubric:: 功能介绍
 
-    对消息逐块展开的本地估算：``TextBlock.text`` / ``ThinkingBlock.thinking``
-    的文本、``ToolCallBlock`` 的 ``name`` + JSON 序列化参数、
-    ``StructBlock`` 的 ``json.dumps`` 序列化长度均按字符启发式计；
-    ``MediaBlock`` 及其子类固定计 :data:`MEDIA_TOKEN_ESTIMATE`。被
-    :meth:`flowing.agent.Agent.estimate_context_tokens` 用于估算锚点之后
-    （或无锚点时全部）路径消息。
+    对消息逐块展开的本地估算：文本类块（``TextBlock.text`` /
+    ``ThinkingBlock.thinking``）与 ``ToolCallBlock`` 的 ``name`` +
+    JSON 序列化参数、``StructBlock`` 的 ``json.dumps`` 序列化长度均按
+    字符启发式计；``MediaBlock`` 及其子类固定计
+    :data:`MEDIA_TOKEN_ESTIMATE`。被
+    :meth:`flowing.agent.Agent.estimate_context_tokens` 用于估算锚点
+    之后（或无锚点时全部）路径上的消息。
 
-    .. rubric:: 设计动机
-
-    字符启发式取 kimi-code 口径：**ASCII ≈ 4 字符/token、非 ASCII
-    （CJK 等）≈ 1 字符/token**——中文场景下远优于统一 ÷4（pi 口径）。
-    不用 tokenizer：估算只服务于「该不该压缩、还剩多少余量」这类
-    窗口预算判断（±20% 足够），不值得引入 tokenizer 依赖；**永不用于
-    计费**（计费走 ``TurnResult.token_usage`` 聚合，数据源是
+    字符启发式口径：ASCII 约 4 字符/token、非 ASCII（CJK 等）约 1
+    字符/token——中文场景下远优于统一除以 4。不用 tokenizer：估算只
+    服务于「该不该压缩、还剩多少余量」这类窗口预算判断（±20% 足够），
+    永不用于计费（计费走 ``TurnResult.token_usage`` 聚合，数据源是
     ``Message.usage`` 实测）。
 
     .. rubric:: 使用示例
@@ -1256,35 +1127,21 @@ def estimate_message_tokens(msg: Message) -> int:
 
         estimate_message_tokens(msg)   # 纯函数，随时可调用
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
-    - 同步纯函数：只读 ``msg``，无副作用、无缓存（「无本地缓存」原则，
-      每次现场求值）。
+    - 同步纯函数：只读 ``msg``，无副作用、无缓存，每次现场求值。
     - 逐块规则：文本类块按（ASCII 字符数 ÷ 4 + 非 ASCII 字符数）向上
       取整；``ToolCallBlock`` 计 ``name`` 与 ``args`` JSON 序列化后的
-      字符启发式之和；``StructBlock`` 计 ``json.dumps(ensure_ascii=False)``
-      结果的字符启发式；``MediaBlock`` 族固定 ``MEDIA_TOKEN_ESTIMATE``，
-      **不读 base64 ``data``**。
+      字符启发式之和；``StructBlock`` 计
+      ``json.dumps(ensure_ascii=False)`` 结果的字符启发式；``MediaBlock``
+      族固定 ``MEDIA_TOKEN_ESTIMATE``，不读 base64 ``data``。
     - 不计入：消息元数据（``id`` / ``source`` / ``tags`` 等）不进 LLM
-      上下文，不参与估算；kind 的角色开销为零头，不单独计。
-    - 边缘情况：空 ``content`` → 0；未知块类型按「无文本内容」计 0。
-
-    .. rubric:: 测试案例
-
-    - 前置：消息含一个 100 字符纯中文 ``TextBlock`` → 期望：估值 ≈ 100
-      （非 ASCII ×1），而非 25（统一 ÷4 口径的失真值）。
-    - 前置：消息含一张 base64 长度 300k 的 ``ImageBlock`` → 期望：该块
-      计 ``MEDIA_TOKEN_ESTIMATE``（2000），与 base64 长度无关。
-
-    .. rubric:: 调用关系（审计）
-
-    - 调用：无（字符启发式为内部机制，逐块分支未见规约）
-    - 被调：``flowing.agent.Agent.estimate_context_tokens``（时机：每次
-      现场估算，对锚点后 / 无锚点时路径上的每条消息各调一次）
+      上下文，不参与估算。
+    - 边缘情况：空 ``content`` 返回 0；未知块类型按「无文本内容」计 0。
 
     .. seealso::
-       :data:`MEDIA_TOKEN_ESTIMATE`、:class:`Message`（``usage`` 字段——
-       实测锚点载体）、:meth:`flowing.agent.Agent.estimate_context_tokens`。
+       :data:`MEDIA_TOKEN_ESTIMATE`、
+       :meth:`flowing.agent.Agent.estimate_context_tokens`。
     """
     total = 0
     for block in msg.content:
