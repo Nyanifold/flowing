@@ -346,9 +346,10 @@ class Workflow(ABC):
 
         - 调用：无（抽象方法；编排调用由子类实现决定）
         - 被调：``flowing.plugins.workflow.RunWorkflowTool.execute()``
-          经 ``asyncio.create_task(instance.run(**args))`` 后台启动
-          （时机：每次 LLM 经 ``run-workflow`` 工具调用，绝不 await）；
-          代码直调为用户代码路径（S-23 裁决：无 Cron 回调路径）
+          async gen 形态后台驱动（B12：首 yield 收据 → ``await
+          instance.run(**args)`` 由 ``Tool._drive_asyncgen`` 承载，
+          绝不阻塞工具调用栈）；代码直调为用户代码路径（S-23 裁决：
+          无 Cron 回调路径）
 
         .. seealso:: :meth:`create_agent`、:meth:`tool_call`
         """

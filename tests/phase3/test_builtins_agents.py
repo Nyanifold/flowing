@@ -213,6 +213,11 @@ async def test_t74_subagent_invoke_async(runtime, provider):
     assert tool_msg.tool_status == "pending"
     assert any(isinstance(b, TextBlock) and "后台任务 ID" in b.text
                for b in tool_msg.content)
+    task_id = next(t.split("：", 1)[1]
+                   for t in (b.text for b in tool_msg.content
+                             if isinstance(b, TextBlock))
+                   if t.startswith("后台任务 ID："))
+    assert task_id in agent._background_tasks   # B14：注册表在册（强引用/取消/destroy 覆盖）
     # 运行段结局经 SUBAGENT 消息送达
     child_gate.set()
     await _drain_until(lambda: any(
@@ -221,6 +226,9 @@ async def test_t74_subagent_invoke_async(runtime, provider):
                    if m.kind is MessageKind.SUBAGENT)
     assert "后台完成" in "".join(
         getattr(b, "text", "") for b in sub_msg.content)
+    # 运行段完成 → 注册表移除（完成即弃，B9）
+    await _drain_until(
+        lambda: task_id not in agent._background_tasks)
 
 
 async def test_t74_async_creation_failure_is_sync_error(runtime):

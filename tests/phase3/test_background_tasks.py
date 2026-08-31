@@ -19,7 +19,14 @@ import pytest
 
 from flowing.agent import Agent
 from flowing.errors import FormatError, Intercepted
-from flowing.message import MessageKind, StructBlock, TextBlock, ToolCallBlock
+from flowing.message import (
+    MessageKind,
+    StructBlock,
+    TextBlock,
+    ThinkingBlock,
+    ToolCallBlock,
+)
+from flowing.parsable import Parsable
 from flowing.tool import (
     CliTool,
     ScriptTool,
@@ -37,6 +44,8 @@ make_runtime = _mod.make_runtime
 add_fake_provider = _mod.add_fake_provider
 script_provider = _mod.script_provider
 text_response = _mod.text_response
+tool_call_response = _mod.tool_call_response
+SimpleAgent = _mod.SimpleAgent
 
 
 class _FakeCaller:
@@ -66,6 +75,11 @@ async def _drain_until(predicate, *, attempts: int = 200) -> bool:
         if predicate():
             return True
     return False
+
+
+async def _noop() -> None:
+    """立即完成的空协程（组 7「命中已完成任务」用）。"""
+    return None
 
 
 def _make_tool(execute_fn, *, background: bool = False) -> ScriptTool:
@@ -201,12 +215,13 @@ async def test_g4_yield_normalization_and_forbidden_block():
         yield {"status": "started"}                    # ① 收据（不进消息）
         yield {"epoch": 1, "val_loss": 0.5}            # ② dict → StructBlock
         yield "进度文本"                                # ③ str → TextBlock
-        yield ToolCallBlock(id="t1", name="x", args={})  # ④ 违禁块 → 文本说明
+        yield ToolCallBlock(id="t1", name="x", args={})  # ④a 违禁块 → 文本说明
+        yield ThinkingBlock(thinking="思考过程")         # ④b ThinkingBlock 同通道
         yield {"status": "done"}                       # ⑤ 最终呈现
 
     r = await _make_tool(gen)({"text": "x"}, caller=caller)
     assert r.status == "pending" and r.output == {"status": "started"}
-    assert await _drain_until(lambda: len(caller.messages) >= 4)
+    assert await _drain_until(lambda: len(caller.messages) >= 5)
     # 报告 1：dict 归一为 StructBlock
     m1 = caller.messages[0]
     assert any(isinstance(b, StructBlock) and b.data.get("epoch") == 1
@@ -214,15 +229,15 @@ async def test_g4_yield_normalization_and_forbidden_block():
     # 报告 2：str 归一为 TextBlock
     m2 = caller.messages[1]
     assert "进度文本" in _texts(m2)
-    # 报告 3：违禁块容错转文本（不抛异常、不泄漏协议块）
-    m3 = caller.messages[2]
-    assert all(isinstance(b, TextBlock) for b in m3.content)
-    assert any("违禁块" in t for t in _texts(m3))
-    assert not any(isinstance(b, ToolCallBlock)
+    # 报告 3/4：ToolCallBlock 与 ThinkingBlock 都容错转文本（不抛、不泄漏）
+    for m3 in caller.messages[2:4]:
+        assert all(isinstance(b, TextBlock) for b in m3.content)
+        assert any("违禁块" in t for t in _texts(m3))
+    assert not any(isinstance(b, (ToolCallBlock, ThinkingBlock))
                    for m in caller.messages for b in m.content)
-    # 报告 4：后续 yield 正常继续
+    # 报告 5：后续 yield 正常继续
     assert any(isinstance(b, StructBlock) and b.data.get("status") == "done"
-               for b in caller.messages[3].content)
+               for b in caller.messages[4].content)
 
 
 # ---------------------------------------------------------------------------
@@ -341,6 +356,14 @@ async def test_g7_cancel_api_and_destroy(tmp_path):
         assert agent.cancel_all_background_tasks() is None
         assert await _drain_until(
             lambda: r2.background_task_id not in agent._background_tasks)
+        # 命中已完成任务 → 仍返回 True（B9：返回「是否命中注册表」，与
+        # task.cancel() 返回值无关——已完成任务的 cancel() 返回 False）。
+        # 该状态仅存在于「完成与 done_callback 移除之间」的同 tick 窗口：
+        # 先注册已完成任务、不 await 立即取消（确定性构造）
+        done_task = asyncio.create_task(_noop())
+        await done_task
+        done_tid = agent.track_background_task(done_task)
+        assert agent.cancel_background_task(done_tid) is True
         # destroy：统一取消 + 显式 clear——注册表立即为空（不依赖回调时序）
         r3 = await tool({"text": "x"}, caller=agent)
         assert agent._background_tasks
@@ -526,3 +549,105 @@ async def test_g10_query_api_and_cancel_boundary(tmp_path):
             lambda: tid not in agent._background_tasks)
     finally:
         await runtime.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# 组 11：subagent-invoke 合并（B14）——后台段失败投递（不重复错误块）
+# ---------------------------------------------------------------------------
+
+
+class _WorkerAgent(Agent):
+    """组 11 的子 Agent 类型（system_prompt 用于 provider 侧判别身份）。"""
+
+    system_prompt = Parsable("你是工人助手。")
+
+    async def setup(self, **kwargs):
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
+
+def _sys_text(context) -> str:
+    """Context 的 system prompt 段拼合（PromptSegment.content 已是 str）。"""
+    return "".join(seg.content for seg in context.system_prompt)
+
+
+async def test_g11_subagent_invoke_background_failure(tmp_path):
+    """组 11（B14）：subagent-invoke asynchronized 后台段失败 → 仅 SUBAGENT
+    通道投递（不重复错误块）——``_run_subagent`` 四态契约不抛，
+    ``_drive_asyncgen`` 的 ``except Exception`` 兜底不触发。"""
+    runtime = make_runtime(tmp_path, register_default_type=False)
+    runtime.register_agent_type("test-agent", SimpleAgent)
+    runtime.register_agent_type("worker", _WorkerAgent)
+    provider = add_fake_provider(runtime)
+    agent = await runtime.create_agent("test-agent")
+    agent.add_agent("worker")
+    agent.add_tool("subagent-invoke")
+    captured: list = []
+    agent.hooks.after_enqueue(lambda a, m: captured.append(m) or m, by="test")
+
+    async def gen(context, model):
+        if "工人助手" in _sys_text(context):
+            raise RuntimeError("子回合炸了")   # 子回合 provider 失败 → 四态 error
+        if not hasattr(gen, "called"):
+            gen.called = True
+            resp, _ = tool_call_response(
+                ("subagent-invoke", {"agent_type": "worker", "prompt": "干活",
+                                     "name": "w1", "asynchronized": True}))
+            return resp
+        return text_response("父收尾")
+
+    provider.generate_fn = gen
+    try:
+        result = await agent.query("唤起子代理")
+        assert result.status == "completed"
+        # SUBAGENT 消息必投递（enqueue_result=True 契约，无论成败）
+        assert await _drain_until(lambda: any(
+            m.kind is MessageKind.SUBAGENT for m in captured))
+        # 不重复错误块：无 tool_result EVENT（_drive_asyncgen 兜底未触发）
+        assert not any(m.kind is MessageKind.EVENT
+                       and m.source == "tool_result" for m in captured)
+    finally:
+        await runtime.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# §2.5 验证项：pending 收据带内容 → adapter 映射（B1/B10 LLM 可见链路）
+# ---------------------------------------------------------------------------
+
+
+async def test_provider_pending_receipt_mapping():
+    """§2.5 验证项：async gen pending 收据（带首 yield 内容 + 「后台任务 ID」
+    块）经各家 adapter 映射为 tool_result——LLM 立即可见的承诺链路（零代码
+    改动，仅验证）。"""
+    from flowing.message import Message, MessageKind as _MK
+    from flowing.providers import ProviderConfig
+    from flowing.providers.anthropic import AnthropicMessagesProvider
+    from flowing.providers.openai import OpenAICompletionsProvider
+
+    msg = Message(
+        kind=_MK.TOOL,
+        tool_call_id="tc-1",
+        tool_status="pending",
+        content=[
+            StructBlock(data={"status": "started", "workflow": "@/wf.py"}),
+            TextBlock(text="后台任务 ID：abc123"),
+        ],
+    )
+    # Anthropic：tool_result 块内嵌 JSON 文本 + 任务 ID 文本（content 非空，
+    # 不走空兜底）
+    anthropic = AnthropicMessagesProvider(ProviderConfig())
+    (user_msg,) = anthropic._map_messages([msg])
+    assert user_msg["role"] == "user"
+    (tool_result,) = user_msg["content"]
+    assert tool_result["type"] == "tool_result"
+    assert tool_result["tool_use_id"] == "tc-1"
+    texts = "".join(b["text"] for b in tool_result["content"])
+    assert '"status": "started"' in texts
+    assert "后台任务 ID：abc123" in texts
+    # OpenAI：tool 消息文本-only 通道（无媒体 → 单条 tool 消息）
+    openai = OpenAICompletionsProvider(ProviderConfig())
+    (tool_msg,) = openai._map_message(msg)
+    assert tool_msg["role"] == "tool"
+    assert tool_msg["tool_call_id"] == "tc-1"
+    assert '"status": "started"' in tool_msg["content"]
+    assert "后台任务 ID：abc123" in tool_msg["content"]
