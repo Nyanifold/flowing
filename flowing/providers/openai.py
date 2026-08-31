@@ -1,26 +1,33 @@
-"""OpenAI Completions 格式家族（``flowing.providers.openai``）。
+"""``flowing.providers.openai`` —— OpenAI Completions 格式家族。
 
-框架基类 :class:`OpenAICompletionsProvider` 收拢 OpenAI 兼容 wire format
-的请求/响应映射；内置厂商 adapter（DeepSeek / Kimi / Groq / OpenRouter）
-各为一个子类，只覆写厂商差异。设计动机（显式继承树、禁止 compat flags）
+.. rubric:: 功能介绍
+
+框架基类 :class:`OpenAICompletionsProvider` 收拢 OpenAI 兼容 wire
+format（chat/completions）的请求/响应映射；内置厂商 adapter（DeepSeek
+/ Kimi / Groq / OpenRouter）各为一个子类，只覆写厂商差异（默认端点、
+凭证来源、厂商特有字段）。设计要点（显式继承树、禁止 compat flags）
 见 :mod:`flowing.providers` 包 docstring。
 
-工具结果与媒体映射（详见 :mod:`flowing.providers` 包 docstring「工具
-结果映射」rubric）：Chat Completions 的 tool 消息为文本-only——消息级
-``tool_call_id`` → tool 消息的 ``tool_call_id`` 位；``StructBlock``
-恒投影为 ``json.dumps(ensure_ascii=False)`` 文本；媒体块**转移**：攒入
-紧随 tool 消息的合成 user 消息（固定措辞提示）。
+本格式家族的工具结果映射约定：TOOL 消息的 ``content`` 块直接映射——
+消息级 ``tool_call_id`` → tool 消息的 ``tool_call_id`` 位；
+``StructBlock`` 恒投影为 ``json.dumps(ensure_ascii=False)`` 文本；
+Chat Completions 的 tool 消息为文本-only——消息中的媒体块转移到紧随
+tool 消息的合成 user 消息（固定措辞提示）。
 
-响应侧事实：思考无官方字段，线上方言四种——``reasoning_content`` /
-``reasoning_details`` / ``reasoning`` / ``reasoning_text``，adapter
-采「入站扫描 + 出站同方言回写」（记住端点实际说的方言，回放时用同一
-key 写回）；``function.arguments`` 为 JSON 字符串，流式按数字 ``index``
-分片路由，「参数分片先于 name 到达」的乱序真实存在、缓冲逻辑不可省；
-流式参数拼装策略（字符串累积完成后解析 / partial-json 容错解析 + 截断
-拒执行）由本 adapter 选定并写明，属实现细节。
+响应侧事实：思考内容无官方字段，线上存在四种方言
+（``reasoning_content`` / ``reasoning_details`` / ``reasoning`` /
+``reasoning_text``），本基类在响应中记住端点实际使用的方言，回放
+（多轮历史中的思考块）时以同一 key 写回；``tool_calls`` 的
+``function.arguments`` 是 JSON 字符串，解析失败抛
+:class:`flowing.errors.InvalidRequestError`。
+
+.. seealso::
+
+    :mod:`flowing.providers.anthropic` 另一格式家族。
+    :class:`flowing.providers.Provider` 抽象契约。
 """
 
-from __future__ import annotations   # S-43 裁决③：注解延迟求值
+from __future__ import annotations
 
 from typing import Any, ClassVar
 
@@ -63,7 +70,7 @@ class _HttpResponseError(Exception):
 
     ``_post``（唯一网络点）在非 2xx 时抛出；``generate()`` 捕获后经
     ``_classify_error`` 归类为 :mod:`flowing.errors` 类型。mock
-    transport 测试以抛出本异常模拟各状态码（T05 等）。
+    transport 测试以抛出本异常模拟各状态码。
     """
 
     def __init__(self, status_code: int, body: Any = None,
@@ -81,56 +88,52 @@ class OpenAICompletionsProvider(Provider):
 
     .. rubric:: 功能介绍
 
-    所有 OpenAI 兼容端点 adapter 的基类：实现请求/响应的格式映射
-    （messages 数组、tool_calls、``prompt_tokens → Usage.input``
-    且 ``fresh_input = prompt_tokens - cached`` 的 :class:`Usage`
-    归一映射等），子类只覆写差异（base_url 默认、凭证头、
-    厂商特有字段）。
+    所有 OpenAI 兼容端点 adapter 的基类：实现请求/响应格式映射——把
+    :class:`flowing.context.Context` 的三个字段映射为 chat/completions
+    请求体（system 消息、messages 数组、tools 声明），把响应映射为
+    :class:`ProviderResponse`，并把原始用量归一为 :class:`Usage`
+    （``prompt_tokens`` → ``input``，``fresh_input = prompt_tokens -
+    cached_tokens``）。子类只覆写差异：默认端点（``default_base_url``）、
+    凭证来源、厂商特有字段。
 
-    .. rubric:: 设计动机
-
-    OpenAI 兼容是一个**格式级别**的家族（DeepSeek / Kimi / Groq /
-    OpenRouter 等共享同一 wire format），用基类收拢格式实现、用子类
-    表达厂商差异，差异在类型层可见——而非 compat flags。
+    本类不直接实例化使用——实例化发生在具体厂商子类的懒创建链上
+    （一个 providers.yaml 条目一个实例，见 :class:`Provider`）。
 
     .. rubric:: 使用示例
 
     .. code-block:: python
 
+        from flowing.providers import OpenAICompletionsProvider, register_provider
+
         @register_provider
-        class GroqProvider(OpenAICompletionsProvider):
-            name = "groq"
+        class MyEndpointProvider(OpenAICompletionsProvider):
+            name = "my-endpoint"
+            default_base_url = "https://llm.example.com/v1"
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
-    - 期待行为：把 ``Context`` 三字段映射为 chat/completions 请求体；
-      响应 ``finish_reason == "tool_calls"`` → ``finish=False``，其余
-      → ``finish=True``；原始 ``finish_reason`` 保留在
+    - 请求映射：``Context.system_prompt`` 逐段成为 system 消息；
+      ``Context.messages`` 逐条按 kind 映射 role；``Context.tools`` 经
+      白名单组装为 function 声明；``model.max_output_tokens`` 非
+      ``None`` 时写入 ``max_tokens``。
+    - 响应映射：响应含 ``tool_calls`` → ``finish=False``，其余 →
+      ``finish=True``；原始 ``finish_reason`` 保留在
       ``provider_data["stop_reason"]``。
-    - 非行为：不做厂商探测（如按 base_url 猜测能力）——厂商差异属于
-      子类覆写。
-    - 边缘情况：前缀缓存为 OpenAI 服务端自动启发式（>1024 token），
-      adapter 不发送任何缓存标记；``PromptBlock.cache`` 对本格式仅是
-      字节稳定性提示。
-
-    .. rubric:: 测试案例
-
-    - 前置：响应含 ``tool_calls``。操作：``generate()``。期望：
-      ``finish is False`` 且 ``provider_data["stop_reason"] ==
-      "tool_calls"``。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：具体厂商子类继承（``DeepSeekProvider`` / ``KimiProvider``
-      / ``GroqProvider`` / ``OpenRouterProvider``，import 期经
-      ``register_provider`` 注册）
-    - 实例化方：无（框架基类不直接实例化；实例化经具体子类的懒创建
-      链，见 :class:`Provider`）
+    - Usage 归一：``input = prompt_tokens``、
+      ``fresh_input = prompt_tokens - cached_tokens``、
+      ``cache_read = cached_tokens``、``cache_write = 0``、
+      ``output = completion_tokens``、``total_tokens = input + output``；
+      原始用量字段全量保留在 ``Usage.raw``。
+    - 不做厂商探测（如按 base_url 猜测能力）——厂商差异属于子类覆写。
+    - 前缀缓存由 OpenAI 服务端自动处理，adapter 不发送任何缓存标记；
+      ``PromptBlock.cache`` 对本格式只是字节稳定性提示，不产生请求级
+      效果。
 
     .. seealso::
 
-        :class:`Provider` 抽象契约。
-        :class:`AnthropicMessagesProvider` 另一格式家族基类。
+        :class:`flowing.providers.Provider` 抽象契约。
+        :class:`flowing.providers.anthropic.AnthropicMessagesProvider`
+            另一格式家族基类。
     """
 
     api_format: ClassVar[str] = "openai_completions"
@@ -145,12 +148,12 @@ class OpenAICompletionsProvider(Provider):
     # ── 网络点（唯一）──────────────────────────────────────────────────
 
     async def _post(self, path: str, body: dict) -> dict:
-        """发起一次 POST 并返回解析后的 JSON（**唯一网络点**，子类/测试可覆写）。
+        """发起一次 POST 并返回解析后的 JSON（唯一网络点，子类/测试可覆写）。
 
         行为边界：非 2xx → :class:`_HttpResponseError`（归类在调用方）；
         超时 → :class:`ProviderTimeoutError`；传输层失败 →
-        :class:`NetworkError`。每次调用新建 ``httpx.AsyncClient``
-        （初版从简——连接池复用属 adapter 层后续优化，不影响契约）。
+        :class:`NetworkError`。每次调用新建 ``httpx.AsyncClient``，
+        不跨请求复用连接池。
         """
         import httpx
 
@@ -196,7 +199,8 @@ class OpenAICompletionsProvider(Provider):
         return body
 
     def _map_tool(self, definition) -> dict:
-        """白名单组装（D21）：只取 name/description/parameters 三已知字段。"""
+        """白名单组装：只取 name/description/parameters 三已知字段。
+        """
         params = definition.params_schema or {}
         return {
             "type": "function",
@@ -386,13 +390,17 @@ class OpenAICompletionsProvider(Provider):
     async def generate(
         self, context: Context, model: ModelConfig
     ) -> ProviderResponse:
-        """非流式单次生成（映射/错误归类见各 ``_*`` 方法）。
+        """非流式单次生成（映射 / 错误归类见各 ``_*`` 方法）。
 
-        .. rubric:: 调用关系（审计）
+        .. rubric:: 行为要点
 
-        - 调用：``_build_request`` / ``_post`` / ``_map_response`` /
-          ``_classify_error``（每次调用）
-        - 被调：同 :meth:`Provider.generate` 契约
+        - 把组装好的上下文映射为 chat/completions 请求体并 POST 到
+          ``/chat/completions``；非 2xx 响应经错误归类映射为
+          :mod:`flowing.errors` 中的明确类型后上抛（不重试、不兜底）。
+        - 2xx 响应映射为 :class:`ProviderResponse`，用量附着到
+          ``message.usage``。
+
+        .. seealso:: 同 :meth:`flowing.providers.Provider.generate` 契约。
         """
         body = self._build_request(context, model)
         try:
@@ -401,9 +409,9 @@ class OpenAICompletionsProvider(Provider):
             raise self._classify_error(exc) from exc
         return self._map_response(resp)
 
-    # generate_stream 不覆写：初版走基类默认回退（generate() 结果包成
+    # generate_stream 不覆写：走基类默认回退（generate() 结果包成
     # delta——契约合法，见 Provider.generate_stream「默认实现行为」）；
-    # 真 SSE 流式属后续优化，不影响 Turn 循环可见语义。
+    # 真 SSE 流式不在本基类提供，不影响 Turn 循环可见语义。
 
 
 @register_provider
@@ -412,13 +420,9 @@ class DeepSeekProvider(OpenAICompletionsProvider):
 
     .. rubric:: 功能介绍
 
-    DeepSeek 官方端点的 OpenAI 兼容实现；随框架发布、进程级注册。
-
-    .. rubric:: 设计动机
-
-    DeepSeek 的前缀缓存为自动 128-token 前缀哈希（要求前缀字节稳定），
-    adapter 无需发送缓存标记——这印证了「框架核心只保证 append-only
-    消息历史的字节稳定性，缓存发生在 provider 侧」的分工。
+    DeepSeek 官方端点的 OpenAI 兼容实现；随框架发布、import 期经
+    :func:`register_provider` 进程级注册。providers.yaml 条目把
+    ``adapter`` 字段设为 ``"deepseek"`` 即可选用。
 
     .. rubric:: 使用示例
 
@@ -427,20 +431,15 @@ class DeepSeekProvider(OpenAICompletionsProvider):
         # providers.yaml
         deepseek-personal:
           adapter: deepseek
-          api_key: sk-...
+          api_key: "{{env.DEEPSEEK_API_KEY}}"
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
-    - 期待行为：默认 base_url 指向 DeepSeek 官方端点；凭证取
-      ``api_key``；缓存命中统计（``prompt_cache_hit_tokens`` 等）保留
-      在 ``Usage.raw``。
-    - 非行为：不注入任何缓存策略；不感知 ``model_tag``。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``register_provider``（进程级注册，import 期，随框架发布）
-    - 实例化方：``flowing.runtime.Runtime`` 懒创建链（providers.yaml
-      条目 ``adapter: deepseek`` 首次 ``get`` 时，一条目一实例）
+    - 默认端点 ``https://api.deepseek.com``；条目配 ``base_url`` 时以
+      条目为准（代理场景）。
+    - 凭证取条目 ``api_key``；DeepSeek 的前缀缓存由服务端自动处理
+      （要求前缀字节稳定），adapter 不发送缓存标记；缓存命中统计
+      （如 ``prompt_cache_hit_tokens``）保留在 ``Usage.raw``。
 
     .. seealso::
 
@@ -458,31 +457,24 @@ class KimiProvider(OpenAICompletionsProvider):
 
     .. rubric:: 功能介绍
 
-    Kimi 官方端点的 OpenAI 兼容实现；随框架发布、进程级注册。
-
-    .. rubric:: 设计动机
-
-    与 :class:`DeepSeekProvider` 同理：格式继承自基类，厂商差异
-    （base_url、凭证、厂商特有字段）写在本子类覆写中。
+    Kimi 官方端点的 OpenAI 兼容实现；随框架发布、import 期经
+    :func:`register_provider` 进程级注册。providers.yaml 条目把
+    ``adapter`` 字段设为 ``"kimi"`` 即可选用。
 
     .. rubric:: 使用示例
 
     .. code-block:: yaml
 
+        # providers.yaml
         kimi:
           adapter: kimi
           api_key: "{{env.MOONSHOT_API_KEY}}"
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
-    - 期待行为：默认 base_url 指向 Moonshot 官方端点。
-    - 边缘情况：条目配 ``base_url`` 时以条目为准（代理场景）。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``register_provider``（进程级注册，import 期，随框架发布）
-    - 实例化方：``flowing.runtime.Runtime`` 懒创建链（providers.yaml
-      条目 ``adapter: kimi`` 首次 ``get`` 时，一条目一实例）
+    - 默认端点 ``https://api.moonshot.cn/v1``；条目配 ``base_url`` 时
+      以条目为准（代理场景）。
+    - 格式映射与 Usage 归一继承自 :class:`OpenAICompletionsProvider`。
 
     .. seealso::
 
@@ -499,31 +491,23 @@ class GroqProvider(OpenAICompletionsProvider):
 
     .. rubric:: 功能介绍
 
-    Groq 端点的 OpenAI 兼容实现；随框架发布、进程级注册。
-
-    .. rubric:: 设计动机
-
-    低延迟推理端点的代表；常用于 ``fast`` 标签指向的模型条目（标签
-    语义是用户侧约定，adapter 本身不感知标签）。
+    Groq 端点的 OpenAI 兼容实现；随框架发布、import 期经
+    :func:`register_provider` 进程级注册。providers.yaml 条目把
+    ``adapter`` 字段设为 ``"groq"`` 即可选用。
 
     .. rubric:: 使用示例
 
     .. code-block:: yaml
 
+        # providers.yaml
         groq:
           adapter: groq
           api_key: "{{env.GROQ_API_KEY}}"
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
-    - 期待行为：默认 base_url 指向 Groq 官方端点。
-    - 非行为：不做能力校验（模型是否存在于 Groq 由 API 调用时报错）。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``register_provider``（进程级注册，import 期，随框架发布）
-    - 实例化方：``flowing.runtime.Runtime`` 懒创建链（providers.yaml
-      条目 ``adapter: groq`` 首次 ``get`` 时，一条目一实例）
+    - 默认端点 ``https://api.groq.com/openai/v1``。
+    - 不做能力校验：模型是否存在于 Groq 由 API 调用时报错。
 
     .. seealso::
 
@@ -540,39 +524,34 @@ class OpenRouterProvider(OpenAICompletionsProvider):
 
     .. rubric:: 功能介绍
 
-    OpenRouter 聚合端点的 OpenAI 兼容实现。
-
-    .. rubric:: 设计动机
-
-    OpenRouter 是「请求侧模型 ID 与响应侧模型 ID 可不同」的典型
-    （``model="auto"`` → 实际 ``anthropic/claude-sonnet-4-6``），是
-    :attr:`ProviderResponse.model` 保持 ``str``、不回填规格结构体
-    这一契约的驱动场景。
+    OpenRouter 聚合端点的 OpenAI 兼容实现；随框架发布、import 期经
+    :func:`register_provider` 进程级注册。providers.yaml 条目把
+    ``adapter`` 字段设为 ``"openrouter"`` 即可选用。
 
     .. rubric:: 使用示例
 
     .. code-block:: yaml
 
+        # providers.yaml
         openrouter:
           adapter: openrouter
           api_key: "{{env.OPENROUTER_API_KEY}}"
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
-    - 期待行为：``ProviderResponse.model`` 填实际响应的模型 ID；
-      路由信息（如 provider 路由选择）保留在 ``provider_data``。
-    - 非行为：不在 adapter 内做模型路由策略（路由是 OpenRouter
-      服务端行为；本地侧无 fallback 链）。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``register_provider``（进程级注册，import 期，随框架发布）
-    - 实例化方：``flowing.runtime.Runtime`` 懒创建链（providers.yaml
-      条目 ``adapter: openrouter`` 首次 ``get`` 时，一条目一实例）
+    - 默认端点 ``https://openrouter.ai/api/v1``。
+    - 请求侧模型 ID 与响应侧模型 ID 可以不同（如 ``model="auto"`` 时
+      实际由 OpenRouter 路由到具体模型）：``ProviderResponse.model``
+      填实际响应的模型 ID；路由信息（如 provider 路由选择）保留在
+      ``provider_data``。
+    - 模型路由是 OpenRouter 服务端行为，本 adapter 不做本地路由 /
+      fallback 链。
 
     .. seealso::
 
-        :class:`ProviderResponse` ``model`` 字段语义。
+        :class:`OpenAICompletionsProvider` 格式实现来源。
+        :attr:`flowing.providers.ProviderResponse.model`
+            响应侧模型 ID 语义。
     """
 
     name: ClassVar[str] = "openrouter"
