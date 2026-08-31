@@ -1,173 +1,127 @@
-"""flowing.agent —— Agent 对象模型、逻辑 Turn 执行与异步执行管理（最终 API 规约）。
+"""``flowing.agent`` —— Agent 对象模型：逻辑 Turn 执行、消息级树与异步执行管理。
 
 .. rubric:: 功能介绍
 
 框架核心层。本模块承载 Flowing 的中心对象 :class:`Agent`（智能体基类，
-``.fya`` 声明式与手写 Python 子类生成的**完全相同的类模型**），以及围绕它的
-逻辑 Turn 执行载体（:class:`TurnContext`）、回合产物（:class:`TurnResult`）、
-异步执行追踪条目（:class:`Execution`）、钩子上下文（:class:`ProviderErrorContext` /
-:class:`CancelContext`）、持久化状态袋视图（:class:`flowing.persistence.StateView`，声明经 ``Agent.register_state``、
-读写统一经 ``Agent.state`` 显式视图——P3-03 配套裁决；机制层——
-``FileRecordStore`` write-behind 落盘——在 :mod:`flowing.persistence`）与收尾组装函数
-:func:`build_turn_result`。子 Agent 绑定的三正交条目与唤起/结果结构
+``.fya`` 声明式与手写 Python 子类生成完全相同的类模型），以及围绕它的
+回合载体与结果结构：
+
+- :class:`TurnContext` —— 逻辑 Turn 的执行期临时对象（``before_turn`` /
+  ``before_turn_abort`` / ``after_turn`` 钩子点的 value 类型）。
+- :class:`TurnResult` —— 回合产物（``query()`` 等待语义的返回值）。
+- :class:`Execution` —— 异步执行追踪条目（「谁正在运行、谁可取消」）。
+- :class:`FieldUpdate` —— ``watch`` watcher 通道的 value（赋值事件快照）。
+- :class:`ProviderErrorContext` / :class:`CancelContext` ——
+  ``on_provider_error`` / ``before_cancel`` / ``after_cancel`` 钩子点的
+  value 类型。
+- :func:`build_turn_result` —— 回合收尾组装函数。
+- :class:`flowing.persistence.StateView` —— 持久化状态袋视图（声明经
+  ``Agent.register_state``、读写统一经 ``Agent.state``）。
+
+子 Agent 绑定的三正交条目与唤起 / 结果结构
 （:class:`flowing.subagents.SubagentEntry` /
 :class:`flowing.subagents.SubagentInvocation` /
-:class:`flowing.subagents.SubagentResult`）已拆至
-:mod:`flowing.subagents`——「Agent 核心逻辑」与「子智能体管理」分文件，
-本模块只 import 使用。
+:class:`flowing.subagents.SubagentResult`）拆在
+:mod:`flowing.subagents`；持久化机制（``FileRecordStore`` write-behind
+落盘）在 :mod:`flowing.persistence`；27 个核心钩子点的触发时机 / value
+类型 / handler 能力见 :mod:`flowing.hooks` 模块 docstring 的全集表。
 
-.. rubric:: 设计动机
+本模块遵循「框架只提供机制，不提供策略」：核心只做错误分类、钩子点
+分发与消息流转；重试、压缩、审批等策略全部放在扩展 / Composable /
+应用层。
 
-- **消息级树 + 逻辑 Turn**（文档 14 落锤）：树节点 = 消息
-  （``Message.id`` + ``Message.parent_id`` 链），``current_head_id`` 指向
-  **消息 id**；Turn 只是「消费消息 → ``finish=True``」的逻辑执行阶段，执行期
-  载体是 :class:`TurnContext`（不落盘、不进树、崩溃后不恢复）。goal 模式
-  （一条指令连续工作数天）证明 Turn 粒度物理树的代价不可接受。
-- **机制 vs 策略**：核心只做错误分类（``on_provider_error`` 分发）、钩子点、
-  消息流转；重试（``use_retry``）、压缩、审批策略全在扩展 / Composable /
-  应用层。
-- **三大正交维度**（不可合并）：生命周期子树 ``_children``（谁随我销毁）、
-  执行追踪 ``_executions``（谁在运行、谁可取消）、Provide 链 ``_parent_id``
-  上行（``inject`` 沿谁上溯）。同一子 Agent 实例同时出现在三个结构中，
-  语义各自独立。
-- **能力三正交**（Tool 模式推广到子 Agent / Skill）：可执行对象（Agent 类）、
-  LLM 可见声明（catalog XML 条目）、Agent 级绑定（:class:`SubagentEntry`）。
-  绑定层存在的理由：同一 Agent 类型在不同父 Agent 上应有不同的 LLM 可见
-  描述与参数默认值——覆写发生在 entry 层，不改全局类。
+.. rubric:: 全局约定（跨符号、影响使用的约定）
 
-.. rubric:: 模块级行为规约（本模块必须整体满足的时序与不变量）
+**async 方法约定**：一切会在内部 dispatch 钩子的公开方法都是 async
+方法，调用时用 ``await``——``query`` / ``message`` / ``steer`` /
+``enqueue_message`` / ``enqueue_messages`` / ``fork`` / ``cancel`` /
+``stop`` / ``destroy`` / ``create_subagent`` / ``invoke_subagent`` /
+``setup`` / ``provider_gen`` / ``side_query`` / ``tool_call`` 等。不触发
+钩子的方法保持同步：``pause`` / ``resume`` / ``abort_turn`` /
+``cancel_queued`` / ``provide`` / ``inject`` / ``watch`` / ``parsable`` /
+``snapshot`` / ``register_state`` / ``add_tool`` 等。
 
-**async 约定（最终裁决）**：钩子 ``dispatch`` 是异步的（handler 可以是
-``async`` 可等待对象，见 :mod:`flowing.hooks`），因此**一切在内部 dispatch
-钩子的公开方法一律为协程**：``enqueue_message`` / ``enqueue_messages`` /
-``fork`` / ``cancel`` / ``stop`` / ``destroy`` / ``invoke_subagent`` /
-``message`` / ``steer`` 等。
-设计草稿中这些方法的同步写法一律视为速记。不触发钩子的方法保持同步：
-``pause`` / ``resume`` / ``pause_recursive`` / ``resume_recursive`` /
-``paused`` / ``abort_turn`` / ``cancel_queued`` /
-``provide`` / ``inject`` / ``watch`` / ``parsable`` / ``get_resource`` /
-``register_state`` / ``add_tool`` / ``snapshot`` / ``estimate_context_tokens`` /
-``set_queued_priority`` / ``cancel_children`` / ``cancel_by_tag`` /
-``stop_children`` / ``stop_by_tag``。
-``__init__`` 必须同步（创建管线不可 await 骨架阶段）。
-
-**无生命周期状态机**（M-77 最终裁决）：Agent 不提供 ``status`` 字段。
-「在干什么」的观测由快照层从内部状态现场派生（``current_turn``
-是否在 → 回合执行中；取消信号是否已置位；``destroy()`` 是否完成），
-各观测方不共享任何预定义状态值——防止投影被误当作控制结构加码。
-
-**创建 / 恢复管线**（宿主是 ``Runtime.create_agent`` / ``Runtime.recover_agent``，
-本模块规约 Agent 侧职责）：``__init__``（同步骨架，**含** ``_open_stores``
-建立持久化后端与 ``_extra``，P3-03 裁决）→ ``before_create``（可改写
-kwargs）→ ``setup(**kwargs)`` → **PENDING 检查** → 池元数据 +
-初始 state 写盘 → ``_nodes`` 注册 → ``after_create`` → 工作循环 Task 启动。
-恢复管线对称：``before_recover``（可改写 args）→ ``setup(**args)``（args 为
-持久化值，可被 ``override_args`` 覆盖；触发的是 before/after_recover 钩子对）
-→ PENDING 检查 → ``instance._restore()``（消息级重建 + 状态重放）→ ``_nodes``
-注册 → ``after_recover`` → 工作循环启动；``node_id = agent_id``（身份连续、
-可重现）。两条管线在**各自的实例**上各跑一次 ``setup()``（recover 是新建
-实例，非同一实例重复执行），故 ``setup()`` 必须可重入（见
-:meth:`setup`）。不变量：**创建即注册**；任意 Agent 诞生（``after_create`` /
+**实例化与生命周期**：Agent 实例不直接构造——唯一创建路径是
+:meth:`flowing.runtime.Runtime.create_agent`，恢复路径是
+:meth:`flowing.runtime.Runtime.recover_agent`（``create_subagent`` /
+``Workflow.create_agent`` / ``Runtime.mount`` 全部委托创建管线）。创建与
+恢复管线各自在一个新实例上执行 ``setup()``；实例诞生（``after_create`` /
 ``after_recover`` 完成）即启动常驻工作循环 Task，``destroy()`` 时取消。
+``destroy()`` 递归销毁子树、丢弃实例，但 session 记录（tree.jsonl /
+state.jsonl）与池 key 保留——「有 key 无 value」可现场恢复。
 
-**持久化状态的职责三方分立**（最终裁决）：**机制归 Agent**——每 agent 一个
-session 目录（``agent_id`` 命名，父子平级），内含 ``tree.jsonl`` /
-``core.jsonl``（核心袋，框架私有）/ ``state.jsonl``（默认袋）三文件与
-``meta.json``（身份四键，JSON 整写，Runtime 属主，D12），物理读写由
-Agent 持有的
-:class:`flowing.persistence.FileRecordStore` 实例执行（write-behind：提交
-同步排队、drain 任务串行落盘；三条契约与末行合并 / 墓碑
-压缩策略见 :mod:`flowing.persistence` 模块规约），不经 Runtime 中转；
-**声明归 setup**——``agent.state.register(key, default)``
-逐键登记（D4 键注册安全化：缺省即写落盘、幂等、返回真值；插件键带
-注册名 underscore 前缀约定，框架核心键在 core 袋不进 default 袋），
-setup 中写 state 合法（D5 删写闸门，重放先于 setup 完成不被覆盖）；
-扩展状态空间经 ``register_state(name)`` 开启（D3，命名袋独立文件）；
-**内容归插件/用户代码**——钩子 handler 里经
-``agent.state`` 视图写透（读写统一通道；watch 不察觉 state，决策 5）。
-Runtime 只保留全局视野职能：``set_persist_dir``、池扫描
-（目录 → 池 key）、管线编排；Runtime 自身的全局状态保留命名空间
-（``Runtime.state(ns)``）。
+**消息级树**：树节点是消息（``Message.id`` + ``parent_id`` 链，
+``current_head_id`` 指向消息 id，``None`` 表示空树）。``fork`` 只切换
+视角（游标）、从不创建节点；树手术（插入 / 删除 / 更新 / 重挂）经
+``Agent.chain``（:class:`flowing.message.MessageChain`）。
 
-**逻辑 Turn 时序**（``_run_turn``，消息级）：创建 ``TurnContext`` →
-``pending_messages`` 暂存出队批次 → ``before_turn``（可附加式注入 /
-``Intercepted`` 阻断，阻断或窗口内崩溃 = 批次丢弃不落盘）→ 批次逐条经
-``_append_message`` 挂树 → 内循环（检查点
-``_pause_gate.wait()`` 在前、urgent 吸收居中、``_turn_abort`` 判定在后——
-peek 到 ``INTERRUPT`` 则连 drain ``INTERRUPT``+``STEER`` 两带挂树并
-``abort_turn()``；仅 ``STEER`` 在队首则只 drain STEER 这一优先级带的
-消息挂树，不置位 abort，当轮组装的 context 即可见；abort 判定收口处
-统一 dispatch ``before_turn_abort``，每回合至多
-一次 → ``_assemble_context``
-→ ``provider_gen`` → ``_append_message(response.message)`` → 工具调用循环（并行版：
-同一响应内全部 tool_call 前同一个 pause/abort 检查点，随后 ``asyncio.gather``
-并行执行）→ ``finally`` 收尾（
-**释放回合身份牌先于一切钩子**：``current_turn = None``（head 随每条
-消息挂树即时前移，回合末无结算写入；钩子抛异常不再楔死 agent）→
-``after_turn``（所有路径**唯一**收尾观察点；handler 读 ``turn.aborted``
-区分正常结束 / 取消——abort 专用收尾钩子已删除，观察是改写的子集）→
-``build_turn_result`` → resolve 全部 waiters）。
+**Turn 只是逻辑执行阶段**：``TurnContext`` 不落盘、不进树、进程崩溃后
+不恢复；恢复 = 重放 ``tree.jsonl`` / ``state.jsonl`` 日志现场重建。
 
-**``_append_message`` 五步**（挂树 + 落盘统一入口）：``before_turn_append``
-dispatch → ① 设 ``parent_id = current_head_id`` → ② 挂入 ``_messages`` →
-③ ``_persist_message`` 提交落盘（write-behind：同步排队即返，
-墓碑压缩由 FileRecordStore drain 任务自主触发）→
-④ 更新 ``current_head_id = msg.id``（head 即时前移并落盘 core 袋——head 即「添加节点
-的位置」，空 turn 无 append 自然不动）→ ⑤ 记入 ``turn.message_ids`` →
-``after_turn_append`` dispatch。**消息完整后才经过它**——流式进行中的
-增量（尚未定型为消息的 delta 累积态）不经过它，天然不落盘；流式被
-中断时，已累积内容定型为一条 ``partial=True`` 的完整消息，照常挂树
-落盘。
+**持久化布局**：每 Agent 一个 session 目录（``agent_id`` 命名，父子
+平级），内含 ``tree.jsonl``（消息树）/ ``core.jsonl``（框架私有核心
+状态）/ ``state.jsonl``（默认状态袋）与 ``meta.json``（身份四键，
+Runtime 属主）。物理读写由 :class:`flowing.persistence.FileRecordStore`
+执行——write-behind：提交同步排队、drain 任务串行落盘，调用返回不代表
+已写盘，正常关闭（``destroy()`` 排空后端）会写完未落盘内容。状态键声明
+经 ``agent.state.register(key, default)``（缺省即写、幂等）；扩展状态
+空间经 ``register_state(name)`` 开启（命名袋，独立文件）。
 
-**``_pending_turns`` 出队绑定**：``dict[message_id → Future[TurnResult]]``，
-纯运行时不持久化。``query()`` **注册先于入队**（enqueue 之前，P3-01——
-否则 enqueue 内部的钩子 await 窗口里工作循环可能先出队收尾，句柄永不
-resolve）；工作循环出队时逐条
-``pop(m.id)`` 绑定到当前逻辑 Turn；回合收尾 resolve 回合内**所有**消息的
-等待者（drain 合并时共享同一 ``TurnResult``）。取消等待 ≠ 取消回合；撤回未
-出队消息用 ``cancel_queued``；``destroy()`` 与 ``cancel_queued`` 均联动
-resolve（``status="cancelled"``），调用方永不挂起。**死锁禁止**：回合
-调用栈内 ``await query()`` 必死锁，跨 Agent 等待图须无环（框架不检测），
-回合内驱动走 ``steer()``（STEER 优先级，检查点 ②.5 吸收、当轮 context
-可见）；``enqueue_message`` / ``message()`` 入队的非 STEER 消息回合内
-不可察觉，只在回合间消费。
+**provide-inject 链**：``provide(key, value)`` 在本节点注册值；``inject``
+从当前节点沿父链逐级向根查找（先近后远，终点是 Runtime）；同 key 重复
+``provide`` 是覆盖更新，查找实时、不缓存；找到根仍未命中抛
+``MissingProvideError``。敏感信息（API key / 凭证）走本通道——不进消息
+流、不进 LLM 上下文、不落盘。
 
-**fork 全时合法（无守卫）**：fork 是纯上下文操作，不碰执行（不触碰
-``_executions`` / ``_children`` / ``prompt_blocks`` /
-``_provided`` / ``_tool_entries`` / ``_message_queue``，共享不拷贝）。
-head 即「添加节点的位置」（每条消息挂树即前移），回合内 fork 的语义
-即 seek——本回合后续 append 与 provider_gen 改在新基址上继续。这是可预想的
-操作语义而非损坏，框架不做家长式禁止；调用方责任（嫁接 /
-``turn.message_ids`` 跨链 / 上下文瞬移 / 工具执行相位的配对断裂）
-见 :meth:`Agent.fork` 的设计动机段落。外部改方向的推荐定式仍是
-``await agent.cancel()`` → 等回合收尾完成 → ``await agent.fork(msg_id)``；
-回合内直接 fork 适合时序可知的钩子内调用者（如 compact 在
-``after_provider_gen`` 的干净点换链）。
+**钩子与 watch**：每个实例持有一个独立的钩子注册表（``agent.hooks``），
+全部钩子只对当前实例生效；核心钩子点全集见 :mod:`flowing.hooks`。
+``watch`` 通道监听实例属性赋值事件——fire-and-forget 通知、纯观察
+（赋值不等待 watcher，watcher 改写无效）。
 
-**side_query 边界**：不 commit、不落盘、固定非流式（走
-``provider_gen(context, stream=False, by="_side")``；``by`` 透写到 delta 与
-响应，钩子可按来源过滤）；token 用量由调用方自行记录；agent 实例
-不是用完即弃——一个实例承载多次副线调用。
+**死锁禁止**：在当前回合的调用栈内（任何钩子、工具 ``execute``、
+``provider_gen`` 期间的 await 点）``await query()`` 必死锁；跨 Agent
+等待图成环（A 等 B、B 等 A）同样是死锁，框架不做环检测。回合内需要
+驱动用 :meth:`Agent.steer`（STEER 优先级，当轮 context 可见）。
 
-**cancel/stop 族与 Execution**：``cancel`` 族协作式（置 ``cancel`` Event，
-执行体可自行决定停止方式，返回值不丢弃）；``stop`` 族默认等价 ``cancel``、
-可覆写强制。``Execution`` 注册/清理严格成对且清理在 ``finally``（杜绝幽灵
-条目）。级联取消：每层只负责自己的 ``_executions``，自动逐层传播。
+**无生命周期状态机**：Agent 不提供 ``status`` 字段；「在干什么」的观测
+由快照层从内部状态现场派生（``snapshot()``）。
 
-**销毁与记录保留**：``destroy()`` 递归销毁子树（深度优先）、resolve 所有
-pending（cancelled）、取消工作循环、从 ``_nodes`` 摘除；但 **destroy ≠ 删除**
-——session（tree.jsonl + state.jsonl）与池 key 保留到显式删除目录，
-「有 key 无 value → 现场恢复」（``Runtime.get_agent``）。
+.. rubric:: 使用示例
 
-.. rubric:: 参见
+手写子类（``.fya`` 声明式等价形态见 :class:`Agent`）：
 
-- :class:`flowing.runtime.Runtime` —— 对象图根、唯一创建/恢复入口宿主。
-- :class:`flowing.message.Message` / :class:`flowing.message.MessageChain` ——
-  消息级树节点与树手术。
-- :class:`flowing.hooks.HookRegistry` —— 实例级钩子注册表（钩子点全集与
-  dispatch 规则见其规约）。
-- :mod:`flowing.model` —— ``ModelConfig`` / ``ProviderResponse`` /
-  ``Usage`` / ``ProviderDelta``。
+.. code-block:: python
+
+    from flowing import Agent, on
+    from flowing.parsable import Parsable
+
+    class OrderAgent(Agent):
+        system_prompt = Parsable("你是订单助手。")
+
+        @on("before_tool_call")
+        def _tag(self, tool_call):
+            tool_call.args["lang"] = self.locale
+            return tool_call
+
+        async def setup(self, locale: str = "zh"):
+            self.locale = locale
+            self.add_tool("make-payment", alias="pay")
+
+    # 创建与消息驱动（创建入口见 :mod:`flowing.runtime`）
+    agent = await runtime.create_agent(OrderAgent)
+    result = await agent.query("帮我查订单 4521")
+    print(result.status)       # "completed"
+    print(result.final_text)   # 最后一条 PROVIDER 消息的文本
+
+.. seealso::
+
+    - :class:`flowing.runtime.Runtime` —— 对象图根、唯一创建 / 恢复入口宿主。
+    - :class:`flowing.message.Message` / :class:`flowing.message.MessageChain`
+      —— 消息级树节点与树手术。
+    - :class:`flowing.hooks.HookRegistry` —— 实例级钩子注册表（钩子点全集
+      与 dispatch 规则见其模块 docstring）。
+    - :mod:`flowing.model` —— ``ModelConfig`` / ``ProviderResponse`` /
+      ``Usage`` / ``ProviderDelta``。
 """
 
 from __future__ import annotations   # S-43 裁决③：注解延迟求值，配合 TYPE_CHECKING 破注解级循环边
@@ -786,27 +740,25 @@ class Agent:
 
     .. rubric:: 功能介绍
 
-    Flowing 的中心对象：拥有自己的消息队列、常驻工作循环 Task、消息级树、
-    实例级钩子注册表、工具 / 子 Agent 绑定条目与 provide-inject 链位置。
-    实例即 handle（无 ``AgentHandle``）；元信息直接作为类属性（无
-    ``AgentSpec``）。**实例化不直接进行**——唯一创建路径是
-    ``Runtime.create_agent(agent_type, *, parent_id=None, **kwargs)``
-    （``Agent.create_subagent`` / ``Workflow.create_agent`` / ``mount``
-    全部委托它）；恢复路径是 ``Runtime.recover_agent(agent_id)``。
+    Flowing 的中心对象：每个实例拥有自己的消息队列、常驻工作循环 Task、
+    消息级树、实例级钩子注册表、工具 / 子 Agent 绑定条目与 provide-inject
+    链位置。实例即 handle（没有独立的 ``AgentHandle`` 包装）；元信息直接
+    作为类属性（没有独立的 ``AgentSpec`` 结构）。
 
-    .. rubric:: 设计动机
+    实例化不直接进行：唯一创建路径是
+    :meth:`flowing.runtime.Runtime.create_agent`（``Agent.create_subagent``
+    / ``Workflow.create_agent`` / ``Runtime.mount`` 全部委托它）；恢复路径
+    是 :meth:`flowing.runtime.Runtime.recover_agent`。两条管线都会执行
+    ``setup()``（可重入契约见 :meth:`setup`）。
 
-    - **无 AgentSpec**：``.fya`` 元信息直接作为类属性——类型层面反映行为
-      差异（traceback 显示 ``OrderAgent``）、手写子类与 ``.fya`` 同一套
-      类模型、消除双份元数据源。
-    - **不持父对象引用**：只存 ``_parent_id: str``——生命周期定位与
-      provide 上溯共用一条 UID 链，节点间不持有对象引用。
-    - **双哨兵不混用**：``PENDING``（``.fya`` 的 ``_``，字段位 =
-      「延迟定义承诺，``setup()`` 后检查」；override 位 = 空补丁语义，
-      见 :data:`flowing.parsable.PENDING` 与装配层导航规则）与
-      ``_UNSET``（未设置，参数默认值判定）语义不同。
-    - **Agent 不只是树中节点**：消息队列、异步执行条目、常驻工作循环使其
-      具备自治能力（对等 Agent 通信、池遍历、UI 挂载三场景佐证）。
+    .. rubric:: 设计要点
+
+    - ``.fya`` 元信息直接作为类属性：类型层面反映行为差异（traceback
+      显示真实类名）、手写子类与 ``.fya`` 是同一套类模型、无双份元数据源。
+    - 不持有父对象引用：只存 ``_parent_id`` 字符串——生命周期定位与
+      provide 上溯共用一条 UID 链。
+    - Agent 不只是树中节点：消息队列、异步执行条目、常驻工作循环使其
+      具备自治能力（对等 Agent 通信、池遍历、UI 挂载三场景）。
 
     .. rubric:: 使用示例
 
@@ -823,7 +775,7 @@ class Agent:
             description: 用户 ID
           order_id: str             # 糖：裸类型字符串（必填）
         subagents:
-          - payment as pay   # 运行期示例中 create_subagent("pay") 的声明依据
+          - payment as pay   # 运行期示例中 create_subagent("payment") 的声明依据
         ---
         $system_prompt:
         你是一个订单处理助手。{% if locale == 'zh' %}请用简体中文回复。{% endif %}
@@ -845,7 +797,12 @@ class Agent:
 
     .. code-block:: python
 
-        class OrderArgs(BaseModel):   # 参数声明（B1：声明即模型）
+        from pydantic import BaseModel, Field
+
+        from flowing import Agent, on
+        from flowing.parsable import Parsable
+
+        class OrderArgs(BaseModel):   # 参数声明（声明即模型）
             user_id: int = Field(description="用户 ID")
             order_id: str
 
@@ -872,40 +829,30 @@ class Agent:
 
     .. code-block:: python
 
-        child = await self.create_subagent("payment", order_id="456")   # 类型名引用（fya 示例的 subagents: [- payment as pay] 声明，见上方）
+        child = await self.create_subagent("payment", order_id="456")   # 类型名引用
         result = await child.query("发起退款")
-        await child.pause()      # 协作式暂停工作循环
+        child.pause()      # 协作式暂停工作循环（同步方法）
         await child.destroy()    # 显式销毁；session 记录保留
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
     - 同名 ``.fya`` 与手写子类并存时 ``.fya`` 优先并告警；两者生成的类
       结构完全相同（等价且互斥）。
     - ``setup()`` 轻量约束：只做状态赋值、钩子注册、inject 读取、
       Composable 调用；网络请求 / 文件 I/O / 大量计算移到工具调用或按需
       阶段。``setup()`` 第一个 ``await`` 之前的代码不被其它协程打断。
-    - 不变量：``self.model`` 永远是 ``ModelConfig``（不做 isinstance
-      分支）；Agent 对模型结构体只做「持有 + 机械传递」，不解释字段。
+    - 不变量：``self.model`` 永远是 ``ModelConfig``；Agent 对模型结构体
+      只做持有与机械传递，不解释字段。
     - 不变量：创建即注册（``_nodes``）；父销毁 → 子递归销毁；destroy
-      后实例不再可用（从 ``_nodes`` 摘除、三正交结构均清空——死活由
-      在册与否表达，``_parent_id`` 作为历史事实不改写），但
-      session 记录保留可现场恢复。
-
-    .. rubric:: 调用关系（审计）
-
-    - 调用：无（骨架职责见 ``__init__``；行为入口见各方法条目）
-    - 被调：无（用户子类化的基类；框架内以实例方法形式被调，见各方法）
-    - 实例化方：``flowing.runtime.Runtime.create_agent``（新建管线）、
-      ``flowing.runtime.Runtime.recover_agent``（恢复管线）；
-      ``flowing.agent.Agent.create_subagent`` /
-      ``flowing.plugins.workflow.Workflow.create_agent`` /
-      ``Runtime.mount`` 均委托 ``create_agent``
+      后实例不再可用（从 ``_nodes`` 摘除、三正交结构均清空），但 session
+      记录保留、可现场恢复。
 
     .. seealso::
 
         - :meth:`flowing.runtime.Runtime.create_agent` —— 唯一创建入口。
         - :meth:`flowing.runtime.Runtime.recover_agent` —— 恢复入口。
-        - :class:`flowing.runtime.ProvideNode` —— 本类实现的协议。
+        - :class:`flowing.message.Message` / :class:`flowing.message.MessageChain`
+          —— 消息级树节点与树手术。
     """
 
     # ────────────────────────── 类属性（.fya 元信息即类属性） ──────────────
