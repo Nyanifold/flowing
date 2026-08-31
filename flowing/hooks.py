@@ -45,7 +45,7 @@ dispatch 点为准）：
      - handler 能力与约束
    * - ``before_create``
      - 创建管线执行 ``setup()`` 之前
-     - ``dict``（创建 kwargs）
+     - ``dict`` （创建 kwargs）
      - 可改写 kwargs，改写结果传给 ``setup(**kwargs)``；同步或异步 handler
        均可；只能经 :func:`on` 装饰器声明（此时 ``setup()`` 尚未运行，无法
        用 ``hooks`` 注册）；仅创建管线触发，恢复管线不触发
@@ -55,7 +55,7 @@ dispatch 点为准）：
      - 观察 / 收尾；同步或异步 handler 均可
    * - ``before_recover``
      - 恢复管线执行 ``setup()`` 之前
-     - ``dict``（恢复 args）
+     - ``dict`` （恢复 args）
      - 可改写 args，改写结果传给 ``setup(**args)``；同步或异步 handler
        均可
    * - ``after_recover``
@@ -73,8 +73,8 @@ dispatch 点为准）：
    * - ``before_turn``
      - 逻辑 turn 开始、出队批次挂树之前
      - :class:`flowing.agent.TurnContext`
-     - 可改写 ``pending_messages``（附加式注入）；``raise Intercepted``
-       阻断则整个批次丢弃、不落盘
+     - 可改写 ``pending_messages`` （把消息附加进本回合待挂树批次）；
+       ``raise Intercepted`` 阻断则整个批次丢弃、不落盘
    * - ``before_turn_append``
      - 消息挂树与落盘之前
      - :class:`flowing.message.Message`
@@ -118,8 +118,8 @@ dispatch 点为准）：
    * - ``after_subagent_invoke``
      - 子 Agent 结果构造之后、交付之前
      - :class:`flowing.agent.SubagentInvocation`
-     - 可改写 ``result``（改写后的结果用于构造交付消息）；不接
-       ``Intercepted``（其异常按普通异常上抛）；挂在父 Agent 的 hooks 上
+     - 可改写 ``result`` （改写后的结果用于构造交付消息）；不接
+       ``Intercepted`` （其异常按普通异常上抛）；挂在父 Agent 的 hooks 上
    * - ``before_turn_abort``
      - 回合被 abort 时触发一次（abort 判定收口处）
      - :class:`flowing.agent.TurnContext`
@@ -132,8 +132,8 @@ dispatch 点为准）：
    * - ``on_provider_error``
      - ``provider_gen()`` 内 LLM 调用抛异常时
      - :class:`flowing.agent.ProviderErrorContext`
-     - 唯一可决策的错误钩子：handler 在内部执行退避 / 换模型 /
-       ``abort_turn()`` 等动作并写 ``ctx.can_continue``（为 ``True`` 则
+     - 唯一可决策的错误钩子：handler 在内部执行退避等待（sleep） / 换模型 /
+       ``abort_turn()`` 等动作并写 ``ctx.can_continue`` （为 ``True`` 则
        同一回合内重试）；``ContextLengthError`` 不经过本钩子，直接上抛
 
 .. list-table:: 消息队列 / fork / 取消钩子点
@@ -162,11 +162,11 @@ dispatch 点为准）：
      - 可改写（变换本逻辑 turn 消费的消息列表）
    * - ``before_fork``
      - ``fork()`` 切换 head 之前
-     - ``str``（目标消息 id）
+     - ``str`` （目标消息 id）
      - 可改写 target；``raise Intercepted`` 阻止切换
    * - ``after_fork``
      - ``fork()`` 切换 head 之后
-     - ``str``（切换前的原 head 消息 id）
+     - ``str`` （切换前的原 head 消息 id）
      - 纯观察（日志 / 通知 UI 刷新）
    * - ``before_cancel``
      - ``cancel()`` / ``stop()`` 置位取消信号之前
@@ -181,7 +181,7 @@ dispatch 点为准）：
 :class:`flowing.errors.UnknownHookPointError`）：
 
 - ``before_skill_load`` / ``after_skill_load``：Skill 扩展声明，
-  ``by="skill"``，``match_on="name"``（见 :mod:`flowing.plugins.skills`）。
+  ``by="skill"``，``match_on="name"`` （见 :mod:`flowing.plugins.skills`）。
 - ``on_signal``：Comm 扩展声明，``by="comm"``，``match_on="type"``
   （见 :mod:`flowing.plugins.comm`）。
 - ``on_event``：Comm 扩展声明，``by="comm"``，``match_on="topic"``。
@@ -200,17 +200,17 @@ dispatch 点为准）：
 
 .. code-block:: python
 
-    from flowing import on
+    from flowing import Agent, on
     from flowing.errors import Intercepted
 
     class OrderAgent(Agent):
         @on('before_create')
-        def _(self, kwargs):
+        def _setup_kwargs(self, kwargs):
             kwargs.setdefault('locale', 'zh')
             return kwargs
 
         @on('before_tool_call')
-        def _(self, tool_call):
+        def _guard_payments(self, tool_call):
             if tool_call.name.startswith("payment-"):
                 raise Intercepted("支付类工具需要人工审批")
             return tool_call
@@ -218,6 +218,15 @@ dispatch 点为准）：
         async def setup(self):
             self.hooks.after_turn(self._audit_turn, by="audit", tags=["security"])
             self.hooks.before_tool_call["payment-*"](self._guard, by="guardrail")
+
+        # 示例用的 handler 方法，由使用者按需实现：无 value 钩子点的
+        # handler 只收 agent；带 value 钩子点的 handler 收 (agent, value)
+        # 并返回 value
+        def _audit_turn(self, agent):
+            return None
+
+        def _guard(self, agent, tool_call):
+            return tool_call
 
 ``.fya`` 声明式入口等价写法（``$script`` 中的 ``@on`` 在实例 ``__init__``
 阶段注册，早于 ``setup()``）：
@@ -241,7 +250,7 @@ handler 统一签名与三种合法出口：
   宿主对象（Agent 专属钩子点上是当前 Agent 实例；Workflow 自带钩子点上是
   ``Workflow`` 实例），``value`` 的类型由钩子点决定（见上方全集表）。无
   value 的钩子点（如 ``after_create``）handler 只收 ``agent`` 一个参数。
-- 出口一：``return value``（改写后或原样）——结果传给下一个 handler，最终
+- 出口一：``return value`` （改写后或原样）——结果传给下一个 handler，最终
   返回给 dispatch 的调用方。
 - 出口二：在 value 上设置 ``shortcut`` 字段后返回——分发链停止，调用方跳过
   默认逻辑（如缓存命中时直接采用 handler 提供的工具结果）；对应操作的
@@ -250,7 +259,7 @@ handler 统一签名与三种合法出口：
   无效、对应操作的 ``after_`` 钩子不触发。:class:`flowing.errors.Intercepted`
   刻意不是 ``FlowingError`` 的子类，捕获框架错误时不会误捕它。
 - 携带 value 的钩子点要求每个 handler 返回值：返回 ``None`` 视为编程错误，
-  抛 :class:`flowing.errors.FlowingError`（消息含钩子点名与 handler 标识）。
+  抛 :class:`flowing.errors.FlowingError` （消息含钩子点名与 handler 标识）。
   无 value 的钩子点不施加该检查。
 - 同步与异步 handler 透明混用：分发器检测到 awaitable 结果就 ``await``。
   全部钩子点（含创建 / 销毁 / 恢复管线）均接受同步或异步 handler；注册时
@@ -310,13 +319,13 @@ watcher 通道（``watch``，与钩子点并列的扩展契约）：
   权限分级；外部 handler 与插件 handler 权力相同（挂在决策型钩子点上同样
   可以改写 value 或 ``raise Intercepted``，纯观察用途请挂 ``after_*`` /
   ``on_*`` 点并原样返回 value）。
-- 带自己的 ``by=``（如 ``by="web"``）可获得整组管理能力
+- 带自己的 ``by=`` （如 ``by="web"``）可获得整组管理能力
   （``remove_by_owner`` / 启停），不与插件 handler 混淆。
 - 钩子只能从进程内代码注册：框架没有经 HTTP 挂钩子的端点，需要远程推送
   通道的服务层自行在进程内挂钩后转发。
 - 错误不是事件：内部错误以异常上抛（无 ``on_error`` 兜底钩子），唯一可
   决策的错误钩子是 ``on_provider_error``；观测后台错误的现成通道是
-  :mod:`flowing._unstable.logging`（落盘 logging.jsonl）。
+  :mod:`flowing._unstable.logging` （落盘 logging.jsonl）。
 
 ``by=`` 惯例与整组管理：
 
@@ -327,14 +336,14 @@ watcher 通道（``watch``，与钩子点并列的扩展契约）：
 
 .. seealso::
 
-   :class:`flowing.agent.Agent`（``hooks`` 属性、``watch`` 方法）
-   :class:`flowing.agent.TurnContext`（turn 族钩子的 value 类型）
-   :class:`flowing.errors.Intercepted`（handler 的硬阻断信号）
+   :class:`flowing.agent.Agent` （``hooks`` 属性、``watch`` 方法）
+   :class:`flowing.agent.TurnContext` （turn 族钩子的 value 类型）
+   :class:`flowing.errors.Intercepted` （handler 的硬阻断信号）
    :class:`flowing.errors.UnknownHookPointError` /
-   :class:`flowing.errors.DuplicateHookPointError`（钩子点访问与声明错误）
-   :class:`flowing.lists.ManagedList`（分组管理容器抽象）
+   :class:`flowing.errors.DuplicateHookPointError` （钩子点访问与声明错误）
+   :class:`flowing.lists.ManagedList` （分组管理容器抽象）
    :mod:`flowing.plugins.skills` / :mod:`flowing.plugins.comm` /
-   :mod:`flowing.plugins.cron`（扩展钩子点的声明方）
+   :mod:`flowing.plugins.cron` （扩展钩子点的声明方）
    :mod:`flowing.composables.retry` / :mod:`flowing.composables.compact`
    （Composable 钩子点声明方）
 """
@@ -375,9 +384,9 @@ T = TypeVar("T")
 
 HookHandler: TypeAlias = Callable[..., Any]
 """handler 统一签名 ``(agent, value) -> value``；同步返回或返回 awaitable 均可，
-分发器检测到 awaitable 结果就 ``await``（含构造阶段钩子点）。
+分发器检测到 awaitable 结果就 ``await`` （含构造阶段钩子点）。
 此处用 ``Callable[..., Any]`` 承载是因为各钩子点 value 类型不同；
-精确契约见模块 docstring 的「核心钩子点全集表」。
+精确契约见模块 docstring 的「核心钩子点全集」。
 """
 
 
@@ -415,11 +424,11 @@ class HookEntry:
     """
 
     handler: HookHandler
-    """钩子 handler，签名 ``(agent, value) -> value``（同步或返回 awaitable）。
+    """钩子 handler，签名 ``(agent, value) -> value`` （同步或返回 awaitable）。
     """
     by: str | None
     """来源 / 所有者单一标识（如 ``"retry"``、``"guardrail"``）；注册时省略
-    则记为 ``None``。与钩子点声明的 ``by``（必填）是两个层面的字段。
+    则记为 ``None``。与钩子点声明的 ``by`` （必填）是两个层面的字段。
     """
     tags: list[str] = field(default_factory=list)
     """任意标签列表，供批量分组管理。
@@ -443,7 +452,7 @@ class PatternRegistrar:
 
     「按名称过滤注册」是高频需求（只对 ``payment-*`` 工具做审批）。
     独立 Registrar 类型使 ``hook["pattern"]`` 与 ``hook(handler)`` 共享
-    同一调用形态，注册产物仍是普通 :class:`HookEntry`（``pattern`` 字段
+    同一调用形态，注册产物仍是普通 :class:`HookEntry` （``pattern`` 字段
     非空），因此分组管理、注册顺序、分发算法完全一致，无第二套语义。
 
     .. rubric:: 使用示例
@@ -546,7 +555,7 @@ class HookList(ManagedList[HookEntry]):
 
     - 注册入口：``__call__(handler, *, by=None, tags=None) -> HookHandler``，
       返回被注册的原 handler，追加到末尾（注册顺序即执行顺序）；``by``
-      省略记为 ``None``（与 :meth:`HookRegistry.declare` 的必填 ``by`` 是
+      省略记为 ``None`` （与 :meth:`HookRegistry.declare` 的必填 ``by`` 是
       两个层面）。
     - ``__getitem__`` 三形态见下；``int`` / ``slice`` 基于含 disabled 的
       完整底层列表做位置索引（用于自省），与 ``__iter__`` / :meth:`dispatch`
@@ -571,7 +580,7 @@ class HookList(ManagedList[HookEntry]):
     """
     match_on: str
     """pattern 过滤时读取 value 的属性名，默认 ``"name"``；通信扩展使用
-    ``"type"``（``on_signal``）/ ``"topic"``（``on_event``）。
+    ``"type"`` （``on_signal``）/ ``"topic"`` （``on_event``）。
     """
 
     def __init__(self, name: str, *, by: str, match_on: str = "name") -> None:
@@ -660,7 +669,7 @@ class HookList(ManagedList[HookEntry]):
           索引，其余（str）走 pattern 注册。
         - int/slice 基于含 disabled 的完整底层列表；越界抛 ``IndexError``。
         - str 形态不读取既有条目，只返回注册器；pattern 语法遵循
-          ``fnmatch``（``*`` / ``?`` / ``[abc]`` / 字面量），匹配 value 的
+          ``fnmatch`` （``*`` / ``?`` / ``[abc]`` / 字面量），匹配 value 的
           ``match_on`` 属性（``before_tool_call`` 上即 ``ToolCall.name``）。
         - watch 通道不是 HookList：注册用 ``hooks.watch('locale', handler)``
           或 ``agent.watch``，对 :class:`flowing.agent.FieldUpdate` 的
@@ -699,13 +708,13 @@ class HookList(ManagedList[HookEntry]):
         - ``result = entry.handler(agent, value)``；检测为 awaitable 则
           ``await``——同步 / 异步 handler 透明混用。
         - 首参 ``agent`` 是钩子宿主对象：Agent 专属钩子点上是 ``Agent``
-          实例；Workflow 自己的 ``hooks``（``before_tool_call`` /
+          实例；Workflow 自己的 ``hooks`` （``before_tool_call`` /
           ``after_tool_call``）上是 ``Workflow`` 实例。dispatch 自身只透传、
           从不访问其属性；需要 Agent 能力的 handler 自行 ``isinstance``
           判断。
         - 携带 value 的钩子点（``value`` 参数非 ``None`` 调入）要求每个
           handler 返回值：handler 返回 ``None`` 视为编程错误，抛
-          :class:`flowing.errors.FlowingError`（消息含钩子点名与 handler
+          :class:`flowing.errors.FlowingError` （消息含钩子点名与 handler
           标识）。无 value 的钩子点（``after_create`` 等）不施加该检查。
         - ``value = result`` 后检查 ``getattr(value, "shortcut", None)``：
           非 ``None`` 立即停止链并返回该 value（协商短路；对应操作的
@@ -759,7 +768,7 @@ class HookRegistry:
 
     钩子只影响当前 Agent 实例，无全局钩子表——同类的两个 Agent 可以有
     不同的钩子栈。钩子点集合是显式的：访问未声明的钩子点立即抛
-    ``UnknownHookPointError``（而非静默创建空钩子点），让「没调用
+    ``UnknownHookPointError`` （而非静默创建空钩子点），让「没调用
     ``use_skill()`` 却访问 ``before_skill_load``」这类错误在开发期暴露。
 
     .. rubric:: 使用示例
@@ -782,7 +791,7 @@ class HookRegistry:
       未声明 → :class:`flowing.errors.UnknownHookPointError`。
     - 预填的核心钩子点是 :class:`HookList` 实例，初始不含 handler；
       ``match_on`` 默认为 ``"name"``，仅 ``after_provider_gen`` 与
-      ``on_provider_delta`` 为 ``"by"``（value 携带来源标记，可按来源
+      ``on_provider_delta`` 为 ``"by"`` （value 携带来源标记，可按来源
       pattern 过滤注册）。
     - 不变量：同一钩子点名在注册表内唯一（声明独占，见 :meth:`declare`）。
 
@@ -811,10 +820,10 @@ class HookRegistry:
 
         .. rubric:: 行为要点
 
-        - 预填集合为模块 docstring「核心钩子点全集表」的完整集合，
+        - 预填集合为模块 docstring「核心钩子点全集」的完整集合，
           各 ``HookList`` 初始为空（无 handler）；``match_on`` 默认为
           ``"name"``，仅 ``after_provider_gen`` / ``on_provider_delta``
-          为 ``"by"``（value 携带来源标记，可按来源 pattern 过滤注册）。
+          为 ``"by"`` （value 携带来源标记，可按来源 pattern 过滤注册）。
         - 本方法是同步的（在 ``Agent.__init__`` 骨架阶段调用）。
         - 扩展钩子点不在此预填——未启用扩展的实例不承载其复杂度。
 
@@ -826,7 +835,7 @@ class HookRegistry:
         self._watchers: list[tuple[str, Callable[[Any, Any], Any]]] = []   # watcher 通道（非钩子）
         self._pending_on = []   # 未结算的 @on 标记暂记列表
         # 预填核心钩子点（by="core"，初始无 handler；全集见模块
-        # docstring「核心钩子点全集表」两张表）。after_provider_gen /
+        # docstring「核心钩子点全集」两张表）。after_provider_gen /
         # on_provider_delta 以 match_on="by" 声明——value
         # （ProviderResponse / ProviderDelta）携带 by 来源标记，
         # handler 可按 "_turn" / "_side" / 插件自定义值做 pattern
@@ -888,17 +897,17 @@ class HookRegistry:
 
         - ``by`` 为必填关键字参数——框架核心 ``by="core"``，扩展用自身标识；
           不允许省略或传 ``None``。
-        - 同名 + 同 ``by``：幂等，返回已有 ``HookList``（``match_on``
+        - 同名 + 同 ``by``：幂等，返回已有 ``HookList`` （``match_on``
           以首次声明为准，不校验后续传参是否一致）。
         - 同名 + 不同 ``by``：抛
           :class:`flowing.errors.DuplicateHookPointError`，消息含双方
           ``by``。
         - 返回的 ``HookList`` 由声明者自行 dispatch；框架不会代 dispatch
           扩展钩子点（谁声明谁 dispatch）。
-        - 声明时机约束：应在 ``setup()``（或 ``use_xxx``）中完成；运行期
+        - 声明时机约束：应在 ``setup()`` （或 ``use_xxx``）中完成；运行期
           Turn 循环内声明虽不禁止，但属扩展自身责任，框架不做时序保障。
-        - ``@on`` 冲刷：创建钩子点（非幂等返回已有）时，把 ``_pending_on``
-          里同名记录全部挂载进新 ``HookList``（含 pattern 的走
+        - ``@on`` 冲刷：创建钩子点（而非走「同名同 by 幂等返回已有」路径）时，把 ``_pending_on``
+          里同名记录全部挂载进新 ``HookList`` （含 pattern 的走
           ``HookList[pattern]`` 通道）并从暂记列表移除——此刻尚无其它
           handler，``@on`` handler 天然排最前。幂等路径（同名 + 同 ``by``）
           不冲刷——首次声明时已结算。
@@ -941,7 +950,7 @@ class HookRegistry:
         ``Intercepted`` / ``shortcut``，返回值被忽略，异常只记录日志。
 
         :param name: fnmatch pattern，匹配 ``value.name`` 字段。
-        :param handler: ``(agent, value) -> None``（同步或异步均可）。
+        :param handler: ``(agent, value) -> None`` （同步或异步均可）。
         :return: handler（便于装饰器写法）。
         """
         self._watchers.append((name, handler))
@@ -1116,11 +1125,11 @@ def on(
       同名方法，基类标记不生效）；注册顺序为基类 → 派生类。注册未绑定
       函数，分发签名与其他 handler 统一为 ``(agent, value) -> value``。
     - 两段式注册：钩子点已存在（核心预填点）→ 立即注册；尚未声明（插件
-      点，等 ``use_xxx()`` 在 ``setup()`` 里 declare）→ 记入实例
-      ``hooks._pending_on`` 暂记。``HookRegistry.declare()`` 创建同名钩子
-      点时冲刷挂载——此刻无其它 handler，``@on`` handler 天然排最前。
-    - setup 后结算：``setup()`` 返回后的 PENDING 检查发现 ``_pending_on``
-      非空 → 抛 :class:`flowing.errors.UnknownHookPointError`（拼错的
+      点，等 ``use_xxx()`` 在 ``setup()`` 里 declare）→ 记入实例的暂记列表
+      （内部机制，最终行为见下一条）。``HookRegistry.declare()`` 创建同名
+      钩子点时冲刷挂载——此刻无其它 handler，``@on`` handler 天然排最前。
+    - setup 后结算：``setup()`` 返回后的 PENDING 检查发现暂记列表非空 →
+      抛 :class:`flowing.errors.UnknownHookPointError` （拼错的
       钩子点名或未启用对应插件，必须死在创建期，不做静默死信）。``@on``
       的目标钩子点必须在 setup 结束前被 declare（与「Composable 在
       setup 里启用」约定一致）。

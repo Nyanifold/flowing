@@ -28,7 +28,7 @@
 
 逻辑 Turn 只是执行概念：消费一条消息 → 产生一条 ``turn_end=True`` 的
 PROVIDER 消息（或被 abort）的过程；执行期载体是
-``flowing.agent.TurnContext``（不落盘、不进树、崩溃后不恢复）。
+``flowing.agent.TurnContext`` （不落盘、不进树、崩溃后不恢复）。
 
 Message 字段规约总表：
 
@@ -85,19 +85,19 @@ kind → API role 发送映射（Provider adapter 职责）：
      - ``assistant``
      - ``model``
    * - ``TOOL``
-     - ``user``（tool_result）
+     - ``user`` （tool_result）
      - ``tool``
      - ``tool``
    * - ``SYSTEM``
-     - ``user``（XML 包裹）
+     - ``user`` （XML 包裹）
      - ``system``
      - ``user``
    * - ``PEER``
-     - ``user``（XML 包裹）
+     - ``user`` （XML 包裹）
      - ``user``
      - ``user``
    * - ``EVENT``
-     - ``user``（XML 包裹）
+     - ``user`` （XML 包裹）
      - ``user``
      - ``user``
    * - ``PLUGIN``
@@ -110,8 +110,8 @@ kind → API role 发送映射（Provider adapter 职责）：
      - 同左
 
 - OpenAI 侧 PLUGIN / SUBAGENT 落 ``user`` role（XML 包裹）：外部结果
-  回喂属「输入」，不落 ``developer``（避免给外部数据提指令权），更不伪造
-  ``assistant``（会破坏轮次语义与 tool_calls 配对）。
+  回喂属「输入」，不落 ``developer`` （避免给外部数据提指令权），更不伪造
+  ``assistant`` （会破坏轮次语义与 tool_calls 配对）。
 - SYSTEM / PEER / EVENT / PLUGIN / SUBAGENT 的 XML 包裹格式由 adapter
   按 Provider 能力决定，框架核心不约束具体格式。
 - 「某 block type 出现在哪些 kind 中」是典型情况而非硬约束；不合法排列
@@ -121,7 +121,7 @@ kind → API role 发送映射（Provider adapter 职责）：
 入队规则：
 
 - 进队列：``USER`` / ``EVENT`` / ``PEER`` / ``PLUGIN`` / ``SUBAGENT`` /
-  ``SYSTEM``（可选）/ 异步工具最终结果（以 ``EVENT`` kind 入队，
+  ``SYSTEM`` （可选）/ 异步工具最终结果（以 ``EVENT`` kind 入队，
   ``source="tool_result"``，多块 content = 标注块 + 结果块）。``TOOL``
   kind 本身不入队——同步工具结果在逻辑 turn 内经挂树直接进入消息树。
 - 不进队列：``PROVIDER``——永远在逻辑 turn 内产生。
@@ -169,14 +169,14 @@ kind → API role 发送映射（Provider adapter 职责）：
 
 .. seealso::
 
-   :class:`flowing.agent.Agent`（消息队列与工作循环的宿主；
+   :class:`flowing.agent.Agent` （消息队列与工作循环的宿主；
    ``Agent.chain`` 是 :class:`MessageChain` 的访问入口）
-   :class:`flowing.agent.TurnContext`（逻辑 turn 的执行期临时对象：
+   :class:`flowing.agent.TurnContext` （逻辑 turn 的执行期临时对象：
    ``started_at`` / ``message_ids`` / ``aborted`` / ``pending_messages`` /
    ``usages``）
-   :mod:`flowing.tool`（``ToolCall`` / ``ToolResult`` 的定义处，与 block
+   :mod:`flowing.tool` （``ToolCall`` / ``ToolResult`` 的定义处，与 block
    形式互转）
-   :mod:`flowing.context`（``Context`` / ``PromptBlock`` / ``PromptSegment``
+   :mod:`flowing.context` （``Context`` / ``PromptBlock`` / ``PromptSegment``
    ——上下文组装产物）
 """
 
@@ -266,16 +266,16 @@ class MessageKind(enum.Enum):
          * - ``PROVIDER``
            - ``[thinking, text]`` / ``[thinking, tool_call]`` / 交错组合
          * - ``TOOL``
-           - ``[text]`` / ``[struct]`` / ``[struct, image]``（纯内容块，无协议块）
+           - ``[text]`` / ``[struct]`` / ``[struct, image]`` （纯内容块，无协议块）
          * - ``SYSTEM``
            - ``[text]``
          * - ``PEER``
            - ``[text]`` / ``[text, file]``
          * - ``EVENT``
-           - ``[text]`` / ``[text, image]`` / ``[text, struct]``（异步最终结果：标注块 + 结果块）
+           - ``[text]`` / ``[text, image]`` / ``[text, struct]`` （异步最终结果：标注块 + 结果块）
 
     - ``kind`` 不携带 UI 渲染信息（折叠 / 颜色 / 字体是应用层概念）；
-      框架不枚举 ``source``（二级分类自由字符串，由投递方填写）。
+      框架不枚举 ``source`` （二级分类自由字符串，由投递方填写）。
     - ``PEER`` 与 ``EVENT`` 的区分：PEER = 另一个 Agent 实例有意图地
       主动发送（语义上更接近用户消息，``source`` 典型值 ``"message_to"`` /
       ``"agent_delegate"`` / ``"agent_steer"``）；EVENT = 非 Agent 实体
@@ -289,7 +289,7 @@ class MessageKind(enum.Enum):
     .. seealso::
        :class:`flowing.message.Message`、
        :class:`flowing.message.MessageQueue`、
-       :mod:`flowing.model`（Provider adapter 的映射职责）。
+       :mod:`flowing.model` （Provider adapter 的映射职责）。
     """
 
     USER = "user"
@@ -345,7 +345,7 @@ class MessagePriority(enum.IntEnum):
     .. code-block:: python
 
         # 亲 Agent 引导子 Agent：目录已改动，请重新读取——
-        # 当轮 context 可见、不打断（Agent.steer 糖即此形态）
+        # 当轮 context 可见、不打断（Agent.steer 便捷封装即此形态）
         steer = Message(
             kind=MessageKind.PEER,
             content=[TextBlock(text="目录 src/ 已改动，请重新读取后再继续")],
@@ -419,22 +419,21 @@ class ContentBlock:
       推断；显式指定优先。
     - 降级策略属 UI / Provider 层（非框架核心）：video → 首帧截图或
       文件引用；audio → 占位文本或语音转文字。
-    - 边界区分：``text`` 与 ``file``（可读字符串与二进制）；``image``
-      与 ``video``（单帧与连续帧）；``image`` 与 ``file``（多模态视觉
-      输入与仅作文件传递）；``audio`` 与 ``file``（需语音理解与仅传
-      mp3）；``struct`` 与 ``text``（程序可读的 JSON 结构与纯文本——
+    - 边界区分：``text`` 与 ``file`` （可读字符串与二进制）；``image``
+      与 ``video`` （单帧与连续帧）；``image`` 与 ``file`` （多模态视觉
+      输入与仅作文件传递）；``audio`` 与 ``file`` （需语音理解与仅传
+      mp3）；``struct`` 与 ``text`` （程序可读的 JSON 结构与纯文本——
       对 LLM 的投影同为文本）。
 
     .. seealso::
        :class:`flowing.message.Message`、
-       :mod:`flowing.model`（adapter 逐 type 映射）。
+       :mod:`flowing.model` （adapter 逐 type 映射）。
     """
 
     type: str = ""
-    """片段类型判别，八值之一：``"text" | "thinking" | "tool_call" |
-    "struct" | "image" | "video" | "audio" | "file"``。子类将其收窄为
-    对应的 ``Literal``。序列化时作为 ``tree.jsonl`` 行内 content 项的
-    判别字段。
+    """片段类型判别，八值之一：``"text" | "thinking" | "tool_call" | "struct" | "image" | "video" | "audio" | "file"``。
+    子类将其收窄为对应的 ``Literal``。序列化时作为 ``tree.jsonl`` 行内
+    content 项的判别字段。
     """
 
 
@@ -520,7 +519,7 @@ class ToolCallBlock(ContentBlock):
 
     block 形式是消息层的权威表示（持久化、上下文组装都用它）；
     :class:`flowing.tool.ToolCall` 是它的「解析后」形式——剥离通用字段，
-    只保留 ``id`` / ``name`` / ``args``（+ 通用短路字段 ``shortcut``），
+    只保留 ``id`` / ``name`` / ``args`` （+ 通用短路字段 ``shortcut``），
     供 ``Agent.tool_call()`` 与工具钩子使用。两者经
     :meth:`flowing.tool.ToolCall.from_block` 单向转换（模块依赖保持
     单向：``flowing.tool`` 认识 ``flowing.message``，反之不认识）。
@@ -585,7 +584,7 @@ class StructBlock(ContentBlock):
     .. rubric:: 行为要点
 
     - ``data`` 恒 JSON 兼容（``json.dumps`` 可序列化）；构造时校验，
-      违反抛 ``ValueError``（作者 bug 的诚实失败点，如深层埋藏的非
+      违反抛 ``ValueError`` （作者 bug 的诚实失败点，如深层埋藏的非
       JSON 对象在塑形时于此报错）。
     - adapter 不对 ``StructBlock`` 做任何原生结构化映射，恒投影为
       ``json.dumps(ensure_ascii=False)`` 文本（所有 adapter 统一）。
@@ -625,7 +624,7 @@ class MediaBlock(ContentBlock):
 
     ``image`` / ``video`` / ``audio`` / ``file`` 四种媒体块的共同字段
     基座。无论原始来源是文件路径、URL 还是内存 buffer，进入消息层时统一
-    转换为 base64，``data`` 持有权威表示；``name``（必填，缺省合成）与
+    转换为 base64，``data`` 持有权威表示；``name`` （必填，缺省合成）与
     ``mime_type`` 只是元数据，不替代 ``data``。
 
     统一 base64 的意义：消息层不感知「文件最初从哪来」（消息对象自包含、
@@ -653,7 +652,7 @@ class MediaBlock(ContentBlock):
     - ``data`` 必填：构造时不校验 base64 合法性（非法数据由 adapter 或
       Provider 报错），但缺失 ``data`` 是契约违反。
     - ``name`` 必填（恒非 ``None``）：填充链为 显式 ``name`` > ``path``
-      文件名 > 合成 ``<sha256(data)[:12]>.<ext>``（ext 由 MIME 反推，
+      文件名 > 合成 ``<sha256(data)[:12]>.<ext>`` （ext 由 MIME 反推，
       MIME 未知 → ``.bin``）。规则全局统一：不只工具结果转换层
       （``flowing.tool.normalize_output``），adapter 从 provider 响应 /
       用户上传建媒体块时同守。
@@ -676,7 +675,7 @@ class MediaBlock(ContentBlock):
     name: str
     """文件名等元数据，必填（恒非 ``None``）；不替代 ``data``。缺省时由
     转换 / 构造层按填充链合成：显式 ``name`` > ``path`` 文件名 >
-    ``<sha256(data)[:12]>.<ext>``（MIME 未知 → ``.bin``）。
+    ``<sha256(data)[:12]>.<ext>`` （MIME 未知 → ``.bin``）。
     """
     mime_type: str | None = None
     """MIME 类型（可选）；缺失时 adapter 推断，显式指定优先。
@@ -828,7 +827,7 @@ class Message:
       续跑，照常进入 LLM 上下文，不截断）。
     - ``partial``：流式中断时置 ``True``，已累积内容保留落盘；正常完成
       的消息恒为 ``False``。
-    - ``synthetic``：仅恢复流程合成的占位消息为 ``True``（孤立 tool_call
+    - ``synthetic``：仅恢复流程合成的占位消息为 ``True`` （孤立 tool_call
       的占位 TOOL 消息），标记「不是真实结果」；其余消息恒为 ``False``。
     - ``tool_call_id`` / ``tool_status``：仅 ``kind=TOOL`` 非 None；
       ``__post_init__`` 双向强制（``kind=TOOL`` 与两字段非 ``None`` 互为
@@ -843,7 +842,7 @@ class Message:
     - 消息对象不携带执行状态 / 等待标记（等待绑定是纯运行时结构，不落盘）。
     - 兄弟分支无顺序信息（互斥分支）；分支列表 UI 排序用 ``timestamp``，
       树结构不需要显式排序字段。
-    - 不变量：树上任意消息的 ``parent_id`` 为 ``None``（根标记）或指向
+    - 不变量：树上任意消息的 ``parent_id`` 为 ``None`` （根标记）或指向
       另一条已落盘消息；允许多个根（森林模型）——新根由
       :meth:`MessageChain.branch` 以 ``parent_id=None`` 开启（如压缩换
       链），旧根链完整保留、不再进入上下文。
@@ -1012,7 +1011,9 @@ def to_record(msg: Message) -> dict:
     - ``kind`` 落盘为枚举字符串值；``priority`` 落盘为枚举数值；
       ``timestamp`` 落盘为 ISO 格式（naive UTC）。
     - ``content`` 逐块序列化，每块含 ``type`` 判别字段。
-    - ``usage`` 为 ``None`` 或七计数字段 + ``raw`` 的 dict（存量行的
+    - ``usage`` 为 ``None`` 或七计数字段（``input`` / ``fresh_input`` /
+      ``output`` / ``cache_read`` / ``cache_write`` / ``reasoning`` /
+      ``total_tokens``）+ ``raw`` 的 dict（存量行的
       ``"usage": null`` 兼容）。message 不 import providers（单向依赖），
       序列化按 ``Usage`` 的字段名读取，还原端在函数内局部 import。
 
@@ -1056,7 +1057,7 @@ def from_record(record: dict) -> Message:
     - 要求 ``record["type"] == "message"``，否则抛 ``ValueError``。
     - 逐字段还原：``kind`` / ``priority`` 重建为枚举，``timestamp`` 经
       ``datetime.fromisoformat`` 还原；``usage`` 为 ``None`` 或重建为
-      ``flowing.providers.Usage``（局部 import——message 不 import
+      ``flowing.providers.Usage`` （局部 import——message 不 import
       providers 的单向依赖在运行期无环）。
 
     :raises ValueError: ``record`` 不是消息行（``type`` 字段不是
@@ -1112,8 +1113,9 @@ def estimate_message_tokens(msg: Message) -> int:
     JSON 序列化参数、``StructBlock`` 的 ``json.dumps`` 序列化长度均按
     字符启发式计；``MediaBlock`` 及其子类固定计
     :data:`MEDIA_TOKEN_ESTIMATE`。被
-    :meth:`flowing.agent.Agent.estimate_context_tokens` 用于估算锚点
-    之后（或无锚点时全部）路径上的消息。
+    :meth:`flowing.agent.Agent.estimate_context_tokens` 用于估算——
+    锚点指最近一条携带实测用量（``Message.usage``）的消息，估算覆盖
+    锚点之后（或无锚点时全部）路径上的消息。
 
     字符启发式口径：ASCII 约 4 字符/token、非 ASCII（CJK 等）约 1
     字符/token——中文场景下远优于统一除以 4。不用 tokenizer：估算只
@@ -1209,7 +1211,7 @@ class MessageQueue:
     - 排序：``priority`` 升序（``INTERRUPT`` 最先）；同优先级 FIFO
       （入队序号，单调递增，无需比较 ``timestamp``）。
     - 进队列的 kind：``USER`` / ``EVENT`` / ``PEER`` / ``SYSTEM`` /
-      ``PLUGIN`` / ``SUBAGENT``（异步工具最终结果以 ``EVENT`` 入队）；
+      ``PLUGIN`` / ``SUBAGENT`` （异步工具最终结果以 ``EVENT`` 入队）；
       ``PROVIDER`` 永不入队。本类不校验 kind——投递纪律由调用方与
       ``Agent.enqueue_message`` 的钩子链负责。
     - 不防低优先级饿死；本类自身不持久化（队列待消费消息的恢复语义属
@@ -1245,7 +1247,7 @@ class MessageQueue:
         .. rubric:: 行为要点
 
         - 同步、无阻塞、立即返回；入队即保证会被常驻工作循环消费。
-        - 不修改 ``msg``（``id`` / ``timestamp`` 在构造时已就位）。
+        - 不修改 ``msg`` （``id`` / ``timestamp`` 在构造时已就位）。
         - 不做容量限制、不做去重、不做内容审核（审核走钩子）。
 
         .. seealso::
@@ -1283,7 +1285,7 @@ class MessageQueue:
         与 :meth:`wait_not_empty` 配套：``Agent._dequeue`` 在
         ``before_dequeue`` 派发后用它取消息——钩子在此窗口把消息移除
         （``cancel_queued`` / ``remove``）时返回 ``None``，调用方重新
-        等待并重新派发 ``before_dequeue``（每条真正出队的消息之前恰好
+        等待并重新派发 ``before_dequeue`` （每条真正出队的消息之前恰好
         一次 before 派发）。
         """
         if not self._items:
@@ -1299,7 +1301,7 @@ class MessageQueue:
         .. rubric:: 功能介绍
 
         队列空时挂起等待，直到有消息入队；``Agent._dequeue()`` 核心默认
-        实现即 ``[await self._message_queue.dequeue()]``（一条一条）。
+        实现即 ``[await self._message_queue.dequeue()]`` （一条一条）。
 
         .. rubric:: 行为要点
 
@@ -1503,7 +1505,7 @@ class MessageChain:
 
     一切内容走持久化路径：recap / reminder 等「临时上下文」也由本类挂上、
     用完 ``remove`` 擦除；回合开头的附加式注入走 ``before_turn`` 的
-    ``TurnContext.pending_messages``（同样随批次挂树持久化）。
+    ``TurnContext.pending_messages`` （同样随批次挂树持久化）。
 
     .. rubric:: 使用示例
 
@@ -1554,7 +1556,7 @@ class MessageChain:
       ``{"type": "tombstone", "id": ...}``；update / reparent 为对应变更行）。
     - 级联规则：``remove`` 不级联——删除带子树的消息会留下父链指向不存在
       节点的孤儿子树；正确做法是先对子树逐条 :meth:`reparent` 到新父
-      节点、再 ``remove``（定式）。
+      节点、再 ``remove`` （定式）。
     - 不自动移动 ``current_head_id``：手术目标是历史结构，head 切换是
       ``Agent.fork`` 的职责；删除 / 重连当前 head 或其上溯路径上的消息
       属于调用方责任（需要「删除当前 head 并回退到父节点」的便捷语义用
@@ -1570,17 +1572,17 @@ class MessageChain:
       append）。
 
     .. seealso::
-       :meth:`flowing.agent.Agent.fork`（切换 head，与手术正交——手术改
+       :meth:`flowing.agent.Agent.fork` （切换 head，与手术正交——手术改
        结构，fork 改视角）、
        :meth:`flowing.agent.Agent._persist_message` /
-       :meth:`flowing.agent.Agent._persist_tree_record`（两条落盘通道）、
-       :class:`flowing.persistence.FileRecordStore`（压缩的落盘细节）。
+       :meth:`flowing.agent.Agent._persist_tree_record` （两条落盘通道）、
+       :class:`flowing.persistence.FileRecordStore` （压缩的落盘细节）。
     """
 
     _agent: "Agent"
     """属主 Agent 反向引用（``Agent.__init__`` 以 ``MessageChain(self)``
     传入）——五个 op 直接操作 ``Agent._messages``，落盘经
-    ``Agent._persist_message``（新消息行）与 ``Agent._persist_tree_record``
+    ``Agent._persist_message`` （新消息行）与 ``Agent._persist_tree_record``
     （变更记录行）同步提交。内部 API，不属稳定契约。
     """
 
@@ -1616,9 +1618,9 @@ class MessageChain:
         - 后置条件：``msg`` 成为 ``after_id`` 的直接子消息且（若原有子
           消息）成为它们的父消息；``msg`` 落盘（append 新消息行）+ 邻接
           调整记录 append。
-        - 插入当前 head 之后不移动 ``current_head_id``（head 切换是
+        - 插入当前 head 之后不移动 ``current_head_id`` （head 切换是
           ``Agent.fork`` 的职责）。
-        - 不校验 ``msg.kind``（任何 kind 的消息都可成为历史节点）。
+        - 不校验 ``msg.kind`` （任何 kind 的消息都可成为历史节点）。
 
         :return: 新消息的 id。
         :raises KeyError: ``after_id`` 不存在于消息树。
@@ -1666,13 +1668,13 @@ class MessageChain:
 
         .. rubric:: 行为要点
 
-        - 前置条件：``parent_id`` 为 ``None``（开新根）或在树中存在；
+        - 前置条件：``parent_id`` 为 ``None`` （开新根）或在树中存在；
           ``msg.id`` 不与现有节点冲突（缺省时由框架分配）。
         - 后置条件：``parent_id`` 非 ``None`` 时，``msg`` 成为其直接子
           消息，既有子消息的 ``parent_id`` 与位置均不变；``parent_id``
           为 ``None`` 时，``msg.parent_id is None``，成为新的根，既有各
           根链不受影响。落盘仅 append 新消息行（无邻接调整记录）。
-        - 不移动 ``current_head_id``（开新根后切 head 走
+        - 不移动 ``current_head_id`` （开新根后切 head 走
           :meth:`flowing.agent.Agent.fork`）；不校验 ``msg.kind``。
 
         :return: 新消息的 id（调用方用于后续 ``reparent`` / ``remove``
@@ -1681,8 +1683,8 @@ class MessageChain:
         :raises ValueError: ``msg.id`` 与现有节点冲突。
 
         .. seealso::
-           :meth:`insert`（分叉点的合并语义对偶）、
-           :meth:`flowing.agent.Agent.fork`（切到新分支 / 新根的视角操作
+           :meth:`insert` （分叉点的合并语义对偶）、
+           :meth:`flowing.agent.Agent.fork` （切到新分支 / 新根的视角操作
            ——fork 只切视角，从不创建节点）。
         """
         # 宿主 Agent 引用见类 docstring ``_agent`` 字段。
@@ -1712,10 +1714,10 @@ class MessageChain:
           （定式）。
         - 删除尾部消息是纯截断语义；删除中间消息在「直接物理删除」模型
           下本需逐行重写，tombstone 将其降为运行期 O(1)。
-        - 对不存在的 id 抛 ``KeyError``（重复删除不是静默成功）。
+        - 对不存在的 id 抛 ``KeyError`` （重复删除不是静默成功）。
         - 不移动 ``current_head_id``；删除 head 上溯路径上的消息属于调用
           方责任。需要「删除当前 head 并回退到父节点」时，请使用
-          ``Agent.remove`` / ``Agent.pop``（Agent 层负责 head 维护）。
+          ``Agent.remove`` / ``Agent.pop`` （Agent 层负责 head 维护）。
 
         :raises KeyError: ``msg_id`` 不存在于消息树（或已被删除）。
 
@@ -1750,8 +1752,8 @@ class MessageChain:
         - 逐条 :meth:`remove`：子树不级联、产生墓碑行；本方法只遍历现存
           消息，天然不会因 id 不存在抛 ``KeyError``。
         - 不直接移动 ``current_head_id``；若按 tags 删除的消息中包含当前
-          head，调用方应使用 ``Agent.remove_by_tags``（Agent 层负责 head
-          维护）。不触碰 ``pending_messages``（本方法作用于已挂树的消息）。
+          head，调用方应使用 ``Agent.remove_by_tags`` （Agent 层负责 head
+          维护）。不触碰 ``pending_messages`` （本方法作用于已挂树的消息）。
 
         :return: 删除的消息条数。
 
@@ -1784,7 +1786,7 @@ class MessageChain:
 
         - 运行期副作用：改内存 + append update 变更记录；压缩期随尾部
           重写固化。
-        - 不允许改 ``kind`` / ``parent_id``（改结构用 :meth:`reparent`，
+        - 不允许改 ``kind`` / ``parent_id`` （改结构用 :meth:`reparent`，
           改身份等于删除 + 插入的组合）；不递归校验新 content 的合法性
           （block 排列合法性是 adapter 组装时的职责）。
         - 更新一条 PROVIDER 消息的 content 不会自动重算 ``turn_end``
@@ -1835,7 +1837,7 @@ class MessageChain:
         :raises ValueError: ``to`` 是 ``msg_id`` 自身或其后代（会成环）。
 
         .. seealso::
-           :meth:`remove`（删除前保全子树的定式）、:meth:`insert`、
+           :meth:`remove` （删除前保全子树的定式）、:meth:`insert`、
            :meth:`flowing.agent.Agent.fork`。
         """
         # 宿主 Agent 引用见类 docstring ``_agent`` 字段。
