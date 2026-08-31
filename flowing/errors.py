@@ -235,30 +235,20 @@ class FlowingError(Exception):
 
 
 class ConfigError(FlowingError):
-    """配置类异常中间层。
+    """配置读取时机与配置命名空间注册相关异常的分类中间层。
 
     .. rubric:: 功能介绍
 
-    配置读取时机与配置命名空间注册相关异常的共同基类。启动期 / 声明期错误，
-    均 fail fast。
+    配置类异常的公共基类，覆盖两类场景：配置未就绪时读取（
+    ``ConfigNotReadyError``）与多个扩展注册同一配置命名空间（
+    ``ConfigNamespaceConflictError``）。配置错误属于部署 / 声明期错误，框架在
+    出错点立即抛出（fail-fast），不静默降级。
 
-    .. rubric:: 设计动机
+    .. rubric:: 行为要点
 
-    配置错误全部是编程 / 部署错误（不可自愈），归为一类便于启动期统一捕获并
-    给出「修正配置后重启」的指引；与运行期错误（Provider 等）在层次上分开。
-
-    .. rubric:: 行为规约
-
-    - 中间层，不直接实例化抛出。
-    - 统一五要素：字段由子类定义；抛出时机为配置读取 / 命名空间注册时；
-      调用方不 catch（fail fast）；不可重试；属机制（框架强制时机约束与
-      命名空间唯一性）。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``无``（框架内无捕获点，时机：未见规约）
-    - 实例化方：``无``（中间层，行为规约声明「不直接实例化抛出」；实际
-      抛出均为子类 ``ConfigNotReadyError`` / ``ConfigNamespaceConflictError``）
+    - 本类是分类中间层：框架实际抛出的是其具体子类；按类别捕获用
+      ``except ConfigError``。
+    - 配置错误不可重试：修正配置或修正调用位置后重新启动。
 
     .. seealso::
 
@@ -269,43 +259,31 @@ class ConfigError(FlowingError):
 
 
 class ConfigNotReadyError(ConfigError):
-    """在配置未就绪时调用 ``get_config()``。
+    """配置就绪之前调用 ``get_config()`` 时抛出。
 
     .. rubric:: 功能介绍
 
-    模块顶层（``import`` 时、优先级链合并未完成）调用 ``Runtime.get_config()``
-    时抛出，强制「配置只在 ``setup()`` 与钩子回调中读取」的时机约束。
-
-    .. rubric:: 设计动机
-
-    配置优先级链（环境变量 > 命令行 > 用户级 > 项目级 > 默认值）在 launch
-    过程中才完成浅合并；模块顶层读取会得到半成品值且难以排查，故以异常
-    显式禁止，而非返回不确定的值。
+    ``Runtime.get_config()`` 在配置就绪前被调用时抛出。就绪的时点是优先级链
+    （环境变量 > 命令行 > 用户级 > 项目级 > 默认值）浅合并完成之时——典型未
+    就绪场景是模块顶层（import 期）调用；合并完成后任何时机均可调用
+    （``setup()``、钩子回调、工具 callable、``main()`` 后续代码）。
 
     .. rubric:: 使用示例
 
     .. code-block:: python
 
-        # ✗ 模块顶层——抛出 ConfigNotReadyError
+        # 模块顶层调用——配置未就绪，抛出 ConfigNotReadyError
         TIMEOUT = runtime.get_config("agent.timeout")
 
-        # ✓ setup() 中读取
+        # 配置就绪后任何时机可调用（如 setup() 中）
         async def setup(self):
-            self.timeout = self.get_config("agent.timeout", 60)
+            self.timeout = self.get_config("agent.timeout", default=60)
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
-    - 五要素：无自定义字段；抛出时机为 ``get_config()`` 调用且配置未就绪；
-      调用方不 catch（编程错误，修正调用位置）；不可重试；属机制。
-    - 边缘情况：多 Runtime 场景按各自 Runtime 的就绪状态独立判定。
-    - 测试案例：前置：launch 完成前；操作：模块顶层调 ``get_config``；期望：
-      抛 ``ConfigNotReadyError``。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``无``（编程错误，调用方不 catch，fail fast）
-    - 实例化方：``flowing.runtime.Runtime.get_config``（时机：配置未就绪
-      ——模块顶层 / import 时调用，runtime.pyi:1164）
+    - 无结构化字段；消息为固定的英文提示。
+    - 编程错误：修正调用位置（改为在就绪后的时机读取），调用方不捕获。
+    - 多 Runtime 场景按各自 Runtime 的就绪状态独立判定。
 
     .. seealso::
 
@@ -314,6 +292,10 @@ class ConfigNotReadyError(ConfigError):
     """
 
     def __init__(self) -> None:
+        """构造异常实例（无参数，无结构化字段）。
+
+        消息为固定的英文提示。
+        """
         # 无字段叶子：固定英文提示消息
         super().__init__(
             "Configuration is not ready: read config only in setup() "
@@ -322,40 +304,27 @@ class ConfigNotReadyError(ConfigError):
 
 
 class ConfigNamespaceConflictError(ConfigError):
-    """多个扩展注册同一配置命名空间。
+    """多个扩展注册同一配置命名空间时抛出。
 
     .. rubric:: 功能介绍
 
-    ``Runtime.register_config_namespace(name, schema)`` 检测到命名空间已被
-    其它扩展注册时抛出。未被任何扩展注册的命名空间静默保留、可自由读取，
-    不触发本异常。
-
-    .. rubric:: 设计动机
-
-    命名空间注册是「谁负责校验 / 提供默认值 / 类型转换」的声明，两名扩展
-    认领同一命名空间会产生两套冲突的校验规则，必须在注册时 fail fast。
+    ``Runtime.register_config_namespace(name, schema)`` 检测到命名空间已被其它
+    扩展注册时抛出。命名空间注册声明「谁负责校验 / 提供默认值 / 类型转换」；
+    两个扩展认领同一命名空间会产生两套冲突的校验规则，必须在注册时立即失败
+    （fail-fast）。未被任何扩展注册的命名空间可自由读取，不触发本异常。
 
     .. rubric:: 使用示例
 
     .. code-block:: python
 
         runtime.register_config_namespace("i18n", I18nSchema)
-        runtime.register_config_namespace("i18n", OtherSchema)  # 抛出
+        runtime.register_config_namespace("i18n", OtherSchema)   # 重复注册 → 抛出
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
-    - 五要素：字段 ``namespace``；抛出时机为重复注册；调用方不 catch
-      （安装期编程错误）；不可重试；属机制。
-    - 非行为：不做命名空间访问控制——任何代码可读任何命名空间，注册只声明
-      校验职责。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``无``（安装期编程错误，调用方不 catch）
-    - 实例化方：``flowing.runtime.Runtime.register_config_namespace``
-      （时机：命名空间已被其它扩展注册，runtime.pyi:1328）；
-      ``flowing.runtime.Runtime.use`` 插件安装路径（时机：插件注册了
-      已被占用的配置命名空间，runtime.pyi:703）
+    - ``namespace`` 字段为冲突的配置命名空间名（诊断信息，框架不做后续仲裁）。
+    - 安装期编程错误：调用方不捕获。
+    - 注册只声明校验职责，不做命名空间访问控制——任何代码可读任何命名空间。
 
     .. seealso::
 
@@ -364,18 +333,12 @@ class ConfigNamespaceConflictError(ConfigError):
     """
 
     namespace: str
-    """冲突的配置命名空间名。行为边界：仅为诊断信息，框架不做后续仲裁。
-    
-    .. seealso:: :class:`flowing.errors.ConfigNamespaceConflictError`
-    """
+    """冲突的配置命名空间名（诊断信息，框架不做后续仲裁）。"""
 
     def __init__(self, namespace: str) -> None:
-        """
-        .. rubric:: 调用关系（审计）
+        """构造异常实例。
 
-        - 调用：``无``（仅平行字段赋值）
-        - 被调：``flowing.runtime.Runtime.register_config_namespace`` 的
-          raise（时机：命名空间重复注册时，runtime.pyi:1328）
+        :param namespace: 冲突的配置命名空间名；与 ``namespace`` 字段一致。
         """
         # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Config namespace conflict: {namespace!r} is already registered")
@@ -388,29 +351,20 @@ class ConfigNamespaceConflictError(ConfigError):
 
 
 class ProvideError(FlowingError):
-    """provide/inject 链异常中间层。
+    """provide/inject 机制异常的分类中间层。
 
     .. rubric:: 功能介绍
 
-    provide-inject 机制相关异常的共同基类。inject 沿 ``_parent_id`` 链上溯
-    （Agent 子树 > Workflow > Runtime，Runtime 为链终点），命中即返回。
+    provide-inject 链相关异常的公共基类。inject 沿父链（Agent 子树 → Workflow
+    → Runtime，Runtime 为链终点）逐级上溯查找，命中即返回；当前唯一子类是链
+    上溯到终点仍未命中时抛出的 ``MissingProvideError``。
 
-    .. rubric:: 设计动机
+    .. rubric:: 行为要点
 
-    provide/inject 是框架核心三大基础设施之一；其失败一律视为结构错误
-    （声明缺失），与可自愈的运行期错误分类隔离。
-
-    .. rubric:: 行为规约
-
-    - 中间层，不直接实例化抛出。
-    - 非行为：inject 不做跨节点类型校验（``InjectionKey[T]`` 的类型信息不跨
-      节点传递，key 在 ``_provided`` 中始终是 ``str``）。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``无``（框架内无按本类捕获点，时机：未见规约）
-    - 实例化方：``无``（中间层，不直接实例化抛出；由子类
-      ``MissingProvideError`` 承载）
+    - 本类是分类中间层：框架实际抛出的是其具体子类；按类别捕获用
+      ``except ProvideError``。
+    - inject 查找是实时的（不缓存）：运行期 ``provide`` 更新后再次 inject
+      立即得到新值。
 
     .. seealso::
 
@@ -421,78 +375,45 @@ class ProvideError(FlowingError):
 
 
 class MissingProvideError(ProvideError):
-    """inject 沿链上溯到终点（Runtime）仍未找到 key，且无默认值。
+    """inject 沿父链上溯到终点（Runtime）仍未找到 key 时抛出。
 
     .. rubric:: 功能介绍
 
-    ``inject(key)`` 查找失败的唯一异常。``inject(key, default=...)`` 提供
-    非 ``None`` 默认值时不抛出，返回默认值。旧名 ``InjectionError`` 已废弃。
-
-    .. rubric:: 设计动机
-
-    插件依赖的静态校验在 ``mount()`` 由 ``DependencyError`` 承担；运行时动态
-    场景（Agent 运行中 inject 未注册的值）由本异常兜底——「声明 + 校验」与
-    「运行时兜底」两层互补。
+    ``inject(key)`` 查找失败时抛出的唯一异常：沿父链从当前节点逐级向根查找，
+    到 Runtime 终点仍未命中即抛出。查找是实时的（不缓存），运行期 ``provide``
+    更新后再次 inject 可得新值。
 
     .. rubric:: 使用示例
 
     .. code-block:: python
 
-        # .fya 中 ToolEntry / SubagentEntry 的注入表达式（R-4）
-        # args:
-        #   user_id: "{{ self.inject('user_id') }}"   # 找不到 → MissingProvideError
-
         async def setup(self):
-            user_id = self.inject("user_id")                 # 缺失 → 抛出
-            locale = self.inject("locale", default="zh")     # 缺失 → "zh"
+            user_id = self.inject("user_id")   # 链上溯未命中 → 抛出 MissingProvideError
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
-    - 五要素：字段 ``key``；抛出时机为 inject 链上溯未命中且无 default；
-      调用方一般不 catch（``Agent.inject`` 内部按 default 判定后重抛）；
-      不可重试（结构错误）；属机制。
-    - 边缘情况：``default=None`` 不能表达「默认 None」——判定以
-      ``default is not None`` 为准；inject 每次调用实时沿链查找、不缓存，
-      运行时 provide 更新后再次 inject 可得新值。
-    - 测试案例：前置：链上无任何节点 provide ``"x"``；操作：
-      ``agent.inject("x")``；期望：抛 ``MissingProvideError`` 且 ``e.key == "x"``。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``flowing.agent.Agent.inject``（时机：内部按 default 判定后
-      重抛——见本类行为规约）；框架内无最终捕获点，沿调用链上抛
-    - 实例化方：``flowing.runtime`` inject 链终点（时机：上溯至 Runtime
-      终点仍未命中，runtime.pyi:526 ``raise MissingProvideError(key)``）；
-      ``flowing.agent.Agent.inject``（时机：链上溯未命中且无 default，
-      agent.pyi:968/2460）；``flowing.tool.ToolEntry`` 创建管线 inject
-      解析（时机：inject 列表 key 未命中，tool.pyi:638）；
-      ``flowing.plugins.skills`` / ``flowing.plugins.cron`` /
-      ``flowing.plugins.comm`` 的 ``inject("…Plugin")`` 句柄获取
-      （时机：对应插件未安装时，plugins/skills.pyi:1055、
-      plugins/cron.pyi:212、plugins/comm.pyi:1077）
+    - ``key`` 字段为未命中的 provide key（``InjectionKey[T]`` 退化为其 ``name``
+      字符串）；仅诊断用途，不提供「最接近的 key」之类的猜测。
+    - ``inject`` 没有默认值参数：需要「缺失时用默认值」的语义，请自行捕获本
+      异常后回退默认值。
+    - 结构错误、不可重试。
+    - 启动期插件的静态依赖校验（缺失警告、成环报错）由 ``DependencyError``
+      相关机制承担；本异常是运行期动态注入的兜底——两层互补。
 
     .. seealso::
 
         :meth:`flowing.agent.Agent.inject`
         :class:`flowing.params.InjectionKey`
-        :class:`flowing.errors.DependencyError` —— 启动期插件依赖校验（静态层），与本异常（运行时兜底）互补。
+        :class:`flowing.errors.DependencyError`
     """
 
     key: str
-    """未命中的 provide key（``InjectionKey[T]`` 退化为其 ``name`` 字符串）。
-    行为边界：仅诊断用途；不提供「最接近的 key」之类的猜测信息。
-    
-    .. seealso:: :class:`flowing.errors.MissingProvideError`
-    """
+    """未命中的 provide key（``InjectionKey[T]`` 退化为其 ``name`` 字符串）；仅诊断用途。"""
 
     def __init__(self, key: str) -> None:
-        """
-        .. rubric:: 调用关系（审计）
+        """构造异常实例。
 
-        - 调用：``无``（仅平行字段赋值）
-        - 被调：``flowing.runtime`` inject 链终点 /
-          ``flowing.agent.Agent.inject`` 等路径的 raise（时机：链上溯
-          未命中且无 default，runtime.pyi:526、agent.pyi:2460）
+        :param key: 未命中的 provide key；与 ``key`` 字段一致。
         """
         # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Missing provide value for key: {key!r}")
@@ -505,33 +426,21 @@ class MissingProvideError(ProvideError):
 
 
 class HookError(FlowingError):
-    """钩子基础设施异常中间层。
+    """钩子点声明与访问异常的分类中间层。
 
     .. rubric:: 功能介绍
 
-    钩子点声明（``declare``）与访问（``__getattr__`` 查找）相关异常的共同基类。
+    钩子点声明（``declare()``）与访问（``hooks.<name>`` 查找）相关异常的公共
+    基类：访问未声明钩子点（``UnknownHookPointError``）与同名钩子点声明冲突
+    （``DuplicateHookPointError``）。插件加载 / 重载路径以 ``except HookError``
+    统一兜捕钩子声明阶段的失败，而不误捕其它子系统的异常。
 
-    .. rubric:: 设计动机
+    .. rubric:: 行为要点
 
-    钩子点的「声明独占、注册开放」纪律需要类型化的冲突报告；访问未声明钩子点
-    必须报错而非静默创建——保证未启用扩展的 Agent 零开销（不调用 ``use_skill()``
-    的 Agent 没有 ``before_skill_load``）。中间层的场景依据（M-03 裁决）：
-    插件加载语义为**隔离降级 + 保留热重载**——加载方/重载路径需要以
-    ``except HookError`` 统一兜捕「钩子声明阶段」的失败而不误捕其它子系统
-    （见 :mod:`flowing.plugins` 模块 docstring 行为规约）。
-
-    .. rubric:: 行为规约
-
-    - 中间层，不直接实例化抛出。
-    - 非行为：钩子 handler 的普通**异常不属于本类**——直接上抛，无兜底钩子。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``flowing.plugins`` 插件加载 / 重载路径（时机：``install``
-      失败时以 ``except HookError`` 统一兜捕钩子声明阶段的失败，
-      plugins/__init__.pyi:29-34）
-    - 实例化方：``无``（中间层，不直接实例化抛出；由子类
-      ``UnknownHookPointError`` / ``DuplicateHookPointError`` 承载）
+    - 本类是分类中间层：框架实际抛出的是其具体子类；按类别捕获用
+      ``except HookError``。
+    - 钩子 handler 的普通异常不属于本类——dispatch 不捕获、不继续后续
+      handler，直接上抛，无兜底钩子。
 
     .. seealso::
 
@@ -542,17 +451,14 @@ class HookError(FlowingError):
 
 
 class UnknownHookPointError(HookError):
-    """访问未声明的钩子点。
+    """访问未声明的钩子点时抛出。
 
     .. rubric:: 功能介绍
 
-    ``self.hooks.<name>`` 的 ``__getattr__`` 只查找不创建；name 不在核心预填
-    钩子点、也未被任何扩展 ``declare()`` 时抛出。
-
-    .. rubric:: 设计动机
-
-    「只查找不创建」使钩子点集合成为显式契约：扩展必须先声明再使用，拼写错误
-    在注册时即暴露，而非静默创建一个永远不会被 dispatch 的空钩子点。
+    ``self.hooks.<name>`` 的按名查找只查找不创建：name 既不在框架预填的钩子点
+    中、也未被任何扩展 ``declare()`` 时抛出。钩子点集合因此是显式契约——扩展
+    必须先声明再使用，拼写错误在注册时即暴露，而不是静默创建一个永远不会被
+    dispatch 的空钩子点。
 
     .. rubric:: 使用示例
 
@@ -560,21 +466,11 @@ class UnknownHookPointError(HookError):
 
         self.hooks.before_skill_load(handler)   # 未调用 use_skill(self) → 抛出
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
-    - 五要素：字段 ``name``；抛出时机为钩子点访问；调用方不 catch（编程错误）；
-      不可重试；属机制。
-    - 测试案例：前置：未装 SkillPlugin 的 Agent；操作：访问
-      ``agent.hooks.before_skill_load``；期望：抛 ``UnknownHookPointError``
-      且 ``e.name == "before_skill_load"``。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：经 ``HookError`` 中间层由插件加载路径统一兜捕（时机：
-      install 期声明阶段失败，plugins/__init__.pyi:29）；直接调用点
-      不 catch（编程错误）
-    - 实例化方：``flowing.hooks.HookRegistry.__getattr__``（时机：访问
-      未声明的钩子点——只查找不创建，hooks.pyi:1002-1005）
+    - ``name`` 字段为被访问但未声明的钩子点名（精确字符串，不含相似名建议）。
+    - 编程错误：调用方不捕获；修正钩子点名，或先 ``declare()`` / 启用对应扩展。
+    - 未启用扩展的 Agent 访问其扩展钩子点即抛本异常——未启用扩展零开销。
 
     .. seealso::
 
@@ -583,18 +479,12 @@ class UnknownHookPointError(HookError):
     """
 
     name: str
-    """被访问但未声明的钩子点名。行为边界：精确字符串，不含相似名建议。
-    
-    .. seealso:: :class:`flowing.errors.UnknownHookPointError`
-    """
+    """被访问但未声明的钩子点名（精确字符串，不含相似名建议）。"""
 
     def __init__(self, name: str) -> None:
-        """
-        .. rubric:: 调用关系（审计）
+        """构造异常实例。
 
-        - 调用：``无``（仅平行字段赋值）
-        - 被调：``flowing.hooks.HookRegistry.__getattr__`` 的 raise
-          （时机：访问未声明钩子点，hooks.pyi:1005）
+        :param name: 被访问但未声明的钩子点名；与 ``name`` 字段一致。
         """
         # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Unknown hook point: {name!r} (not declared)")
@@ -602,42 +492,27 @@ class UnknownHookPointError(HookError):
 
 
 class DuplicateHookPointError(HookError):
-    """``declare()`` 声明同名钩子点且来源无法区分。
+    """``declare()`` 声明同名钩子点且来源无法区分时抛出。
 
     .. rubric:: 功能介绍
 
     两种冲突形态：同名 + 不同 ``by``；同名 + 双方 ``by=None``。同名 + 同
-    ``by`` 是幂等返回已有 HookList，不抛出。
-
-    .. rubric:: 设计动机
-
-    声明独占：钩子点的语义（value 类型、dispatch 时机）由声明者拥有；两个
-    来源声明同名钩子点而语义可能不同，必须 fail fast 并在消息中携带双方
-    ``by`` 以便定位。
+    ``by`` 是幂等返回已有的 ``HookList``，不抛出。
 
     .. rubric:: 使用示例
 
     .. code-block:: python
 
-        agent.hooks.declare("on_signal", by="comm", match_on="type")
-        agent.hooks.declare("on_signal", by="audit")   # 抛出（同名不同 by）
-        agent.hooks.declare("on_signal", by="comm", match_on="type")  # 幂等，不抛
+        self.hooks.declare("on_signal", by="comm", match_on="type")
+        self.hooks.declare("on_signal", by="audit")                    # 同名不同 by → 抛出
+        self.hooks.declare("on_signal", by="comm", match_on="type")    # 同名同 by → 幂等，不抛
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
-    - 五要素：字段 ``name`` / ``existing_by`` / ``new_by``；抛出时机为
-      ``declare()`` 冲突；调用方不 catch（安装期编程错误）；不可重试；属机制。
-    - 边缘情况：``by`` 不可省略——框架核心预填钩子点 ``by="core"``。
-    - 测试案例：前置：已 ``declare("x", by="a")``；操作：``declare("x", by="b")``；
-      期望：抛 ``DuplicateHookPointError``，消息含 ``"a"`` 与 ``"b"``。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：经 ``HookError`` 中间层由插件加载路径统一兜捕（时机：
-      install 期声明阶段失败，plugins/__init__.pyi:29）；直接调用点
-      不 catch（安装期编程错误）
-    - 实例化方：``flowing.hooks.HookRegistry.declare``（时机：同名钩子点
-      声明冲突——同名不同 ``by`` 或双方 ``by=None``，hooks.pyi:978）
+    - 字段 ``name``（冲突的钩子点名）、``existing_by``（已注册声明者的 ``by``
+      标识）、``new_by``（本次冲突声明者的 ``by`` 标识）。
+    - 安装期编程错误：调用方不捕获。
+    - 钩子点声明独占：语义（value 类型、dispatch 时机）由首个声明者拥有。
 
     .. seealso::
 
@@ -646,28 +521,18 @@ class DuplicateHookPointError(HookError):
     """
 
     name: str
-    """冲突的钩子点名。
-    
-    .. seealso:: :class:`flowing.errors.DuplicateHookPointError`
-    """
+    """冲突的钩子点名。"""
     existing_by: str | None
-    """已注册声明者的 ``by`` 标识。
-    
-    .. seealso:: :class:`flowing.errors.DuplicateHookPointError`
-    """
+    """已注册声明者的 ``by`` 标识。"""
     new_by: str | None
-    """本次冲突声明者的 ``by`` 标识。
-    
-    .. seealso:: :class:`flowing.errors.DuplicateHookPointError`
-    """
+    """本次冲突声明者的 ``by`` 标识。"""
 
     def __init__(self, name: str, existing_by: str | None, new_by: str | None) -> None:
-        """
-        .. rubric:: 调用关系（审计）
+        """构造异常实例。
 
-        - 调用：``无``（仅平行字段赋值）
-        - 被调：``flowing.hooks.HookRegistry.declare`` 的 raise（时机：
-          同名钩子点声明冲突，hooks.pyi:978）
+        :param name: 冲突的钩子点名；与 ``name`` 字段一致。
+        :param existing_by: 已注册声明者的 ``by`` 标识；与 ``existing_by`` 字段一致。
+        :param new_by: 本次冲突声明者的 ``by`` 标识；与 ``new_by`` 字段一致。
         """
         # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Duplicate hook point declaration: {name!r} (existing by={existing_by!r}, new by={new_by!r})")
