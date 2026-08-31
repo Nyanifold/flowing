@@ -2989,8 +2989,7 @@ class Agent:
           产物返回父 Agent：``SubagentResult.subagent_status`` 标
           ``"cancelled"``，``result`` 按统一填充规则。
         - 唤起失败（创建 / 校验 / 运行抛异常）原样上抛调用方——无专属
-          错误钩子（``on_subagent_error`` 已删除）；工具路径由
-          ``ToolResult(status="error")`` 承载。
+          错误钩子；工具路径由 ``ToolResult(status="error")`` 承载。
         - ``after_subagent_invoke`` 在结果构造后、交付前 dispatch（value
           为 :class:`SubagentInvocation`，``result`` 已回填）：handler
           可改写 ``invocation.result``，改写对返回值与 SUBAGENT 消息同时
@@ -3111,7 +3110,7 @@ class Agent:
         """
         try:
             turn_result = await child.query(invocation.prompt or "")   # 等待产出（prompt 可为 None：纯参数唤起）
-            result = SubagentResult(name_alias=invocation.resume or invocation.name or invocation.alias,   # 语义名只存在父侧（A15：simplename 已删除）
+            result = SubagentResult(name_alias=invocation.resume or invocation.name or invocation.alias,   # 语义名只存在父侧
                                     subagent_id=child.node_id,
                                     result=child.last_result,   # 收尾段已写入（resolve waiters 之前，无时序竞争）；finish → dict，普通 → 文本，无产出 → None
                                     subagent_status=turn_result.status)   # 取消/异常信息载体（此前 turn_result 接住未用，自此启用）
@@ -3384,7 +3383,7 @@ class Agent:
           ``add_tool(name, alias=..., body=...)``，``body`` 与 ``.fya``
           单键映射项的覆写映射同构
           （键集 ``description`` / ``args`` / ``output`` / ``enabled``；
-          旧 ``inject`` 键已删除，注入写 args 里的
+          不接受 ``inject`` 键——注入写 args 里的
           ``"{{ self.inject('key') }}"`` 表达式）；内部经
           :func:`flowing.parser.normalize_entries` 构造 EntryRef。
 
@@ -3568,7 +3567,7 @@ class Agent:
           （绑定层统一 fail-fast，与 tool / skill 同口径）。
         - body 判别（本方法体内，单点维护）：键集固定为 ``system_prompt`` /
           ``description`` / ``args`` / ``enabled``；未知键 →
-          :class:`flowing.errors.FormatError` （含旧 ``inject`` 键，已删除）。
+          :class:`flowing.errors.FormatError` （含不接受 ``inject`` 键）。
           各键去向：
 
           - ``system_prompt`` → ``override_system_prompt``；``str`` 包装为
