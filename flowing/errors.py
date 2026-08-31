@@ -1403,73 +1403,47 @@ class ProviderNameConflictError(ProviderError):
 
 
 class DependencyError(FlowingError):
-    """插件依赖校验失败（``mount()`` 单点校验）。
+    """插件依赖图成环时抛出（``Runtime.use()`` 时增量校验）。
 
     .. rubric:: 功能介绍
 
-    ``Runtime.use()`` 时的 ``_check_dependencies()`` 检测到依赖成环（依赖缺失只警告不抛，R9）
-    （声明的插件未 ``use()``）或依赖图成环时抛出。取代旧设计
-    ``MissingPluginError``（实参顺序即依赖保障时代的报错，已废弃）。
-
-    .. rubric:: 设计动机
-
-    插件按 R4 只**声明** ``dependencies = [...]``，检查是框架的单点职责；
-    校验放在 mount（「初始化 → 运行」边界）而非每次 ``use()`` 收尾——
-    ``use()`` 可分批，提前校验会误报。
+    ``Runtime.use()`` 每次安装插件后对当前已装集合的依赖图做增量校验：已装子图
+    成环（A 依赖 B、B 依赖 A）即抛出本异常，报错现场即引入环的那次 ``use()``。
+    依赖**缺失**只产生 ``warnings.warn`` 警告、不抛本异常（「声明了依赖但实际
+    用不上」是合法形态，``use()`` 可分批）；运行期真用到缺失依赖时由
+    ``MissingProvideError`` 兜底。
 
     .. rubric:: 使用示例
 
     .. code-block:: python
 
-        class GuardrailPlugin(Plugin):
-            dependencies = ["flowing.comm"]          # R4：只声明
+        runtime.use(PluginA())   # A 声明依赖 "b"——缺失 → 仅警告，不抛
+        runtime.use(PluginB())   # B 声明依赖 "a"——已装子图成环 → 抛出
 
-        runtime.use(GuardrailPlugin())                # 未装 CommPlugin
-        await runtime.mount("@/root.fya")             # → 抛出 DependencyError
+    .. rubric:: 行为要点
 
-    .. rubric:: 行为规约
-
-    - 五要素：字段 ``plugin``（发起声明的插件名）与 ``missing``（缺失的依赖
-      名列表；成环时为环上的依赖名列表）；抛出时机为 ``mount()``；调用方不
-      catch（安装期错误）；不可重试；属机制。
-    - 边缘情况：运行时动态场景的 inject 失败不走本类，走
-      ``MissingProvideError``（静态校验与运行时兜底两层互补）。
-    - 测试案例：前置：插件声明依赖未安装；操作：``mount()``；期望：抛
-      ``DependencyError`` 且 ``e.missing == ["flowing.comm"]``。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``无``（安装期错误，调用方不 catch；``mount()`` 失败不
-      创建任何节点）
-    - 实例化方：``flowing.runtime.Runtime._check_dependencies``
-      （时机：``mount()`` 开头单点校验——依赖缺失或依赖图成环，
-      runtime.pyi:774/1732-1739）
+    - 字段 ``plugin``（环闭合点所在插件名）与 ``missing``（构成环回边的依赖名
+      列表）。
+    - 安装期错误：调用方不捕获。
+    - 与 ``MissingProvideError`` 互补：本类是启动期静态依赖校验，后者是运行期
+      动态注入兜底。
 
     .. seealso::
 
-        :meth:`flowing.runtime.Runtime.mount`
+        :meth:`flowing.runtime.Runtime.use`
         :class:`flowing.errors.MissingProvideError`
     """
 
     plugin: str
-    """声明依赖的插件名。
-    
-    .. seealso:: :class:`flowing.errors.DependencyError`
-    """
+    """环闭合点所在插件名。"""
     missing: list[str]
-    """缺失（或成环）的依赖名列表。
-    
-    .. seealso:: :class:`flowing.errors.DependencyError`
-    """
+    """构成环回边的依赖名列表。"""
 
     def __init__(self, plugin: str, missing: list[str]) -> None:
-        """
-        .. rubric:: 调用关系（审计）
+        """构造异常实例。
 
-        - 调用：``无``（仅平行字段赋值）
-        - 被调：``flowing.runtime.Runtime._check_dependencies`` 的
-          raise（时机：``mount()`` 开头校验发现依赖缺失或成环，
-          runtime.pyi:1732-1739）
+        :param plugin: 环闭合点所在插件名；与 ``plugin`` 字段一致。
+        :param missing: 构成环回边的依赖名列表；与 ``missing`` 字段一致。
         """
         # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Plugin {plugin!r} has unresolved dependencies: {missing}")
@@ -1483,75 +1457,43 @@ class DependencyError(FlowingError):
 
 
 class CommError(FlowingError):
-    """通信扩展（CommPlugin 总线）异常中间层。
+    """通信扩展（CommPlugin 总线）异常的分类中间层。
 
     .. rubric:: 功能介绍
 
-    单进程内通信总线（端点注册、信号投递、请求-回复）相关异常的共同基类。
-    总线是 fire-and-forget 语义的基础设施；``publish`` 对订阅者异常静默
-    容错，不产出本层异常。
+    单进程内通信总线（端点注册、信号投递、请求-回复）相关异常的公共基类。通信
+    是内置扩展（必须显式 ``runtime.use(CommPlugin())`` 才存在），但其异常类型
+    属于框架统一层次——未启用扩展时这些类型只是不被实例化。
 
-    .. rubric:: 设计动机
+    .. rubric:: 行为要点
 
-    通信是内置扩展（必须显式 ``runtime.use(CommPlugin())`` 才存在），但其
-    异常类型属于框架统一层次——未启用扩展时这些类型只是不被实例化。
-
-    .. rubric:: 行为规约
-
-    - 中间层，不直接实例化抛出。
-    - 非行为：通信消息永不进 LLM context；通信层错误不转为 EVENT 消息。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``无``（框架内无按本类捕获点，时机：未见规约）
-    - 实例化方：``无``（中间层，不直接实例化抛出；由
-      ``DuplicateEndpointError`` / ``SignalDeliveryError`` /
-      ``SignalTimeoutError`` 承载）
+    - 本类是分类中间层：框架实际抛出的是其具体子类；按类别捕获用
+      ``except CommError``。
+    - 总线是 fire-and-forget 语义的基础设施：``publish`` 对订阅者异常静默容错，
+      不产出本层异常。
+    - 通信消息永不进 LLM context；通信层错误不转为 EVENT 消息。
 
     .. seealso::
 
         :class:`flowing.plugins.comm.Communication`
-        :class:`flowing.plugins.comm.CommHandle`
         :class:`flowing.plugins.comm.CommPlugin`
     """
 
 
 class DuplicateEndpointError(CommError):
-    """通信端点 ID 重复注册（注册不幂等）。
+    """通信端点 ID 重复注册时抛出。
 
     .. rubric:: 功能介绍
 
-    ``Communication.register_endpoint(endpoint_id, handler)`` 检测到端点 ID
-    已存在时抛出。端点 ID 语义化命名规则为 ``use_comm(name=...)`` 显式
-    指定、缺省回退 ``agent.node_id``（``simplename`` 已删除，A15 裁决）
-    （可加用途后缀，如 ``f"{agent.node_id}-guardrail"``）。
+    ``Communication.register_endpoint(endpoint_id, handler)`` 检测到端点 ID 已
+    存在时抛出。端点 ID 是路由唯一键：静默覆盖会让旧 handler 的信号凭空消失。
+    注册不幂等——重复注册同一 ID 即抛错。注销不存在的端点走自然 ``KeyError``
+    （不特殊处理、不包装）。
 
-    .. rubric:: 设计动机
+    .. rubric:: 行为要点
 
-    端点 ID 是路由唯一键；静默覆盖会让旧 handler 的信号凭空消失。注销
-    不存在端点则走自然 ``KeyError``（不特殊处理、不包装）。
-
-    .. rubric:: 使用示例
-
-    .. code-block:: python
-
-        comm.register_endpoint("payment-guard", handler)
-        comm.register_endpoint("payment-guard", other_handler)   # 抛出
-
-    .. rubric:: 行为规约
-
-    - 五要素：字段 ``endpoint_id``；抛出时机为端点注册；调用方不 catch
-      （编程错误）；不可重试；属机制。
-    - 测试案例：前置：已注册 ``"x"``；操作：同名再注册；期望：抛
-      ``DuplicateEndpointError``，原 handler 不被替换。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``无``（编程错误，调用方不 catch）
-    - 实例化方：``flowing.plugins.comm.Communication.register_endpoint``
-      （时机：端点 ID 已存在，plugins/comm.pyi:366）；
-      ``flowing.plugins.comm.CommHandle`` 构造（时机：attach 构造句柄时
-      端点 ID 冲突，plugins/comm.pyi:442）
+    - ``endpoint_id`` 字段为发生冲突的端点 ID。
+    - 编程错误：调用方不捕获。
 
     .. seealso::
 
@@ -1560,19 +1502,12 @@ class DuplicateEndpointError(CommError):
     """
 
     endpoint_id: str
-    """发生冲突的端点 ID。
-    
-    .. seealso:: :class:`flowing.errors.DuplicateEndpointError`
-    """
+    """发生冲突的端点 ID。"""
 
     def __init__(self, endpoint_id: str) -> None:
-        """
-        .. rubric:: 调用关系（审计）
+        """构造异常实例。
 
-        - 调用：``无``（仅平行字段赋值）
-        - 被调：``flowing.plugins.comm.Communication.register_endpoint``
-          / ``CommHandle`` 构造的 raise（时机：端点 ID 已存在，
-          plugins/comm.pyi:366/442）
+        :param endpoint_id: 发生冲突的端点 ID；与 ``endpoint_id`` 字段一致。
         """
         # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Duplicate endpoint id: {endpoint_id!r}")
@@ -1580,35 +1515,20 @@ class DuplicateEndpointError(CommError):
 
 
 class SignalDeliveryError(CommError):
-    """信号目标端点不存在。
+    """信号目标端点不存在时抛出。
 
     .. rubric:: 功能介绍
 
-    ``Communication.send()`` / ``request()`` 查端点表路由失败时抛出。
-    ``send`` 是「立即返回」语义——路由失败属于同步可判定错误，当场抛出。
+    ``Communication.send()`` / ``request()`` 按目标端点 ID 路由失败时抛出——
+    点对点信号的投递失败是调用方可修正的错误（端点未注册、ID 拼错）。``send``
+    是「立即返回」语义，路由失败属于同步可判定的错误，发送阶段当场抛出。与
+    ``publish`` 的广播容错（单订阅者异常静默忽略）形成有意的语义对比。
 
-    .. rubric:: 设计动机
+    .. rubric:: 行为要点
 
-    点对点信号的投递失败是调用方可修正的错误（端点未注册、ID 拼错）；
-    与 ``publish`` 的广播容错（单订阅者异常静默忽略）形成有意的语义对比。
-
-    .. rubric:: 行为规约
-
-    - 五要素：字段 ``target`` / ``signal_type``；抛出时机为 send/request
-      路由；调用方可 catch（如降级为日志）；是否重试由应用层决定（框架
-      不重试）；属机制。
-    - 测试案例：前置：无端点 ``"ui-main"``；操作：``send(target="ui-main", ...)``；
-      期望：抛 ``SignalDeliveryError`` 且 ``e.target == "ui-main"``。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``无``（调用方可 catch 降级为日志等；框架不重试，时机：
-      未见规约的固定捕获点）
-    - 实例化方：``flowing.plugins.comm.Communication.send`` /
-      ``request``（时机：路由查找 target 端点不存在——发送阶段当场
-      抛出，plugins/comm.pyi:485/553）；
-      ``flowing.plugins.comm.CommHandle.send`` / ``request``（时机：
-      同上，plugins/comm.pyi:823/873）
+    - 字段 ``target``（未命中的目标端点 ID）与 ``signal_type``（投递失败的信号
+      类型，信封的 ``type`` 字段）。
+    - 调用方可捕获（如降级为日志）；是否重试由应用层决定（框架不重试）。
 
     .. seealso::
 
@@ -1618,24 +1538,15 @@ class SignalDeliveryError(CommError):
     """
 
     target: str
-    """未命中的目标端点 ID。
-    
-    .. seealso:: :class:`flowing.errors.SignalDeliveryError`
-    """
+    """未命中的目标端点 ID。"""
     signal_type: str
-    """投递失败的信号类型（信封 ``type`` 字段）。
-    
-    .. seealso:: :class:`flowing.errors.SignalDeliveryError`
-    """
+    """投递失败的信号类型（信封的 ``type`` 字段）。"""
 
     def __init__(self, target: str, signal_type: str) -> None:
-        """
-        .. rubric:: 调用关系（审计）
+        """构造异常实例。
 
-        - 调用：``无``（仅平行字段赋值）
-        - 被调：``flowing.plugins.comm.Communication.send`` / ``request``
-          与 ``CommHandle.send`` / ``request`` 的 raise（时机：target
-          端点不存在，plugins/comm.pyi:485/553/823/873）
+        :param target: 未命中的目标端点 ID；与 ``target`` 字段一致。
+        :param signal_type: 投递失败的信号类型；与 ``signal_type`` 字段一致。
         """
         # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Signal delivery failed: target endpoint {target!r} not found (type={signal_type!r})")
@@ -1644,48 +1555,33 @@ class SignalDeliveryError(CommError):
 
 
 class SignalTimeoutError(CommError):
-    """``request()`` 等待回复超时。
+    """``request()`` 等待回复超时时抛出。
 
     .. rubric:: 功能介绍
 
-    请求-回复模式下，``correlation_id`` 匹配的回复在 ``timeout`` 内未到达
-    时抛出，pending future 随之清理。
-
-    .. rubric:: 设计动机
-
-    审批等交互场景的「超时」是正常业务分支（典型用法：审批超时 →
-    ``raise Intercepted("审批超时")`` 阻断工具调用），需要类型化的异常
-    供 handler 捕获，而非裸 ``asyncio.TimeoutError``。
+    请求-回复模式下，``correlation_id`` 匹配的回复在 ``timeout`` 秒内未到达即
+    抛出，pending future 随之清理。审批等交互场景的「超时」是正常业务分支
+    （典型用法：审批超时 → ``raise Intercepted("审批超时")`` 阻断工具调用），
+    需要类型化异常供 handler 捕获，而非裸 ``asyncio.TimeoutError``。
 
     .. rubric:: 使用示例
 
     .. code-block:: python
 
         try:
-            result = await agent.comm_handler.request(
+            result = await self.comm_handler.request(
                 target="ui-main", type="permission_request",
                 payload={"tool_name": tool_call.name}, timeout=120.0,
             )
         except SignalTimeoutError:
             raise Intercepted("审批超时")
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
-    - 五要素：字段 ``target`` / ``timeout``；抛出时机为 request 超时；
-      调用方通常 catch（业务分支）；是否重试由应用层决定；属机制。
-    - 边缘情况：``CommHandle.destroy()`` 后 pending ``request()`` 的 await
-      收到的是 ``asyncio.CancelledError``（内置），不是本类。
-    - 测试案例：前置：目标端点永不回复；操作：``request(timeout=0.05)``；
-      期望：约 0.05s 后抛 ``SignalTimeoutError``，无泄漏的 pending future。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``无``（业务分支由调用方 catch；典型用法是 handler 内
-      catch 后 ``raise Intercepted("审批超时")``——属用户 / 扩展代码）
-    - 实例化方：``flowing.plugins.comm.Communication.request`` /
-      ``flowing.plugins.comm.CommHandle.request``（时机：
-      ``correlation_id`` 匹配的回复在 ``timeout`` 内未到达，
-      plugins/comm.pyi:554/874）
+    - 字段 ``target``（请求的目标端点 ID）与 ``timeout``（实际使用的超时秒数）。
+    - 调用方通常捕获（业务分支）；是否重试由应用层决定。
+    - ``CommHandle.destroy()`` 后 pending ``request()`` 的 await 收到的是
+      ``asyncio.CancelledError``（内置），不是本类。
 
     .. seealso::
 
@@ -1695,24 +1591,15 @@ class SignalTimeoutError(CommError):
     """
 
     target: str
-    """请求的目标端点 ID。
-    
-    .. seealso:: :class:`flowing.errors.SignalTimeoutError`
-    """
+    """请求的目标端点 ID。"""
     timeout: float
-    """实际使用的超时秒数。
-    
-    .. seealso:: :class:`flowing.errors.SignalTimeoutError`
-    """
+    """实际使用的超时秒数。"""
 
     def __init__(self, target: str, timeout: float) -> None:
-        """
-        .. rubric:: 调用关系（审计）
+        """构造异常实例。
 
-        - 调用：``无``（仅平行字段赋值）
-        - 被调：``flowing.plugins.comm.Communication.request`` /
-          ``CommHandle.request`` 的 raise（时机：等待回复超过
-          ``timeout``，plugins/comm.pyi:554/874）
+        :param target: 请求的目标端点 ID；与 ``target`` 字段一致。
+        :param timeout: 实际使用的超时秒数；与 ``timeout`` 字段一致。
         """
         # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Signal request to {target!r} timed out after {timeout}s")
@@ -1726,33 +1613,20 @@ class SignalTimeoutError(CommError):
 
 
 class FormatError(FlowingError):
-    """声明式文件格式与求值异常中间层。
+    """声明式文件格式与求值异常的分类中间层。
 
     .. rubric:: 功能介绍
 
-    ``.fya`` 声明解析、创建管线 PENDING 检查、Parsable 求值上下文、保留属性
-    名等「声明与格式」层异常的共同基类。
+    ``.fya`` 声明解析、创建管线 PENDING 检查、Parsable 求值上下文、保留属性名
+    等「声明与格式」层异常的公共基类。声明式与命令式两种 Agent 形式生成完全
+    相同的 Python 类模型，格式错误必须在类生成 / 实例化早期暴露，归为一层便于
+    工具（如 ``flowing compile``）统一报告。
 
-    .. rubric:: 设计动机
+    .. rubric:: 行为要点
 
-    声明式与命令式两种 Agent 形式生成完全相同的 Python 类模型，格式错误
-    必须在类生成 / 实例化早期暴露，归类为一层便于 tooling（如
-    ``flowing compile``）统一报告。
-
-    .. rubric:: 行为规约
-
-    - 中间层，不直接实例化抛出。
-    - 非行为：YAML 与具名块同字段冲突等解析期报错的具体类型在本层内
-      由实现细化，初版仅约定归入 ``FormatError`` 层次。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``无``（框架内无按本类捕获点，时机：未见规约）
-    - 实例化方：中间层，行为规约声明「不直接实例化抛出」；
-      ``flowing.plugins.skills`` 技能定义加载路径声明
-      ``:raises flowing.errors.FormatError:``（时机：定义文件存在但缺少
-      必填字段，plugins/skills.pyi:535）——与「中间层不直接实例化」
-      规约的关系见 facts/errors.md 存疑记录
+    - 本类是分类中间层：框架实际抛出的是其具体子类；按类别捕获用
+      ``except FormatError``。
+    - 声明错误：调用方不捕获（fail-fast）。
 
     .. seealso::
 
@@ -1762,47 +1636,23 @@ class FormatError(FlowingError):
 
 
 class MissingFieldError(FormatError):
-    """创建管线 PENDING 检查点仍有未赋值字段。
+    """创建管线 PENDING 检查点仍有未赋值字段时抛出。
 
     .. rubric:: 功能介绍
 
-    ``.fya`` 中以 ``_`` 标记的延迟定义字段解析为 ``PENDING`` 哨兵；
-    ``setup()`` 结束后、``after_create`` 钩子前的 PENDING 检查点发现仍为
-    ``PENDING`` 的字段（典型：唯一必填的类属性 ``system_prompt`` 未赋值）
-    时抛出。
+    ``.fya`` 中以 ``_`` 标记的延迟定义字段解析为 ``PENDING`` 哨兵；``setup()``
+    结束后、``after_create`` 钩子前的 PENDING 检查点发现仍有 ``PENDING`` 字段
+    （典型：唯一必填的类属性 ``system_prompt`` 未赋值）时抛出。PENDING 是「延迟
+    定义承诺」——声明层允许先占位，但管线必须在固定检查点兑现承诺；缺失时
+    fail-fast 优于带着 ``None`` 进入 Turn 循环。恢复管线同样检查。
 
-    .. rubric:: 设计动机
+    .. rubric:: 行为要点
 
-    PENDING 是「延迟定义承诺」——声明层允许先占位，但管线必须在固定检查点
-    兑现承诺；缺失时 fail fast 优于带着 ``None`` 的 system prompt 进入
-    Turn 循环。
-
-    .. rubric:: 使用示例
-
-    .. code-block:: yaml
-
-        # payment.fya——system_prompt 未赋值（PENDING 检查失败 → 抛出）
-        # system_prompt: _  标记后 setup() 中必须 self.system_prompt = ...
-
-    .. rubric:: 行为规约
-
-    - 五要素：字段 ``field``（未赋值字段名）与 ``agent_type``（Agent 类型名）；
-      抛出时机为创建管线 PENDING 检查点（恢复管线同样检查）；调用方不
-      catch（声明 / setup 实现错误）；不可重试；属机制。
-    - 边缘情况：``PENDING`` 与 ``_UNSET`` 语义不同——``_UNSET`` 是「未设置」
-      的参数默认值判定哨兵，不参与本检查。
-    - 测试案例：前置：字段标记为 ``_`` 且 ``setup()`` 未赋值；操作：
-      ``create_agent()``；期望：抛 ``MissingFieldError`` 且 ``e.field``
-      等于该字段名。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``无``（声明 / setup 实现错误，调用方不 catch，fail fast）
-    - 实例化方：``flowing.runtime.Runtime.create_agent`` 创建管线
-      PENDING 检查点（时机：``setup()`` 结束后、``after_create`` 钩子前
-      仍有 ``PENDING`` 字段——恢复管线同样检查，agent.pyi:1514/1520）；
-      ``flowing.parsable`` 的 PENDING 求值路径（时机：PENDING 检查点，
-      parsable.pyi:448/452）
+    - 字段 ``field``（检查点处仍为 ``PENDING`` 的字段名）与 ``agent_type``
+      （所属 Agent 的类型名）。
+    - 声明 / ``setup()`` 实现错误：调用方不捕获。
+    - ``PENDING`` 与 ``_UNSET`` 语义不同：后者是参数默认值判定哨兵，不参与
+      本检查。
 
     .. seealso::
 
@@ -1812,24 +1662,15 @@ class MissingFieldError(FormatError):
     """
 
     field: str
-    """检查点处仍为 ``PENDING`` 的字段名。
-    
-    .. seealso:: :class:`flowing.errors.MissingFieldError`
-    """
+    """检查点处仍为 ``PENDING`` 的字段名。"""
     agent_type: str
-    """所属 Agent 的类型名（字符串类型名）。
-    
-    .. seealso:: :class:`flowing.errors.MissingFieldError`
-    """
+    """所属 Agent 的类型名。"""
 
     def __init__(self, field: str, agent_type: str) -> None:
-        """
-        .. rubric:: 调用关系（审计）
+        """构造异常实例。
 
-        - 调用：``无``（仅平行字段赋值）
-        - 被调：创建管线 PENDING 检查点的 raise（时机：``setup()``
-          结束后、``after_create`` 前仍有 ``PENDING`` 字段，
-          agent.pyi:1514/1520、parsable.pyi:452）
+        :param field: 检查点处仍为 ``PENDING`` 的字段名；与 ``field`` 字段一致。
+        :param agent_type: 所属 Agent 的类型名；与 ``agent_type`` 字段一致。
         """
         # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Required field {field!r} of agent type {agent_type!r} is still PENDING")
@@ -1838,20 +1679,16 @@ class MissingFieldError(FormatError):
 
 
 class MissingContextError(FormatError):
-    """未绑定实例的 Parsable 被强制求值。
+    """未绑定实例的 Parsable 被强制求值时抛出。
 
     .. rubric:: 功能介绍
 
-    类级别（``_instance=None``）或手动创建未绑定 Agent 实例的 ``Parsable``
-    调用 ``str()``（触发自动 ``resolve()``）时抛出——求值需要实例属性 /
-    env / config 渲染上下文，无绑定则上下文缺失。
-
-    .. rubric:: 设计动机
-
-    Parsable 的求值面契约：求值面内（框架在 ``_assemble_context()`` 等固定
-    时机对绑定实例求值）自动；求值面外（用户手动 ``str()`` 类属性）必须
-    显式 ``resolve(context)`` 或先绑定。隐式返回原始模板会让 prompt 里出现
-    未渲染的 ``{{ }}``，比报错更难排查。
+    类级别（未绑定实例）或手动创建未绑定 Agent 实例的 ``Parsable`` 调用
+    ``str()``（触发自动 ``resolve()``）时抛出——求值需要实例属性 / env / config
+    渲染上下文，无绑定则上下文缺失。求值面内（框架在固定时机对绑定实例求值）
+    自动进行；求值面外（用户手动 ``str()`` 类属性）必须显式 ``resolve(context)``
+    或先绑定。隐式返回原始模板会让 prompt 里出现未渲染的 ``{{ }}``，比报错更
+    难排查。
 
     .. rubric:: 使用示例
 
@@ -1860,26 +1697,14 @@ class MissingContextError(FormatError):
         class MyAgent(Agent):
             system_prompt = Parsable("你好，{{ user_name }}")
 
-        str(MyAgent.system_prompt)                 # 未绑定 → 抛出
-        MyAgent.system_prompt.resolve({"user_name": "甲"})   # 显式上下文 → 正常
+        str(MyAgent.system_prompt)                              # 未绑定 → 抛出
+        MyAgent.system_prompt.resolve({"user_name": "甲"})      # 显式上下文 → 正常
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
-    - 五要素：无自定义字段；抛出时机为未绑定 Parsable 的 ``resolve()`` /``resolved``（``__str__`` 只展示模板源，不求值不抛错）；
-      调用方不 catch（用法错误，改用显式 ``resolve(context)``）；不可重试；
-      属机制。
-    - 边缘情况：``repr()`` 始终显示原始模板（``Parsable(source=..., type=...)``），
-      不触发求值、不抛本异常。
-    - 测试案例：前置：未绑定 Parsable；操作：``str(p)``；期望：抛
-      ``MissingContextError``；``repr(p)`` 正常返回。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``无``（用法错误，调用方不 catch——改用显式
-      ``resolve(context)``）
-    - 实例化方：``flowing.parsable.Parsable.resolved`` 及无参
-      ``resolve()``（时机：未绑定实例的 Parsable 被强制求值，
-      parsable.pyi:764/810/822/859）
+    - 无结构化字段；消息为固定的英文提示。
+    - 用法错误：改用显式 ``resolve(context)``；调用方不捕获。
+    - ``repr()`` 始终显示原始模板，不触发求值、不抛本异常。
 
     .. seealso::
 
@@ -1888,6 +1713,10 @@ class MissingContextError(FormatError):
     """
 
     def __init__(self) -> None:
+        """构造异常实例（无参数，无结构化字段）。
+
+        消息为固定的英文提示。
+        """
         # 无字段叶子：固定英文提示消息
         super().__init__(
             "Parsable is not bound to an instance: call resolve(context) "
@@ -1896,34 +1725,20 @@ class MissingContextError(FormatError):
 
 
 class ReservedAttributeError(FormatError):
-    """Agent 实例属性命名为框架保留名（``env`` / ``config`` / ``agent`` / ``self``）。
+    """Agent 实例属性命名为框架保留名时抛出。
 
     .. rubric:: 功能介绍
 
-    Parsable 渲染上下文的框架注入名 ``env``（绑定 ``os.environ``）、
-    ``config``（Runtime 配置）、``agent`` / ``self``（实例自身入口）
-    由框架注入；Agent 实例属性占用这些名字会覆盖注入值，框架检测到即抛出。
+    Parsable 渲染上下文由框架注入四个保留名：``env``（绑定 ``os.environ``）、
+    ``config``（Runtime 配置）、``agent`` 与 ``self``（实例自身入口）。Agent
+    实例属性占用这些名字会覆盖注入值，框架在求值前检测到即抛出——保留名冲突是
+    静默错误的高发源，显式保留名单加检测比「合并时谁覆盖谁」的隐式规则更清晰。
 
-    .. rubric:: 设计动机
+    .. rubric:: 行为要点
 
-    保留名冲突是静默错误的高发源（模板里 ``{{ env.HOME }}`` 突然读到了
-    实例属性）；显式保留名单 + 定义期检测比「合并时谁覆盖谁」的隐式规则
-    更清晰。
-
-    .. rubric:: 行为规约
-
-    - 五要素：字段 ``name``（被占用的保留名）；抛出时机为 Agent 类生成 /
-      实例化时的属性检查；调用方不 catch（声明错误）；不可重试；属机制。
-    - 测试案例：前置：``setup()`` 中 ``self.env = {...}``；操作：
-      ``create_agent()``；期望：抛 ``ReservedAttributeError`` 且
-      ``e.name == "env"``。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``无``（声明错误，调用方不 catch）
-    - 实例化方：``flowing.parsable`` 渲染上下文摊平检测路径（时机：
-      Agent 类生成 / 实例化时检测到实例属性占用 ``env`` / ``config`` / ``agent`` / ``self``
-      保留名，parsable.pyi:108/743/766/922）
+    - ``name`` 字段为被占用的保留属性名（``"env"`` / ``"config"`` / ``"agent"``
+      / ``"self"`` 之一）。
+    - 声明错误：调用方不捕获（fail-fast）。
 
     .. seealso::
 
@@ -1932,19 +1747,12 @@ class ReservedAttributeError(FormatError):
     """
 
     name: str
-    """被占用的框架保留属性名（``"env"`` 或 ``"config"``）。
-    
-    .. seealso:: :class:`flowing.errors.ReservedAttributeError`
-    """
+    """被占用的框架保留属性名（``"env"`` / ``"config"`` / ``"agent"`` / ``"self"`` 之一）。"""
 
     def __init__(self, name: str) -> None:
-        """
-        .. rubric:: 调用关系（审计）
+        """构造异常实例。
 
-        - 调用：``无``（仅平行字段赋值）
-        - 被调：``flowing.parsable`` 渲染上下文摊平检测路径的 raise
-          （时机：实例属性占用 ``env`` / ``config`` 保留名，
-          parsable.pyi:743/766/922）
+        :param name: 被占用的框架保留属性名；与 ``name`` 字段一致。
         """
         # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Reserved attribute name occupied: {name!r}")
@@ -1952,47 +1760,28 @@ class ReservedAttributeError(FormatError):
 
 
 class NameMismatchError(FormatError):
-    """声明的 ``name`` 与按规则推断的名字不一致。
+    """声明的 ``name`` 与按规则推断的名字不一致时抛出。
 
     .. rubric:: 功能介绍
 
-    ``name`` 不是框架机制字段（Agent 的身份名一律由路径 / 注册名 / 类名
-    推断，见 :class:`flowing.agent.Agent` 的 ``class_name``），但 ``.fya``
-    与手写子类中**不禁止**用户写 ``name``——写了就作为一致性断言校验：
-    与推断值不符即抛出本异常，消息同时给出声明值、推断值与来源位置。
+    ``name`` 不是框架机制字段：Agent 的身份名一律由路径 / 注册名 / 类名推断
+    （见 ``Agent.class_name`` 的推断规则），但 ``.fya`` 与手写子类中不禁止用户
+    写 ``name``——写了就作为一致性断言校验，与推断值不符即抛出本异常，消息同时
+    给出声明值、推断值与来源位置。名实分离（文件名是 ``foo.fya``、内部自称
+    ``payment``）是排查困惑的高发源。
 
-    .. rubric:: 设计动机
+    .. rubric:: 行为要点
 
-    名实分离（文件名是 ``foo.fya``、内部自称 ``payment``）是排查困惑的
-    高发源；不禁止声明是为了保留「自我描述」的可读性，但必须与推断一致，
-    否则静默分叉会让 glob 展开结果与磁盘文件名对不上。
-
-    .. rubric:: 行为规约
-
-    - 五要素：字段 ``declared``（声明值）/ ``inferred``（推断值）/
-      ``source``（来源：``.fya`` 路径或类限定名）；抛出时机为 Agent 类
-      生成 / 解析期校验；调用方不 catch（声明错误）；不可重试；属机制。
-    - 校验是**相等断言**，不是命名来源：声明与推断一致时无任何效果
-      （名字仍然来自推断）。
-    - 测试案例：前置：``foo.fya`` 内写 ``name: payment``（文件名单文件
-      形态推断为 ``foo``）；操作：解析该 ``.fya``；期望：抛
-      ``NameMismatchError`` 且 ``e.declared == "payment"``、
-      ``e.inferred == "foo"``。
-
-    .. rubric:: 调用关系（审计）
-
-    - 调用：``无``（仅平行字段赋值）
-    - 被调：``无``（声明错误，调用方不 catch）
-    - 实例化方：三条定义期校验路径——``.fya`` Agent 解析层 / 手写 Agent
-      子类定义期（Agent 身份名）；``TOOL.fya`` / ``ScriptTool`` 子类 /
-      ``@flowing_tool`` 装饰器参数（Tool 规范名，见 :mod:`flowing.tool`）；
-      ``.skill.fya`` / frontmatter（Skill 规范名，见
-      :mod:`flowing.plugins.skills`）——时机均为类/对象生成时比对声明
-      ``name`` 与推断名
+    - 字段 ``declared``（用户声明的 ``name`` 值）、``inferred``（按路径 / 类名
+      规则推断出的名字）、``source``（冲突来源：``.fya`` 的路径或手写子类的
+      限定类名）。
+    - 校验是相等断言而非命名来源：声明与推断一致时无任何效果（名字仍然来自
+      推断）。
+    - 声明错误：调用方不捕获（fail-fast）。
 
     .. seealso::
 
-        :class:`flowing.agent.Agent` —— ``class_name`` 与名字推断规则。
+        :class:`flowing.agent.Agent`
         :class:`flowing.errors.FormatError`
     """
 
@@ -2003,14 +1792,15 @@ class NameMismatchError(FormatError):
     """按路径 / 类名规则推断出的名字。"""
 
     source: str
-    """冲突来源（``.fya`` 的 ``@/`` 路径或手写子类的限定类名）。"""
+    """冲突来源（``.fya`` 的路径或手写子类的限定类名）。"""
 
     def __init__(self, declared: str, inferred: str, source: str) -> None:
-        """
-        .. rubric:: 调用关系（审计）
+        """构造异常实例。
 
-        - 调用：``无``（仅平行字段赋值）
-        - 被调：``.fya`` 解析层 / 手写子类定义期校验路径的 raise
+        :param declared: 用户声明的 ``name`` 值；与 ``declared`` 字段一致。
+        :param inferred: 按路径 / 类名规则推断出的名字；与 ``inferred`` 字段一致。
+        :param source: 冲突来源（``.fya`` 的路径或手写子类的限定类名）；与
+          ``source`` 字段一致。
         """
         # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Declared name {declared!r} does not match inferred name {inferred!r} (source: {source})")
@@ -2025,19 +1815,22 @@ class NameMismatchError(FormatError):
 
 
 class CompileError(FlowingError):
-    """``.fya`` 显式编译失败的中间层。
+    """``.fya`` 显式编译失败的分类中间层。
 
     .. rubric:: 功能介绍
 
-    ``flowing compile`` / :mod:`flowing.compiler` 构建期异常的归属层，
-    只承载归属、不附加行为（与 ``ConfigError`` 等中间层同约定）。
+    ``flowing compile`` / :mod:`flowing.compiler` 构建期异常的归属层，只承载
+    归属、不附加行为。当前子类：``ArtifactModifiedError``。
 
-    .. rubric:: 调用关系（审计）
+    .. rubric:: 行为要点
 
-    - 被调：``无``
-    - 实例化方：本子类由 ``flowing.compiler`` 编译管线 raise
+    - 本类是分类中间层：框架实际抛出的是其具体子类；按类别捕获用
+      ``except CompileError``。
 
-    .. seealso:: :class:`ArtifactModifiedError`
+    .. seealso::
+
+        :class:`flowing.errors.ArtifactModifiedError`
+        :mod:`flowing.compiler`
     """
 
 
@@ -2046,33 +1839,26 @@ class ArtifactModifiedError(CompileError):
 
     .. rubric:: 功能介绍
 
-    显式编译的防覆盖闸：产物同目录 ``.flowing.meta.yaml`` 中记录的
-    ``py_hash``（AST 口径，格式化改动不触发）与现有同目录 ``.py``
-    的实际 AST hash 不一致 → 该产物被人手工改过，
-    编译器**报错中止**而非覆盖（spec-draft 03 §9.2；P3-10 裁决改
-    同目录 meta + AST 口径）。
+    显式编译的防覆盖闸：产物同目录 ``.flowing.meta.yaml`` 中记录的 ``py_hash``
+    （AST 口径，格式化改动不触发）与现有同目录 ``.py`` 的实际 AST hash 不一致
+    → 该产物被人手工改过，编译器报错中止而非覆盖。已产出的其他文件不回滚；
+    解决冲突后重新编译可继续。
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
-    - 期待行为：消息含冲突文件路径；已产出的其他文件**不回滚**
-      （编译幂等，重跑可继续）。
-    - 测试案例：前置：手工改动某产物 ``.py`` → 操作：重新编译 →
-      期望：抛本异常，该文件未被覆盖。
+    - ``path`` 字段为冲突的编译产物路径。
+    - 调用方不捕获；``flowing compile`` 把它映射为运行时错误退出码。
 
-    .. rubric:: 调用关系（审计）
+    .. seealso::
 
-    - 被调：``flowing.interfaces.cli.cmd_compile`` 捕获映射为
-      ``EXIT_RUNTIME_ERROR``（时机：hash 冲突中止）
-    - 实例化方：``flowing.compiler.compile_fya_file`` 第 3 步 meta
-      校验（时机：产物 hash 不匹配）
+        :class:`flowing.errors.CompileError`
+        :mod:`flowing.compiler`
     """
 
     def __init__(self, path: "Path") -> None:
-        """
-        .. rubric:: 调用关系（审计）
+        """构造异常实例。
 
-        - 调用：``无``（仅平行字段赋值）
-        - 被调：``flowing.compiler.compile_fya_file`` meta 校验路径
+        :param path: 冲突的编译产物路径；与 ``path`` 字段一致。
         """
         self.path = path
         super().__init__(f"编译产物被外部修改，拒绝覆盖：{path}")
@@ -2084,32 +1870,27 @@ class ArtifactModifiedError(CompileError):
 
 
 class FormatVersionError(FlowingError):
-    """jsonl 持久化文件的格式版本不受支持（X6 澄清新增的具名类型）。
+    """jsonl 持久化文件的格式版本高于当前框架支持时抛出。
 
     .. rubric:: 功能介绍
 
-    ``RecordStore.replay`` 判读首行 ``{"type": "meta", "format_version"}``
-    时抛出：文件版本高于当前框架支持的 :data:`flowing.persistence.FORMAT_VERSION`
-    （文件比框架新，静默读是数据风险）。无版本首行的存量
-    文件按版本 0 处理，不抛本异常（v0 与 v1 行格式相同，见 X5 澄清）。
+    ``RecordStore.replay`` 判读首行 ``{"type": "meta", "format_version"}`` 时，
+    文件声明的版本高于当前框架支持的 :data:`flowing.persistence.FORMAT_VERSION`
+    即抛出（文件比框架新，静默读是数据风险——典型场景是用旧框架读新文件的部署
+    降级事故）。版本不高于当前支持的存量文件（含无版本首行、按版本 0 处理的
+    文件）在读取时迁移到当前格式，不抛本异常。
 
-    .. rubric:: 设计动机
+    .. rubric:: 行为要点
 
-    版本冲突是部署/降级事故（用旧框架读新文件），必须 fail fast 且类型可
-    精确 ``except``；与 ``FormatError``（声明式 ``.fya`` 格式）分层——
-    jsonl 持久化文件不属声明式资源，故直挂根。
+    - 字段 ``path``（文件路径）、``found``（文件声明的版本）、``supported``
+      （框架当前支持版本）。
+    - 部署错误：调用方不捕获（fail-fast）。
+    - 与 ``CorruptionError``（数据损坏）精确区分。
 
-    .. rubric:: 行为规约
+    .. seealso::
 
-    - 五要素：字段 ``path`` / ``found``（文件声明的版本）/ ``supported``
-      （框架当前支持版本）；抛出时机为 ``replay`` 开头版本判读；调用方不
-      catch（部署错误）；不可重试；属机制。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``无``（框架内无捕获点，fail fast）
-    - 实例化方：``flowing.persistence.FileRecordStore.replay``（时机：
-      首行版本判读发现不受支持版本）
+        :mod:`flowing.persistence`
+        :class:`flowing.errors.CorruptionError`
     """
 
     path: Path
@@ -2120,11 +1901,11 @@ class FormatVersionError(FlowingError):
     """框架当前支持的格式版本号（``FORMAT_VERSION``）。"""
 
     def __init__(self, path: Path, found: int, supported: int) -> None:
-        """
-        .. rubric:: 调用关系（审计）
+        """构造异常实例。
 
-        - 调用：``Exception.__init__``（传递面向人读的消息）
-        - 被调：``FileRecordStore.replay`` 版本判读的 raise
+        :param path: 版本不受支持的持久化文件路径；与 ``path`` 字段一致。
+        :param found: 文件声明的格式版本号；与 ``found`` 字段一致。
+        :param supported: 框架当前支持的格式版本号；与 ``supported`` 字段一致。
         """
         # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(
@@ -2137,32 +1918,26 @@ class FormatVersionError(FlowingError):
 
 
 class CorruptionError(FlowingError):
-    """jsonl 持久化文件中间行损坏——报警不容忍（X7 澄清新增的具名类型）。
+    """jsonl 持久化文件中间行损坏时抛出。
 
     .. rubric:: 功能介绍
 
-    ``RecordStore.replay`` 按行解析时发现**中间行**（非撕裂末行）JSON 损坏
-    即抛出。撕裂末行（崩溃半截写产物，无换行结尾）是合法容忍路径，截断
-    丢弃不抛本异常；中间行损坏意味着已提交数据受损，属事故而非正常窗口。
+    ``RecordStore.replay`` 按行解析时发现**中间行**（非撕裂末行）JSON 损坏即
+    抛出。撕裂末行（崩溃半截写产物，无换行结尾）是合法容忍路径，截断丢弃、
+    不抛本异常；中间行损坏意味着已提交数据受损，属事故而非正常窗口——「中间行
+    损坏报警不容忍」是持久化层的既定约定。
 
-    .. rubric:: 设计动机
+    .. rubric:: 行为要点
 
-    「中间行损坏报警不容忍」是持久化层一贯约定（见
-    :mod:`flowing.persistence` 模块 docstring）；具名类型使调用方 /
-    工具层能精确区分「版本问题」（:class:`FormatVersionError`）与
-    「数据损坏」（本类）。
+    - 字段 ``path``（损坏行所在文件路径）与 ``lineno``（损坏行的 1 基行号）。
+    - 数据事故：调用方不捕获（需人工介入）；抛出前框架记录 ``path:lineno``
+      的错误日志。
+    - 与 ``FormatVersionError``（版本问题）精确区分。
 
-    .. rubric:: 行为规约
+    .. seealso::
 
-    - 五要素：字段 ``path`` / ``lineno``（1 基行号）；抛出时机为
-      ``replay`` 逐行解析；调用方不 catch（数据事故，需人工介入）；
-      不可重试；属机制。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``无``（框架内无捕获点，fail fast）
-    - 实例化方：``flowing.persistence.FileRecordStore.replay``（时机：
-      中间行 JSON 解析失败，抛出前 ``logging.error`` 记录 path:lineno）
+        :mod:`flowing.persistence`
+        :class:`flowing.errors.FormatVersionError`
     """
 
     path: Path
@@ -2171,11 +1946,10 @@ class CorruptionError(FlowingError):
     """损坏行的 1 基行号。"""
 
     def __init__(self, path: Path, lineno: int) -> None:
-        """
-        .. rubric:: 调用关系（审计）
+        """构造异常实例。
 
-        - 调用：``Exception.__init__``（传递面向人读的消息）
-        - 被调：``FileRecordStore.replay`` 逐行解析的 raise
+        :param path: 损坏行所在的持久化文件路径；与 ``path`` 字段一致。
+        :param lineno: 损坏行的 1 基行号；与 ``lineno`` 字段一致。
         """
         # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Corrupted record line at {path}:{lineno}")
