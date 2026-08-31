@@ -5587,13 +5587,21 @@ class Agent:
             # 钩子抛异常只影响交付段，不再楔死 agent
             self.current_turn = None   # 回合物质终结
 
-            def _finish() -> None:
+            def _finish(expose_turn: bool = True) -> None:
                 # 5c. 交付（独立小函数：正常路径与 after_turn 异常路径共用，
                 # 保证 waiters 永不因收尾钩子异常而挂起——已知边界修复）
                 turn.finished_at = datetime.now()
                 result = build_turn_result(turn, self, intercepted=intercepted,
                                            error=error,
                                            finish_reason=last_stop_reason)   # S-28：信号显式传参（R-09：completed 结局的 stop_reason 同通道）
+                if not expose_turn:
+                    # 异常路径（after_turn 钩子崩）：不暴露真实 turn 对象——
+                    # 收尾期间崩过，调用方不应拿到可回溯树/读钩子状态的执行期
+                    # 载体；替换为合成空载体（保留真实 started_at、message_ids
+                    # 清空——与 destroy 兜底同口径）。组装结果（final_text /
+                    # status / token_usage）不受影响——只换 turn 字段。
+                    result.turn = TurnContext(
+                        started_at=turn.started_at, message_ids=[])
                 # last_result 统一写入（在 resolve waiters 之前）：finish 置位 →
                 # finish_output dict；否则 final_text（无产出 → None）。abort /
                 # cancel / error 同样覆写——载荷已置位照返；有完整 PROVIDER
@@ -5612,11 +5620,12 @@ class Agent:
             # 已知边界修复（2026-08-31 裁决）：after_turn handler 异常不得
             # 中断 waiters 交付——捕获后先喂饱再**原样上抛**（except 块内裸
             # raise 保留 handler 内层 traceback；普通异常落 _work_loop 的
-            # turn crashed 日志，CancelledError 照常传播）
+            # turn crashed 日志，CancelledError 照常传播）；异常路径交付
+            # 不暴露真实 turn（expose_turn=False，合成空载体）
             try:
                 await self.hooks.after_turn.dispatch(self, turn)   # 所有路径唯一收尾观察点；handler 读 turn.aborted 分流
             except BaseException:
-                _finish()
+                _finish(expose_turn=False)
                 raise
             _finish()
 
