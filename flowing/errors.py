@@ -547,30 +547,20 @@ class DuplicateHookPointError(HookError):
 
 
 class ToolError(FlowingError):
-    """工具定义 / 注册 / 查找异常中间层。
+    """工具定义 / 注册 / 查找异常的分类中间层。
 
     .. rubric:: 功能介绍
 
-    工具系统（四种类型 ``script`` / ``mcp`` / ``cli`` / ``request``）的
-    定义期与查找期异常共同基类。与工具**业务错误**严格区分：后者是
-    ``ToolResult(status="error")`` 正常产物，LLM 可见，不走异常通道。
+    工具系统（``script`` / ``mcp`` / ``cli`` / ``request`` 四种类型）的定义期
+    与查找期异常公共基类。与工具**业务错误**严格区分：业务错误是
+    ``ToolResult(status="error")`` 正常产物，LLM 可见，不走异常通道；本层只
+    承载「工具坏了」这一类（定义缺失、注册冲突、查找失败）。
 
-    .. rubric:: 设计动机
+    .. rubric:: 行为要点
 
-    「工具坏了」（定义缺失、注册冲突、LLM 编造别名）与「工具返回了错误结果」
-    是两条路径：前者 fail fast 或上抛，后者是 Agent-工具交互协议的正常一环，
-    恢复方是 LLM。本中间层只承载前者。
-
-    .. rubric:: 行为规约
-
-    - 中间层，不直接实例化抛出。
-    - 非行为：工具 ``execute()`` 内部崩溃不包装为本类——按普通异常直接上抛。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``无``（框架内无按本类捕获点，时机：未见规约）
-    - 实例化方：``无``（中间层，不直接实例化抛出；由工具定义 / 注册 /
-      查找各子类承载）
+    - 本类是分类中间层：框架实际抛出的是其具体子类；按类别捕获用
+      ``except ToolError``。
+    - 工具 ``execute()`` 内部崩溃不包装为本类——按普通异常直接上抛。
 
     .. seealso::
 
@@ -581,44 +571,21 @@ class ToolError(FlowingError):
 
 
 class MissingSchemaError(ToolError):
-    """工具参数 schema 缺失且无法推断。
+    """工具参数 schema 缺失且无法推断时抛出。
 
     .. rubric:: 功能介绍
 
-    两种抛出时机：script 工具裸函数的参数缺少类型标注（``inspect`` 无法提取
-    schema）；``cli`` / ``request`` 工具的 ``.fya`` 未声明必填的 ``args``
-    （这两类无自动推断来源）。
+    两种抛出场景：script 工具裸函数的参数缺少类型标注（无法自动提取 schema）；
+    ``cli`` / ``request`` 工具的 ``.fya`` 未声明必填的 ``args``（这两类没有自动
+    推断来源）。``.fya`` 显式声明的 ``args`` 优先级最高，显式声明存在时本异常
+    不会因类型标注缺失而抛出。
 
-    .. rubric:: 设计动机
+    .. rubric:: 行为要点
 
-    LLM 可见的 ``ToolDefinition.params`` 是调用的前提；「猜一个 schema」会让
-    LLM 拿到错误的契约。与其隐式降级，不如定义期报错。
-
-    .. rubric:: 使用示例
-
-    .. code-block:: python
-
-        # tools/backup.tool.fya（type: cli）——args 缺失 → 抛出
-        # type: cli
-        # command: "pg_dump {{ database }}"
-        # （应补 args 声明：database 参数带 type/description）
-
-    .. rubric:: 行为规约
-
-    - 五要素：字段 ``name``（工具名）与 ``param``（缺失标注的参数名，可为
-      ``None`` 表示整体缺失）；抛出时机为工具定义加载 / 注册；调用方不
-      catch（定义期错误）；不可重试；属机制。
-    - 边缘情况：``.fya`` 显式声明的 ``args`` 优先级最高，覆盖一切推断来源——
-      显式声明存在时本异常不因类型标注缺失而抛出。
-    - 测试案例：前置：裸函数 ``def run(cmd): ...`` 无标注且无 .fya 声明；
-      操作：注册该工具；期望：抛 ``MissingSchemaError`` 且 ``e.param == "cmd"``。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``无``（定义期错误，fail fast，调用方不 catch）
-    - 实例化方：``flowing.tool`` 工具定义加载 / 注册路径（时机：script
-      裸函数参数缺类型标注，tool.pyi:866/1348；``cli`` / ``request``
-      工具未声明必填 ``args``，tool.pyi:1034/1113/1331）
+    - 字段 ``name``（工具规范名）与 ``param``（缺失类型标注的参数名；整体缺失
+      时为 ``None``）。
+    - 定义期错误：调用方不捕获（fail-fast）。
+    - 不可重试。
 
     .. seealso::
 
@@ -628,23 +595,15 @@ class MissingSchemaError(ToolError):
     """
 
     name: str
-    """缺失 schema 的工具规范名。
-    
-    .. seealso:: :class:`flowing.errors.MissingSchemaError`
-    """
+    """缺失 schema 的工具规范名。"""
     param: str | None
-    """缺失类型标注的参数名；整体缺失（如 cli/request 未声明 args）时为 ``None``。
-    
-    .. seealso:: :class:`flowing.errors.MissingSchemaError`
-    """
+    """缺失类型标注的参数名；整体缺失（如 ``cli`` / ``request`` 未声明 ``args``）时为 ``None``。"""
 
     def __init__(self, name: str, param: str | None = None) -> None:
-        """
-        .. rubric:: 调用关系（审计）
+        """构造异常实例。
 
-        - 调用：``无``（仅平行字段赋值）
-        - 被调：``flowing.tool`` 工具定义加载 / 注册路径的 raise（时机：
-          schema 缺失且无法推断，tool.pyi:866/1034/1113/1331/1348）
+        :param name: 工具规范名；与 ``name`` 字段一致。
+        :param param: 缺失类型标注的参数名；整体缺失时省略（默认 ``None``）。
         """
         # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(
@@ -656,59 +615,33 @@ class MissingSchemaError(ToolError):
 
 
 class ToolNotFoundError(ToolError):
-    """``ToolRegistry.get()`` 按规范名找不到工具。
+    """按规范名在工具注册表中找不到工具时抛出。
 
     .. rubric:: 功能介绍
 
-    Runtime 全局工具注册表（规范名 → Tool 实例）查找失败时抛出。规范名是
-    注册时的唯一标识，与 Agent 级别名（``ToolEntry.name_alias``）是两个
-    命名空间。
+    ``ToolRegistry.get()`` 按规范名查找已注册工具失败时抛出。规范名是注册时的
+    唯一标识；Agent 绑定层的**别名**（``ToolEntry`` 的 ``name_alias``）是另一个
+    命名空间——按别名查找失败的异常是 ``UnknownToolError``。
 
-    .. rubric:: 设计动机
+    .. rubric:: 行为要点
 
-    「规范名直查注册表」是 Workflow ``tool_call()`` 等路径的基础操作，找不到
-    必须显式报错；查找失败不应静默返回 ``None`` 后在调用点变成 ``TypeError``。
-
-    .. rubric:: 使用示例
-
-    .. code-block:: python
-
-        tool = runtime.tool_registry.get("make-payment")   # 未注册 → 抛出
-
-    .. rubric:: 行为规约
-
-    - 五要素：字段 ``name``（规范名）；抛出时机为注册表查找；调用方按需
-      catch（如先探测再注册的场景）；不可重试；属机制。
-    - 测试案例：前置：空注册表；操作：``registry.get("x")``；期望：抛
-      ``ToolNotFoundError`` 且 ``e.name == "x"``。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``无``（调用方按需 catch——如先探测再注册；框架内无固定
-      捕获点，时机：未见规约）
-    - 实例化方：``flowing.tool.ToolRegistry.get``（时机：规范名未注册，
-      tool.pyi:1289）；``flowing.tool.ToolEntry`` 绑定解析（时机：
-      ``name_ori`` 不在注册表中，tool.pyi:598）
+    - ``name`` 字段为未命中的工具规范名。
+    - 查找失败显式报错而非静默返回 ``None``；调用方可按需捕获（如先探测再注册）。
+    - 不可重试：注册表内容不会自动变化。
 
     .. seealso::
 
         :class:`flowing.tool.ToolRegistry`
-        :class:`flowing.errors.UnknownToolError` —— 按**别名**在 Agent 绑定表查找失败的异常（另一命名空间）。
+        :class:`flowing.errors.UnknownToolError`
     """
 
     name: str
-    """未命中的工具规范名。
-    
-    .. seealso:: :class:`flowing.errors.ToolNotFoundError`
-    """
+    """未命中的工具规范名。"""
 
     def __init__(self, name: str) -> None:
-        """
-        .. rubric:: 调用关系（审计）
+        """构造异常实例。
 
-        - 调用：``无``（仅平行字段赋值）
-        - 被调：``flowing.tool.ToolRegistry.get`` 的 raise（时机：规范名
-          未注册，tool.pyi:1289）
+        :param name: 未命中的工具规范名；与 ``name`` 字段一致。
         """
         # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Tool not found in registry: {name!r}")
@@ -716,63 +649,38 @@ class ToolNotFoundError(ToolError):
 
 
 class ToolNameConflictError(ToolError):
-    """工具规范名重名注册。
+    """工具规范名重名注册时抛出。
 
     .. rubric:: 功能介绍
 
-    ``ToolRegistry.register()`` 检测到同名规范名时抛出。**重名永远不被允许，
-    无论工具类型**——包括同一 MCP 服务器不同配置的场景（须用不同规范名）。
+    ``ToolRegistry.register()`` 检测到同名规范名时抛出。重名一律不允许，无论
+    工具类型——包括同一 MCP 服务器不同配置的场景（须用不同规范名）。规范名是
+    注册表唯一键：静默覆盖会让先注册方的所有 Agent 绑定指向被换掉的实现；需要
+    相同实例时应复用已有注册而非重复注册。
 
-    .. rubric:: 设计动机
+    Agent 绑定层的别名冲突（同 alias）由 ``EntryNameConflictError`` 承载，与本
+    类（注册表层规范名冲突）分层。
 
-    规范名是注册表唯一键；静默覆盖会让先注册方的所有 Agent 绑定指向被换掉
-    的实现，行为不可预期。需要相同实例时应复用已有注册而非重复注册。
+    .. rubric:: 行为要点
 
-    Agent **绑定层**的别名冲突（``add_tool`` / ``skills:`` /
-    ``subagents:`` 同 alias）由 :class:`EntryNameConflictError` 承载，
-    与本类（注册表层规范名冲突）分层。
-
-    .. rubric:: 使用示例
-
-    .. code-block:: python
-
-        runtime.tool_registry.register(MyTool())            # 规范名 "make-payment"
-        runtime.tool_registry.register(OtherPaymentTool())  # 同名 → 抛出
-
-    .. rubric:: 行为规约
-
-    - 五要素：字段 ``name``；抛出时机为注册；调用方不 catch（安装期错误）；
-      不可重试；属机制。
-    - 非行为：不提供 ``override=True`` 式的覆盖开关（与 Provider adapter 的
-      全局注册策略不同——工具注册表在 Runtime 实例内，重注册无正当场景）。
-    - 测试案例：前置：已注册 ``"x"``；操作：再注册同名工具；期望：抛
-      ``ToolNameConflictError``，原注册保持不变。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``无``（安装期错误，调用方不 catch）
-    - 实例化方：``flowing.tool.ToolRegistry.register``（时机：规范名
-      重名注册——无论工具类型，tool.pyi:1276）
+    - ``name`` 字段为发生冲突的工具规范名。
+    - 安装期错误：调用方不捕获。
+    - 不提供覆盖开关（与 Provider adapter 注册表不同——工具注册表在 Runtime
+      实例内，重注册无正当场景）。
 
     .. seealso::
 
         :meth:`flowing.tool.ToolRegistry.register`
-        :class:`flowing.errors.ToolError`
+        :class:`flowing.errors.EntryNameConflictError`
     """
 
     name: str
-    """发生冲突的工具规范名。
-    
-    .. seealso:: :class:`flowing.errors.ToolNameConflictError`
-    """
+    """发生冲突的工具规范名。"""
 
     def __init__(self, name: str) -> None:
-        """
-        .. rubric:: 调用关系（审计）
+        """构造异常实例。
 
-        - 调用：``无``（仅平行字段赋值）
-        - 被调：``flowing.tool.ToolRegistry.register`` 的 raise（时机：
-          规范名重名注册，tool.pyi:1276）
+        :param name: 发生冲突的工具规范名；与 ``name`` 字段一致。
         """
         # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Tool name conflict: {name!r} is already registered")
@@ -780,85 +688,52 @@ class ToolNameConflictError(ToolError):
 
 
 class EntryNameConflictError(FlowingError):
-    """Agent 绑定层同 alias 冲突：tool / skill / subagent 条目统一 fail-fast。
+    """Agent 绑定层同 alias 冲突：tool / skill / subagent 条目统一报错。
 
     .. rubric:: 功能介绍
 
-    能力三正交的 Agent 级绑定层（``_tool_entries`` / ``_skill_entries`` /
-    ``_subagent_entries``，key 均为**别名**）中，同 alias 重复声明/添加
-    时抛出。覆盖两条入口路径：
+    能力三正交的 Agent 级绑定层（tool / skill / subagent 条目，key 均为别名）
+    中，同一 Agent 内同 alias 重复声明或添加时抛出。覆盖两条入口：声明式
+    （``.fya`` 的 ``tools:`` / ``skills:`` / ``subagents:`` 列表出现两条同
+    alias 条目）与编程式（``Agent.add_tool()`` 等）。同一生命周期内重复永远
+    非法，不提供覆盖开关。冲突判定是 per-Agent 的：不同 Agent 各引各的同名
+    资源互不冲突。
 
-    1. 声明式：``.fya`` 的 ``tools:`` / ``skills:`` / ``subagents:`` 列表
-       中出现两条同 alias 条目；
-    2. 编程式：``Agent.add_tool()`` 等（时机：``setup()`` 或运行期）。
-
-    .. rubric:: 设计动机
-
-    「都报错，不覆盖」（用户裁决，取代 skill 原「后声明覆盖先声明」的
-    ManagedList 语义）：插件的 ``setup()`` 也在 ``.fya`` 中声明（``$script``），
-    声明式与编程式写法背后是同一个作者——写重了就是笔误，静默覆盖会把
-    「用户定义优先」的正当场景与笔误混在一起，无法区分。每次生命周期从
-    空条目表重放 ``setup()``（recover 不感知上一次效果），因此同一生命
-    周期内的重复永远非法，没有例外路径。
-
-    与 :class:`ToolNameConflictError` 分层：本类管 Agent **绑定层**的别名
-    冲突；它管**注册表层**的规范名冲突（全局、跨 Agent）。命名空间落地后
-    （``flowing.runtime`` 模块 docstring §7a），本类的冲突判定是 **LLM
-    视角**的：LLM 看不到命名空间（有别名时连规范名也看不到），因此同一
-    Agent 下两个不同命名空间的同名资源必须给其一起别名；不同 Agent 各引
-    各的同名资源不冲突。
+    与 ``ToolNameConflictError`` 分层：本类管 Agent 绑定层的别名冲突（per-Agent、
+    LLM 视角——LLM 只看别名）；它管注册表层的规范名冲突（全局、跨 Agent）。
 
     .. rubric:: 使用示例
 
-    .. code-block:: yaml
+    .. code-block:: python
 
-        # agent.fya——两条同 alias 条目 → 解析期抛出
-        tools:
-          - make-payment as pay: {}
-          - other-payment as pay: {}
+        self.add_tool("make-payment", alias="pay")
+        self.add_tool("other-payment", alias="pay")   # 同 alias 重复添加 → 抛出
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
-    - 五要素：字段 ``alias`` / ``kind``；抛出时机为声明解析或绑定写入；
-      调用方不 catch（定义期/安装期编程错误）；不可重试；属机制。
-    - 非行为：不提供覆盖开关；与「检查后跳过」策略不冲突——插件挂载
-      前**先查后跳**（如 ``use_skill`` 保留用户定义）是合法规避，只有
-      未经检查的盲目写入才触发本异常。
-    - 测试案例：前置：``.fya`` ``skills:`` 两条同 alias；操作：``use_skill``
-      → 期望：抛 ``EntryNameConflictError``，``kind == "skill"``。
-    - 测试案例：前置：同一 Agent 引用 ``myplugin::search``（插件注册）与
-      ``./tools/search``（文件资源），规范名同为 ``search`` 且均未起别名
-      → 期望：抛 ``EntryNameConflictError``；给其一 ``as`` 别名后正常
-      （不同命名空间同名资源本身允许共存）。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``无``（定义期错误，调用方不 catch）
-    - 实例化方：``flowing.agent.Agent.add_tool``（同 alias 重复
-      添加）；``.fya`` ``tools:`` / ``skills:`` / ``subagents:`` 解析路径
-      （``use_skill`` 的条目填充循环等，同 alias 重复声明）
+    - 字段 ``alias``（发生冲突的别名）与 ``kind``（冲突所在的绑定层：
+      ``"tool"`` / ``"skill"`` / ``"subagent"``）。
+    - 定义期 / 安装期编程错误：调用方不捕获。
+    - 插件挂载前的「先查后跳」（如 ``use_skill`` 保留用户定义）是合法规避，
+      只有未经检查的盲目写入才触发本异常。
 
     .. seealso::
 
-        :class:`flowing.errors.ToolNameConflictError` —— 注册表层规范名冲突。
+        :class:`flowing.errors.ToolNameConflictError`
         :meth:`flowing.agent.Agent.add_tool`
-        :class:`flowing.plugins.skills.SkillEntry`
-        :class:`flowing.subagents.SubagentEntry`
     """
 
     alias: str
-    """发生冲突的别名。
-    """
+    """发生冲突的别名。"""
     kind: str
-    """冲突所在的绑定层：``"tool"`` / ``"skill"`` / ``"subagent"``。
-    """
+    """冲突所在的绑定层：``"tool"`` / ``"skill"`` / ``"subagent"``。"""
 
     def __init__(self, alias: str, kind: str) -> None:
-        """
-        .. rubric:: 调用关系（审计）
+        """构造异常实例。
 
-        - 调用：``无``（仅平行字段赋值）
-        - 被调：``Agent.add_tool`` 与 ``.fya`` 三列表解析路径的 raise
+        :param alias: 发生冲突的别名；与 ``alias`` 字段一致。
+        :param kind: 冲突所在的绑定层（``"tool"`` / ``"skill"`` / ``"subagent"``）；
+          与 ``kind`` 字段一致。
         """
         # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Entry alias conflict: {alias!r} (kind={kind!r})")
@@ -867,45 +742,23 @@ class EntryNameConflictError(FlowingError):
 
 
 class UnknownToolError(ToolError):
-    """``tool_call()`` 按别名在 ``_tool_entries`` 中找不到工具。
+    """``tool_call()`` 按别名在 Agent 绑定表中找不到工具时抛出。
 
     .. rubric:: 功能介绍
 
-    LLM 发起的工具调用**仅按别名**查找 Agent 级绑定表（``ToolEntry.name_alias``），
-    不回退规范名；别名未命中（典型场景：LLM 编造了不在 ``Context.tools``
-    中的名字）时抛出。
+    LLM 发起的工具调用仅按别名查找 Agent 级绑定表（``ToolEntry`` 的别名），
+    不回退规范名；别名未命中时抛出（典型场景：LLM 编造了不在 ``Context.tools``
+    中的名字）。不回退规范名是刻意的：不同 Agent 对同一工具可注册不同别名与
+    覆写，回退会绕开 Agent 级绑定层。
 
-    .. rubric:: 设计动机
+    .. rubric:: 行为要点
 
-    不回退规范名是刻意的：不同 Agent 对同一工具可注册不同别名与覆写，回退
-    规范名会绕开 Agent 级绑定层（其存在理由正是 per-Agent 的 LLM 可见声明）。
-
-    .. rubric:: 使用示例
-
-    .. code-block:: python
-
-        # LLM 输出 tool_call(name="delete_everything") 但该别名未绑定 → 抛出
-        await agent.tool_call(ToolCall(name="delete_everything", args={}))
-
-    .. rubric:: 行为规约
-
-    - 五要素：字段 ``name``（LLM 给出的别名）；抛出时机为 ``tool_call()``
-      别名查找；框架核心不 catch（直接上抛出工具调用循环），应用层可在
-      ``before_tool_call`` 前置校验或自行捕获；不可自动重试（LLM 侧可在
-      后续回合修正调用名，但属应用策略）；属机制。
-    - 边缘情况：``ToolEntry.enabled=False`` 的条目仍在绑定表中——编程式
-      调用可达，本异常只在别名完全不存在时抛出（可见性与可执行性分离）。
-    - 测试案例：前置：``_tool_entries`` 仅含别名 ``"pay"``；操作：
-      ``tool_call()`` 以 ``name="payment"``（规范名）调用；期望：抛
-      ``UnknownToolError``（不回退规范名）。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``无``（框架核心不 catch，直接上抛出工具调用循环；应用层
-      可在 ``before_tool_call`` 前置校验或自行捕获）
-    - 实例化方：``flowing.agent.Agent.tool_call``（时机：LLM 工具调用
-      按别名在 ``_tool_entries`` 查找未命中——不回退规范名，
-      agent.pyi:2340；tool.pyi:43）
+    - ``name`` 字段为 LLM 给出的未命中别名。
+    - 框架核心不捕获本异常（直接上抛出工具调用循环）；应用层可在
+      ``before_tool_call`` 前置校验或自行捕获。
+    - 不可自动重试：LLM 可在后续回合修正调用名，是否重试属应用策略。
+    - 本异常只在别名完全不存在时抛出：停用（``enabled=False``）只影响 LLM
+      可见性，不影响本异常的判定。
 
     .. seealso::
 
@@ -915,18 +768,12 @@ class UnknownToolError(ToolError):
     """
 
     name: str
-    """未命中的工具别名（LLM 可见名）。
-    
-    .. seealso:: :class:`flowing.errors.UnknownToolError`
-    """
+    """未命中的工具别名（LLM 可见名）。"""
 
     def __init__(self, name: str) -> None:
-        """
-        .. rubric:: 调用关系（审计）
+        """构造异常实例。
 
-        - 调用：``无``（仅平行字段赋值）
-        - 被调：``flowing.agent.Agent.tool_call`` 的 raise（时机：别名
-          在 ``_tool_entries`` 未命中，agent.pyi:2340）
+        :param name: 未命中的工具别名；与 ``name`` 字段一致。
         """
         # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Unknown tool alias: {name!r}")
@@ -934,46 +781,21 @@ class UnknownToolError(ToolError):
 
 
 class AmbiguousToolError(ToolError):
-    """工具 ``.py`` 文件的定义形态歧义。
+    """工具 ``.py`` 文件的定义形态歧义时抛出。
 
     .. rubric:: 功能介绍
 
-    script 工具的定向查找中，同一 ``.py`` 文件出现以下任一情况即抛出：
-    同时含打标函数（``@flowing_tool``）与 Tool 子类；或含**多个**打标
-    函数（「每文件至多一个」规则的违反）；框架无法判定用户意图。
+    script 工具的定向查找中，同一 ``.py`` 文件出现以下任一情况即抛出，框架
+    无法判定用户意图：同时含 ``@flowing_tool`` 打标函数与 Tool 子类；或含多个
+    打标函数（违反「每文件至多一个」规则）。两种形态生成不同的 Tool 定义路径，
+    按序选其一或隐式合并都会让行为依赖文件内容的出现顺序。
 
-    .. rubric:: 设计动机
+    .. rubric:: 行为要点
 
-    两种形态生成不同的 Tool 定义路径（打标函数自动提升 vs 类实例化）；按序
-    选其一或多个打标函数隐式合并，都会让工具行为依赖文件内容的出现顺序，
-    不可预期。
-
-    .. rubric:: 使用示例
-
-    .. code-block:: python
-
-        # tools/make_payment.py——同时存在两者 → 抛出
-        @flowing_tool
-        def make_payment(amount: float): ...
-        class MakePayment(ScriptTool): ...
-
-    .. rubric:: 行为规约
-
-    - 五要素：字段 ``path``（冲突文件路径）；抛出时机为工具定向查找 /
-      实例化；调用方不 catch（定义期错误）；不可重试；属机制。
-    - 边缘情况：``.tool.fya``（含 ``type: script``）与同名 ``.py`` 并存
-      不属于歧义——``.fya`` 优先（并告警），不抛本异常；``TOOL.fya`` 的
-      ``callable:`` 指向**已装饰**函数也不属本类——那是声明通道互斥的
-      违反，抛 :class:`flowing.errors.FormatError`。
-    - 测试案例：前置：单文件同时含打标函数与 Tool 子类；操作：Agent 声明
-      引用该工具；期望：抛 ``AmbiguousToolError``。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``无``（定义期错误，调用方不 catch）
-    - 实例化方：``flowing.tool.ToolRegistry.get`` 的 script
-      工具定向查找 / 实例化路径（时机：同一 ``.py`` 文件含打标函数与
-      Tool 子类、或多个打标函数）
+    - ``path`` 字段为产生歧义的 ``.py`` 文件路径（字符串形式）。
+    - 定义期错误：调用方不捕获（fail-fast）。
+    - ``.tool.fya`` 与同名 ``.py`` 并存不属于歧义（``.fya`` 优先）；
+      ``callable:`` 指向已装饰函数属声明通道互斥的违反，抛 ``FormatError``。
 
     .. seealso::
 
@@ -983,18 +805,12 @@ class AmbiguousToolError(ToolError):
     """
 
     path: str
-    """产生歧义的 ``.py`` 文件路径（字符串形式）。
-    
-    .. seealso:: :class:`flowing.errors.AmbiguousToolError`
-    """
+    """产生歧义的 ``.py`` 文件路径（字符串形式）。"""
 
     def __init__(self, path: str) -> None:
-        """
-        .. rubric:: 调用关系（审计）
+        """构造异常实例。
 
-        - 调用：``无``（仅平行字段赋值）
-        - 被调：``flowing.tool`` script 工具定向查找路径的 raise（时机：
-          同一 ``.py`` 同时含同名裸函数与 Tool 子类，tool.pyi:868/1349）
+        :param path: 产生歧义的 ``.py`` 文件路径；与 ``path`` 字段一致。
         """
         # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Ambiguous tool definitions in file: {path}")
@@ -1002,60 +818,33 @@ class AmbiguousToolError(ToolError):
 
 
 class AmbiguousMcpSourceError(ToolError):
-    """MCP 工具的 ``command``（stdio）与 ``url``（远程）同时声明。
+    """MCP 工具同时声明 ``command``（stdio）与 ``url``（远程）时抛出。
 
     .. rubric:: 功能介绍
 
-    MCP 来源识别规则：``command`` → stdio 本地进程；``url`` → 远程服务。
-    两者并存无法判定连接方式，抛出本异常。
+    ``type: mcp`` 的工具必须声明恰好一种连接来源：``command`` 表示 stdio 本地
+    子进程，``url`` 表示远程服务。两者并存时无法判定连接方式，抛出本异常。
 
-    .. rubric:: 设计动机
+    .. rubric:: 行为要点
 
-    两种来源的生命周期管理完全不同（子进程 vs HTTP 会话）；「两个都用」
-    或「任选其一」都会产生不可预期的连接行为。
-
-    .. rubric:: 使用示例
-
-    .. code-block:: yaml
-
-        # tools/github.tool.fya——command 与 url 并存 → 抛出
-        type: mcp
-        command: "npx -y @mcp/github"
-        url: "https://mcp.example.com/github"
-
-    .. rubric:: 行为规约
-
-    - 五要素：字段 ``name``（工具规范名）；抛出时机为 MCP 工具定义加载；
-      调用方不 catch（定义期错误）；不可重试；属机制。
-    - 测试案例：前置：``.fya`` 同时声明两字段；操作：加载工具定义；期望：
-      抛 ``AmbiguousMcpSourceError``。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``无``（定义期错误，调用方不 catch）
-    - 实例化方：``flowing.tool`` MCP 工具定义加载路径（时机：
-      ``command`` 与 ``url`` 同时声明，tool.pyi:986）
+    - ``name`` 字段为声明冲突的 MCP 工具规范名。
+    - 定义期错误：调用方不捕获（fail-fast）。
+    - 与 ``MissingMcpSourceError``（两者均未声明）构成「恰好一个来源」的对偶
+      约束。
 
     .. seealso::
 
         :class:`flowing.errors.MissingMcpSourceError`
-            两者均未声明的对偶异常。
         :class:`flowing.errors.ToolError`
     """
 
     name: str
-    """声明冲突的 MCP 工具规范名。
-    
-    .. seealso:: :class:`flowing.errors.AmbiguousMcpSourceError`
-    """
+    """声明冲突的 MCP 工具规范名。"""
 
     def __init__(self, name: str) -> None:
-        """
-        .. rubric:: 调用关系（审计）
+        """构造异常实例。
 
-        - 调用：``无``（仅平行字段赋值）
-        - 被调：``flowing.tool`` MCP 工具定义加载路径的 raise（时机：
-          ``command`` 与 ``url`` 同时声明，tool.pyi:986）
+        :param name: 声明冲突的 MCP 工具规范名；与 ``name`` 字段一致。
         """
         # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"MCP tool {name!r} declares both command and url")
@@ -1063,29 +852,18 @@ class AmbiguousMcpSourceError(ToolError):
 
 
 class MissingMcpSourceError(ToolError):
-    """MCP 工具的 ``command`` 与 ``url`` 均未声明。
+    """MCP 工具的 ``command`` 与 ``url`` 均未声明时抛出。
 
     .. rubric:: 功能介绍
 
-    ``type: mcp`` 的工具必须声明一种连接来源；两者皆缺时抛出。
+    ``type: mcp`` 的工具必须声明一种连接来源；两者皆缺时没有任何可推断的默认
+    连接方式，抛出本异常。
 
-    .. rubric:: 设计动机
+    .. rubric:: 行为要点
 
-    与 ``AmbiguousMcpSourceError`` 对偶，构成「恰好一个来源」的完整约束；
-    缺来源时没有任何可推断的默认连接方式。
-
-    .. rubric:: 行为规约
-
-    - 五要素：字段 ``name``；抛出时机为 MCP 工具定义加载；调用方不 catch；
-      不可重试；属机制。
-    - 测试案例：前置：``type: mcp`` 且无 ``command`` / ``url``；操作：加载；
-      期望：抛 ``MissingMcpSourceError``。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``无``（定义期错误，调用方不 catch）
-    - 实例化方：``flowing.tool`` MCP 工具定义加载路径（时机：
-      ``command`` 与 ``url`` 均未声明，tool.pyi:987）
+    - ``name`` 字段为缺失来源声明的 MCP 工具规范名。
+    - 定义期错误：调用方不捕获（fail-fast）。
+    - 与 ``AmbiguousMcpSourceError``（两者同时声明）构成对偶约束。
 
     .. seealso::
 
@@ -1094,18 +872,12 @@ class MissingMcpSourceError(ToolError):
     """
 
     name: str
-    """缺失来源声明的 MCP 工具规范名。
-    
-    .. seealso:: :class:`flowing.errors.MissingMcpSourceError`
-    """
+    """缺失来源声明的 MCP 工具规范名。"""
 
     def __init__(self, name: str) -> None:
-        """
-        .. rubric:: 调用关系（审计）
+        """构造异常实例。
 
-        - 调用：``无``（仅平行字段赋值）
-        - 被调：``flowing.tool`` MCP 工具定义加载路径的 raise（时机：
-          ``command`` 与 ``url`` 均未声明，tool.pyi:987）
+        :param name: 缺失来源声明的 MCP 工具规范名；与 ``name`` 字段一致。
         """
         # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"MCP tool {name!r} declares neither command nor url")
@@ -1118,33 +890,22 @@ class MissingMcpSourceError(ToolError):
 
 
 class ResourceError(FlowingError):
-    """Resource 注册与访问异常中间层。
+    """Resource 注册与访问异常的分类中间层。
 
     .. rubric:: 功能介绍
 
-    Resource（Runtime 持有的跨 Agent / 跨任务共享实例，如 DB 连接池）的
-    注册与读取异常共同基类。读写通道对称：``register_resource`` /
-    ``get_resource`` 均为 Runtime 实例方法。
+    Resource（Runtime 持有的跨 Agent / 跨任务共享实例，如数据库连接池）的注册
+    与读取异常公共基类：重名注册（``ResourceNameConflictError``）与访问未注册
+    实例（``ResourceNotFoundError``）。Resource 与 provide/inject 正交：值跟随
+    Agent 生命周期用 provide，值跨越多个 Agent 与任务用 Resource；Resource 不
+    走 inject 链，错误类型独立于 ``ProvideError``。
 
-    .. rubric:: 设计动机
+    .. rubric:: 行为要点
 
-    Resource 与 provide/inject 正交：值跟随 Agent 生命周期 → provide；
-    值跨越多个 Agent 与任务 → Resource。Resource 不走 inject 链，因此其
-    错误类型独立于 ``ProvideError``。
-    另注：子 Agent 调用不产生专属异常类型——``invoke_subagent()`` 路径的
-    异常按普通异常**直接上抛**（``on_subagent_error`` 钩子不存在）。
-
-    .. rubric:: 行为规约
-
-    - 中间层，不直接实例化抛出。
-    - 非行为：``get_resource(name, type_hint=...)`` 的 ``type_hint`` 仅供
-      IDE 推断，运行时**不做** isinstance 校验，故不存在「类型不匹配」异常。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``无``（框架内无按本类捕获点，时机：未见规约）
-    - 实例化方：``无``（中间层，不直接实例化抛出；由
-      ``ResourceNameConflictError`` / ``ResourceNotFoundError`` 承载）
+    - 本类是分类中间层：框架实际抛出的是其具体子类；按类别捕获用
+      ``except ResourceError``。
+    - ``get_resource(name, type_hint=...)`` 的 ``type_hint`` 仅供 IDE 推断，
+      运行时不做 isinstance 校验，不存在「类型不匹配」异常。
 
     .. seealso::
 
@@ -1155,38 +916,19 @@ class ResourceError(FlowingError):
 
 
 class ResourceNameConflictError(ResourceError):
-    """Resource 重名注册。
+    """Resource 重名注册时抛出。
 
     .. rubric:: 功能介绍
 
-    ``Runtime.register_resource(name, instance)`` 检测到同名时抛出。
-    注册必须在启动根 Agent（``mount()``）前完成。
+    ``Runtime.register_resource(name, instance)`` 检测到同名时抛出。Resource 是
+    全局共享实例：静默覆盖会让已持有旧实例引用的 Agent 与新读取方看到不同对象，
+    同名即编程错误。注册应在启动根 Agent（``mount()``）前完成。
 
-    .. rubric:: 设计动机
+    .. rubric:: 行为要点
 
-    Resource 是全局共享实例，静默覆盖会让已持有旧实例引用的 Agent 与新
-    读取方看到不同对象；同名即编程错误。
-
-    .. rubric:: 使用示例
-
-    .. code-block:: python
-
-        runtime.register_resource("db", create_pool(dsn))
-        runtime.register_resource("db", create_pool(other_dsn))  # 抛出
-
-    .. rubric:: 行为规约
-
-    - 五要素：字段 ``name``；抛出时机为注册；调用方不 catch（启动期错误）；
-      不可重试；属机制。
-    - 测试案例：前置：已注册 ``"db"``；操作：同名再注册；期望：抛
-      ``ResourceNameConflictError``，原实例不被替换。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``无``（启动期错误，调用方不 catch）
-    - 实例化方：``flowing.runtime.Runtime.register_resource``（时机：
-      同名 Resource 再注册——须在 ``mount()`` 前完成注册，
-      runtime.pyi:1337/1345）
+    - ``name`` 字段为发生冲突的 Resource 名。
+    - 启动期错误：调用方不捕获。
+    - 不可重试。
 
     .. seealso::
 
@@ -1195,18 +937,12 @@ class ResourceNameConflictError(ResourceError):
     """
 
     name: str
-    """发生冲突的 Resource 名。
-    
-    .. seealso:: :class:`flowing.errors.ResourceNameConflictError`
-    """
+    """发生冲突的 Resource 名。"""
 
     def __init__(self, name: str) -> None:
-        """
-        .. rubric:: 调用关系（审计）
+        """构造异常实例。
 
-        - 调用：``无``（仅平行字段赋值）
-        - 被调：``flowing.runtime.Runtime.register_resource`` 的 raise
-          （时机：同名 Resource 再注册，runtime.pyi:1345）
+        :param name: 发生冲突的 Resource 名；与 ``name`` 字段一致。
         """
         # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Resource name conflict: {name!r} is already registered")
@@ -1214,40 +950,20 @@ class ResourceNameConflictError(ResourceError):
 
 
 class ResourceNotFoundError(ResourceError):
-    """访问未注册的 Resource。
+    """访问未注册的 Resource 时抛出。
 
     .. rubric:: 功能介绍
 
-    ``Runtime.get_resource(name)``（及 ``Agent.get_resource`` 便捷委托）
-    找不到已注册实例时抛出。
+    ``Runtime.get_resource(name)``（及 ``Agent.get_resource`` 便捷委托）找不到
+    已注册实例时抛出。Resource 获取无感（不在 ``args`` / inject 中声明），缺失
+    只能在读取点暴露；显式异常比返回 ``None`` 更能防止下游 ``AttributeError``
+    式的次生错误。
 
-    .. rubric:: 设计动机
+    .. rubric:: 行为要点
 
-    Resource 获取完全无感（不在 ``args`` / ``inject`` 中声明），因此缺失
-    只能在读取点暴露；显式异常比返回 ``None`` 更能防止下游
-    ``AttributeError`` 式的次生错误。
-
-    .. rubric:: 使用示例
-
-    .. code-block:: python
-
-        async def execute(self, query: str, caller=None):
-            db = caller.get_resource("db")   # 未注册 → 抛出
-
-    .. rubric:: 行为规约
-
-    - 五要素：字段 ``name``；抛出时机为读取；调用方按需 catch（如可选
-      能力的降级场景）；不可重试；属机制。
-    - 测试案例：前置：无注册；操作：``runtime.get_resource("db")``；期望：
-      抛 ``ResourceNotFoundError`` 且 ``e.name == "db"``。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``无``（调用方按需 catch——如可选能力降级；框架内无固定
-      捕获点，时机：未见规约）
-    - 实例化方：``flowing.runtime.Runtime.get_resource``（时机：name
-      未注册，runtime.pyi:1248/1256）；``flowing.agent.Agent.get_resource``
-      便捷委托（时机：同上，agent.pyi:2500）
+    - ``name`` 字段为未命中的 Resource 名。
+    - 调用方可按需捕获（如可选能力的降级场景）。
+    - 不可重试。
 
     .. seealso::
 
@@ -1256,19 +972,12 @@ class ResourceNotFoundError(ResourceError):
     """
 
     name: str
-    """未命中的 Resource 名。
-    
-    .. seealso:: :class:`flowing.errors.ResourceNotFoundError`
-    """
+    """未命中的 Resource 名。"""
 
     def __init__(self, name: str) -> None:
-        """
-        .. rubric:: 调用关系（审计）
+        """构造异常实例。
 
-        - 调用：``无``（仅平行字段赋值）
-        - 被调：``flowing.runtime.Runtime.get_resource``（及
-          ``flowing.agent.Agent.get_resource`` 委托）的 raise（时机：
-          name 未注册，runtime.pyi:1256、agent.pyi:2500）
+        :param name: 未命中的 Resource 名；与 ``name`` 字段一致。
         """
         # 消息为自然语言关键提示，结构化字段为权威
         super().__init__(f"Resource not found: {name!r}")
