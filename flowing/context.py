@@ -754,6 +754,11 @@ class Context:
       adapter 抛 :class:`flowing.errors.ContextLengthError` 兜底（该异常
       不经过 ``on_provider_error``，直接上抛）。
     - 框架不为本类做 role 映射：kind→API role 是 adapter 的职责。
+    - 改写 ``messages`` 不推荐：``before_provider_gen`` 钩子对 ``messages``
+      的直接改动不会进入消息树、不会落盘，下一次组装即丢失。内容增删应
+      走持久化路径：回合开头的注入用 ``before_turn`` 向
+      ``TurnContext.pending_messages`` 附加（随批次挂树落盘）；回合中途的
+      追加 / 擦除用 ``MessageChain`` 手术（``insert`` / ``remove``）。
     - 每次组装产生全新对象与全新列表；两次组装互不共享可变状态。
     - 实例不保证线程安全（单进程 asyncio 模型，无此需求）。
 
