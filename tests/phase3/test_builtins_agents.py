@@ -17,7 +17,7 @@ import pytest
 from flowing.agent import Agent
 from flowing.builtins import ExploreAgent, FinishTool
 from flowing.builtins.tools import SubagentInvokeTool
-from flowing.message import MessageKind, StructBlock
+from flowing.message import MessageKind, StructBlock, TextBlock
 from flowing.parsable import Parsable
 
 _PHASE2_CONFTEST = Path(__file__).parent.parent / "phase2" / "conftest.py"
@@ -208,8 +208,11 @@ async def test_t74_subagent_invoke_async(runtime, provider):
     tool_msg = next(agent._messages[mid] for mid in result.turn.message_ids
                     if agent._messages[mid].kind is MessageKind.TOOL)
     payload = next(b for b in tool_msg.content if isinstance(b, StructBlock)).data
-    # 立即返回 started 收据（子 Agent 已创建并在跑）
+    # 立即返回 started 收据（子 Agent 已创建并在跑）；B14：pending + 注册键块
     assert payload == {"invoked": "bg", "status": "started"}
+    assert tool_msg.tool_status == "pending"
+    assert any(isinstance(b, TextBlock) and "后台任务 ID" in b.text
+               for b in tool_msg.content)
     # 运行段结局经 SUBAGENT 消息送达
     child_gate.set()
     await _drain_until(lambda: any(

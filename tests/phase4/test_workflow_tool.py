@@ -74,11 +74,13 @@ async def test_t88_receipt_before_run_completes(project, tmp_path):
         result = await agent.query("启动验证-修复工作流")
         assert result.status == "completed"
 
-        # 收据：LLM 可见的 completed ToolResult 承载 started 收据
+        # 收据：pending ToolResult 承载 started 收据（B12——async gen 首 yield，
+        # 带后台任务注册键）
         (receipt,) = [r for r in tool_results
                       if isinstance(r.output, dict)
                       and r.output.get("status") == "started"]
-        assert receipt.status == "completed"
+        assert receipt.status == "pending"
+        assert receipt.background_task_id is not None   # B10：注册键随收据交付
         assert receipt.output == {"status": "started",
                                   "workflow": "@/verify_fix.py"}
         assert plugin_msgs == []   # gate 未置位：run 未完成 → 收据严格在先
@@ -131,8 +133,8 @@ async def test_t89_caller_query_no_deadlock(project, tmp_path):
 async def test_t90_resolve_failure_wrapped_run_failure_contained(
         project, tmp_path, caplog):
     """T90：resolve_workflow 解析失败 → 经工具边界包装为 status="error"
-    的 LLM 可见结果；后台任务自身异常不向工具传播（收据仍 started，
-    异常记日志）。"""
+    的 LLM 可见结果（首 yield 前异常，B2）；后台运行段失败 → 框架投递
+    EVENT 错误块（LLM 可见）+ flowing.tool 日志（B3，双通道）。"""
     runtime = make_runtime(tmp_path, register_default_type=False)
     runtime.register_agent_type("caller-agent", SimpleAgent)
     # 刻意不注册 "test-agent"：quick.py 的 run 在后台任务内失败
@@ -150,18 +152,18 @@ async def test_t90_resolve_failure_wrapped_run_failure_contained(
         assert tool_results[0].status == "error"
         assert "ghost.py" in tool_results[0].error
 
-        # 后半：run() 后台失败 → 不向工具传播，收据仍为 started + 记日志
+        # 后半：run() 后台失败 → 框架投递 EVENT 错误块（LLM 可见）+ 日志
+        # （logger 变为 flowing.tool，B3/S3 迁移）
         tool_results.clear()
         step2, _ = tool_call_response(("run-workflow", {"path": "@/quick.py"}))
         script_provider(provider, step2, text_response("收尾"))
-        with caplog.at_level(logging.ERROR,
-                             logger="flowing.plugins.workflow.plugin"):
+        with caplog.at_level(logging.ERROR, logger="flowing.tool"):
             await agent.query("启动 quick")
-            assert tool_results[0].status == "completed"
+            assert tool_results[0].status == "pending"
             assert tool_results[0].output == {"status": "started",
                                               "workflow": "@/quick.py"}
             await asyncio.sleep(0.2)   # 等后台任务失败落定
-        assert any("workflow 后台运行失败" in r.message
+        assert any("异步工具 run-workflow 后台运行失败" in r.message
                    for r in caplog.records)
     finally:
         await runtime.shutdown()

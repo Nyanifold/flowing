@@ -1,0 +1,5 @@
+# 后台机制测试组 1/8 的 async gen 形态 fixture（B1/B5：isasyncgen 即后台，
+# 无需 background 字段——标记冗余，刻意不写）
+type: script
+description: 训练神经网络——每轮验证自动把结果推回。
+callable: ./impl.py::train_net

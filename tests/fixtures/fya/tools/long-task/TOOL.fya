@@ -1,0 +1,6 @@
+# 后台机制测试组 8 的 background 标记形态 fixture（B6：普通 async def +
+# background: true 后台化；仅 script 型合法，B13）
+type: script
+description: 长任务（background 标记形态，单次返回）。
+background: true
+callable: ./impl.py::long_task

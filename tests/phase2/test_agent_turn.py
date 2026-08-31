@@ -926,7 +926,11 @@ async def test_t78_async_tool_pending_and_event(runtime, provider):
     tool_msgs = [agent._messages[mid] for mid in result.turn.message_ids
                  if agent._messages[mid].kind is MessageKind.TOOL]
     assert [m.tool_status for m in tool_msgs] == ["pending", "pending"]   # 收据配对封闭
-    assert [m.content for m in tool_msgs] == [[], []]
+    # B10：pending 收据附加「后台任务 ID」块（Task 路径 output 仍 None——
+    # 内容只有附加块，无结果块）
+    assert [len(m.content) for m in tool_msgs] == [1, 1]
+    assert all(isinstance(b, TextBlock) and b.text.startswith("后台任务 ID：")
+               for m in tool_msgs for b in m.content)
 
     # Task 完成后 EVENT 消息入队（标注块 + 结果块 / 标注块 + 错误文本块），
     # 由工作循环消费挂树——轮询等待两条 EVENT 出现（消费通道即时发生）

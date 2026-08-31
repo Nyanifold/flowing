@@ -8,6 +8,7 @@ EVENT 入队；内部校验在 try 之外上抛）。
 from __future__ import annotations
 
 import asyncio
+from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError
@@ -27,10 +28,19 @@ class _FakeCaller:
 
     def __init__(self) -> None:
         self.messages: list = []
+        self._background_tasks: dict[str, asyncio.Task] = {}
 
     async def enqueue_message(self, msg) -> str:
         self.messages.append(msg)
         return msg.id
+
+    def track_background_task(self, task: asyncio.Task) -> str:
+        """B9 注册表 stub（与 Agent.track_background_task 同构，测试替身用）。"""
+        task_id = uuid4().hex
+        self._background_tasks[task_id] = task
+        task.add_done_callback(
+            lambda t: self._background_tasks.pop(task_id, None))
+        return task_id
 
 
 async def _drain_until(predicate, *, attempts: int = 100) -> bool:
