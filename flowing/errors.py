@@ -552,7 +552,7 @@ class ToolError(FlowingError):
     .. rubric:: 功能介绍
 
     工具系统（``script`` / ``mcp`` / ``cli`` / ``request`` 四种类型）的定义期
-    与查找期异常公共基类。与工具**业务错误**严格区分：业务错误是
+    与查找期异常公共基类。与工具业务错误严格区分：业务错误是
     ``ToolResult(status="error")`` 正常产物，LLM 可见，不走异常通道；本层只
     承载「工具坏了」这一类（定义缺失、注册冲突、查找失败）。
 
@@ -620,7 +620,7 @@ class ToolNotFoundError(ToolError):
     .. rubric:: 功能介绍
 
     ``ToolRegistry.get()`` 按规范名查找已注册工具失败时抛出。规范名是注册时的
-    唯一标识；Agent 绑定层的**别名**（``ToolEntry`` 的 ``name_alias``）是另一个
+    唯一标识；Agent 绑定层的别名（``ToolEntry`` 的 ``name_alias``）是另一个
     命名空间——按别名查找失败的异常是 ``UnknownToolError``。
 
     .. rubric:: 行为要点
@@ -1071,7 +1071,7 @@ class ContextLengthError(ProviderError):
     解析时抛出。是 Provider 调用期异常中唯一绕过 ``on_provider_error`` 的类型：
     「上下文太长」重试必然重现同样失败，不可重试是事实而非策略，因此框架把它
     硬编码为直接上抛，不给策略层误判空间。压缩 / 截断属策略，由钩子层（如
-    ``before_provider_gen`` 中的压缩 Composable）在**下一次**调用前处理，不在
+    ``before_provider_gen`` 中的压缩 Composable）在下一次调用前处理，不在
     错误路径内自动发生。
 
     .. rubric:: 行为要点
@@ -1095,8 +1095,8 @@ class RequestTooLargeError(ProviderError):
 
     .. rubric:: 功能介绍
 
-    请求体**字节数**超限（典型：多模态附件过大）时由 adapter 抛出，与
-    ``ContextLengthError`` 的 **token 数**超限相区分。两者恢复路径不同：token
+    请求体字节数超限（典型：多模态附件过大）时由 adapter 抛出，与
+    ``ContextLengthError`` 的 token 数超限相区分。两者恢复路径不同：token
     超限靠压缩会话历史；字节超限压缩历史无用，必须剥离媒体附件后重发。注意
     部分 Provider（如 Vertex）会把 prompt 过长也返回 413，adapter 归类时以消息
     内容辅助判别——归类依据是语义而非状态码。
@@ -1306,7 +1306,7 @@ class MissingEnvironmentVariableError(ProviderError):
     .. rubric:: 功能介绍
 
     ``providers.yaml`` 中的 ``{{env.VAR}}`` 是纯字符串替换（非 Jinja2 /
-    Parsable），在条目**加载时**一次性求值；变量缺失即在加载时抛出本异常——
+    Parsable），在条目加载时一次性求值；变量缺失即在加载时抛出本异常——
     fail-fast，不静默降级（避免运行到第一次调用才 401）。非 ``{{env.`` 前缀的
     ``{{`` 保持原样（不报错不替换），不触发本异常。
 
@@ -1409,7 +1409,7 @@ class DependencyError(FlowingError):
 
     ``Runtime.use()`` 每次安装插件后对当前已装集合的依赖图做增量校验：已装子图
     成环（A 依赖 B、B 依赖 A）即抛出本异常，报错现场即引入环的那次 ``use()``。
-    依赖**缺失**只产生 ``warnings.warn`` 警告、不抛本异常（「声明了依赖但实际
+    依赖缺失只产生 ``warnings.warn`` 警告、不抛本异常（「声明了依赖但实际
     用不上」是合法形态，``use()`` 可分批）；运行期真用到缺失依赖时由
     ``MissingProvideError`` 兜底。
 
@@ -1922,7 +1922,7 @@ class CorruptionError(FlowingError):
 
     .. rubric:: 功能介绍
 
-    ``RecordStore.replay`` 按行解析时发现**中间行**（非撕裂末行）JSON 损坏即
+    ``RecordStore.replay`` 按行解析时发现中间行（非撕裂末行）JSON 损坏即
     抛出。撕裂末行（崩溃半截写产物，无换行结尾）是合法容忍路径，截断丢弃、
     不抛本异常；中间行损坏意味着已提交数据受损，属事故而非正常窗口——「中间行
     损坏报警不容忍」是持久化层的既定约定。
