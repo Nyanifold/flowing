@@ -2,12 +2,12 @@
 
 .. rubric:: 功能介绍
 
-Skill 扩展是 Flowing 的**内置扩展**（随 ``flowing`` 包发布但不自动
+Skill 扩展是 Flowing 的内置扩展（随 ``flowing`` 包发布但不自动
 启用），为 Agent 提供「按名加载一段提示词」的能力：Agent 在
 ``agent.fya`` 的 ``skills:`` 字段声明技能，LLM 从 catalog 中看到
 可用技能清单，需要时经 ``skill-load`` 工具按名加载详细执行指南。
 
-框架核心**不感知** Skill：``agent.fya`` 的 ``skills:`` 字段不是核心
+框架核心不感知 Skill：``agent.fya`` 的 ``skills:`` 字段不是核心
 保留字，宽松 YAML 解析把它静默保留在 Agent 的 ``_extra`` 中，由本
 模块的 ``use_skill(self)`` 在 ``setup()`` 阶段解析（``Agent.__getattr__``
 对未定义属性回退 ``_extra`` 查找，扩展直接读 ``agent.skills`` 即可）。
@@ -15,7 +15,7 @@ Skill 的加载路径也不走 Turn 引擎硬编码——LLM 经 ``skill-load`` 
 调用加载，框架看到的只是一次普通 ``tool_call`` （Tool / 子 Agent 在
 Turn 引擎中有硬编码调用点，Skill 完全复用 Tool 机制）。
 
-启用遵循**双层启用**模型：阶段一 ``runtime.use(SkillPlugin(...))``
+启用遵循双层启用模型：阶段一 ``runtime.use(SkillPlugin(...))``
 注册全局 ``SkillRegistry`` 与 ``skill-load`` 工具；阶段二
 ``use_skill(self)`` 为单个 Agent 实例启用。
 
@@ -27,7 +27,7 @@ Turn 引擎中有硬编码调用点，Skill 完全复用 Tool 机制）。
     全部注册（重复 ``use()`` 同一插件实例属编程错误，见
     :class:`SkillPlugin`）；
   - 阶段二：``setup()`` 中 ``use_skill(self)``——recover 重跑
-    ``setup()`` 时作用于**新实例**，安全；对**同一实例**重复调用本
+    ``setup()`` 时作用于新实例，安全；对同一实例重复调用本
     函数会在条目装配处抛 ``EntryNameConflictError`` （钩子点声明幂等、
     绑定函数「检查后跳过」，但条目别名不重复登记，见
     :func:`use_skill` 行为要点）。
@@ -74,24 +74,24 @@ Turn 引擎中有硬编码调用点，Skill 完全复用 Tool 机制）。
 
 .. rubric:: Skill 定义文件与查找规则
 
-Skill 定义是**文件资源**，三种等价形式（``SkillRegistry`` 统一解析为
+Skill 定义是文件资源，三种等价形式（``SkillRegistry`` 统一解析为
 同一个 :class:`Skill` 类的实例，无「内置 / 自定义」类层次差异）：
 
-1. **``.md`` 形式**：YAML frontmatter（``---`` 包裹，字段与
+1. ``.md`` 形式：YAML frontmatter（``---`` 包裹，字段与
    ``.skill.fya`` 的 YAML 块同构）和 Markdown 正文。``name`` 一律
-   **推断**（命中 ``<name>.md`` 取文件名；命中通用名 ``SKILL.md`` /
-   ``skill.md`` 取目录名，kebab-case）；frontmatter 中**不禁止**写
+   推断（命中 ``<name>.md`` 取文件名；命中通用名 ``SKILL.md`` /
+   ``skill.md`` 取目录名，kebab-case）；frontmatter 中不禁止写
    ``name``，但仅作一致性断言——与推断值不符抛
    :class:`flowing.errors.NameMismatchError`（与 Agent / Tool 同一
-   语义）。``description`` **必填**；正文支持 Jinja2 模板。
-2. **``.skill.fya`` 形式**：块结构声明，字段见 :class:`Skill`；可含
+   语义）。``description`` 必填；正文支持 Jinja2 模板。
+2. ``.skill.fya`` 形式：块结构声明，字段见 :class:`Skill`；可含
    ``$script`` 块定义 ``on_load`` 回调。注意 ``.skill.fya`` 的
-   ``$script`` 与 Agent ``.fya`` 的 ``$script`` **用途不同**：前者只
+   ``$script`` 与 Agent ``.fya`` 的 ``$script`` 用途不同：前者只
    定义 ``on_load``，后者定义 ``setup()`` / ``@on()`` 钩子 / 实例方法。
-3. **目录形式**：复杂 Skill 用目录组织，正文可 ``{% include %}``
+3. 目录形式：复杂 Skill 用目录组织，正文可 ``{% include %}``
    引用目录内的参考资料 / 术语表。
 
-**定向查找优先级**（按规范名 ``<name>``，首个存在者生效）：
+定向查找优先级（按规范名 ``<name>``，首个存在者生效）：
 
 1. ``<name>/`` 目录（若存在）→ 目录内 ``SKILL.fya`` > ``skill.fya`` >
    ``<name>.skill.fya`` > ``<name>.fya`` > ``SKILL.md`` > ``skill.md``
@@ -101,32 +101,32 @@ Skill 定义是**文件资源**，三种等价形式（``SkillRegistry`` 统一�
 
 细则（与 Agent / Tool 查找链同口径）：
 
-- **``.fya`` 系优先于 ``.md``**：同名 ``.fya`` 系与 ``.md`` 并存 →
+- ``.fya`` 系优先于 ``.md``：同名 ``.fya`` 系与 ``.md`` 并存 →
   告警且 ``.fya`` 系优先（对齐 Tool 的「``.fya`` 优先于同名 ``.py``
   并告警」）。
-- **裸名 vs 显式路径分流**：裸名条目语境下目录存在但无合法定义文件
-  → 继续向下查找；**显式路径**条目语境下目录无候选 → 直接抛
+- 裸名 vs 显式路径分流：裸名条目语境下目录存在但无合法定义文件
+  → 继续向下查找；显式路径条目语境下目录无候选 → 直接抛
   :class:`flowing.errors.FormatError`（定点引用的目录为空几乎必为
   笔误；分流在 ``use_skill()`` 声明期执行——条目规范化经
   :func:`flowing.parser.normalize_entries`（``naming=SKILL_NAMING``），
   形态判别经 :func:`flowing.paths.classify_ref`；
   :meth:`SkillRegistry.get` 只承接裸名语义）。
-- **名字推断**：机制本体 :func:`flowing.paths.infer_name`（规则表
+- 名字推断：机制本体 :func:`flowing.paths.infer_name`（规则表
   :data:`SKILL_NAMING`）——命中 ``<name>.xxx`` 候选 → 取文件名；
   命中通用名候选（``SKILL.fya`` / ``skill.fya`` / ``SKILL.md`` /
-  ``skill.md``）→ 取**目录名**（对齐 Agent「``agent.fya`` 命中取
+  ``skill.md``）→ 取目录名（对齐 Agent「``agent.fya`` 命中取
   目录名」的推断规则）。
-- **插件注册通道**：``runtime.register_skill()`` →
+- 插件注册通道：``runtime.register_skill()`` →
   :meth:`SkillRegistry.register` 编程式注册（key 为 ``ns::规范名``）。
   裸名条目先查注册表裸名视图（``default::`` 优先于 ``builtin::``，
   default 优先，即覆盖通道），未命中才走上述文件查找链；``ns::name``
-  限定名条目**只查注册表**。命名空间永不进入 LLM 可见面——catalog
+  限定名条目只查注册表。命名空间永不进入 LLM 可见面——catalog
   与 ``skill-load`` 只暴露规范名 / 别名。
-- 链上顺序只是**确定性判定规则**——不推荐同一链路真的同时存在多个
+- 链上顺序只是确定性判定规则——不推荐同一链路真的同时存在多个
   候选文件（属组织异味：读者需回溯优先级才能确定生效者）。
 
 全部不存在 → 解析失败（见 :meth:`SkillRegistry.get`）。
-**不存在自动扫描**（除 ``skills: _`` 的 PENDING 声明外），所有 Skill
+不存在自动扫描（除 ``skills: _`` 的 PENDING 声明外），所有 Skill
 均经 Agent 显式引用触发定向查找；``skills:`` 条目支持裸名 / 显式
 相对路径 / glob 三形态，glob 展开时规范名与已显式声明条目相同的跳过
 （先解析显式条目，再展开 glob）。
@@ -137,11 +137,11 @@ catalog 懒注入：``use_skill()`` 把 :class:`LazySkillsPrompt` 注册为
 ``prompt_blocks`` 的动态块，每次组装上下文现场渲染——catalog 内容
 反映当刻的 ``enabled`` 状态与参数覆盖，无任何缓存（渲染惰性；定义
 文件已在声明期一次读入）。正文（content）由 LLM 经 ``skill-load``
-决定使用时才按需加载并渲染。catalog 中 ``<name>`` 是**别名**
-（``SkillEntry.name_alias``）；**catalog 无 ``<params>`` 段**（LLM
+决定使用时才按需加载并渲染。catalog 中 ``<name>`` 是别名
+（``SkillEntry.name_alias``）；catalog 无 ``<params>`` 段（LLM
 不给 skill 传参，见下节）；只有 ``enabled=True`` 的条目进入 catalog。
 
-加载流程（LLM 入口与代码入口是**同一执行路径**，详见 :func:`use_skill`
+加载流程（LLM 入口与代码入口是同一执行路径，详见 :func:`use_skill`
 的「skill_load 契约」）：
 
 1. ``before_skill_load`` 钩子（value 为 :class:`SkillLoadContext`，
@@ -152,26 +152,26 @@ catalog 懒注入：``use_skill()`` 把 :class:`LazySkillsPrompt` 注册为
    模板渲染（两步渲染顺序不可配置，见 :mod:`flowing.parsable`）。
 4. ``after_skill_load`` 钩子（value 为 :class:`SkillContent`，可改
    渲染后正文）。
-5. 渲染结果**不合并进 ToolResult**，而是以独立 ``Message`` 入队：
+5. 渲染结果不合并进 ToolResult，而是以独立 ``Message`` 入队：
    ``kind=MessageKind.PLUGIN``、``source=f"skill:{name}"``、
    ``priority=MessagePriority.NORMAL``；``skill_load()`` 返回
    :class:`SkillResult`。
 
 PLUGIN 消息进入消息级树（``Message.id`` 与 ``parent_id`` 构成的链、正常
-落盘），在**后续逻辑 Turn** 被消费时进入 LLM 上下文。Skill 结果
+落盘），在后续逻辑 Turn 被消费时进入 LLM 上下文。Skill 结果
 （PLUGIN）与子 Agent 结果（SUBAGENT）永远不会与 TOOL 结果混淆——
 Provider adapter 构建 LLM 上下文时按 ``kind`` 单独处理。
 
 .. rubric:: Skill 参数（全部来自声明期）
 
-**LLM 不给 skill 传参**：``skill-load`` 工具与 ``agent.skill_load()``
+LLM 不给 skill 传参：``skill-load`` 工具与 ``agent.skill_load()``
 只有 ``name`` 一个入口参数；catalog 不渲染 ``<params>`` 段。Skill
 声明的每个参数（``args_schema``）必须在声明期被覆盖——来源只有
 两个，``specified`` （固定值 / 注入表达式 ``{{ self.inject(...) }}``）
 优先于 schema 默认值。``specified`` 的值语义与 Tool / 子 Agent
-**完全相同**（包装 Parsable、加载时以调用方 Agent 实例上下文求值；
+完全相同（包装 Parsable、加载时以调用方 Agent 实例上下文求值；
 注入表达式在求值时沿 provide 链上溯、缺失即
-:class:`flowing.errors.MissingProvideError`）；**声明期覆盖校验**：
+:class:`flowing.errors.MissingProvideError`）；声明期覆盖校验：
 ``skill_add`` 时逐参数检查——不在 ``specified`` 又无 schema 默认值
 → :class:`flowing.errors.FormatError`（fail-fast，不留到运行期）。
 需要 LLM 传参的能力应建模为 Tool。
@@ -208,21 +208,21 @@ Provider adapter 构建 LLM 上下文时按 ``kind`` 单独处理。
 
 .. rubric:: 行为要点（跨符号约定）
 
-- **enabled 语义**：「可见性」与「可加载性」分离：
-  ``enabled=False`` 的条目**不进 catalog**、LLM 看不到、无法经
-  ``skill-load`` 工具加载（LLM 入口做 enabled 检查），**但仍可编程式**
+- enabled 语义：「可见性」与「可加载性」分离：
+  ``enabled=False`` 的条目不进 catalog、LLM 看不到、无法经
+  ``skill-load`` 工具加载（LLM 入口做 enabled 检查），但仍可编程式
   ``await agent.skill_load("name")`` 加载——代码入口不做 enabled
   检查。与 ``ToolEntry.enabled`` / ``SubagentEntry.enabled`` 语义一致。
-- **覆写策略（检查后跳过）**：``use_skill()`` 挂载回调（``skill_load``
+- 覆写策略（检查后跳过）：``use_skill()`` 挂载回调（``skill_load``
   绑定、prompt 块、工具条目）采用「检查后跳过」——实例上已有同名
   定义时保留用户定义（``setup()`` 中后执行的扩展覆盖先执行扩展挂载
   的回调，调用顺序即优先级）。
-- **渲染模板**：catalog 渲染只设**一个槽位** ``catalog_template`` （Jinja2
-  模板源字符串，含 ``$./file.j2`` FILE_REF 形式；**不接受
-  callable 渲染器**——定制即整体替换模板，内置
+- 渲染模板：catalog 渲染只设一个槽位 ``catalog_template`` （Jinja2
+  模板源字符串，含 ``$./file.j2`` FILE_REF 形式；不接受
+  callable 渲染器——定制即整体替换模板，内置
   :data:`DEFAULT_CATALOG_TEMPLATE` 公开可参考）。配置来源两级：
-  **Agent 级**（``use_skill(self, catalog_template=...)`` 参数）覆盖
-  **Runtime 级**（``SkillPlugin`` 构造参数）；两者都缺省时用内置模板。
+  Agent 级（``use_skill(self, catalog_template=...)`` 参数）覆盖
+  Runtime 级（``SkillPlugin`` 构造参数）；两者都缺省时用内置模板。
   模板上下文变量（``entries`` / ``agent``）见 :data:`CatalogTemplate`。
 
 .. seealso::
@@ -279,9 +279,9 @@ class LazySkillsPrompt:
     ``agent.prompt_blocks`` （``cache="dynamic"``、``by="skill"``、
     ``tags=["skill.catalog"]``）。每次组装上下文时 :meth:`resolve`
     被调用，现场渲染当刻的 catalog（enabled 过滤、参数覆盖、别名都
-    取当刻值）。「Lazy」只指**渲染惰性**：``enabled`` 状态运行时
+    取当刻值）。「Lazy」只指渲染惰性：``enabled`` 状态运行时
     可变、Agent 局部变量（渲染上下文）随运行变化，因此 catalog 文本
-    每次现场渲染、不缓存。**读取不惰性**：Skill 定义文件已在
+    每次现场渲染、不缓存。读取不惰性：Skill 定义文件已在
     ``use_skill()`` 声明期全部解析入 ``SkillRegistry`` （含 disabled
     条目），``resolve`` 只做 Parsable 求值与字符串拼接，不触发文件
     IO。
@@ -318,7 +318,7 @@ class LazySkillsPrompt:
 
         .. rubric:: 行为要点
 
-        - ``entries`` 存**引用**而非快照：``agent._skill_entries`` 后续的
+        - ``entries`` 存引用而非快照：``agent._skill_entries`` 后续的
           enabled 切换 / 条目增删在下一次 ``resolve`` 即生效。
         - 模板在构造时已全部就位（``use_skill()`` 按 Agent 级 >
           Runtime 级 > 内置默认解析完毕），本类不再做配置回退。
@@ -380,8 +380,8 @@ class SkillLoadTool(Tool):
 
     能力三正交中 Skill 的「LLM 可见声明」执行侧：LLM 从
     ``<available_skills>`` catalog 选择技能后调用本工具，工具按名
-    透传给 ``caller.skill_load()``。工具级 schema **只声明 ``name``**
-    ——LLM 不给 skill 传参，保证 **LLM 入口与代码入口行为完全一致**。
+    透传给 ``caller.skill_load()``。工具级 schema 只声明 ``name``
+    ——LLM 不给 skill 传参，保证 LLM 入口与代码入口行为完全一致。
     Skill 加载完全复用 Tool 机制：Turn 引擎看到的就是一次普通
     ``tool_call``。
 
@@ -398,12 +398,12 @@ class SkillLoadTool(Tool):
 
     .. rubric:: 行为要点
 
-    - ``name`` 按**别名**在 ``caller._skill_entries`` 查找；命中且
+    - ``name`` 按别名在 ``caller._skill_entries`` 查找；命中且
       ``enabled=True`` → 调 ``skill_load(name)``；加载流程（含 PLUGIN
       消息入队）见 :func:`use_skill` 的「skill_load 契约」。工具对
-      LLM 的返回是**简短收据**（``{"loaded": <别名>}``），正文不经
+      LLM 的返回是简短收据（``{"loaded": <别名>}``），正文不经
       ToolResult——PLUGIN 消息在后续逻辑 Turn 进入上下文。
-    - **enabled 检查在 LLM 入口**：条目 ``enabled=False`` 或未声明 →
+    - enabled 检查在 LLM 入口：条目 ``enabled=False`` 或未声明 →
       抛 :class:`flowing.errors.FlowingError`（由 ``Tool.__call__``
       包装为 ``status="error"`` 的 LLM 可见结果），不加载、不入队。
       编程式 ``agent.skill_load()`` 无此检查。
@@ -412,7 +412,7 @@ class SkillLoadTool(Tool):
       → 工具调用以 ``blocked`` 告终。
     - 前置条件：``caller`` 必须经 ``use_skill()`` 启用（否则
       ``skill_load`` 不存在——同名属性错误，属编程错误）。
-    - 不变量：同一 Skill 一次调用只产生**一条** PLUGIN 消息；
+    - 不变量：同一 Skill 一次调用只产生一条 PLUGIN 消息；
       ``skill-load`` 的 ToolResult 永不包含正文。
 
     .. seealso:: :class:`flowing.tool.Tool`（``execute()`` 签名契约与
@@ -468,7 +468,7 @@ class SkillPlugin(Plugin):
     ``runtime.use(SkillPlugin(...))`` 时框架调用 ``install(runtime)``：
     向 runtime 的工具注册表注册 :class:`SkillLoadTool`，并以
     :data:`skill_registry_key` provide 一个全局 :class:`SkillRegistry`。
-    构造参数是 **Runtime 级默认渲染模板**，可被 ``use_skill()`` 的
+    构造参数是 Runtime 级默认渲染模板，可被 ``use_skill()`` 的
     Agent 级参数覆盖。``install`` 只注册，不做业务、不查询其他插件、
     不修改运行期状态（插件约定 R1–R4）。
 
@@ -568,8 +568,8 @@ def use_skill(
     在 ``setup()`` 中调用。完成后该实例拥有：catalog 动态注入、
     ``skill-load`` 工具条目（对 LLM 可见仍需显式声明，见下）、
     ``before_skill_load`` / ``after_skill_load`` 钩子点、以及绑定
-    方法 ``agent.skill_load``。**声明的全部 Skill 定义文件（含 disabled
-    条目）在本调用内一次性解析入注册表**（读取不惰性；解析失败在此刻
+    方法 ``agent.skill_load``。声明的全部 Skill 定义文件（含 disabled
+    条目）在本调用内一次性解析入注册表（读取不惰性；解析失败在此刻
     即报错，不推迟到运行期）。
 
     .. rubric:: 使用示例
@@ -612,10 +612,10 @@ def use_skill(
     2. ``agent.hooks.declare("before_skill_load", by="skill")`` 与
        ``declare("after_skill_load", by="skill")``——幂等声明：同名且
        同 ``by`` 重复调用返回已有 ``HookList`` （不报错）；仅同名而
-       **不同** ``by`` 才抛
+       不同 ``by`` 才抛
        :class:`flowing.errors.DuplicateHookPointError`。
     3. 绑定 ``agent.skill_add`` （「检查后跳过」，与第 6/7 步同律；
-       契约见下「skill_add 契约」）——条目装配的**单点**，下一步
+       契约见下「skill_add 契约」）——条目装配的单点，下一步
        逐条委托它。
     4. 解析 ``agent.skills`` （``.fya`` 的 ``skills:`` 落入 ``_extra``
        的原始声明；无该字段视为空列表；字段声明为 ``_`` （PENDING）
@@ -624,8 +624,8 @@ def use_skill(
        :func:`flowing.parser.normalize_entries`
        （``naming=SKILL_NAMING``）规范化为 ``EntryRef``；glob 项先行
        展开并排除已显式声明的规范名。逐条委托 ``agent.skill_add(ref)``
-       ——条目构造、**注册表一次性预解析（含 disabled 条目，读取不
-       惰性，失败此刻即报错）**、``name_ori`` 落账都在 ``skill_add``
+       ——条目构造、注册表一次性预解析（含 disabled 条目，读取不
+       惰性，失败此刻即报错）、``name_ori`` 落账都在 ``skill_add``
        内完成。
     5. 解析渲染模板（只收模板字符串）：本函数 ``catalog_template``
        参数 > ``SkillPlugin`` 构造参数 > 内置
@@ -633,33 +633,33 @@ def use_skill(
        并注册进 ``agent.prompt_blocks`` （``cache="dynamic"``、
        ``by="skill"``、``tags=["skill.catalog"]``）。
     6. 绑定 ``agent.skill_load`` （见下「skill_load 契约」）；采用
-       「检查后跳过」——**仅当 agent 当前没有该函数才绑定**
+       「检查后跳过」——仅当 agent 当前没有该函数才绑定
        （``hasattr`` 检查，含类级方法）。理由：开发者可能已定义了自己
        的加载逻辑，绑定方不得覆盖（``flowing.plugins`` 的绑函数约定）。
     7. 绑定 ``agent.skill_get`` （上下文感知的技能解析门面，薄委托
        ``SkillRegistry.get(name, source_dir=agent.source_dir())``）；
        同「检查后跳过」律。
 
-    **工具可见性**：本函数**不**代绑 ``skill-load``——工具对 LLM 可见只经
+    工具可见性：本函数不代绑 ``skill-load``——工具对 LLM 可见只经
     ``.fya`` ``tools:`` 声明或用户显式 ``agent.add_tool("skill-load")``，
     工具本体由 ``SkillPlugin.install()`` 在 Runtime 级注册。
 
-    **幂等性边界**：第 2 步的钩子点声明与第 3/6/7 步的函数绑定对同一
-    实例重复调用是安全的（幂等 / 检查后跳过）；但对**同一实例**第二次
+    幂等性边界：第 2 步的钩子点声明与第 3/6/7 步的函数绑定对同一
+    实例重复调用是安全的（幂等 / 检查后跳过）；但对同一实例第二次
     完整调用本函数会在第 4 步因别名已存在抛
     :class:`flowing.errors.EntryNameConflictError`（``skill_add`` 的
-    fail-fast）。recover 重跑 ``setup()`` 时 ``setup`` 作用于**新实例**，
+    fail-fast）。recover 重跑 ``setup()`` 时 ``setup`` 作用于新实例，
     不触发此路径。
 
-    **skill_load 契约**（``async def skill_load(name: str) ->
+    skill_load 契约（``async def skill_load(name: str) ->
     SkillResult``，由本函数绑定为实例方法）：
 
-    1. 按**别名**查 ``_skill_entries``；未声明 → 抛 ``KeyError`` （编程
-       错误，属调用方责任）。**不做 enabled 检查**（编程式入口的特权）。
+    1. 按别名查 ``_skill_entries``；未声明 → 抛 ``KeyError`` （编程
+       错误，属调用方责任）。不做 enabled 检查（编程式入口的特权）。
     2. 经 ``registry.get(entry.name_ori)`` 取共享
        ``Skill`` （声明期已预解析并落账解析键——文件派生技能为派生
        限定键，本步为纯内存查找）。
-    3. 参数合并（**LLM 不传参**；优先级低 → 高依次覆盖）：
+    3. 参数合并（LLM 不传参；优先级低 → 高依次覆盖）：
        ``args_schema`` 默认值 → ``specified`` （以调用方 Agent 实例
        上下文现场求值；其中注入表达式 ``{{ self.inject('key') }}``
        在求值时沿 provide 链上溯，缺失 →
@@ -681,18 +681,18 @@ def use_skill(
     - 不把正文合并进任何 ToolResult；不检查 LLM 是否「真的看过
       catalog」；不做加载次数限制。
 
-    **skill_add 契约**（``def skill_add(name: str | EntryRef, *,
+    skill_add 契约（``def skill_add(name: str | EntryRef, *,
     alias: str | None = None, body: dict | None = None) -> SkillEntry``，
     由本函数绑定为实例方法——与 :meth:`flowing.agent.Agent.add_tool` /
     ``add_agent`` 同构的第三条资源管线）：
 
-    1. **归一**：``name`` 为 ``EntryRef`` 时 ``alias``/``body`` 必须
+    1. 归一：``name`` 为 ``EntryRef`` 时 ``alias``/``body`` 必须
        缺省（重复 → :class:`flowing.errors.FormatError`）；为 ``str``
        时经 :func:`flowing.parser.normalize_entries`
        （``naming=SKILL_NAMING``）构造 EntryRef。``str`` 接受全部引用
        形态，与 ``.fya`` 声明一致：裸名 / ``ns::name`` / 相对或绝对
        路径 / 路径带裸名。
-    2. **body 判别（单点）**：键集固定 ``description`` / ``args`` /
+    2. body 判别（单点）：键集固定 ``description`` / ``args`` /
        ``enabled`` （无 ``inject`` 键——注入写 args 里的
        ``"{{ self.inject('key') }}"`` 表达式）；未知键 →
        :class:`flowing.errors.FormatError`。去向：``description`` →
@@ -703,21 +703,21 @@ def use_skill(
        同路）；``_`` （PENDING）值视为未声明该参数（不进
        ``specified``）；``args`` 键含 ``as`` → ``FormatError``，无改名
        通道；``enabled`` → 布尔原样。
-    3. **冲突**：同 alias 已存在 →
+    3. 冲突：同 alias 已存在 →
        :class:`flowing.errors.EntryNameConflictError`（绑定层统一
        fail-fast）。
-    4. **预解析、落账与覆盖校验**：``registry.get(entry.name_ori,
+    4. 预解析、落账与覆盖校验：``registry.get(entry.name_ori,
        source_dir=agent.source_dir())`` 一次性解析（含 disabled，
        失败此刻即报错）；文件派生技能把 ``entry.name_ori`` 落账为
        派生限定键（``skill.registry_key``），注册表命中
-       （``default::``/``builtin::``）保持裸名。**覆盖校验**：
+       （``default::``/``builtin::``）保持裸名。覆盖校验：
        对 ``skill.args_schema`` 逐参数检查——不在 ``specified``
        又无 schema 默认值 → :class:`flowing.errors.FormatError`
        （声明期 fail-fast）。
     5. 写入 ``agent._skill_entries[entry.name_alias]`` 并返回条目。
        同步、立即生效（下一次 catalog 渲染可见）。
 
-    - 时序约束：深层块（``$skills.<alias>.xxx:``）的填回**先于**
+    - 时序约束：深层块（``$skills.<alias>.xxx:``）的填回先于
       ``skill_add`` 调用（装配层先 merge 具名块，与 tool 侧同律）。
 
     :param agent: 要启用的 Agent 实例。
@@ -878,11 +878,11 @@ callable 渲染器——定制渲染风格即整体替换模板（本常量公�
 ``(entry, skill)`` 对列表（顺序即 ``skills:`` 声明顺序，模板不得
 重排）；``agent`` 为调用方 Agent。描述字段为 Parsable——
 ``override_description`` （非 ``None`` 时优先）或 ``skill.description``
-在模板内经 ``.resolve(agent)`` **现场求值**（每次渲染现场 resolve、
+在模板内经 ``.resolve(agent)`` 现场求值（每次渲染现场 resolve、
 无缓存）。空列表经 ``{% if entries %}`` 渲染为 ``""`` （整块不注入；
 ``LazySkillsPrompt`` 在此之前也有短路）。
 
-**无 ``<params>`` 段**——LLM 不给 skill 传参，条目对 LLM 只暴露
+无 ``<params>`` 段——LLM 不给 skill 传参，条目对 LLM 只暴露
 名称与描述。
 
 .. rubric:: 使用示例

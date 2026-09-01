@@ -55,11 +55,11 @@ class SkillRegistry:
 
     Runtime 级单例（``SkillPlugin.install()`` 创建并经
     :data:`skill_registry_key` provide）。持有「规范名 → Skill」缓存；
-    ``use_skill()`` 在声明期把 Agent 声明的**全部**条目（含 disabled）
+    ``use_skill()`` 在声明期把 Agent 声明的全部条目（含 disabled）
     一次性解析入缓存，此后 catalog 渲染与 ``skill_load()`` 均为纯内存
     操作（文件发现优先级见模块 docstring「Skill 定义文件与查找规则」）。
-    读取与渲染分离：**读取不惰性**（所有声明的定义文件在声明期一次
-    读入，catalog 渲染永不触发文件 IO）；**渲染保持动态**
+    读取与渲染分离：读取不惰性（所有声明的定义文件在声明期一次
+    读入，catalog 渲染永不触发文件 IO）；渲染保持动态
     （``description`` / ``content`` 是 Parsable，每次使用时以调用方
     Agent 为上下文现场求值，共享实例上不缓存渲染结果）。
 
@@ -81,9 +81,9 @@ class SkillRegistry:
     - 不做目录扫描预热；不做文件变更监听（解析一次即缓存，运行期
       内文件变化不生效）。
     - 同一规范名的并发解析不会发生（解析是同步文件 IO）。
-    - 定义文件解析失败 → 异常上抛且**不写入缓存**（下次引用重试）。
+    - 定义文件解析失败 → 异常上抛且不写入缓存（下次引用重试）。
     - ``source_dir`` 为定向查找根：引用方 Agent 定义文件所在目录
-      **本身**（不设 ``skills/`` 默认子目录，与 Agent / Tool 查找根
+      本身（不设 ``skills/`` 默认子目录，与 Agent / Tool 查找根
       对齐）；显式路径 / glob 条目由 ``use_skill`` 在声明期解析为
       规范名与查找根。
     - 不变量：缓存 key 是 ``ns::规范名``；同一 Runtime 内同一全键
@@ -148,9 +148,9 @@ class SkillRegistry:
 
         .. rubric:: 功能介绍
 
-        注册表唯一入口。``source_dir`` 缺省时为**纯注册表查询**（裸名
-        只查 ``default::`` / ``builtin::``）；提供时裸名**先走定向文件
-        查找链**（文件覆盖注册表）。文件链按定向查找优先级定位（目录内
+        注册表唯一入口。``source_dir`` 缺省时为纯注册表查询（裸名
+        只查 ``default::`` / ``builtin::``）；提供时裸名先走定向文件
+        查找链（文件覆盖注册表）。文件链按定向查找优先级定位（目录内
         ``SKILL.fya`` > ``skill.fya`` > ``<name>.skill.fya`` >
         ``<name>.fya`` > ``SKILL.md`` > ``skill.md`` → 目录外
         ``<name>.skill.fya`` → ``<name>.fya`` → ``<name>.md``，首个
@@ -160,7 +160,7 @@ class SkillRegistry:
         优先；命中通用名候选时规范名取目录名；链上顺序只是确定性判定
         规则，不推荐同一链路真的同时存在多个候选文件。
 
-        命名空间：``name`` 含 ``::`` 时为限定名，**只查注册表**精确键
+        命名空间：``name`` 含 ``::`` 时为限定名，只查注册表精确键
         （插件注册通道），不走文件查找链；文件解析产物以目录派生命名
         空间落账（``@/`` 下相对、根外绝对、文件夹式取上层目录；规范名
         推断经 :func:`flowing.paths.infer_name`，规则表
@@ -244,7 +244,7 @@ def _dir_candidates(name: str) -> list[str]:
 def _derive_namespace(ns_dir: Path) -> str:
     """所在目录 → 派生命名空间字符串（``@/`` 下根相对、根外绝对）。
 
-    内部 API。与 Tool/Agent 注册表的同名逻辑保持**同一份实现**——委托
+    内部 API。与 Tool/Agent 注册表的同名逻辑保持同一份实现——委托
     ``ToolRegistry._derived_namespace`` （单一来源，不另造轮子）。
     """
     from flowing.tool import ToolRegistry   # 局部 import：注册表层对工具层只借这一个符号
@@ -272,7 +272,7 @@ def _attempted_paths(name: str, source_dir: "Path | None") -> list[Path]:
 def _locate_skill_file(
     ref: str, source_dir: "Path | None"
 ) -> "tuple[Path, bool, Path, list[str]] | None":
-    """按定向查找优先级定位 Skill 定义文件（**内部 API**）。
+    """按定向查找优先级定位 Skill 定义文件（内部 API）。
 
     返回 ``(命中路径, 是否文件夹式命中, 探测基准目录, 候选名列表)``，
     全部未命中 → ``None`` （裸名语境调用方继续查注册表裸名视图）。
