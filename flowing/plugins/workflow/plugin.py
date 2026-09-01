@@ -157,7 +157,8 @@ class WorkflowPlugin(Plugin):
     dependencies: ClassVar[list[str]] = []
     """依赖声明（类属性元数据）。本插件无依赖，为空列表。
 
-    .. seealso:: :meth:`flowing.runtime.Runtime._check_dependencies`
+    .. seealso:: :meth:`flowing.runtime.Runtime.use` —— 依赖校验在该
+        方法内执行。
     """
 
     def install(self, runtime: Runtime) -> None:

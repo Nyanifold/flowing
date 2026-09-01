@@ -52,8 +52,7 @@ Workflow 根时局部解析 :func:`flowing.plugins.workflow.resolve_workflow`。
   只装一个同名插件，重复安装同名插件时 ``use()`` 抛 ``ValueError``。
 - 同名 ``provide`` key 重复注册是覆盖更新（后者生效，``inject`` 实时
   可见），框架不报错；避免插件间键冲突靠键名前缀约定（插件注册名加
-  ``:``
-  前缀）。
+  ``:`` 前缀）。
 - 插件 ``install`` 抛出的异常从 ``use()`` 直接上抛，框架不按插件粒度
   隔离降级：安装失败的插件不会进入已装集合。
 
