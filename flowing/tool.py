@@ -1348,7 +1348,7 @@ class ToolEntry:
         entry 调用本方法，产物进入 ``Context.tools``。每次调用都重新
         求值，不缓存结果。
 
-        .. rubric:: 行为要点（四步，顺序为不变量）
+        .. rubric:: 行为要点
 
         1. 从 ``runtime.tool_registry`` 按 ``name_ori`` 取规范 Tool 的
            默认 ``definition``；
@@ -1405,7 +1405,7 @@ class ToolEntry:
         层；调用方（``Agent._normalize``）已持有 Tool 实例，顺手传入
         声明表即可。
 
-        .. rubric:: 行为要点（两步，后写覆盖先写 = 优先级递增）
+        .. rubric:: 行为要点
 
         1. LLM args：逐键经 ``param_aliases`` 映射回规范名；
         2. specified：`Parsable` 以 ``agent`` 局部变量为上下文惰性求值
@@ -2543,7 +2543,7 @@ class RequestTool(Tool):
         timeout: 30                        # 秒，默认 30
         expected_status: [200, 201]        # 默认 [200, 201]
 
-    .. rubric:: 行为要点（args → 请求映射）
+    .. rubric:: 行为要点
 
     - URL 模板中出现的 ``{{ arg_name }}`` 识别为路径参数，自动从
       body / query 排除；
