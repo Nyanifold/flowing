@@ -199,8 +199,10 @@ class Workflow(ABC):
 
     .. seealso::
 
-        - :class:`RunWorkflowTool` —— LLM 触发入口（异步规则）。
-        - :func:`resolve_workflow` —— 按路径解析 workflow 定义。
+        - :class:`flowing.plugins.workflow.RunWorkflowTool` —— LLM 触发
+          入口（异步规则）。
+        - :func:`flowing.plugins.workflow.resolve_workflow` —— 按路径
+          解析 workflow 定义。
         - :class:`flowing.runtime.ProvideNode` —— provide/inject 协议。
     """
 

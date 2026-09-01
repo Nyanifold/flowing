@@ -111,7 +111,8 @@ def resolve_workflow(path: str) -> type[Workflow]:
     :raises flowing.errors.FlowingError: 路径缺失或文件形态不合法时。
     :raises RuntimeError: 未经 ``launch`` 登记项目上下文时。
 
-    .. seealso:: :class:`Workflow`、:class:`RunWorkflowTool`、
+    .. seealso:: :class:`flowing.plugins.workflow.Workflow`、
+        :class:`flowing.plugins.workflow.RunWorkflowTool`、
         :meth:`flowing.runtime.Runtime.resolve_path`
     """
     resolved = resolve(path)  # -> flowing.runtime.resolve（模块级 @/ 解析，读 _current_project_root）

@@ -184,7 +184,8 @@ class Plugin:
     :class:`flowing.errors.DependencyError` （报错现场即引入环的那次
     ``use()``）。
 
-    .. seealso:: :meth:`flowing.runtime.Runtime._check_dependencies`
+    .. seealso:: :meth:`flowing.runtime.Runtime.use` —— 依赖校验在该
+        方法内执行。
     """
 
     @property
