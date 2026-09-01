@@ -105,8 +105,8 @@ class ClipboardPlugin(Plugin):
 
     .. rubric:: 行为要点
 
-    - ``install()`` 同步完成三次 ``register_tool`` （插件约定 R1：
-      install 只注册）；不挂载任何状态持久化；不读取其他插件状态。
+    - ``install()`` 同步完成三次 ``register_tool`` （插件约定：``install``
+      只注册）；不挂载任何状态持久化；不读取其他插件状态。
     - 构造无参数、无注册副作用。
 
     .. seealso:: :func:`use_clipboard` （阶段二入口）

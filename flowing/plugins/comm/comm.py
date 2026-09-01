@@ -1058,7 +1058,7 @@ class CommPlugin(Plugin):
 
     .. rubric:: 行为要点
 
-    - ``install()`` 只做 provide 注册（插件约定 R1——install 只注册，
+    - ``install()`` 只做 provide 注册（插件约定：``install`` 只注册，
       约定定义见 :mod:`flowing.plugins`；本插件无工具、无配置命名
       空间、无钩子声明）。
     - 重复安装同名插件（再次 ``runtime.use(CommPlugin())``）→
@@ -1089,7 +1089,7 @@ class CommPlugin(Plugin):
 
         .. rubric:: 行为要点
 
-        - 仅做 provide 注册（插件约定 R1），同步返回。
+        - 仅做 provide 注册（插件约定：``install`` 只注册），同步返回。
         - 后置条件：总线 ready，可被任何 Agent 经 ``inject`` 消费；
           总线的回收由插件收尾阶段负责。
 

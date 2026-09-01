@@ -471,8 +471,9 @@ class SkillPlugin(Plugin):
     向 runtime 的工具注册表注册 :class:`SkillLoadTool`，并以
     :data:`skill_registry_key` provide 一个全局 :class:`SkillRegistry`。
     构造参数是 Runtime 级默认渲染模板，可被 ``use_skill()`` 的
-    Agent 级参数覆盖。``install`` 只注册，不做业务、不查询其他插件、
-    不修改运行期状态（插件约定 R1–R4）。
+    Agent 级参数覆盖。``install`` 只注册、不做业务、不查询其他插件、
+    不修改运行期状态（遵循插件约定：``install`` 只注册 / 协作不查询 /
+    注册只在 ``install`` / 依赖只声明）。
 
     .. rubric:: 使用示例
 
@@ -494,7 +495,8 @@ class SkillPlugin(Plugin):
       :func:`use_skill` 在实例启用时对声明条目一次性完成）。
 
     .. seealso:: :func:`use_skill` （阶段二入口）、
-        :class:`flowing.plugins.Plugin` （插件基类与 R1–R4 约定）、
+        :class:`flowing.plugins.Plugin` （插件基类与插件约定：``install``
+        只注册 / 协作不查询 / 注册只在 ``install`` / 依赖只声明）、
         :meth:`flowing.runtime.Runtime.use`
     """
 

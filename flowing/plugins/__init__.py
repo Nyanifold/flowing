@@ -32,11 +32,11 @@ Workflow 根时局部解析 :func:`flowing.plugins.workflow.resolve_workflow`。
   增量校验：依赖缺失只发 ``warnings.warn`` 警告、不抛错；依赖成环抛
   :class:`flowing.errors.DependencyError` （报错现场即引入环的那次
   ``use()``）。
-- 插件约定（consenting adults，靠自觉遵守而非框架校验）：R1
-  ``install`` 只注册——不做业务、不查询其它插件、不修改其它状态；
-  R2 协作不查询——插件间经 ``provide`` / ``inject`` 或消息队列协作，
-  安装顺序与协作结果无关；R3 注册只在 ``install``——运行时不增删全局注册
-  状态；R4 依赖只声明——不自己检查依赖是否满足。
+- 插件约定（consenting adults，靠自觉遵守而非框架校验）：``install``
+  只注册——不做业务、不查询其它插件、不修改其它状态；协作不查询——
+  插件间经 ``provide`` / ``inject`` 或消息队列协作，安装顺序与协作
+  结果无关；注册只在 ``install``——运行时不增删全局注册状态；依赖只
+  声明——不自己检查依赖是否满足。
 - 绑函数约定（检查后跳过）：插件或 Composable 向 Agent 或 Runtime
   实例绑定函数成员（如 ``use_skill`` 绑定 ``agent.skill_load``、
   ``SkillPlugin.install`` 绑定 ``runtime.register_skill``）时，仅当
@@ -104,7 +104,8 @@ class Plugin:
     插件实例由用户代码构造后传入 ``Runtime.use()``，框架不实例化插件。
     本类是扩展的唯一基类；子类须显式声明 :attr:`name` 与
     :attr:`dependencies` （:attr:`namespace` 可选），并按需实现
-    :meth:`install` / :meth:`shutdown`。插件作者的约定（R1–R4、绑函数
+    :meth:`install` / :meth:`shutdown`。插件作者的约定（``install``
+    只注册、协作不查询、注册只在 ``install``、依赖只声明；以及绑函数
     约定、命名约定）见本模块 docstring「全局约定」。
 
     .. rubric:: 使用示例
@@ -176,10 +177,10 @@ class Plugin:
     """
 
     dependencies: ClassVar[list[str]]
-    """声明式依赖清单：其它插件的注册名（``name``）列表。R4 约定：插件
-    只声明、不自己检查；框架在每次 ``use()`` 后对已装插件集合做增量
-    校验——清单中的名字无对应已安装插件时只发 ``warnings.warn`` 警告、
-    不抛错；已装插件依赖图成环时抛
+    """声明式依赖清单：其它插件的注册名（``name``）列表。依赖只声明
+    约定：插件只声明、不自己检查；框架在每次 ``use()`` 后对已装插件
+    集合做增量校验——清单中的名字无对应已安装插件时只发
+    ``warnings.warn`` 警告、不抛错；已装插件依赖图成环时抛
     :class:`flowing.errors.DependencyError` （报错现场即引入环的那次
     ``use()``）。
 
@@ -241,8 +242,8 @@ class Plugin:
         - ``runtime.use()`` 按实参顺序对每个插件调用一次本方法；本方法
           抛出的异常从 ``use()`` 直接上抛（框架不隔离），安装失败的
           插件不会进入已装集合。
-        - R1 约定：只注册——不做业务、不查询其它插件、不修改其它状态；
-          R3 约定：注册只在本方法发生，运行时不增删全局注册状态。
+        - 只注册——不做业务、不查询其它插件、不修改其它状态；注册只在
+          本方法发生，运行时不增删全局注册状态。
         - 同 key 重复 ``provide`` 是覆盖更新（后者生效），框架不报错。
         - 返回 ``None``。运行期协作走 ``provide`` / ``inject`` 与消息
           队列，插件不在本方法保存 runtime 引用用于运行期回调。
