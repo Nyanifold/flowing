@@ -446,12 +446,14 @@ def register_media_converter(
         class MyPlot:
             \"\"\"第三方绘图库返回的对象类型。\"\"\"
 
-        # 库全名 + 类限定名 + 转换函数
-        register_media_converter(
-            "mylib.charts", "MyPlot",
-            convert=lambda plot: Image(
-                data=plot.render_png(), mime_type="image/png"))
-        # 或直传 type 对象（降级存名字）
+            def render_png(self) -> bytes:
+                ...
+
+        def my_plot_to_carrier(plot: MyPlot) -> Image:
+            return Image(data=plot.render_png(), mime_type="image/png")
+
+        # 直传 type 对象（降级存 module.qualname 全名）；库全名 + 类
+        # 限定名的字符串形态等价
         register_media_converter(MyPlot, convert=my_plot_to_carrier)
 
     :param tp_or_module: ``type`` 对象（降级存名字）或模块全名字符串。
@@ -1376,7 +1378,7 @@ class ToolEntry:
         tool = runtime.tool_registry.get(self.name_ori)
         hidden = set(self.specified.keys())   # specified（固定值/注入表达式）对 LLM 不可见
         # override_description 是 Parsable：以调用方 agent 为上下文现场 resolve
-        # （求值面内，用户裁决）；None 时保持注册表原描述
+        # （求值面内）；None 时保持注册表原描述
         description = (str(self.override_description.resolve(agent))
                        if self.override_description is not None else None)
         definition = tool.definition.clone_with_overrides(
@@ -2602,7 +2604,7 @@ class RequestTool(Tool):
         self.headers = _render_env_templates(headers)
         self.auth = _render_env_templates(auth)
         # auth 语法糖在构造期展开为请求头（未知类型 FormatError fail fast）；
-        # 执行期与 headers 冲突时本表优先（类级行为规约）
+        # 执行期与 headers 冲突时本表优先（见类 docstring 行为要点）
         self._auth_headers: dict[str, str] = (
             _auth_headers(self.auth) if self.auth else {})
         self.query = query
@@ -2611,7 +2613,7 @@ class RequestTool(Tool):
         self.timeout = timeout
         self._execution = None
         # URL 模板的路径参数名在创建期提取（jinja2 AST 静态分析）——执行期
-        # 这些参数从 body/query 排除（类级行为规约第 1 条）
+        # 这些参数从 body/query 排除（见类 docstring 行为要点第 1 条）
         self._path_params: frozenset[str] = frozenset(
             jinja2.meta.find_undeclared_variables(_ENV_JINJA.parse(self.url)))
         # 创建时定内部校验模型（fya 声明经 params.schema_to_model
@@ -2975,7 +2977,7 @@ class ToolRegistry:
             目录外：
                 <name>.tool.fya > <name>.fya > <name_snake>.py
 
-        链上顺序只是确定性裁决规则——不推荐同一链路真的同时存在多个候选
+        链上顺序只是确定性的先后规则——不推荐同一链路真的同时存在多个候选
         文件（读者需回溯优先级才能确定生效者）。
 
         .. rubric:: 行为要点
