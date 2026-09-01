@@ -1185,13 +1185,8 @@ class Runtime:
         .. rubric:: 功能介绍
 
         框架核心层方法，``inject_from`` 上溯与销毁子树定位的查表入口。
-        因 ID 前缀区分类型（``runtime-`` / ``workflow-`` / ``agent-``），看 ID
-        即知类型，单 dict 即可。
-
-        .. rubric:: 设计动机
-
-        被排除的替代方案：纯 UUID 无前缀（不知类型）、分类型注册表（get_node
-        O(n)）、``TypedNodeId`` 值对象（过重）。
+        节点 ID 带类型前缀（``runtime-`` / ``workflow-`` / ``agent-``），
+        看 ID 即知类型，单个查表即可覆盖全部节点。
 
         .. rubric:: 使用示例
 
@@ -1199,30 +1194,20 @@ class Runtime:
 
             parent = runtime.get_node(agent._parent_id)
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         - 只查活实例注册表（``_nodes``）；已 ``destroy()`` 的节点不在其中
-          （其池记录/session 仍保留，属 ``get_agent`` 的现场恢复语义）。
-        - 非行为：不触发任何恢复逻辑。
-        - ``strict``（C-01 同构，对齐 :meth:`get_plugin`）：``True``（默认）
-          未命中抛 ``KeyError``——直接用写法（``inject_from`` 上溯依赖
-          此形态）；``False`` 未命中返回 ``None``——探测写法。
+          （其池记录 / session 仍保留，属 ``get_agent`` 的现场恢复语义）。
+        - 不触发任何恢复逻辑。
+        - ``strict``（与 :meth:`get_plugin` 同构）：``True``（默认）未命中
+          抛 ``KeyError``——直接用写法（``inject_from`` 上溯依赖此形态）；
+          ``False`` 未命中返回 ``None``——探测写法。
 
         :param node_id: 节点 ID（带前缀）。
         :param strict: 未命中时是否抛 ``KeyError``（默认 ``True``；传
             ``False`` 返回 ``None``，用于有意探测）。
         :return: 节点实例；``strict=False`` 且未注册时为 ``None``。
         :raises KeyError: ``strict=True``（默认）且 ``node_id`` 未注册时。
-
-        .. rubric:: 测试案例
-
-        - 前置：``create_agent`` 返回的 agent → 期望：
-          ``runtime.get_node(agent.node_id) is agent``。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：无（``_nodes`` dict 查表）
-        - 被调：``flowing.runtime.inject_from``（沿 ``_parent_id`` 上溯逐级查表，每次 inject）
 
         .. seealso:: :meth:`flowing.runtime.Runtime.get_agent`、
             :func:`flowing.runtime.inject_from`
@@ -1232,19 +1217,17 @@ class Runtime:
         return self._nodes.get(node_id)   # strict=False：探测写法，未注册 -> None
 
     async def get_agent(self, agent_id: str, *, strict: bool = False) -> Agent | None:
-        """按 ``agent_id`` 查 agent 池；**「有 key 无 value → 现场恢复」**统一语义的入口。
+        """按 ``agent_id`` 查 agent 池；池记录存在但实例不存在时现场恢复。
 
         .. rubric:: 功能介绍
 
-        框架核心层方法。池中有活实例直接返回；池记录存在但实例不存在（主 agent
-        恢复后未实例化的子 agent、或已 ``destroy()`` 但 session 保留的匿名子
-        agent）时，内部走 ``recover_agent(agent_id)`` 现场重建后返回。
-
-        .. rubric:: 设计动机
-
-        统一语义覆盖两场景，调用方无需区分「从未实例化」与「已销毁」；恢复代价
-        与树大小无关（主 agent 恢复不递归子 agent），恢复后上下文延续——
-        「同一个子 agent」有记忆。
+        框架核心层方法，统一语义「有 key 无 value → 现场恢复」的入口：
+        池中有活实例直接返回；池记录存在但实例不存在（主 agent 恢复后
+        未实例化的子 agent、或已 ``destroy()`` 但 session 保留的子 agent）
+        时，内部走 ``recover_agent(agent_id)`` 现场重建后返回。调用方无需
+        区分「从未实例化」与「已销毁」——恢复后上下文延续（「同一个子
+        agent」有记忆）；恢复代价与树大小无关（主 agent 恢复不递归子
+        agent）。
 
         .. rubric:: 使用示例
 
@@ -1253,19 +1236,17 @@ class Runtime:
             agent = await runtime.get_agent(child_id)
             result = await agent.query(...)         # 恢复后继续调用
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
-        - 现场恢复流程：查池 → 见 key 无 value → 读子 agent 的 ``meta.json``
-          （身份）+ ``tree.jsonl`` / ``core.jsonl`` / ``state.jsonl``
-          （按元数据 ``agent_type`` 重建实例）→ 重建消息级树/状态
-          → 绑定 session → 返回实例。
+        - 现场恢复流程：查池 → 见 key 无 value → 按池元数据
+          ``agent_type`` 重建实例并重放该 agent session 目录（消息级树 /
+          状态）→ 返回实例（细节见 :meth:`recover_agent`）。
         - 因可能触发异步恢复管线，本方法是协程。
-        - 非行为：不递归恢复子 agent 的子 agent（逐层惰性）；不做模糊匹配。
-        - ``strict``（C-01 同构，对齐 :meth:`get_plugin`）：``False``（默认）
-          完全不在池中返回 ``None``——探测写法（三个场景的
-          ``if agent is None: create`` 分支依赖此默认）；``True`` 完全不在
-          池中抛 ``KeyError``——直接用写法。注意 strict 只作用于「完全不
-          在池」；在池的活体/现场恢复路径不受其影响。
+        - 不递归恢复子 agent 的子 agent（逐层惰性）；不做模糊匹配。
+        - ``strict``（与 :meth:`get_plugin` 同构）：``False``（默认）完全
+          不在池中返回 ``None``——探测写法；``True`` 完全不在池中抛
+          ``KeyError``——直接用写法。strict 只作用于「完全不在池」；在池
+          的活体 / 现场恢复路径不受其影响。
 
         :param agent_id: 池注册表中的 agent id。
         :param strict: 完全不在池中时的行为（默认 ``False`` 返回 ``None``；
@@ -1274,98 +1255,63 @@ class Runtime:
             完全不在池中时为 ``None``。
         :raises KeyError: ``strict=True`` 且 ``agent_id`` 完全不在池中时。
 
-        .. rubric:: 测试案例
-
-        - 前置：子 agent 已 ``destroy()``、session 目录保留 → 操作：
-          ``await get_agent(child_id)`` → 期望：返回恢复实例，历史消息可见
-          （上下文延续），``node_id == child_id``。
-        - 前置：主 agent ``recover_agent`` 之后 → 操作：``await get_agent(child_id)``
-          → 期望：此刻子 agent 才实例化（此前 ``snapshot()`` 中未加载）。
-        - 前置：``agent_id`` 完全不在池中 → 操作：``await get_agent(x)`` → 期望：
-          返回 ``None``（不抛错、不模糊匹配）。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``self.recover_agent(agent_id)``（时机：「有 key 无 value → 现场恢复」，见行为规约）
-        - 被调：无框架内调用点（docstring 与 ``flowing.interfaces.run.cmd_test`` 示例为调用方代码）
-
         .. seealso:: :meth:`flowing.runtime.Runtime.recover_agent`、
             :meth:`flowing.agent.Agent.destroy`
         """
         if agent_id in self._nodes:
             return self._nodes[agent_id]   # 活实例直接返回
         if agent_id in self._agent_pool:
-            # 「有 key 无 value → 现场恢复」：读 tree.jsonl + state.jsonl 按元数据重建（在 recover_agent 内）
+            # 「有 key 无 value → 现场恢复」：按元数据重建实例并重放 session（在 recover_agent 内）
             return await self.recover_agent(agent_id)
         if strict:
             raise KeyError(agent_id)   # strict=True：直接用写法的快速失败
         return None   # 默认探测形态：完全不在池中返回 None（不模糊匹配）
 
     async def archive_agent(self, node_id: str) -> list[str]:
-        """从运行时**完全归档**一个节点及其整棵子树（递归清除，保留文件）。
+        """从运行时完全归档一个节点及其整棵子树（递归清除，保留文件）。
 
         .. rubric:: 功能介绍
 
         框架核心层方法。把 ``node_id`` 及其全部后代从运行时清除：
         ``_nodes``（活体表，经 ``destroy()`` 摘除）、``_agent_pool``
-        （池注册表，仅 Agent 有条目）、全局 ``core`` 名录（``states["core"]
-        ["agents"]``，写透）。**保留文件**：各 session 目录（``tree.jsonl`` /
-        ``core.jsonl`` / ``state.jsonl`` / ``meta.json``）原样留档——归档 ≠
-        删除记录。``node_id`` 可为任意
-        ``_nodes`` / 池成员（Agent 或 Workflow——二者都注册 ``_nodes``、都有
-        ``_parent_id`` 与 ``destroy()``，本方法不区分类型）。
+        （池注册表，仅 Agent 有条目）、全局 ``core`` 名录
+        （``states["core"]["agents"]``，写透）。保留文件：各 session
+        目录（``tree.jsonl`` / ``core.jsonl`` / ``state.jsonl`` /
+        ``meta.json``）原样留档——归档不等于删除记录。``node_id`` 可为
+        任意 ``_nodes`` / 池成员（Agent 或 Workflow——二者都注册
+        ``_nodes``、都有 ``_parent_id`` 与 ``destroy()``，本方法不区分
+        类型）。
 
-        .. rubric:: 设计动机
+        与 ``destroy()`` 的区别：``destroy()`` 只丢实例、保留池 key 与
+        名录（「有 key 无 value → 现场恢复」）；``archive_agent`` 把 key
+        与名录一并移除——归档后 ``get_agent`` 返回 ``None`` /
+        ``recover_agent`` 找不到，运行时完全遗忘，文件留档供审计 /
+        手动恢复（外部运维）。
 
-        - **destroy ≠ archive**：``destroy()`` 只丢实例、保留池 key 与名录
-          （「有 key 无 value → 现场恢复」）；``archive_agent`` 把 key 与名录
-          一并移除——归档后 ``get_agent`` 返回 ``None`` / ``recover_agent``
-          找不到，运行时完全遗忘，文件留档供审计 / 手动恢复（外部运维）。
-        - **收集走通用 parent 链**（双来源）：池 ``parent_agent_id``（覆盖
-          全部 Agent 子代，含已 destroy 的池条目）+ ``_nodes`` ``_parent_id``
-          （覆盖在 ``_nodes`` 但不在池的节点）。``Agent._children`` 只装活
-          实例，不可作为收集依据。
-        - **销毁多态**：对仍存活的节点 ``await destroy()``——Agent /
-          Workflow 各自实现（Workflow 的 destroy 级联其子 Agent），本方法
-          不区分类型。
+        .. rubric:: 行为要点
 
-        .. rubric:: 行为规约
-
-        - 流程：双来源收集子树 → 清理各被归档节点**父侧**引用（父 Agent 的
-          ``child_ids`` 条目移除并写透）→ 对仍存活的节点 ``await destroy()``
-          → 从 ``_agent_pool`` 与 ``core`` 名录移除（写透；不在池的节点
+        - 流程：双来源收集子树（池 ``parent_agent_id`` 链——覆盖全部
+          Agent 子代，含已 destroy 的池条目；``_nodes`` ``_parent_id``
+          链——覆盖在 ``_nodes`` 但不在池的节点，两来源重叠去重）→ 清理
+          各被归档节点的父侧引用（父 Agent 的 ``child_ids`` 条目移除并
+          写透）→ 对仍存活的节点 ``await destroy()``（Agent / Workflow
+          各自实现，Workflow 的 destroy 级联其子 Agent）→ 从
+          ``_agent_pool`` 与 ``core`` 名录移除（写透；不在池的节点
           pop 幂等）。
         - 返回：被归档的 ``node_id`` 列表（含自身与全部后代）。
-        - 错误：``node_id`` 在 ``_nodes`` 与 ``_agent_pool`` 中均不命中 →
-          ``KeyError``（不做模糊匹配）。
         - 归档后不变量：节点不在 ``_nodes`` 与 ``_agent_pool``；``core``
           名录不含这些 id；session 目录与文件保留。
-        - 非行为：**不删除任何 session 目录 / 文件**；不递归恢复；不影响
+        - 不删除任何 session 目录 / 文件；不递归恢复；不影响
           ``shutdown()``（归档节点不在 ``_nodes``，销毁循环自然跳过）。
         - 边缘情况：归档根节点（``parent_id == "runtime-0"``）合法；归档
-          后孤儿 session 目录保留（名录无 id + 目录存在 = **归档留档态**，
-          不报错、不可自动恢复）。
+          后 session 目录保留（名录无 id + 目录存在 = 归档留档态，不报错、
+          不可自动恢复；之后显式 ``create_agent`` 撞该目录会抛
+          ``FileExistsError``）。
 
-        .. rubric:: 测试案例
-
-        - 前置：A 有子 B、B 有子 C（均存活）。操作：``await
-          runtime.archive_agent(a_id)`` → 期望：返回 ``[a_id, b_id, c_id]``；
-          ``_nodes`` / ``_agent_pool`` / ``core`` 名录均不含三者；
-          session 目录均在；``get_agent(b_id)`` 返回 ``None``。
-        - 前置：子 B 已 ``destroy()``（池条目保留、无活实例）。操作：
-          ``archive_agent(a_id)`` → 期望：B 的池条目与名录同样被移除。
-        - 前置：``node_id`` 在 ``_nodes`` 与池中均不命中 → 操作：
-          ``archive_agent(x)`` → 期望：``KeyError``。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.agent.Agent.destroy()`` / 其它 ``_nodes`` 成员的
-          ``destroy()``（时机：对仍存活的子树节点，多态分派）；
-          ``self.states["core"]`` 名录写透（时机：归档集合确定后）；父实例
-          ``_state_bag["child_ids"]`` 写透（时机：父存活时）
-        - 被调：``Workflow.destroy()``（时机：级联归档其子 Agent）；
-          ``archive_orphans()``（时机：每个孤儿）；应用层运维 / 管理 UI 的
-          归档入口
+        :param node_id: 要归档的节点 id。
+        :return: 被归档的 ``node_id`` 列表（含自身与全部后代）。
+        :raises KeyError: ``node_id`` 在 ``_nodes`` 与 ``_agent_pool`` 中
+            均不命中时（不做模糊匹配）。
 
         .. seealso:: :meth:`flowing.runtime.Runtime.get_agent`、
             :meth:`flowing.runtime.Runtime.recover_agent`、
@@ -1391,7 +1337,7 @@ class Runtime:
                     stack.append(nid)
         # 2. 清理父侧 child_ids（父为活 Agent 时，写透整表）——archive 是显式
         #    遗忘通道，对「child_ids 只增不改」的受控例外；child_ids 核心键
-        #    在 core 袋（D1，property 透传），读经 parent.child_ids、写经
+        #    在 core 袋（property 透传），读经 parent.child_ids、写经
         #    _core_state 整表写
         for aid in to_archive:
             meta = self._agent_pool.get(aid)
@@ -1400,7 +1346,7 @@ class Runtime:
                 else getattr(self._nodes.get(aid), "_parent_id", None))
             parent = self._nodes.get(parent_id) if parent_id else None
             if parent is not None and parent is not self and hasattr(parent, "child_ids"):
-                # Workflow 等非 Agent 节点无 child_ids property——跳过（A15 配套）
+                # Workflow 等非 Agent 节点无 child_ids property——跳过
                 ids = dict(parent.child_ids)
                 for name, cid in list(ids.items()):
                     if cid == aid:
@@ -1421,53 +1367,38 @@ class Runtime:
         return to_archive
 
     async def archive_orphans(self) -> list[str]:
-        """归档全部 **parent 悬空**的池条目（孤儿），逐个递归连同各自子树。
+        """归档全部 parent 悬空的池条目（孤儿），逐个递归连同各自子树。
 
         .. rubric:: 功能介绍
 
-        框架核心层方法。枚举 ``_agent_pool`` 中 ``parent_agent_id`` **悬空**
+        框架核心层方法。枚举 ``_agent_pool`` 中 ``parent_agent_id`` 悬空
         的 Agent 条目（父 id 既不在 ``_nodes`` 也不在 ``_agent_pool``），
         对每个经 :meth:`archive_agent` 递归归档（孤儿自身可能还有子树，
         一并清除）。返回全部被归档的 ``node_id`` 列表。
 
-        .. rubric:: 设计动机
+        孤儿从何而来：父节点可能不持久化（如 Workflow 运行状态不落盘、
+        崩溃后节点消失），而子 Agent 走标准创建管线持久化入池——崩溃重启
+        后子条目 ``parent_agent_id`` 悬空。正常关闭路径由父节点自身的
+        ``destroy()`` 级联处理；崩溃路径无法执行级联，由本方法在恢复后
+        运维清理。
 
-        父节点可能不持久化（如 Workflow 运行状态不落盘、崩溃后节点消失），
-        而子 Agent 走标准创建管线持久化入池——崩溃重启后子条目
-        ``parent_agent_id`` 悬空（父既不在 ``_nodes`` 也不在池）。正常关闭
-        路径由父节点自身的 ``destroy()`` 级联处理；崩溃路径无法执行级联，
-        由本方法在恢复后运维清理。
+        .. rubric:: 行为要点
 
-        .. rubric:: 行为规约
-
-        - **悬空判定**：``parent_agent_id`` 非空，且不在 ``self._nodes``
-          也不在 ``self._agent_pool``。根节点（父为 ``runtime-0``，在
+        - 悬空判定：``parent_agent_id`` 非空，且不在 ``self._nodes`` 也
+          不在 ``self._agent_pool``。根节点（父为 ``runtime-0``，在
           ``_nodes`` 中）、活 Workflow 子代（父在 ``_nodes``）、父在池的
-          条目均**不**判定为孤儿。
+          条目均不判定为孤儿。
         - 每个孤儿经 :meth:`archive_agent` 递归归档（含其子树）；孤儿之间
           无父子重叠（子条目因父在池而不入选），归档安全。
-        - 无孤儿 → 返回空列表（幂等，可随时调用）。
-        - 非行为：不校验「parent 悬空」是否确由崩溃造成（可能是父被归档后
-          的残留——归档父本就递归含子，正常路径不产生，但本方法不区分来源，
+        - 无孤儿 → 返回空列表（可随时调用）。
+        - 不校验「parent 悬空」是否确由崩溃造成（也可能是父被归档后的
+          残留——归档父本就递归含子，正常路径不产生，但本方法不区分来源，
           一律清理）。
-        - 与 recover 的关系（R14）：``recover_agent`` 遇孤儿父只
-          ``warnings.warn`` 警告、继续恢复本节点，不自动归档——归档是
-          显式运维动作，由本方法承载。
+        - 与 ``recover_agent`` 的关系：恢复遇孤儿父只 ``warnings.warn``
+          警告、继续恢复本节点，不自动归档——归档是显式运维动作，由本
+          方法承载。
 
-        .. rubric:: 测试案例
-
-        - 前置：Workflow W 创建子 B 后进程崩溃；重启后池含 B（
-          ``parent_agent_id == w_id``，W 不在 ``_nodes`` 不在池）。操作：
-          ``await runtime.archive_orphans()`` → 期望：返回 ``[b_id]``，
-          B 从池/名录移除、session 保留。
-        - 前置：无孤儿（全部条目 parent 在 ``_nodes`` 或池中）→ 操作：
-          ``archive_orphans()`` → 期望：返回 ``[]``。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.runtime.Runtime.archive_agent``（时机：每个孤儿，
-          递归归档含子树）
-        - 被调：无框架内调用点（崩溃恢复后的运维清理入口）
+        :return: 全部被归档的 ``node_id`` 列表；无孤儿时为 ``[]``。
 
         .. seealso:: :meth:`flowing.runtime.Runtime.archive_agent`、
             :meth:`flowing.plugins.workflow.Workflow.destroy`
