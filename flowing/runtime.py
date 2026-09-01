@@ -2,327 +2,120 @@
 
 .. rubric:: 功能介绍
 
-本模块是 Flowing 框架核心层（三层架构最底层）的对象图根模块，承载：
+本模块是 Flowing 框架的对象图根模块，承载：
 
-- ``Runtime``：子项目实例、对象图根与唯一全局容器（``_nodes`` / ``_plugins`` /
-  ``tool_registry`` / ``_provided`` / ``_config_overrides`` / ``_config_namespaces`` /
-  ``_resources`` / provider 候选清单 / agent 池注册表）。
-- ``flowing.launch``：Runtime 的**唯一创建入口**；``@`` 项目根上下文的唯一登记点。
-- ``flowing.resolve``：模块级 ``@/`` 路径解析。
-- ``ProvideNode`` 协议与 ``inject_from``：provide-inject 统一上溯算法。
-  **canonical home 已迁至 ``flowing.provide``**（S-43 裁决③：共享符号下沉叶子
-  模块，破 agent↔runtime 循环依赖）；本模块 import + 再导出（``__all__``
-  保留），旧引用 ``flowing.runtime.ProvideNode`` / ``flowing.runtime.inject_from``
-  保持有效。
+- :class:`Runtime`：一个运行中的 flowing 子项目对应一个 Runtime 实例——它持有
+  全部 Agent / Workflow 节点（``_nodes``）、已安装插件、全局工具注册表与
+  agent 池，并对外提供扩展注册（``use`` / ``register_tool`` 等）、配置读取
+  （``get_config`` 等）、节点管理（``create_agent`` / ``recover_agent`` /
+  ``get_agent`` / ``archive_agent``）与观测（``snapshot``）API。
+- :func:`launch`：Runtime 的唯一创建入口，同时登记 ``@`` 项目根上下文。
+- :func:`resolve`：模块级 ``@/`` 路径解析。
+- :class:`flowing.provide.ProvideNode` 协议与 :func:`flowing.provide.inject_from`
+  的再导出（定义见 :mod:`flowing.provide`；``__all__`` 同时保留本模块出口）。
 
-.. rubric:: 本模块必须覆盖的专属规约角度
+``launch(path, **kwargs)`` 是创建 Runtime 的唯一途径：它登记 ``@`` 上下文
+（模块级 ``ContextVar``，按 asyncio Task 隔离——一个进程可同时运行多个
+Runtime，并发 ``launch`` 互不串扰）、import 子项目入口 ``main.py`` 并
+``await main(**kwargs)``。子项目 ``main()`` 在函数体内构造 Runtime（可任意
+子类，``@`` 自动绑定）、``use`` 插件、``provide`` 注入、``mount`` 根节点，
+并返回它。绕过 ``launch`` 直接 ``Runtime()`` 会因 ``@`` 上下文未登记而抛
+``RuntimeError``。
 
-**1. ``launch`` 唯一入口与 ``@`` 的 contextvar 隔离**
+``launch`` 只负责把子项目拉起为 Runtime：不解析配置（配置读取经
+:meth:`Runtime.get_config` 与宿主启动层）、不认识插件（插件经
+:meth:`Runtime.use` 显式启用）、不决定新建还是恢复（那是子项目 ``main()``
+的策略，如 ``main(resume: str | None = None)``）、不启动任何服务端口（暴露
+方式由调用方决定，CLI / HTTP / Web / 测试 / 嵌入五种入口共用本函数）。
+子项目入口永远是 Python ``main()`` 函数，没有声明式入口文件。
 
-- ``flowing.launch(path, **kwargs)`` 是创建 Runtime 的唯一入口。绕过它直接
-  ``Runtime()`` → 无 ``@`` 上下文 → ``Runtime.__init__`` 抛 ``RuntimeError``。
-- ``@`` 上下文载体是模块级 ``_current_project_root``（``ContextVar``），在 asyncio 中
-  per-Task 隔离：**一个进程可有多个 Runtime**（多 Runtime 场景），并发 ``launch``
-  各自安全；spawn 的子 Task 继承正确值；``launch`` 返回后 ``reset`` 不影响子 Task。
-- ``@`` 两条通道同源：模块级 ``resolve()`` 与 ``Runtime.__init__`` 读同一 contextvar；
-  ``resolve()`` 在 ``launch`` 登记后**立即可用**（``Runtime()`` 构造之前也行）；
-  ``Runtime()`` 构造时把上下文固化到 ``self.project_root``。
-- ``@`` 指向 **flowing 子项目目录**（在宿主工程顶层或子目录均可）；宿主大工程自己的
-  根是应用层概念，经 ``provide`` 注入，不进 ``@/``。
-- 真正的强隔离需求（多租户、A/B 测试）用**子进程**，不靠多 Runtime。
+.. rubric:: 全局约定（跨符号、影响使用的约定）
 
-**2. Runtime 生命周期时序不变量**
+async 方法约定：会触发钩子或触发异步管线的公开方法都是协程，调用时用
+``await``——``launch`` / ``mount`` / ``create_agent`` / ``recover_agent`` /
+``get_agent`` / ``archive_agent`` / ``archive_orphans`` / ``shutdown``。
+不触发钩子的方法保持同步：``use`` / ``get_plugin`` / ``get_node`` /
+``provide`` / ``inject`` / ``get_config`` / ``set_config`` / ``register_*`` /
+``set_model_tags`` 等。
 
-术语：本模块多处出现的**「常驻工作循环 Task」（工作循环 / work loop）** =
-每个 Agent 的常驻 asyncio Task（``Agent._work_loop``：
-``while True: 消息 = await queue.get(); 跑 Turn 循环``），与 **Turn
-循环**（单条消息内的 LLM↔工具往返，即 ReAct 式循环）相对——工作循环
-管「这个 Agent 活着、持续消费自己的消息队列」，Turn 循环管「处理
-一条消息要几轮模型调用」。create/recover 管线第 10 步启动它，
-``destroy()`` 取消它。
+``@`` 上下文：``launch`` 登记的项目根在 asyncio 中按 Task 隔离——一个进程
+可同时运行多个 Runtime，各自 ``@`` 解析与 ``project_root`` 互不串扰；
+``launch`` 返回后复位上下文不影响已 spawn 的子 Task（它们已继承正确值）。
+``resolve("@/...")`` 在 ``launch`` 登记后即可用（``main()`` 内构造 Runtime
+之前也行）。``@`` 指向 flowing 子项目目录；宿主大工程自己的根是应用层
+概念，经 ``provide`` 注入，不进 ``@/``。真正的进程级强隔离（多租户、
+A/B 测试）用子进程，不靠多 Runtime。
 
-标准顺序（``12 §32.2`` 合并时序）：
+provide-inject 链：Runtime 是链终点。``Runtime.provide(key, value)`` 注册
+的值对全树所有节点可见（上溯终点）；同 key 重复 provide 是覆盖更新，
+``inject`` 实时沿链查找、更新即刻可见。敏感信息（API key / 凭证）禁止经
+``provide`` 传递——注入值沿链对后代节点可见。通用查找算法与节点协议见
+:mod:`flowing.provide`。
 
-.. code-block:: text
+配置读取：优先级链（环境变量 > 命令行参数 > 用户级
+``$FLOWING_CONFIG_HOME/config.yaml`` > 项目级 ``@/config.yaml`` > 框架
+推荐默认值）在 ``Runtime()`` 构造时完成浅合并——合并完成后任何时机
+均可调用 :meth:`Runtime.get_config`；合并前（典型即模块顶层 import 期）
+调用抛 :class:`flowing.errors.ConfigNotReadyError`。``get_config`` 不做
+命名空间访问控制：任何代码可读任何命名空间，注册只是「谁负责校验」的
+声明。
 
-    runtime = Runtime()                     # @ 自动绑定；一进程可有多个
-    runtime.use(Plugin...)                  # 插件 install，可分批（R1：只注册）
-    可选初始化                               # set_model_tags / set_persist_dir / provide /
-                                            # register_resource
-    Provider 扫描（懒）                      # providers.yaml + FLOWING_PROVIDER_MODULES
-                                            # → 候选清单 name → (adapter_class, config)
-    agent 池扫描（懒）                       # 读 core 名录（全局 state）→ 逐个开 session 目录
-                                            # → {agent_id → 元数据} 注册表
-    新建：await runtime.mount("@/root.fya")  → create_agent(parent_id=None)
-    恢复：await runtime.recover_agent(agent_id)
-    await runtime                           # 进程存活，阻塞至 shutdown
-    await runtime.shutdown()                # 优雅关闭
+插件启用：``Runtime.use(plugin)`` 是插件启用入口（阶段一），按实参顺序
+执行各插件的 ``install(runtime)``；插件在 install 中注册全局能力（工具 /
+provide 值 / 配置命名空间 / Agent 类型 / Resource / 全局状态命名空间），
+各 Agent 再在 ``setup()`` 中经 ``use_xxx(self)`` 做实例级启用（阶段二）。
+依赖校验随 ``use()`` 增量执行：已装插件依赖图成环抛
+:class:`flowing.errors.DependencyError`（报错现场即引入环的那次 ``use()``）；
+依赖缺失只 ``warnings.warn`` 警告、不抛错（``use()`` 可分批）。未启用的
+扩展对 Agent 零开销（不是被 skip）。
 
-- 新建 vs 恢复是**子项目 ``main()`` 的策略**（如 ``main(resume: str | None = None)``），
-  框架不特殊处理 ``--resume`` 之类的参数——它经 ``launch(path, resume=...)`` 原样透传。
-- ``mount()`` 是**可选**步骤，可多次调用（多根并存）：Agent 根
-  （``mount("@/root.fya")``）、Workflow 根（``mount("@/flow.py")``）、
-  无默认节点（不 mount，按需 ``create_agent()``）三种启动形态。
-- **空 Runtime**（未 mount）合法：有插件、provide 值、Resource 注册表，但没有 Agent、
-  没有工作循环 Task；``await runtime`` 依然有效（只等 ``_shutdown_event``）。
-- 不变量：**插件收尾与总线关闭均发生在 ``_shutdown_event.set()`` 之前**——
-  ``await runtime`` 解除阻塞时所有善后已完成。
-- **无生命周期状态机**（M-77 最终裁决，与 Agent 侧同裁）：Runtime 不提供
-  ``status`` 字段、不区分 ``initializing/running/shutting_down/stopped``
-  中间态。上表是**调用时序约定**而非状态机——框架不跟踪、不校验当前处于
-  哪个"阶段"，乱序调用的后果由被调方法的契约各自承担（如 mount 前未
-  ``use`` 的插件就是没装上）。「是否已关闭」的观测语义由 ``shutdown()``
-  返回与 ``await runtime`` 解除阻塞表达，无需投影字段。
+创建 / 恢复管线：``create_agent`` 与 ``recover_agent`` 是两个独立方法，
+共用同一管线结构。两条管线 dispatch 四个生命周期钩子点——
+``before_create`` / ``after_create``（仅创建管线触发）与 ``before_recover`` /
+``after_recover``（仅恢复管线触发）。恢复管线时序：``_restore()``（重放
+session 目录日志）→ ``before_recover`` → ``setup`` → PENDING 检查 →
+``_nodes`` 注册 → ``after_recover`` → 常驻工作循环 Task 启动。两条管线在
+各自的新实例上各跑一次 ``setup()``，因此 ``setup()`` 必须可重入。钩子点
+全集与触发时机见 :mod:`flowing.hooks`。
 
-**3. 创建管线与恢复管线（逐阶段不变量）**
+观测：``Runtime.snapshot()`` 返回一致性只读快照（拉取通道；推送通道由
+钩子系统承载）——节点表、agent 池、插件清单等一次性只读视图，全部字段
+JSON 可序列化；``_provided`` 的值内容（凭证等敏感值）绝不进入快照。
+完整字段契约见 :mod:`flowing.snapshot`。
 
-``create_agent`` 与 ``recover_agent`` 是**两个函数**，共用同一管线结构，
-差异仅收窄为两处：① ``node_id`` 来源（新 UUID vs 已有 id，身份连续）；
-② 恢复管线多一步 ``instance._restore()``（双袋重放，**D2 重排**：在
-``before_recover`` 之前完成——重放是读/加载，放钩子前无碍；setup 是写，
-必须在钩子后：阻断时 setup 未跑、无新写入，一致）。**禁止合并**成带
-``resume`` flag 的单函数。两条管线在各自的新实例上各跑一次 ``setup()``
-（recover 无独立 ``recover()`` 方法），故 ``setup()`` 必须可重入（见
-``flowing.agent.Agent.setup``）。持久化状态的键登记（``agent.state.
-register``，D4）发生在 setup 中——恢复管线重放**先于** setup 完成（无
-schema 装袋，登记后已持久值优先，不冲突）。
+关闭：``shutdown()`` 是「请求关闭」——递归 destroy 全部节点、插件收尾、
+关闭全局状态视图、置位退出事件后返回；``await runtime`` 在事件置位后解除
+阻塞，此时全部善后已完成。空 Runtime（未 mount）同样可 await / shutdown。
+推荐调用顺序见 :func:`launch` 与各方法 docstring。
 
-.. code-block:: text
+.. rubric:: 使用示例
 
-    create_agent（新建管线，顺序为不变量）：
-      get_agent_class(agent_type)      # 类型名 → 类（惰性解析）
-      → __new__ + node_id / runtime / _parent_id 绑定
-      → __init__（同步骨架，含 _open_stores 建立持久化后端与 _extra，P3-03）
-      → 身份四键整写 meta.json（D12：agent_type / parent_agent_id /
-        created_at / args，JSON 整写、非状态、Runtime 属主；before_create
-        对 kwargs 的改写不落盘——恢复时经 before_recover 重新表达）
-      → before_create 钩子（create 管线专属——recover 不触发；可改写 kwargs）
-      → setup(**kwargs)
-      → PENDING 检查（固定步骤，非钩子）
-      → 池注册（core 名录 + _agent_pool 内存条目）
-      → _nodes 注册（创建即注册，结构保证「不可能创建而不注册」）
-      → after_create 钩子
-      → 常驻工作循环 Task 启动
+.. code-block:: python
 
-    recover_agent（恢复管线）：
-      读池元数据 meta = _agent_pool[agent_id]
-      → get_agent_class(meta["agent_type"])
-      → args = 持久化 args，override_args 覆盖（override 覆盖持久化值）
-      → __new__ + node_id = agent_id（已有 id，身份连续）
-      → __init__（同步骨架，含 _open_stores，P3-03）
-      → instance._restore()（只有 recover 有这一步；Agent 双袋重放
-        core.jsonl / state.jsonl——D2 前移到 before_recover 之前）
-      → before_recover（可改写 args）
-      → setup(**args)（触发 before/after_recover 钩子对，
-        **不再触发** before_create/after_create；setup 写 state 不再被
-        重放覆盖）
-      → PENDING 检查
-      → _nodes 注册
-      → after_recover
-      → 常驻工作循环 Task 启动
+    # @/main.py —— 子项目入口（launch 会 import 并调用它）
+    from flowing import Runtime
 
-- 两条钩子链**不混用**：父 Agent 的 hooks 管「唤起」
-  （``before_subagent_invoke`` / ``after_subagent_invoke``）；
-  子实例的 hooks 管「创建/生命周期」（``before_create`` / ``after_create`` /
-  ``before_recover`` / ``after_recover``）。
-- PENDING 检查是管线固定步骤（``setup()`` 之后、after_* 之前），
-  检查 ``setup()`` 承诺的延迟定义（``PENDING`` 哨兵）是否已兑现；详见
-  ``flowing.parsable.PENDING`` 与 ``flowing.agent.Agent.setup``。
+    async def main(resume: str | None = None) -> Runtime:
+        runtime = Runtime()                      # @ 自动绑定到实例
+        runtime.use(MyPlugin())                  # 阶段一：安装插件
+        runtime.provide("workspace_root", "/ws")
+        if resume is not None:
+            await runtime.recover_agent(resume)  # 恢复既有 agent
+        else:
+            await runtime.mount("@/root.fya")    # 新建根节点
+        return runtime
 
-**4. 恢复语义（消息级，文档 14 落锤）**
-
-- ``Agent._restore()`` 从自己 session 目录的 ``tree.jsonl`` 逐行重建**消息级树**
-  （``Message.id`` + ``parent_id`` 链）；崩溃造成的撕裂末行直接丢弃。
-- 恢复边界 = **已持久化消息**（消息完整后 append 是唯一持久化时机）；
-  进行中的逻辑 Turn 不恢复、不续跑（不做「半截 Turn 精确续跑」）。
-- 半截 turn 的消息保留在树上、照常进入 LLM 上下文（M-28 裁决：不做
-  turn_end 边界截断，仅丢弃未完整 append 的半截消息）；孤立 tool_call
-  合成 ``synthetic=True`` 的 tool_result 占位封闭成对（详见
-  ``flowing.message`` 与 ``flowing.agent`` 规约）。
-- 恢复后不变量：已持久化消息全部在（可继续对话）；``current_head_id`` 指向
-  消息树中最后持久化的消息；队列中待消费消息在（用户输入不丢，恢复后作为新
-  逻辑 Turn 处理）。
-- 主 agent 恢复**不递归**子 agent：恢复代价与树大小无关；子 agent 在继续被调用时
-  经「有 key 无 value → 现场恢复」统一语义重建。
-
-**5. 依赖校验（``use()`` 时增量校验，与 mount 解绑）**
-
-- 插件只声明 ``dependencies: list[str]``（R4），检查是框架职责，但与 mount
-  **不绑定**（R9 裁决：mount 只是根节点挂载，不承担校验职能）。
-- 校验时点：每次 ``use()`` 安装后，对**当前已装集合**的子图增量校验：
-  **成环** → 抛 ``DependencyError``（报错现场即引入环的那次 ``use()``，
-  分批安装不受影响——缺依赖不报错，只有真成环才报）；**依赖缺失** →
-  ``warnings.warn`` 警告不抛（「声明了依赖但实际用不上」是合法形态，
-  可用 ``-W error`` 升级回错误）。
-- ``use()`` 仍按实参顺序执行 ``install()``，但顺序**不再**是依赖正确性的保障。
-- 运行时动态场景的兜底：inject 失败 → ``MissingProvideError``。
-
-**6. 配置优先级链与浅合并**
-
-- 优先级（高 → 低）：**环境变量 > 命令行参数 > 用户级（``$FLOWING_CONFIG_HOME``，
-  默认 ``~/.flowing/``）> 项目级（``@/config.yaml``）> 框架推荐默认值**。
-- 合并策略 = **浅合并**：高优先级覆盖低优先级同名字段；未出现的 key 沿用低优先级
-  值（不是整块替换）；列表值**整列表覆盖**（不做列表合并）。
-- 适用范围：仅数值类/字符串类配置；框架行为（钩子系统、Turn 循环流程、Tool 执行
-  模型）是代码，不在此链上；Provider 三件套（providers/models/model-tags.yaml）
-  有各自独立的优先级规则（见 ``flowing.model``）。
-- 共存与透传：框架只解析自己认识的命名空间（``agent`` / ``runtime``）；其余 key
-  透传给经 ``register_config_namespace`` 声明的扩展；**未注册的命名空间静默保留**，
-  可经 ``get_config()`` 自由读取；多扩展注册同一命名空间 →
-  ``ConfigNamespaceConflictError``。
-- 环境变量表：``FLOWING_CONFIG_HOME`` / ``FLOWING_LOCALE`` /
-  ``FLOWING_PROVIDERS_PATH`` / ``FLOWING_MODELS_PATH`` / ``FLOWING_MODEL_TAGS`` /
-  ``FLOWING_PROVIDER_MODULES``（旧 ``FLOWING_TAG_MAPPING_PATH`` 已废弃）。
-- 核心配置命名空间已知 key 与默认值：``agent.timeout``（60）、``agent.max_turns``
-  （20）、``agent.max_depth``（10）、``runtime.log_level``（info）。
-
-**7. 路径前缀规则（``resolve_path`` 的语义表）**
-
-.. code-block:: text
-
-    @/     → project_root（项目根目录）
-    ./     → source_dir（未提供 source_dir 则报错）
-    ../    → source_dir.parent；多级 ../../ 逐级向上
-    含 / 或反斜杠字符且无 :: 的相对路径
-           → 以 source_dir 为基准解析（未提供 source_dir 则报错）
-    裸名   → 不涉及路径解析，走名称查找（注册表视图 default:: / builtin::，见 §7a）
-    绝对路径 → 原样接受；对象表示：根内经 to_project_path 归一化为 @/ 形式，根外保留绝对路径
-
-- 适用面：``$`` 引用、``{% include %}``、``subagents:`` / ``tools:`` / ``skills:``
-  等**所有**文件路径引用。
-- ``source_dir`` 默认取 ``Agent.source_dir`` 属性（``source_file`` 所在
-  目录的换算唯一承担者，见 ``flowing.agent``，P3-11 裁决）。
-- **无默认扫描目录**：项目资源引用一律显式 glob 路径（``./subagents/*``、
-  ``@/tools/*``）。三类资源的查找根一律是引用方 Agent 定义文件所在目录
-  本身（**不设** ``skills/`` 之类的默认子目录约定）。
-
-**7a. 资源命名空间（Agent 类型 / 工具 / 技能的身份标识）**
-
-每个已注册/已解析资源的完整身份是 ``<命名空间>::<规范名>``。命名空间
-只参与注册、解析与去重，**从不进入 LLM 可见面**（渲染/调用只暴露规范名
-或别名）。三个来源：
-
-- **插件注册**：``register_tool`` / ``register_agent_type`` 与插件注入的
-  ``register_skill``（SkillPlugin install 时绑定，见
-  ``flowing.plugins``「绑函数约定」）可带 ``namespace`` 参数；缺省落入
-  ``default::``。
-  核心自带资源隐式归属 ``builtin::``（引用时**不需要**写出前缀）。
-- **裸名引用的注册表视图**：裸名 = 依次查 ``default::``、``builtin::``
-  （``default`` 优先——这是**插件覆盖原生行为的正式通道**，与「用户配置
-  压系统默认」同构；被覆盖的 builtin 仍可用 ``builtin::name`` 显式引用）。
-  自定义命名空间的资源必须写全限定名 ``ns::name`` 引用，且**只查注册表**、
-  不走文件查找链。
-- **文件资源（注册表未命中的裸名/路径引用）**：命名空间从所在位置派生——
-  取资源**所在目录**（文件夹式资源取其上层目录）；目录在 ``@/``（项目根）
-  以下用自 ``@`` 起的相对路径（如 ``@/subagents``），在 ``@/`` 以外用
-  绝对目录路径。该命名空间是**内部身份标识**（去重/冲突检测用），引用处
-  写法不变（裸名/路径照旧）。
-- **冲突语义分两层**：注册表层，``ns::name`` 全键重复 → 后注册者报错；
-  不同命名空间的同名资源可以共存。Agent 绑定层是 **LLM 视角**——LLM
-  看不到命名空间（有别名时连规范名也看不到），同一 Agent 引用两个同名
-  资源时必须给其一**起别名**，否则抛
-  :class:`flowing.errors.EntryNameConflictError`；不同 Agent 各引各的
-  同名资源互不影响。
-- 目录形态 Agent 的入口文件按序探测、**首个存在者生效**：``AGENT.fya`` >
-  ``agent.fya`` > ``<name>.agent.fya`` > ``<name>.fya``（目录存在但无任一
-  候选 → 解析失败）；同名 Agent 的单文件（``payment.fya``）与文件夹并存时
-  **文件夹优先**；引用方不区分两种形态（都写 ``payment``），单文件可无缝
-  升级为文件夹。身份名 / class_name 推断规则见 :class:`flowing.agent.Agent`。
-  注意：该顺序只是**确定性裁决规则**——不推荐同一链路上真的同时存在多个
-  候选文件（属组织异味：读者需回溯优先级才能确定生效者）。
-- 不引入 ``ProjectPath`` 类型——路径解析就是字符串前缀判断。
-
-**8. 全局持久化状态（Runtime/插件级）**
-
-与 per-agent 状态同构但**不挂在任何 agent 名下**：持久化根目录下
-**每个命名空间一个文件**（``<persist_root>/<namespace>.jsonl``），与
-per-agent session 目录并列。开启与访问经 ``Runtime.register_state(ns,
-backend='file')``（D3 同签名：**创建即 replay**，开空间即恢复，幂等同
-视图）／``Runtime.states``（只读 Mapping 注册表：``["ns"]`` / ``in`` /
-``.get()``，返回同一个 :class:`flowing.persistence.StateView` 类，
-写透 / 末行合并 / 压缩 / 键注册安全化 / fail fast 契约全部继承）。
-**``__init__`` 注册 ``core`` + ``default`` 两命名空间（D13）**：``core``
-保留给框架，内容至少含**已注册 agent id 名录**（及平行映射
-``session_dirs``：agent_id → session 目录存储形式，根内相对 / 根外绝对）
-与已安装插件清单；``default`` 管 Runtime 自身生命周期状态 + 小插件键
-（``Runtime.state`` property 指向它，与 ``agent.state`` 对称）。
-**加载/派生时机由插件内部管理**
-（最终裁决）——核心不提供 ``load`` 恢复回调；重放产物就位后，插件
-何时读出持久值重建运行时结构是插件自己的事（懒重建、显式初始化方法
-均可）。
-
-**9. agent 池懒加载与现场恢复**
-
-- 池结构：``{agent_id → {agent_type, parent_agent_id, created_at,
-  session_dir, args}}``（key + 元数据持久化，**实例不在扫描阶段创建**；
-  ``session_dir`` 为该 agent 的 session 目录存储形式——根内相对 / 根外
-  绝对，缺省 ``persist_dir / agent_id`` 的等价形式，恢复与扫描据此定位）。
-- **名录为准**（最终裁决）：池 key 的唯一权威来源是全局 ``core`` 命名
-  空间中的**已注册 agent id 名录**（``runtime.states["core"]["agents"]``，
-  写透持久化）；目录扫描只是按名录逐个开 session 目录。注册 agent =
-  一次 core 状态写入（天然持久）；「显式删除才移除池 key」= 删 session
-  目录 + 删名录项的一次操作。名录中 id 对应目录缺失 → 可诊断错误
-  （不按空 session 静默处理）。
-- ``agent_id`` 可重现三机制（缺一不可）：① 池 key = 名录项（=
-  session 目录名）；② 元数据含 ``agent_type``（字符串类型名，跨进程
-  稳定）；③ ``destroy()`` 不删记录（只丢实例，session 与名录项保留到
-  显式删除）。
-- **归档通道（``Runtime.archive_agent``）**：从 ``_nodes`` / ``_agent_pool`` /
-  ``core`` 名录一并移除整棵子树，**保留 session 文件**——运行时完全遗忘、
-  文件留档（归档 ≠ destroy ≠ 删文件；归档后 ``get_agent`` 返回 ``None``、
-  ``recover_agent`` 抛 ``KeyError``——**归档后的 id 以池为准：
-  池中无即不可恢复，报错**）。名录无 id + 目录存在 = **归档留档态**，
-  不报错、不可自动恢复；**但显式 ``create`` 撞留档目录时报错**
-  （``FileExistsError``，防止两份历史混杂，见 ``create_agent`` 管线
-  第 2 步）——重新引入需外部运维把 id 加回名录。
-  节点可为 Agent 或 Workflow（二者都注册 ``_nodes``、都有 ``_parent_id``
-  与 ``destroy()``，归档不区分类型；收集走池 ``parent_agent_id`` 链 +
-  ``_nodes`` ``_parent_id`` 链双来源）。父节点不持久化（如 Workflow 崩溃）
-  留下的 parent 悬空条目，经 ``Runtime.archive_orphans`` 枚举逐个递归归档
-  清理。
-- 统一语义：**「有 key 无 value → 现场恢复」**，覆盖两场景：主 agent 恢复后
-  未实例化的子 agent、匿名子 agent ``destroy()`` 后（session 保留）——两者走同一条
-  ``recover_agent`` 路径，恢复后上下文延续（「同一个子 agent」有记忆）。
-- 池空闲回收策略初版不实现，仅约定为后续版本候选。
-
-**10. 懒加载总原则（Provider 与 agent 池同构）**
-
-- Provider：Runtime 初始化仅扫描（providers.yaml 条目 + ``FLOWING_PROVIDER_MODULES``
-  注册的 adapter 类）构建候选清单，**不实例化**；首次调用解析到某 provider 时才
-  实例化并缓存，**一个条目一个实例**，对调用方透明（详见 ``flowing.model``）。
-- agent 池：同上，扫描构建注册表，实例按需创建/现场恢复。
-- 动机：启动成本与「实际用了多少」成正比。反模式：在 ``__init__`` 或 ``use()``
-  里实例化所有 Provider / 所有 agent。
-
-**11. 读取对称与调用时机约束**
-
-- 配置/资源/设置的读取**全部是 Runtime 实例方法**，不做模块级全局函数；
-  不存在「隐式拿到某个 Runtime」的旁路（TLS/contextvar 方案已否决）。
-- ``get_config()`` 调用时机约束：只能在 ``setup()`` 和钩子回调中调用，
-  **禁止模块顶层调用**（import 时优先级链合并未完成）→ 违反抛 ``ConfigNotReadyError``。
-- ``get_config()`` 不做命名空间访问控制——任何代码可读任何命名空间；注册只是
-  「谁负责校验」的声明，不是访问权限。
-
-.. rubric:: 行为规约（模块级非行为清单）
-
-- 不为「隐式拿到 Runtime」发明模块级全局函数或线程局部。
-- 不在 Runtime 之外另设「对象图根」。
-- 插件 ``install`` 里不查询其它插件（R2）、不做业务（R1）、运行时不增删全局注册
-  状态（R3）——约定 R1–R4 为文档约定，非结构强制；依赖校验在 ``use()``
-  时增量执行（R9 裁决，与 mount 解绑）。
-- 不引入 ``flow.yaml`` 声明式入口（入口永远是 Python ``main()``）；CLI 只做
-  「``launch`` 拿 Runtime」，不解析配置、不认识插件、不感知 ``@``（详见
-  ``flowing.interfaces.cli``）。
-- 信号处理（SIGINT/SIGTERM）→ ``shutdown()``：协作式关闭，不用 ``os._exit``
-  （除非关闭本身卡死，那是应用层兜底，非框架职责）。
+    # 宿主进程 / CLI 内部：拉起并保持存活
+    runtime = await launch("/path/to/flowing-project", resume="agent-xxx")
+    await runtime                               # 阻塞至 shutdown()
 
 .. seealso::
 
-    :mod:`flowing.agent` —— ``Agent`` 基类与创建/恢复管线的另一半（``setup`` /
-    常驻工作循环）。
-    :mod:`flowing.message` —— 消息级树字段（``parent_id`` / ``turn_end`` 等）。
+    :mod:`flowing.agent` —— ``Agent`` 基类与创建 / 恢复管线的另一半
+    （``setup`` / 常驻工作循环）。
+    :mod:`flowing.provide` —— provide-inject 链的节点协议与查找算法。
     :mod:`flowing.errors` —— 本模块抛出的异常层次。
-    :mod:`flowing.plugins` —— ``Plugin`` 基类与 R1–R4 约定。
+    :mod:`flowing.plugins` —— ``Plugin`` 基类与扩展层约定。
 """
 
 from __future__ import annotations   # S-43 裁决③：注解延迟求值，配合 TYPE_CHECKING 破注解级循环边
@@ -404,26 +197,26 @@ _FRAMEWORK_CONFIG_DEFAULTS: dict[str, Any] = {
     "agent": {"timeout": 60, "max_turns": 20, "max_depth": 10},
     "runtime": {"log_level": "info"},
 }
-"""框架推荐默认值层（配置优先级链的最底层，模块 docstring §6 已知 key 清单）。
-内部 API，不属稳定契约。
+"""框架推荐默认值层（配置优先级链的最底层；已知 key 清单见
+:meth:`Runtime.get_config` 的行为要点）。内部 API，不属稳定契约。
 """
 
 _POOL_META_KEYS: tuple[str, ...] = (
     "agent_type", "parent_agent_id", "created_at", "args",
 )
-"""身份四键（D12）：create 管线第 3b 步整写进 agent 自己 session 目录的
-``meta.json``（JSON 整写、非状态、Runtime 属主）；池扫描 / 跨进程恢复
-经 ``_read_pool_meta`` 读回重建 ``_agent_pool`` 条目。内部 API，
-不属稳定契约。
+"""身份四键（agent_type / parent_agent_id / created_at / args）：create
+管线整写进 agent 自己 session 目录的 ``meta.json``（JSON 整写、非状态）；
+池扫描 / 跨进程恢复经 ``_read_pool_meta`` 读回重建 ``_agent_pool`` 条目。
+内部 API，不属稳定契约。
 """
 
 _current_project_root: ContextVar[Path | None] = ContextVar(
     "_current_project_root", default=None)
-"""``@`` 项目根上下文的载体（**内部 API，不属稳定契约**）。
+"""``@`` 项目根上下文的载体（内部 API，不属稳定契约）。
 
-功能与动机：``launch`` 用 ``.set(Path(path).resolve())`` 登记、``.reset(token)`` 复位；
-模块级 ``resolve()`` 与 ``Runtime.__init__`` 读同一 contextvar，保证两条通道同源。
-asyncio 中 per-Task 隔离，是多 Runtime 并发的时序稳定机制。
+``launch`` 用 ``.set(Path(path).resolve())`` 登记、``.reset(token)`` 复位；
+模块级 ``resolve()`` 与 ``Runtime.__init__`` 读同一 contextvar，保证两条
+通道同源。asyncio 中 per-Task 隔离，是多 Runtime 并发的时序稳定机制。
 
 行为边界：未登记时取值为 ``None``；用户代码不应直接读写本变量。
 
@@ -436,28 +229,21 @@ async def launch(
     main_file: str | None = None,
     **kwargs: Any,
 ) -> Runtime:
-    """Runtime 的**唯一创建入口**：登记 ``@`` 上下文 → import 子项目入口
-    main 文件（缺省 ``@/main.py``，经 ``main_file`` 或 CLI ``-m`` 指定）
-    → ``await mod.main(**kwargs)`` → 返回配置好的 Runtime。
+    """Runtime 的唯一创建入口：登记 ``@`` 上下文，import 子项目入口并返回其 Runtime。
 
     .. rubric:: 功能介绍
 
     框架核心层函数。把一个 flowing 子项目目录拉起为配置完毕的 Runtime：
-    子项目的入口 main 文件（缺省 ``@/main.py``；``main_file`` 指定替代
+    子项目的入口 main 文件（缺省 ``<path>/main.py``；``main_file`` 指定替代
     路径，CLI 上以 ``-m`` 传入，支持绝对路径与 ``@`` 相对路径）必须导出
-    ``async def main(**kwargs) -> Runtime``，
-    在其**内部**创建 Runtime（可任意子类，``@`` 自动绑定到实例）、``use``、
-    ``provide``、``mount``，并返回它。CLI / HTTP / Web / 测试 / 嵌入五种暴露
-    方式共用此入口——**调用方决定如何暴露 Runtime**，框架不耦合暴露方式。
+    ``async def main(**kwargs) -> Runtime``。``main()`` 在函数体内构造
+    Runtime（可任意子类，``@`` 自动绑定到实例）、``use`` 插件、``provide``
+    注入、``mount`` 根节点，并返回它。CLI / HTTP / Web / 测试 / 嵌入五种
+    暴露方式共用此入口——调用方决定如何暴露 Runtime，框架不耦合暴露方式。
 
-    .. rubric:: 设计动机
-
-    - 「唯一入口」保证 ``@`` 上下文必有登记点：绕过 ``launch`` 直接 ``Runtime()``
-      会因 contextvar 为空而抛错，从机制上消灭「``@`` 无来源」的反模式。
-    - contextvar per-Task 隔离替代旧「进程单例」方案：一个进程可有多个 Runtime，
-      并发 ``launch`` 互不串扰；强隔离需求仍归子进程。
-    - 不引入 ``flow.yaml`` 声明式入口：三行 Python 的 ``main()`` 已覆盖最简项目，
-      避免两套解析逻辑。
+    新建 vs 恢复是子项目 ``main()`` 的策略（如
+    ``main(resume: str | None = None)``）：框架不特殊处理 ``--resume`` 之类
+    的参数——它们经本函数的 ``**kwargs`` 原样透传给 ``main(**kwargs)``。
 
     .. rubric:: 使用示例
 
@@ -466,83 +252,68 @@ async def launch(
         # @/main.py —— 子项目入口（launch 会 import 并调用它）
         from flowing import Runtime
 
-        async def main(workspace_root: str = "/ws") -> Runtime:
+        async def main(resume: str | None = None) -> Runtime:
             runtime = Runtime()                      # @ 自动绑定到实例
-            runtime.provide("workspace_root", workspace_root)
-            await runtime.mount("@/root.fya")
+            if resume is not None:
+                await runtime.recover_agent(resume)
+            else:
+                await runtime.mount("@/root.fya")
             return runtime
 
     .. code-block:: python
 
-        # 嵌入方 / CLI 内部
-        runtime = await launch("/path/to/flowing-project", workspace_root="/ws")
-        await runtime                                # 进程存活，直到 shutdown()
+        # 宿主进程 / CLI 内部
+        runtime = await launch("/path/to/flowing-project", resume="agent-xxx")
+        await runtime                                # 阻塞至 shutdown()
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
-    - 时序：``_current_project_root.set(Path(path).resolve())`` → ``import
-      <path>/main.py`` → ``await mod.main(**kwargs)`` → ``finally: reset(token)``。
-    - ``resolve()`` 在登记后**立即可用**——``main()`` 内 ``Runtime()`` 构造之前
-      也能 ``flowing.resolve("@/config.yaml")``。
-    - ``reset`` 发生在 ``main()`` 返回之后；spawn 的子 Task 已继承正确值，不受影响。
-    - ``**kwargs`` 原样透传给 ``main``；CLI 的 ``--key value`` 规则（``-`` → ``_``、
-      无值为 ``True``、value 原样字符串）由 CLI 层负责（见 ``flowing.interfaces.cli``），
-      本函数不做参数变换。
-    - 返回值是 ``main()`` 返回的 Runtime——此时 Agent 已激活、工作循环 Task 已就绪；
-      若调用方不做 ``await runtime``，进程/任务随即无事可做。
-    - 非行为：本函数不解析配置、不认识插件、不决定「新建 vs 恢复」（那是
-      ``main()`` 的策略）、不启动任何服务端口。
+    - 时序：先登记 ``@`` 上下文（``path`` 解析为绝对路径），再 import 子项目
+      main 文件并 ``await mod.main(**kwargs)``，``main()`` 返回后复位上下文。
+      ``main()`` 内（构造 Runtime 之前）即可调用 ``flowing.resolve("@/...")``。
+    - ``@`` 上下文按 asyncio Task 隔离：一个进程可同时 ``launch`` 多个子项目，
+      各自 Runtime 的 ``project_root`` 互不串扰；复位发生在 ``main()`` 返回
+      之后，已 spawn 的子 Task 不受影响（它们已继承正确值）。
+    - ``**kwargs`` 原样透传给 ``main``，本函数不做参数变换（CLI 的
+      ``--key value`` 规则由 ``flowing.interfaces.cli`` 负责）。
+    - 返回值是 ``main()`` 返回的 Runtime——此时 Agent 已激活、工作循环
+      Task 已就绪；若调用方不做 ``await runtime``，进程/任务随即无事可做。
+    - 本函数只负责把子项目拉起为 Runtime：不解析配置、不认识插件、不决定
+      「新建 vs 恢复」（那是 ``main()`` 的策略）、不启动任何服务端口。
 
     :param path: flowing 子项目目录（普通文件系统路径，CLI 层不感知 ``@``）。
+    :param main_file: 替代的 main 文件路径（可选；缺省 ``<path>/main.py``）。
     :param kwargs: 透传给子项目 ``main(**kwargs)`` 的任意参数。
     :return: 配置完毕的 ``Runtime``。
-    :raises RuntimeError: 子项目缺少 ``main.py`` 或 ``main`` 签名不符约定时
-        （import/调用失败的原生异常直接上抛，框架不包装）。
-
-    .. rubric:: 测试案例
-
-    - 前置：子项目含合法 ``main.py`` → 操作：``await launch(path)`` → 期望：
-      返回 Runtime；``runtime.project_root == Path(path).resolve()``。
-    - 前置：两个并发 Task 各自 ``launch`` 不同子项目 → 期望：两个 Runtime 的
-      ``project_root`` 各自正确，互不串扰。
-    - 前置：``main()`` 中 ``Runtime()`` 之前调用 ``resolve("@/x")`` → 期望：
-      正常解析（登记先于 ``main`` 调用）。
-
-    .. rubric:: 调用关系（审计）
-
-    - 调用：``flowing.runtime._current_project_root`` 的 ``set()`` / ``reset()``（时机：登记 ``@`` 上下文与 ``main()`` 返回后复位，时序见本函数行为规约）；子项目 ``main(**kwargs)``（用户代码，每次 launch import 后 await）
-    - 被调：``flowing.interfaces.run.cmd_run`` / ``flowing.interfaces.repl.cmd_repl`` / ``flowing.interfaces.serve.cmd_serve`` / ``flowing.interfaces.run.cmd_test``（各子命令第 1 步拉起 Runtime，见各 docstring）；``flowing.interfaces.web.cmd_web``（与 ``cmd_serve`` 共享拉起骨架）；``flowing.interfaces.cli.cmd_compile`` 明确不经 launch
+    :raises FileNotFoundError: 子项目缺少 main 文件时（import 失败的原生
+        异常直接上抛，框架不包装——模块无 ``main`` 属性等其它原生异常同理）。
 
     .. seealso:: :func:`flowing.runtime.resolve`、:class:`flowing.runtime.Runtime`、
         :meth:`flowing.runtime.Runtime.mount`
     """
     import importlib.util
 
-    token = _current_project_root.set(Path(path).resolve())   # 时序第 1 步：登记 @ 上下文
+    token = _current_project_root.set(Path(path).resolve())   # 登记 @ 上下文（main() 内 resolve 与 Runtime() 均依赖）
     try:
-        # 时序第 2 步：import 子项目入口 main 文件（缺省 @/main.py，main_file 支持
-        # 绝对路径与 @ 相对路径）；原生 import 异常直接上抛，框架不包装
+        # import 子项目入口 main 文件（缺省 @/main.py，main_file 支持绝对路径与
+        # @ 相对路径）；原生 import 异常直接上抛，框架不包装
         main_path = resolve(main_file) if main_file is not None else Path(path).resolve() / "main.py"
         spec = importlib.util.spec_from_file_location("flowing_subproject_main", main_path)
         mod = importlib.util.module_from_spec(spec)   # type: ignore[union-attr]
         spec.loader.exec_module(mod)   # type: ignore[union-attr]
-        runtime: Runtime = await mod.main(**kwargs)   # 时序第 3 步：**kwargs 原样透传，不做参数变换
+        runtime: Runtime = await mod.main(**kwargs)   # **kwargs 原样透传，不做参数变换
         return runtime
     finally:
-        _current_project_root.reset(token)   # 时序第 4 步：main() 返回后复位；spawn 的子 Task 已继承正确值
+        _current_project_root.reset(token)   # main() 返回后复位；已 spawn 的子 Task 已继承正确值
 
 def resolve(path: str) -> Path:
-    """模块级 ``@/`` 路径解析：读 ``_current_project_root`` contextvar。
+    """模块级 ``@/`` 路径解析：把 ``@/`` 前缀路径解析为当前 Task 项目根下的绝对 ``Path``。
 
     .. rubric:: 功能介绍
 
-    框架核心层函数。把 ``@/`` 前缀路径解析为当前 Task 的 ``@`` 项目根下的绝对
-    ``Path``。``launch`` 登记上下文后任何位置可用（包括 ``Runtime()`` 构造之前）。
-
-    .. rubric:: 设计动机
-
-    与 ``Runtime.__init__`` 读同一 contextvar，保证「``@`` 两条通道同源」；
-    模块级函数形态使 ``main()`` 内加载配置文件等早期代码无需先持有 Runtime。
+    读 ``launch`` 登记的 ``@`` 项目根上下文，把 ``@/`` 前缀路径解析为绝对
+    路径。与 ``Runtime.__init__`` 读同一个上下文——两条通道同源；模块级
+    函数形态使 ``main()`` 内加载配置文件等早期代码无需先持有 Runtime。
 
     .. rubric:: 使用示例
 
@@ -555,29 +326,17 @@ def resolve(path: str) -> Path:
             runtime = Runtime()
             ...
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
     - ``path`` 以 ``@/`` 开头：返回 ``project_root / path[2:]``。
     - 非 ``@/`` 路径：不经 ``@`` 上下文处理，按普通 ``Path`` 语义返回
-      （相对路径基于当前工作目录）；完整的前缀规则（``./`` / ``../`` / 裸名）
-      是 :meth:`Runtime.resolve_path` 的职责，本函数只负责 ``@/``。
-    - 未经 ``launch`` 登记上下文（contextvar 为空）时抛错，不留静默回退。
+      （相对路径基于当前工作目录）。完整的前缀规则（``./`` / ``../`` /
+      裸名）是 :meth:`Runtime.resolve_path` 的职责，本函数只负责 ``@/``。
+    - 未经 ``launch`` 登记（上下文为空）时抛 ``RuntimeError``，不留静默回退。
 
     :param path: 待解析路径字符串。
     :return: 解析后的 ``Path``。
-    :raises RuntimeError: 未经 ``flowing.launch`` 登记 ``@`` 上下文时抛出
-        （消息指明必须经 ``launch``）。
-
-    .. rubric:: 测试案例
-
-    - 前置：``launch`` 进行中 → 操作：``resolve("@/config.yaml")`` → 期望：
-      ``<path>/config.yaml``。
-    - 前置：无任何 ``launch`` → 操作：``resolve("@/x")`` → 期望：``RuntimeError``。
-
-    .. rubric:: 调用关系（审计）
-
-    - 调用：``flowing.runtime._current_project_root`` 的 ``get()``（时机：每次调用读 contextvar）
-    - 被调：无（框架内未见调用点；docstring 示例为用户 ``main()`` 代码）
+    :raises RuntimeError: 未经 ``flowing.launch`` 登记 ``@`` 上下文时抛出。
 
     .. seealso:: :func:`flowing.runtime.launch`、
         :meth:`flowing.runtime.Runtime.resolve_path`
@@ -591,23 +350,16 @@ def resolve(path: str) -> Path:
 
 
 def _check_pending(instance: "Agent", agent_type: str) -> None:
-    """创建/恢复管线第 6 步的 PENDING 检查器（R-05 落实；**内部 API**）。
+    """创建 / 恢复管线在 ``setup()`` 之后执行的 PENDING 检查器（内部 API）。
 
     扫实例 ``__dict__`` 与类 MRO 属性中的 ``PENDING`` 哨兵（含
     ``Parsable`` 包裹形态——``Parsable.source is PENDING``），命中即抛
-    :class:`flowing.errors.MissingFieldError`（该异常为单字段结构
-    （``field`` / ``agent_type``），多字段命中时报**首个**（定义序），
-    其余待修复后下次创建再报——fail fast 逐钉语义）；
-    同帧结算 S-29 扩展：``instance.hooks._pending_on`` 非空（``@on``
-    暂记的钩子点在 setup 结束前未被 declare）→ 抛
-    :class:`flowing.errors.UnknownHookPointError`（消息列出 hook_name
-    与方法名）。
-
-    .. rubric:: 调用关系（审计）
-
-    - 调用：无具名符号（读实例 ``__dict__`` / 类 MRO / ``hooks._pending_on``）
-    - 被调：``Runtime.create_agent`` / ``Runtime.recover_agent``（各自管线
-      第 6 步，``setup()`` 之后、after_* 钩子之前）
+    :class:`flowing.errors.MissingFieldError`（单字段结构（``field`` /
+    ``agent_type``），多字段命中时报首个（定义序），其余待修复后下次
+    创建再报）；``instance.hooks._pending_on`` 非空（``@on`` 暂记的钩子
+    点在 setup 结束前未被 declare）→ 抛
+    :class:`flowing.errors.UnknownHookPointError`（消息列出钩子点名与
+    方法名）。
     """
     from flowing.parsable import PENDING, Parsable   # 局部 import：模块头依赖图保持单向
 
@@ -619,7 +371,7 @@ def _check_pending(instance: "Agent", agent_type: str) -> None:
                 value = value.source   # Parsable 包裹形态：哨兵在 source 位
             if value is PENDING:
                 raise MissingFieldError(field, agent_type)
-    # S-29 扩展：同帧结算 @on 暂记（目标钩子点未 declare 即未消费）
+    # 同帧结算 @on 暂记：目标钩子点未被 declare 即视为未消费
     if instance.hooks._pending_on:
         unclaimed = [f"{hook_name}（方法 {getattr(bound, '__name__', bound)}）"
                      for bound, hook_name, _, _, _ in instance.hooks._pending_on]
@@ -628,10 +380,9 @@ def _check_pending(instance: "Agent", agent_type: str) -> None:
             "——钩子点名拼写错误，或对应插件/Composable 未在 setup() 中启用")
 
 
-# ``ProvideNode`` 协议与 ``inject_from`` 统一上溯算法的 canonical home 是
-# ``flowing.provide``（S-43 裁决③：共享符号下沉叶子模块，破 agent↔runtime
-# 循环依赖）；此处为 import + 再导出（``__all__`` 保留），旧引用
-# ``flowing.runtime.ProvideNode`` / ``flowing.runtime.inject_from`` 保持有效。
+# ``ProvideNode`` 协议与 ``inject_from`` 统一上溯算法的定义在
+# ``flowing.provide``；此处为 import + 再导出（``__all__`` 保留），
+# ``flowing.runtime.ProvideNode`` / ``flowing.runtime.inject_from`` 同样可用。
 
 
 class Runtime:
