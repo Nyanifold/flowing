@@ -192,8 +192,9 @@ async def default_tool_executor(
       :meth:`flowing.agent.Agent.tool_call`）；编程路径的 ``id`` 由框架
       生成，仅作追踪。EVENT 消息不走 TOOL 配对：本次调用非 LLM 发起，
       消息树中没有配对的 ToolCallBlock，TOOL 消息会造成孤立
-      tool_result；EVENT 不参与配对是本路径的既定语义。「五形态 →
-      content 块列表」的塑形共享模块级
+      tool_result；EVENT 不参与配对是本路径的既定语义。工具结果
+      （文本与图片 / 文件 / 音频 / 视频等媒体，归一契约见
+      :mod:`flowing.tool`）到 content 块列表的塑形共享模块级
       ``output_to_blocks(result.output, error=result.error)``——与
       ``ToolResult.as_message``、异步完成回调同一实现，cron 不自行实现
       塑形。
@@ -217,8 +218,8 @@ async def default_tool_executor(
 
     - 工具调用抛出的异常由执行器捕获，同样以 EVENT 消息形式推回
       （定时链路无人 await，异常不应逃逸进事件循环回调）。
-    - 合并降级时不调用工具，也不推进任何工具侧状态——工具调用与否
-      完全由 ``coalesced_count`` 决定。
+    - 合并降级时不调用工具——工具调用与否完全由 ``coalesced_count``
+      决定。
 
     :param agent: 目标 Agent（任务所属节点）。
     :param job: 触发来源任务。

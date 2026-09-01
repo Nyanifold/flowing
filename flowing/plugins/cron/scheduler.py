@@ -376,13 +376,14 @@ class CronScheduler:
 
         - 返回最终生效的 ``job_id``：显式传入则原样返回，否则由调度器
           生成 UUID 字符串。
-        - ``job_id`` 与现存任务重复 → 抛 ``ValueError`` （注册不幂等，
-          与端点注册同立场：冲突应暴露而非覆盖）；``cron`` 非法 →
+        - ``job_id`` 与现存任务重复 → 抛 ``ValueError`` （注册不幂等：
+          冲突应暴露而非覆盖）；``cron`` 非法 →
           ``ValueError``；``action.kind`` 在执行器表中无对应执行器（含
           未注册执行器的自定义 kind）→ ``ValueError``——拼错的 kind 与
           「忘了注册执行器」都在调度时暴露，而不是留到触发时静默失败。
         - ``source=None`` → 填 ``f"cron:{job_id}"``。
-        - 目标 Agent 休眠（不在活体表）→ 抛 ``KeyError``：禁止向休眠
+        - 目标 Agent 休眠（未创建或 session 未恢复）→ 抛 ``KeyError``：
+          禁止向休眠
           Agent 注册——框架内部生产者（LLM 工具组 / ``after_create``
           声明式注册）都以调用方自己为目标，休眠注册只可能来自应用层
           误传 ``node_id``；此时无 ``state.jsonl`` 写通道（休眠时
@@ -403,7 +404,7 @@ class CronScheduler:
         :return: 最终生效的 ``job_id``。
         :raises ValueError: cron 表达式非法、``job_id`` 冲突或
             ``action.kind`` 无注册执行器时。
-        :raises KeyError: 目标 Agent 休眠（不在活体表）时。
+        :raises KeyError: 目标 Agent 休眠（未创建或 session 未恢复）时。
 
         .. seealso:: :meth:`unschedule`、:class:`CronJob`、
             :class:`CronAction`

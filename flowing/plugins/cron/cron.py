@@ -88,8 +88,9 @@ handler、没有 ``cron_jobs`` 状态键。
    定位 Agent 实体。
 2. 休眠门控：实体不存在（表示休眠：未创建或 session 未恢复）→ 本次不
    交付、不推进 ``job.last_fired_at``，直接返回——错过的触发次数无状态
-   地隐含在「当前时间 − 游标」中，等实体回到 ``_nodes`` 后的下一次交付
-   合并计入。注意休眠不等于销毁：任务定义保留，删任务的唯一路径是显式
+   地隐含在「当前时间 − ``last_fired_at``（游标）」中，等实体回到
+   ``_nodes`` 后的下一次交付合并计入。注意休眠不等于销毁：任务定义
+   保留，删任务的唯一路径是显式
    ``unschedule`` / ``unschedule_all`` （destroy 不清任务，见「Agent 消失
    与任务生命周期」）。
 3. 实体存在 → 由 cron 表达式与 ``last_fired_at`` 算出 ``coalesced_count``
@@ -127,14 +128,14 @@ handler、没有 ``cron_jobs`` 状态键。
   ``{"op":"set","key":"cron_jobs","value":[...]}``）——无需也不存在显式
   save 调用。值恒为 ``list[dict]`` 纯数据：进出唯一通道是
   ``CronJob.to_dict()`` / ``CronJob.from_dict()``；内存形态与磁盘形态
-  同构，对象本体只存于调度器内存表 ``_jobs``。
+  同构，对象本体只存于调度器的内存任务表中。
 - 恢复时机：Agent session 恢复（``Agent._restore()``）时，核心键与全部
   插件键随 ``state.jsonl`` 自动重放进单袋；随后 ``after_recover`` handler
   （``by="cron"``）读出任务表，把该 Agent 的任务重建进中央调度器并重新
   武装定时器（``_load_jobs``），再做错过触发的合并回顾（``_sweep``）。
 - 崩溃语义：``state.jsonl`` 是追加式日志，崩溃时最坏撕坏末行，恢复重放
   时坏行被形状校验丢弃；盘可能略旧于崩溃前的内存表，但内存表随进程
-  消失，以盘为准重建即自动收敛。游标（``last_fired_at``）写透与执行
+  消失，以盘为准重建即自动收敛。``last_fired_at``（游标）写透与执行
   完成之间崩溃时，恢复后该次触发可能重复执行一次——交付语义是
   at-least-once（至少一次），不是 exactly-once，执行器应容忍重复。
 
