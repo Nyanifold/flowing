@@ -23,8 +23,8 @@
 
 路径基准（``cwd``）口径：所有文件 / 目录参数（``path`` / ``pattern``）
 默认只收绝对路径；相对路径当且仅当该次调用的 ``cwd`` 非 ``None`` 时
-允许，相对 ``cwd`` 解析；``cwd`` 自身必须是绝对路径（默认 ``None`` =
-不给基准）。相对路径无基准或 ``cwd`` 非绝对 → ``status="error"`` 的
+允许，相对 ``cwd`` 解析；``cwd`` 自身必须是绝对路径（默认 ``None``，
+即不给基准）。相对路径无基准或 ``cwd`` 非绝对 → ``status="error"`` 的
 ``ToolResult`` （LLM 可见、可自纠正）。设计意图：基准必须由调用方显式
 给出，LLM 视角下没有隐含的「当前目录」。
 
@@ -37,8 +37,9 @@ LLM 应看到错误文本并自行修正调用。
 
 ``cwd`` 同时是「``.fya`` 定义期经智能体属性传参」的示范位：Agent 自己
 有 ``cwd`` 属性（如 ``setup`` 中赋值 ``self.cwd = "/srv/proj"``）时，
-``.fya`` 的 tools 条目把 ``cwd`` 参数覆写为引用该属性的 Parsable，调用
-期自动求值注入::
+``.fya`` 的 tools 条目把 ``cwd`` 参数覆写为引用该属性的 Parsable 模板
+（:mod:`flowing.parsable`——声明层的模板值，调用期以调用方 Agent 为
+上下文求值），实现调用期自动注入::
 
     tools:
       - read:
@@ -231,16 +232,16 @@ class BashTool(Tool):
     .. rubric:: 功能介绍
 
     LLM 在宿主环境执行 shell 命令的工具：命令经 ``/bin/bash -c`` 运行，
-    返回 stdout / stderr / exit_code 拼成的文本。高危工具——任意命令
-    执行，继承 Agent 进程的全部权限。
+    返回 ``stdout`` / ``stderr`` / ``exit_code`` 拼成的文本。高危工具——
+    任意命令执行，继承 Agent 进程的全部权限。
 
     .. rubric:: 行为要点
 
     - 参数：``command`` （必填）；``timeout`` （秒，默认 120，超时杀进程
       组并返回 error）；``cwd`` （工作目录，可选；给则必须是绝对路径，
       相对 → error ``ToolResult``）。
-    - 返回：stdout / stderr / exit_code 拼成的裸文本；非零退出码不是
-      异常——照常在 output 里返回（LLM 应看到）。
+    - 返回：``stdout`` / ``stderr`` / ``exit_code`` 拼成的裸文本；非零
+      退出码不是异常——照常在 output 里返回（LLM 应看到）。
     - 危险面：任意命令执行，继承 Agent 进程全部权限。审批 / 命令过滤属
       策略层（``before_tool_call``），本工具不做。
     - 不支持交互式命令（stdin 关闭）；不保持会话状态（每次调用是新
@@ -266,7 +267,7 @@ class BashTool(Tool):
 
     async def execute(self, *, command: str, timeout: int = 120,
                       cwd: str | None = None) -> str:
-        """执行命令并返回 stdout/stderr/exit_code 拼成的裸文本。
+        """执行命令并返回 ``stdout`` / ``stderr`` / ``exit_code`` 拼成的裸文本。
 
         .. rubric:: 行为要点
 
@@ -315,7 +316,7 @@ class EditTool(Tool):
       遵循 ``cwd`` 基准口径——见模块 docstring）；``cwd`` （路径基准，
       默认 ``None``）；``replace_all`` （默认 ``False``）。
     - 唯一性约束：``replace_all=False`` 时 ``old_string`` 命中次数
-      ≠ 1 → error（0 次 = 没找到，>1 次 = 歧义，均不改文件）。
+      不等于 1 → error（0 次命中即没找到，多次命中即歧义，均不改文件）。
     - 返回：收据文本（路径与替换次数）。
     - 危险面：任意路径改文件。审批属策略层（``before_tool_call``）。
     - 编辑不是原子操作：工具先读取文件、替换、再写回；同一文件并发
@@ -387,8 +388,8 @@ class GrepTool(Tool):
       遵循 ``cwd`` 基准口径——见模块 docstring）；``cwd`` （路径基准，
       默认 ``None``）；``glob`` （文件名过滤，可选）。
     - 匹配语义沿用 ``rg`` 默认行为：尊重 ``.gitignore``、跳过隐藏文件。
-    - 返回：匹配行文本，每行 ``<路径>:<行号>:<内容>``；``path`` 为绝对
-      路径时路径以绝对形式呈现。无匹配返回「（无匹配）」；匹配行数超过
+    - 返回：匹配行文本，每行 ``<路径>:<行号>:<内容>``；路径一律以绝对
+      形式呈现。无匹配返回「（无匹配）」；匹配行数超过
       250 行时截断并注明。
     - 边缘情况：``rg`` 未安装 / ``rg`` 执行失败（退出码非 0 或 1）→
       ``status="error"`` 的 ``ToolResult``；退出码 1（无匹配）不是错误。
@@ -552,19 +553,20 @@ class FinishTool(Tool):
       ``override_params``——框架核心不感知 ``output`` 的含义，它只是
       普通覆写字段；动态 schema 不修改 :class:`flowing.tool.ToolRegistry`
       原始定义（``clone_with_overrides`` 语义保证）。
-    - ``output`` 字段与 ``finish`` 自身参数合并（``summary`` + output
-      字段），对 ``llm_definition()`` / ``resolve()`` 透明；``output``
-      本身不是 LLM 可见参数。
+    - ``output`` 字段与 ``finish`` 自身参数合并（``summary`` 与
+      ``output`` 字段），对 ``llm_definition()`` / ``resolve()`` 透明；
+      ``output`` 本身不是 LLM 可见参数。
     - 无 ``output`` 声明 → 只有 ``summary``，LLM 以自由文本结束。
     - ``output:`` 与 ``args:`` 在 ``ToolEntry`` 内合并进同一
       ``override_params``；``output`` 覆写是任意工具的通用字段（与
-      ``args:`` 平级）——省略字段 = 移除，改变类型 = 覆写，无需完整
+      ``args:`` 平级）——省略字段即移除，改变类型即覆写，无需完整
       重声明。
     - 可见性走通用通道：``finish`` 对 LLM 可见只经 ``.fya`` ``tools:``
       声明或显式 ``add_tool("finish")``。
     - 结束机制：调用后，本回合在其余并行工具调用照常执行完后自然结束，
       返回载荷写入 ``Agent.last_result`` 并作为结果回传父 Agent；配对
-      TOOL 消息正常挂树，本回合 ``turn_end=True`` 落在该消息上。
+      TOOL 消息正常挂树，本回合的回合结束标记（``turn_end=True``）落在
+      该消息上。
 
     .. seealso::
 
@@ -589,8 +591,9 @@ class FinishTool(Tool):
         .. rubric:: 行为要点
 
         - ``kwargs`` 接收 ``output:`` 声明展开的动态字段；返回
-          ``{"summary": ..., **动态字段}``——无 ``output`` 声明时值为自由
-          文本字符串，声明后值换为结构化字段集，返回结构本身不变。
+          ``{"summary": ..., **动态字段}``——无 ``output`` 声明时
+          ``summary`` 的值即自由文本字符串，声明后值换为结构化字段集，
+          返回结构本身不变。
         - 结束机制：同一载荷置位 ``caller.current_turn.finish_output``
           ——置位即请求本回合自然结束（视同 ``finish=True``，工具段照常
           执行完），载荷由子 Agent 收尾段写入 ``Agent.last_result`` 并
@@ -712,9 +715,10 @@ class SubagentInvokeTool(Tool):
           ``status="error"`` / ``blocked``，LLM 可见），随后立即返回
           ``{"invoked": ..., "status": "started"}`` 收据；运行段在后台
           执行，结局以 ``Message(kind=SUBAGENT)`` 推入父队列。
-        - 缺省 ``False``：同步等待子 Agent 完成，以 ``enqueue_result=False``
-          调用 ``invoke_subagent``；随后把返回的 ``SubagentResult`` 全
-          字段平铺进本工具返回 dict，不再另发 SUBAGENT 消息。
+        - 缺省 ``False``：同步等待子 Agent 完成——``invoke_subagent``
+          同步交付结果、不 enqueue SUBAGENT 消息；随后把返回的
+          ``SubagentResult`` 全字段平铺进本工具返回 dict，不再另发
+          SUBAGENT 消息。
         """
         if bool(agent_type) == bool(resume):  # 互斥且至少其一
             raise ValueError("agent_type 与 resume 必须二选一")
