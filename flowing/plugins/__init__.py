@@ -19,13 +19,14 @@
 启用。框架核心发布时不预装任何内置扩展；未启用的扩展对 Agent 而言
 从没存在过（零开销，不是被跳过）。``Plugin`` 基类定义在扩展包而非
 ``flowing.runtime``：核心只经 :meth:`flowing.runtime.Runtime.use` 消费
-插件接口，不认识任何具体插件。
+插件接口，不认识任何具体插件——唯一的例外是 ``Runtime.mount()`` 挂载
+Workflow 根时局部解析 :func:`flowing.plugins.workflow.resolve_workflow`。
 
 .. rubric:: 全局约定（跨符号、影响使用的约定）
 
 - 生命周期：框架对插件实例只回调两个方法——安装时的
   :meth:`Plugin.install` 与关闭时的 :meth:`Plugin.shutdown`。其余运行期
-  协作走 provide/inject 与消息队列，框架不主动调用插件的其它方法。
+  协作走 ``provide`` / ``inject`` 与消息队列，框架不主动调用插件的其它方法。
 - 声明式依赖：插件在 ``dependencies`` 中声明依赖的其它插件注册名，
   只声明、不自己检查。每次 ``use()`` 安装后，框架对已装插件集合做
   增量校验：依赖缺失只发 ``warnings.warn`` 警告、不抛错；依赖成环抛
@@ -33,8 +34,8 @@
   ``use()``）。
 - 插件约定（consenting adults，靠自觉遵守而非框架校验）：R1
   ``install`` 只注册——不做业务、不查询其它插件、不修改其它状态；
-  R2 协作不查询——插件间经 provide/inject 或消息队列协作，安装顺序
-  与协作结果无关；R3 注册只在 ``install``——运行时不增删全局注册
+  R2 协作不查询——插件间经 ``provide`` / ``inject`` 或消息队列协作，
+  安装顺序与协作结果无关；R3 注册只在 ``install``——运行时不增删全局注册
   状态；R4 依赖只声明——不自己检查依赖是否满足。
 - 绑函数约定（检查后跳过）：插件或 Composable 向 Agent 或 Runtime
   实例绑定函数成员（如 ``use_skill`` 绑定 ``agent.skill_load``、
@@ -133,18 +134,18 @@ class Plugin:
       无关）；同名插件重复安装抛 ``ValueError`` （一个 Runtime 同时只装
       一个同名插件）。
     - 生命周期：插件实例在 ``install`` 之后只被框架回调一次——
-      :meth:`shutdown`；其余运行期协作走 provide/inject 与消息队列，
-      框架不主动调用插件的其它方法。
+      :meth:`shutdown`；其余运行期协作走 ``provide`` / ``inject`` 与
+      消息队列，框架不主动调用插件的其它方法。
     - 推荐在创建任何 Agent（``mount`` / ``create_agent`` /
       ``recover_agent``）之前完成全部 ``use()``。框架不校验调用时机：
       迟装不报错，但已创建的 Agent 不会获得迟装插件注册的能力；插件
       未安装时，对应 ``use_xxx()`` 的第一步 ``inject`` 抛
       :class:`flowing.errors.MissingProvideError`。
-    - install 的可反复执行性：每次进程启动都会重新执行 ``use()`` →
-      ``install()`` （每个 Runtime 内每个插件只安装一次），install 应写
-      成对持久化状态结构上无关——不读取持久值做注册决策；需要从持久值
-      派生运行时结构的重建，放在 ``after_recover`` （agent 侧）或插件
-      自择时机的懒重建（全局侧）。
+    - ``install`` 的可反复执行性：每次进程启动都会重新执行 ``use()`` →
+      ``install()`` （每个 Runtime 内每个插件只安装一次），``install``
+      应写成对持久化状态结构上无关——不读取持久值做注册决策；需要从
+      持久值派生运行时结构的重建，放在 ``after_recover`` （agent 侧）
+      或插件自择时机的懒重建（全局侧）。
     - 边缘情况：``dependencies`` 中的名字无对应已安装插件 → ``use()``
       时 ``warnings.warn`` 警告、不抛错；已装插件依赖图成环 → ``use()``
       抛 :class:`flowing.errors.DependencyError`。
@@ -170,7 +171,8 @@ class Plugin:
     namespace: ClassVar[str]
     """插件命名空间（建议非强制，框架不读取）。供插件自身资源的键名
     前缀约定：provide key、配置命名空间等以 ``"myplugin:xxx"`` 形态加
-    前缀，避免跨插件冲突；对 LLM 可见的显示名保持干净（不带前缀）。
+    前缀，避免跨插件冲突；插件对外显示的名称（如注册的工具名）保持
+    干净（不带前缀）。
     """
 
     dependencies: ClassVar[list[str]]
@@ -188,8 +190,9 @@ class Plugin:
     def plugin_dir(self) -> Path:
         """插件自身所在目录：插件类定义所在文件的父目录。插件随身携带
         资源文件（``.fya`` 工具 / 子 Agent 定义 / 模板等）时的路径基准
-        ——这些文件不在项目 ``@/`` 下、也不在任何 Agent 的
-        ``source_dir`` 链上，只能以本属性拼路径传给
+        ——这些文件不在项目 ``@/`` （指向 flowing 子项目目录的路径
+        前缀）下、也不在任何 Agent 的 ``source_dir`` 链（该 Agent
+        解析声明式资源的源目录）上，只能以本属性拼路径传给
         ``runtime.register_tool()`` （文件路径形态）：
 
         .. code-block:: python
@@ -240,8 +243,8 @@ class Plugin:
         - R1 约定：只注册——不做业务、不查询其它插件、不修改其它状态；
           R3 约定：注册只在本方法发生，运行时不增删全局注册状态。
         - 同 key 重复 ``provide`` 是覆盖更新（后者生效），框架不报错。
-        - 返回 ``None``。运行期协作走 provide/inject 与消息队列，插件
-          不在本方法保存 runtime 引用用于运行期回调。
+        - 返回 ``None``。运行期协作走 ``provide`` / ``inject`` 与消息
+          队列，插件不在本方法保存 runtime 引用用于运行期回调。
 
         :param runtime: 当前安装的 Runtime 实例。
 
@@ -256,9 +259,9 @@ class Plugin:
 
         .. rubric:: 功能介绍
 
-        谁 install 谁收尾：插件显式管理自己的收尾逻辑（停定时器、关闭
-        总线、释放运行期资源）。本方法是 install 之后框架唯一回调插件
-        实例的方法。
+        谁 ``install`` 谁收尾：插件显式管理自己的收尾逻辑（停定时器、
+        关闭总线、释放运行期资源）。本方法是 ``install`` 之后框架唯一
+        回调插件实例的方法。
 
         .. rubric:: 行为要点
 
