@@ -51,7 +51,7 @@ class ExploreAgent(Agent):
 
     .. rubric:: 行为要点
 
-    - 工具集固定为 ``read`` / ``grep`` / ``glob``（全部只读）；子类想
+    - 工具集固定为 ``read`` / ``grep`` / ``glob`` （全部只读）；子类想
       加可写工具须显式覆写 :meth:`setup`——此时它不再是「只读探索」，
       安全语义自负。
     - 交卷：默认以 plain 文本回复作为结果回传父 Agent（不绑

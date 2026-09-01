@@ -7,7 +7,7 @@
 期自动执行，随每个 ``Runtime`` 实例天生在场）：
 
 - :mod:`flowing.builtins.tools` —— 内置工具全集：核心内置
-  ``subagent-invoke``（子智能体唤起入口）与 ``finish``（子 Agent 可选
+  ``subagent-invoke`` （子智能体唤起入口）与 ``finish`` （子 Agent 可选
   交卷），加六个标准文件 / shell 工具 ``read`` / ``write`` / ``bash`` /
   ``edit`` / ``grep`` / ``glob``；
 - :mod:`flowing.builtins.agents` —— 标准子智能体 ``ExploreAgent``
