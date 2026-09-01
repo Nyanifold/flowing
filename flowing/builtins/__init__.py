@@ -1,31 +1,49 @@
-"""框架自带的内置工具与标准子智能体（``builtin::`` 命名空间）。
+"""``flowing.builtins`` —— 出厂内置工具与标准子智能体（``builtin::`` 命名空间）。
 
 .. rubric:: 功能介绍
 
-「出厂自带」能力的唯一入口（P3-06 裁决）：
+本包是框架随包发布的「出厂自带」能力集合，全部注册在 ``builtin::``
+命名空间下（注册行为见 :func:`register_builtins`，由 ``Runtime`` 构造
+期自动执行，随每个 ``Runtime`` 实例天生在场）：
 
 - :mod:`flowing.builtins.tools` —— 内置工具全集：核心内置
-  ``SubagentInvokeTool``（子智能体唤起唯一工具入口，核心特性
-  S-01/S-02）与 ``FinishTool``（子 Agent 可选交卷），加六个标准
-  文件 / shell 工具 ``read`` / ``write`` / ``bash`` / ``edit`` /
-  ``grep`` / ``glob``；
+  ``subagent-invoke``（子智能体唤起入口）与 ``finish``（子 Agent 可选
+  交卷），加六个标准文件 / shell 工具 ``read`` / ``write`` / ``bash`` /
+  ``edit`` / ``grep`` / ``glob``；
 - :mod:`flowing.builtins.agents` —— 标准子智能体 ``ExploreAgent``
-  （只读探索）。
+  （只读代码库探索）。
 
-**核心特性 ≠ 静默附加**（用户裁决）：``subagent-invoke`` 是核心特性
-——它随 Runtime 构造期注册、永远在注册表在场；但它**不能被静默
-声明给任何智能体**——对 LLM 可见必须经 Agent 级显式声明
-（``.fya`` ``tools:`` 或 ``add_tool``，S-19：一切工具以用户声明为
-准）。其余标准件同理：**注册 ≠ 可见**，Agent 的工具目录只含它显式
-声明的条目，危险面（Bash/Write/Edit 可写）是声明方自己的决定。
+.. rubric:: 全局约定（跨符号、影响使用的约定）
 
-.. rubric:: 设计动机
+注册不等于可见。条目进入注册表只代表「框架认识它」，不代表 LLM 能看到
+它：Agent 的工具目录（``Context.tools``）只包含该 Agent 在 ``.fya`` 的
+``tools:`` 或 ``add_tool`` 中显式声明的条目；可写文件、执行命令的危险
+工具（``write`` / ``bash`` / ``edit`` 等）必须由使用者显式声明才会被
+LLM 看到——框架不会因为注册就把它们暴露给 LLM，这是安全边界，不是疏忽。
+标准子智能体同理：``ExploreAgent`` 需父 Agent 在 ``subagents:`` 或
+``add_agent`` 中显式声明才会进入其 catalog。
 
-- **可被覆盖**：``builtin::`` 是裸名视图的兜底层，插件 / 应用可在
-  ``default::`` 注册同名工具覆盖之（命名空间裁决）。
-- **机制归 tool.py，本体归这里**：基类 / 注册表 / 绑定层等机制在
-  :mod:`flowing.tool`；具体工具本体（含核心内置）集中本包，
-  一目了然。
+``builtin::`` 是裸名查找的兜底层：裸名引用先查 ``default::`` 再查
+``builtin::``——插件 / 应用可在 ``default::`` 注册同名条目覆盖内置行为，
+被覆盖的条目仍可用 ``builtin::xxx`` 全限定名显式引用。
+
+.. rubric:: 使用示例
+
+``.fya`` 中显式声明本 Agent 可用的工具（只读工具直接声明；危险工具同样
+必须显式声明才会对 LLM 可见）::
+
+    tools:
+      - read
+      - grep
+      - glob
+      - bash
+
+.. seealso::
+
+    - :mod:`flowing.builtins.tools` —— 内置工具全集。
+    - :mod:`flowing.builtins.agents` —— 标准子智能体。
+    - :mod:`flowing.tool` —— ``builtin::`` / ``default::`` 命名空间与
+      裸名查找规则。
 """
 
 from flowing.builtins.agents import ExploreAgent
@@ -55,31 +73,26 @@ __all__ = [
 
 
 def register_builtins(runtime) -> None:
-    """把全部内置件注册进 ``builtin::`` 命名空间。
+    """把全部出厂内置件注册进 ``builtin::`` 命名空间。
 
     .. rubric:: 功能介绍
 
-    ``Runtime.__init__`` 的唯一调用点：核心内置 ``subagent-invoke`` /
-    ``finish`` 与六个标准工具经
-    ``runtime.register_tool(..., namespace="builtin")``，
+    ``Runtime.__init__`` 的唯一调用点：八个内置工具经
+    ``runtime.register_tool(..., namespace="builtin")`` 注册，
     ``ExploreAgent`` 经 ``runtime.register_agent_type("explore-agent",
-    ExploreAgent, namespace="builtin")``。
+    ExploreAgent, namespace="builtin")`` 注册。
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
-    - 幂等性不要求（Runtime 构造期恰好一次）。
-    - 只写注册表：不触碰任何 Agent 实例，不产生 LLM 可见性
-      （可见性 = Agent 级显式声明，见包 docstring）。
-
-    .. rubric:: 调用关系（审计）
-
-    - 调用：``flowing.runtime.Runtime.register_tool`` /
-      ``register_agent_type``（时机：逐件注册）
-    - 被调：``flowing.runtime.Runtime.__init__``（时机：插件
-      install 之前——核心内置经此在场）
+    - 只写注册表：不触碰任何 Agent 实例，也不产生 LLM 可见性——可见性
+      只能由 Agent 级显式声明产生（见包 docstring 的「注册不等于可见」）。
+    - 预期在 ``Runtime`` 构造期恰好调用一次；同一 ``Runtime`` 重复调用
+      会因同名工具条目已注册而抛
+      :class:`flowing.errors.ToolNameConflictError`。
 
     .. seealso:: :mod:`flowing.builtins.tools`、
-        :mod:`flowing.builtins.agents`
+        :mod:`flowing.builtins.agents`、
+        :meth:`flowing.runtime.Runtime.register_tool`
     """
     for tool in (SubagentInvokeTool(), FinishTool(), ReadTool(),
                  WriteTool(), BashTool(), EditTool(), GrepTool(),
