@@ -1,108 +1,91 @@
 """``flowing.interfaces.repl_debug`` —— 调试扩展版 REPL 子命令（``repl-debug``）。
 
-.. rubric:: 定位
+.. rubric:: 功能介绍
 
 ``flowing repl-debug <path>`` 是 :func:`flowing.interfaces.repl.cmd_repl`
-的**调试扩展版**：
+的调试扩展版：继承 ``repl`` 的全部行为（启动绑定、提示符、非 ``/``
+输入投递、既有 7 个 slash-command、EOF / ``/exit`` 退出），额外提供 4
+个调试 slash-command：``/eval``、``/watch``、``/eval-runtime``、
+``/watch-runtime``。默认 ``repl`` 的封闭 slash-command 集合不变——
+调试命令只在 ``repl-debug`` 中启用。
 
-- 继承 ``repl`` 的全部行为：启动绑定、提示符、非 ``/`` 输入投递、
-  既有 7 个 slash 命令、EOF / ``/exit`` 退出。
-- 额外提供 4 个调试 slash 命令：``/eval``、``/watch``、
-  ``/eval-runtime``、``/watch-runtime``。
-- 默认 ``repl`` 的封闭 slash 命令集不变；调试命令只在 ``repl-debug``
-  中启用。
+实现方式是利用 ``cmd_repl`` 的扩展注入点（``extra_slash_handlers`` /
+``pre_prompt_hook`` / ``extra_help_text``）；默认 ``repl`` 不传这些
+注入点，行为完全不变。默认 ``repl`` 的 ``/help`` 不列出调试命令；
+``repl-debug`` 的 ``/help`` 额外列出这 4 个命令。
 
 .. rubric:: 命令语法
 
-============================= ============================ ==========================================
-命令                          语法                        说明
-============================= ============================ ==========================================
-``/eval <expr>``              ``/eval current_mode``       以当前绑定 Agent 为上下文解析并打印表达式
-``/watch <expr>``             ``/watch current_mode``      以当前绑定 Agent 为上下文解析并加入监视
-``/eval-runtime <expr>``      ``/eval-runtime self.snapshot().plugins``
-                                                           以 Runtime 为上下文解析并打印表达式
-``/watch-runtime <expr>``     ``/watch-runtime self.snapshot().agents``
-                                                           以 Runtime 为上下文解析并加入监视
-============================= ============================ ==========================================
+.. list-table::
+   :widths: 20 30 50
+   :header-rows: 1
 
-- ``<expr>`` 是 **Jinja2 表达式体**，不需要写外层 ``{{ }}``；本命令
-  包装为 ``{{ <expr> }}`` 后求值。
-- ``<expr>`` 为空时：打印该命令用法提示，不执行。
+   * - 命令
+     - 语法
+     - 说明
+   * - ``/eval <expr>``
+     - ``/eval current_mode``
+     - 以当前绑定 Agent 为上下文解析并打印表达式
+   * - ``/watch <expr>``
+     - ``/watch current_mode``
+     - 以当前绑定 Agent 为上下文解析并加入监视
+   * - ``/eval-runtime <expr>``
+     - ``/eval-runtime self.snapshot().plugins``
+     - 以 Runtime 为上下文解析并打印表达式
+   * - ``/watch-runtime <expr>``
+     - ``/watch-runtime self.snapshot().agents``
+     - 以 Runtime 为上下文解析并加入监视
+
+``<expr>`` 是 Jinja2 表达式体，不需要写外层 ``{{ }}``；本命令包装为
+``{{ <expr> }}`` 后求值。``<expr>`` 为空时打印该命令的用法提示，不
+执行。
 
 .. rubric:: 解析上下文
 
 Agent 上下文（``/eval``、``/watch``）：
 
-- 必须存在当前绑定 Agent；未绑定（``(new agent)>>>``）时打印：
-  ``未绑定 Agent：无法解析表达式``。
-- 有绑定时，使用 ``agent.parsable("{{ " + expr + " }}").resolve(agent)``，
+- 必须存在当前绑定 Agent；未绑定（提示符 ``(new agent)>>>``）时打印
+  「未绑定 Agent：无法解析表达式」。
+- 有绑定时，求值经 ``agent.parsable("{{ <expr> }}").resolve(agent)``，
   与 flowing 其它 ``Parsable`` 求值共用同一套上下文语义（``env`` /
   ``config`` / 实例属性 / Parsable 字段等）。
-- 绑定切换（``/use <id>``）后，``/eval`` 和已注册的 Agent watch 都改用
-  新绑定 Agent。
+- 绑定切换（``/use <id>``）后，Agent 上下文改用新绑定 Agent。
 
 Runtime 上下文（``/eval-runtime``、``/watch-runtime``）：
 
-- 上下文 = Runtime 实例，且**必须**以 ``self`` 作为 Runtime 变量名：
-  ``self = runtime``。
-- 使用 ``Parsable("{{ " + expr + " }}").resolve({"self": runtime})``。
+- 上下文是 Runtime 实例，变量名必须是 ``self`` （``self = runtime``）。
+- 求值经 ``Parsable("{{ <expr> }}").resolve({"self": runtime})``，
+  表达式里的 ``self`` 与 ``agent`` 都可引用 Runtime。
 - 不依赖当前是否绑定 Agent；未绑定也能执行。
 
 .. rubric:: 错误处理
 
-- 求值抛出任何异常时，**原样打印异常**：``print(str(exception))``；
-  不包装、不改写、不追加 traceback；进程不退出，回到当前提示符。
-- 未绑定 Agent 时 ``/eval``、``/watch`` 打印上述特殊提示，不进入求值。
+- 求值抛出任何异常时原样打印异常（``print(str(exception))``）：不
+  包装、不改写、不追加 traceback；进程不退出，回到当前提示符。
+- 未绑定 Agent 时 ``/eval``、``/watch`` 打印上述特殊提示，不进入
+  求值。
 
-.. rubric:: ``/eval`` 语义
+.. rubric:: 行为要点
 
-- 立即求值一次并打印结果；打印格式为 ``print(value)``。
-- 不记录、不加入 watch。
+``/eval``：立即求值一次并打印结果（``print(value)``）；不记录、不
+加入 watch。
 
-.. rubric:: ``/watch`` 语义
+``/watch``：
 
-- 首次执行：
-  1. 立即求值一次；
-  2. 打印 ``[watch] <expr> => <value>``；
-  3. 将 ``(expr, 最后值)`` 加入当前绑定 Agent 的 watch 列表。
-- 后续每次 REPL 循环**打印下一个提示符之前**，对 watch 列表逐条重新求值：
-  - 值未变：不打印；
-  - 值发生变化：打印 ``[watch] <expr> => <new value>``；
-  - 求值报错：按错误处理规则打印错误，并保留该 watch（下次继续尝试）。
-- Agent watch 与绑定状态：
-  - 绑定 Agent 切换后，Agent watch 上下文变为新 Agent；
-  - 退出 / EOF 时 watch 随进程消失，不持久化。
+- 首次执行：立即求值一次，打印 ``[watch] <expr> => <value>``，并把
+  ``(expr, 最后值)`` 加入当前绑定 Agent 的 watch 列表。
+- 之后每次 REPL 循环打印下一个提示符之前，对 watch 列表逐条重新
+  求值：值未变不打印；值变化打印 ``[watch] <expr> => <new value>``；
+  求值报错按错误处理规则打印错误，并保留该 watch（下次继续尝试）。
 - 值比较使用 ``!=``。
+- 绑定 Agent 切换后，Agent watch 改用新绑定 Agent；退出 / EOF 时
+  watch 随进程消失，不持久化。
 
-.. rubric:: ``/eval-runtime`` / ``/watch-runtime`` 语义
+``/eval-runtime`` / ``/watch-runtime``：与 ``/eval`` / ``/watch``
+相同，只是上下文为 ``{"self": runtime}``；Runtime watch 不依赖绑定
+状态，绑定切换不影响它。
 
-- 与 ``/eval`` / ``/watch`` 相同，只是上下文为 ``{"self": runtime}``；
-- Runtime watch 不依赖绑定 Agent，绑定切换不影响它。
-
-.. rubric:: 与默认 ``repl`` 的关系
-
-- ``repl-debug`` 复用 ``repl`` 的启动、绑定、读行循环、slash 命令、
-  退出流程；实现方式是利用 ``cmd_repl`` 的扩展注入点
-  （``extra_slash_handlers`` / ``pre_prompt_hook`` / ``extra_help_text``）。
-- 默认 ``repl`` 不传这些注入点，行为完全不变。
-- 默认 ``repl`` 的 ``/help`` 不列出 debug 命令；``repl-debug`` 的
-  ``/help`` 额外列出 4 个命令。
-
-.. rubric:: 测试案例
-
-- 前置：已绑定 Agent。操作：``/eval model_tag``。期望：打印当前
-  ``model_tag`` 值，不产生消息。
-- 前置：已绑定 Agent。操作：``/watch current_mode`` 后修改
-  ``current_mode`` 并再次进入提示符。期望：首次打印
-  ``[watch] ...``，变更后自动打印新值。
-- 前置：未绑定状态。操作：``/eval model_tag``。期望：打印
-  ``未绑定 Agent：无法解析表达式``。
-- 前置：已绑定 Agent。操作：``/eval {{ bad syntax``。期望：原样打印
-  异常，不退出。
-- 前置：任意。操作：``/eval-runtime self.snapshot().plugins``。期望：
-  打印 Runtime 快照中的插件列表。
-- 前置：默认 ``repl``。操作：``/eval model_tag``。期望：仍按未知命令
-  处理，不执行求值。
+.. seealso:: :func:`flowing.interfaces.repl.cmd_repl`、:func:`cmd_repl_debug`
 """
 
 from typing import Any
@@ -131,10 +114,8 @@ def _eval_runtime(runtime: Runtime, expr: str) -> tuple[bool, Any]:
     """以 Runtime 为上下文求值（``self = runtime``）。"""
     try:
         # 渲染上下文同时放 "self" 与 "agent" 两键：框架 Jinja 环境在 AST 级
-        # 把名字 self 改写为 agent（见 flowing.parsable._SelfToAgentTransformer
-        # ——Jinja2 代码生成器劫持根作用域 self 为 TemplateReference），Mapping
-        # 上下文里只放 "self" 时改写后的 agent 名义不可达；两键同值保证
-        # {{ self.snapshot() }} 与 {{ agent.snapshot() }} 都能求值
+        # 把名字 self 改写为 agent，两键同值保证 {{ self.snapshot() }} 与
+        # {{ agent.snapshot() }} 都能求值
         return True, Parsable(_wrap_expr(expr)).resolve({"self": runtime, "agent": runtime})
     except Exception as exc:
         return False, exc
@@ -147,9 +128,19 @@ async def cmd_repl_debug(
 ) -> int:
     """``flowing repl-debug <path>``：继承 ``repl`` 并附加调试表达式命令。
 
-    完整 spec 见本模块 docstring；本函数只负责构造 4 个调试命令的
-    handler、watch 状态与提示前检查钩子，然后委托
-    :func:`flowing.interfaces.repl.cmd_repl`。
+    构造 4 个调试命令的 handler、watch 状态与提示前检查钩子，然后
+    委托 :func:`flowing.interfaces.repl.cmd_repl` （经其扩展注入点
+    传入）。命令语义见本模块 docstring。
+
+    :param path: 子项目路径（同
+        :func:`flowing.interfaces.repl.cmd_repl`）。
+    :param main_file: 替代的入口 main 文件（可选，经 CLI ``-m`` 传入）。
+    :param kwargs: 透传给 ``launch`` 与子项目 ``main`` 的 ``--key
+        value`` 参数。
+    :return: 委托 ``cmd_repl`` 得到的退出码（:data:`EXIT_OK` /
+        :data:`EXIT_RUNTIME_ERROR`）。
+
+    .. seealso:: :func:`flowing.interfaces.repl.cmd_repl`
     """
     watches: list[dict[str, Any]] = []
 
