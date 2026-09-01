@@ -3507,10 +3507,6 @@ class Agent:
                     override_params[field_name] = dict(field_def)
             elif body_key == "enabled":
                 enabled = bool(body_val)
-            elif body_key == "inject":
-                # inject 键已删除：注入写 args 里的 "{{ self.inject('key') }}" 表达式
-                raise FormatError("工具覆写体的 inject 键已删除（R-4）：注入请写 "
-                                  "args 里的 {{ self.inject('key') }} 表达式")
             else:
                 raise FormatError(f"工具覆写体含未知键: {body_key!r}")
         entry = ToolEntry(
@@ -3648,9 +3644,6 @@ class Agent:
                 _classify_override_args(body_val, override_params, specified, param_aliases)
             elif body_key == "enabled":
                 enabled = bool(body_val)
-            elif body_key == "inject":
-                raise FormatError("子 Agent 覆写体的 inject 键已删除（R-4）：注入请写 "
-                                  "args 里的 {{ self.inject('key') }} 表达式")
             else:
                 raise FormatError(f"子 Agent 覆写体含未知键: {body_key!r}")   # 含 Tool 面 output 键
         entry = SubagentEntry(
