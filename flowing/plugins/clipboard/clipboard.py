@@ -2,7 +2,7 @@
 
 .. rubric:: 功能介绍
 
-剪贴板是 Flowing 的**内置扩展**（随 ``flowing`` 包发布但不自动启用），
+剪贴板是 Flowing 的内置扩展（随 ``flowing`` 包发布但不自动启用），
 为 Agent 提供「文件区段的剪切 / 复制 / 粘贴」能力——面向 LLM 跨文件
 搬运代码段的常见场景：LLM 先 cut/copy 一个区段（小内容进内存剪贴板、
 大内容落文件），再 paste 到目标位置，避免在上下文里来回复述大段文本。
@@ -48,25 +48,25 @@
 - 值为 ``None`` （空）或 JSON 纯数据 dict：``{"content": str,
   "origin_path": str | None, "lines": int, "chars": int}`` （state 值
   必须 JSON 可序列化的硬约束——缓冲不落对象）。
-- **每 Agent 一份** （per-agent state.jsonl 单 writer，多 Agent 天然
+- 每 Agent 一份 （per-agent state.jsonl 单 writer，多 Agent 天然
   隔离）；跨 Agent 搬运经文件输出中转。
-- **一次性语义**：``paste`` 成功且来源为剪贴板 → 缓冲清空为
+- 一次性语义：``paste`` 成功且来源为剪贴板 → 缓冲清空为
   ``None`` （防止长期占用 state.jsonl 体积）。
-- **阈值双限**：cut/copy 进剪贴板的内容行数超过
-  ``clipboard_max_lines`` （默认 500）**或**字符数超过
+- 阈值双限：cut/copy 进剪贴板的内容行数超过
+  ``clipboard_max_lines`` （默认 500）或字符数超过
   ``clipboard_max_chars`` （默认 10k）→
   拒绝入缓冲，强制文件输出；文件输出无阈值。
 
 .. rubric:: 位置与路径口径
 
-- 路径遵循 **``cwd`` 基准制**（与 builtins 全部工具同口径）：
+- 路径遵循 ``cwd`` 基准制（与 builtins 全部工具同口径）：
   ``cwd=None`` （默认）时一切文件参数仅收绝对路径；``cwd`` 非
   ``None`` 时允许相对路径（相对 ``cwd`` 解析）；``cwd`` 自身必须是
   绝对路径。相对路径无基准或 ``cwd`` 非绝对 → error ``ToolResult``。
   ``cwd`` 同时是「``.fya`` 定义期经智能体属性传参」的示范位
   （Parsable 覆写 ``cwd: "{{ cwd }}"``，完整示例见
   :mod:`flowing.builtins.tools` 模块 docstring）。
-- 行号 **1 起**（对齐编辑器）、offset **0 起**（对齐 Python 切片）；
+- 行号 1 起（对齐编辑器）、offset 0 起（对齐 Python 切片）；
   区间一律 start 包含、end 排除；越界各自报错（fail fast）。
 
 .. seealso:: :mod:`flowing.plugins.clipboard.tools`（三件工具）、
@@ -147,7 +147,7 @@ def use_clipboard(agent: Agent, *, max_lines: int = 500,
 
     .. rubric:: 功能介绍
 
-    两件事：① 声明 ``clipboard_buffer`` 状态键（默认 ``None`` =
+    两件事：① 声明 ``clipboard_buffer`` 状态键（默认 ``None`` 表示
     空剪贴板；写透落盘、recover 可恢复）；② 把阈值写到实例属性
     ``clipboard_max_lines`` / ``clipboard_max_chars`` （插件绑定成员
     命名约定：注册名 underscore 前缀），三件工具经 ``caller`` 读取。

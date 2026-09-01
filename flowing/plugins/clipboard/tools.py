@@ -59,7 +59,7 @@ def _parse_line_offset(value: str, lines: list[str], offsets: list[int],
                        *, what: str) -> int:
     """``"line,offset"`` 形态（行 1 起、offset 0 起）→ 绝对字符位置。
 
-    offset 取值为 ``[0, 行文本长度]`` （= 行尾，不含换行符）；越界抛
+    offset 取值为 ``[0, 行文本长度]`` （即行尾，不含换行符）；越界抛
     ``ValueError``。
     """
     parts = value.split(",")
@@ -84,7 +84,7 @@ def _parse_line_offset(value: str, lines: list[str], offsets: list[int],
 def _segment_range(text: str, start: int | str, end: int | str) -> tuple[int, int]:
     """``start`` / ``end`` 双形态 → ``(abs_start, abs_end)`` 绝对字符区间。
 
-    两种形态不得混用：① 两个 ``int`` = 行号（1 起，start 含 end 不含）；
+    两种形态不得混用：① 两个 ``int`` 表示行号（1 起，start 含 end 不含）；
     ② 两个 ``"line,offset"`` 字符串（行 1 起、offset 0 起，end 位置排除）。
     越界 / 混用 / 区间倒置一律 ``ValueError`` （先校验后落盘）。
     """
@@ -152,30 +152,30 @@ def _emit_segment(caller: Agent, segment: str, origin: Path,
 
 
 class ClipboardCutTool(Tool):
-    """``clipboard-cut``——剪切文件区段到剪贴板或文件（**可写工具**）。
+    """``clipboard-cut``——剪切文件区段到剪贴板或文件（可写工具）。
 
     .. rubric:: 行为要点
 
     - 参数：``path`` （目标文件，必填，遵循 ``cwd`` 基准口径——
       ``cwd=None`` 时仅绝对路径）；``cwd`` （路径基准，默认 ``None``，
       给则必须绝对路径，对 ``path`` 与文件形态的 ``output`` 同时生效）；
-      ``start`` / ``end`` （必填，两种形态**不得混用**——① 两个
-      ``int`` = 行号，**1 起**，start 包含、end 排除；② 两个
+      ``start`` / ``end`` （必填，两种形态不得混用——① 两个
+      ``int`` 表示行号，1 起，start 包含、end 排除；② 两个
       ``"line,offset"`` 形式字符串，行 1 起、offset 0 起，end 位置
       排除）；``output`` （``"clipboard"`` （默认）或绝对路径文件）。
-    - **标准剪切语义**：区段写入目标后，源文件**立即删除该段**
+    - 标准剪切语义：区段写入目标后，源文件立即删除该段
       （落盘副作用，与编辑器 cut 一致）。
     - ``output="clipboard"``：写入 ``caller`` 的
-      ``state.clipboard_buffer`` （写透落盘）；**阈值双限**——内容
-      行数超过 ``clipboard_max_lines`` （默认 500）**或**字符数超过
+      ``state.clipboard_buffer`` （写透落盘）；阈值双限——内容
+      行数超过 ``clipboard_max_lines`` （默认 500）或字符数超过
       ``clipboard_max_chars`` （默认 10k）→ error ``ToolResult``，
       提示改用文件输出。
-    - ``output`` 为文件：绝对路径、覆盖写、父目录自动创建；**无阈值
-      限制**（大段内容走文件正是阈值的存在理由）。
+    - ``output`` 为文件：绝对路径、覆盖写、父目录自动创建；无阈值
+      限制（大段内容走文件正是阈值的存在理由）。
     - 边缘情况：相对路径且无 ``cwd`` / ``cwd`` 非绝对 / 两形态混用 /
       行号或 offset 越界（行号超文件行数、offset 超行尾）/ 路径是目录
       → error ``ToolResult`` （LLM 可见、可自纠正，不抛异常）。
-    - **危险面**：删改源文件。审批属策略层（``before_tool_call``）。
+    - 危险面：删改源文件。审批属策略层（``before_tool_call``）。
 
     .. seealso:: :class:`ClipboardCopyTool`、:class:`ClipboardPasteTool`、
         :func:`flowing.plugins.clipboard.use_clipboard`
@@ -237,7 +237,7 @@ class ClipboardCopyTool(Tool):
 
     .. rubric:: 行为要点
 
-    与 :class:`ClipboardCutTool` 全同，唯一差异：**不删除源文件区段**
+    与 :class:`ClipboardCutTool` 全同，唯一差异：不删除源文件区段
     （无落盘副作用，源文件只读）。阈值双限与 ``output`` 语义一致。
 
     .. seealso:: :class:`ClipboardCutTool`、:class:`ClipboardPasteTool`
@@ -292,24 +292,24 @@ class ClipboardCopyTool(Tool):
 
 
 class ClipboardPasteTool(Tool):
-    """``clipboard-paste``——把剪贴板或文件内容插入目标文件（**可写工具**）。
+    """``clipboard-paste``——把剪贴板或文件内容插入目标文件（可写工具）。
 
     .. rubric:: 行为要点
 
-    - 参数：``path`` （**目标文件**，必填，遵循 ``cwd`` 基准口径——
+    - 参数：``path`` （目标文件，必填，遵循 ``cwd`` 基准口径——
       ``cwd=None`` 时仅绝对路径）；``cwd`` （路径基准，默认 ``None``，
       给则必须绝对路径，对 ``path`` 与文件形态的 ``source`` 同时生效）；
       ``source`` （``"clipboard"`` （默认）或绝对路径文件）；``pos``
       必填，插入位置——``int`` 为行号（1 起，内容作为整行块插入到
-      第 N 行**之前**，N = 行数+1 即追加末尾）；``"line,offset"`` =
-      行内 offset 处插入，不改动行结构）。
-    - **一次性语义**：``source="clipboard"`` 且粘贴成功后，**清空内存
-      剪贴板**（``state.clipboard_buffer = None``）——防止剪贴板内容
+      第 N 行之前，N 等于行数加 1 即追加末尾）；``"line,offset"``
+      表示行内 offset 处插入，不改动行结构）。
+    - 一次性语义：``source="clipboard"`` 且粘贴成功后，清空内存
+      剪贴板（``state.clipboard_buffer = None``）——防止剪贴板内容
       长期占用 state.jsonl 体积；连续粘贴需重新 cut/copy。
     - 边缘情况：剪贴板为空 / 相对路径且无 ``cwd`` / ``cwd`` 非绝对 /
       pos 越界 / 路径是目录 → error ``ToolResult``。清空只发生在
-      **成功**粘贴后（失败保留缓冲，LLM 可修正 pos 重试）。
-    - **危险面**：改目标文件。审批属策略层（``before_tool_call``）。
+      成功粘贴后（失败保留缓冲，LLM 可修正 pos 重试）。
+    - 危险面：改目标文件。审批属策略层（``before_tool_call``）。
 
     .. seealso:: :class:`ClipboardCutTool`、:class:`ClipboardCopyTool`
     """
