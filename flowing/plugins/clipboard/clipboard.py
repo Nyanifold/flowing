@@ -43,7 +43,7 @@
   ``clipboard_buffer`` 状态键、无阈值属性；此时调用三件工具 → 
   「剪贴板未启用」error ``ToolResult``。
 
-.. rubric:: 缓冲契约（state 键 clipboard_buffer）
+.. rubric:: 缓冲契约（state 键 ``clipboard_buffer``）
 
 - 值为 ``None`` （空）或 JSON 纯数据 dict：``{"content": str,
   "origin_path": str | None, "lines": int, "chars": int}`` （state 值
@@ -67,7 +67,8 @@
   （Parsable 覆写 ``cwd: "{{ cwd }}"``，完整示例见
   :mod:`flowing.builtins.tools` 模块 docstring）。
 - 行号 1 起（对齐编辑器）、offset 0 起（对齐 Python 切片）；
-  区间一律 start 包含、end 排除；越界各自报错（fail fast）。
+  区间一律 start 包含、end 排除；越界各自报错（fail-fast：失败立即
+  报错，不静默降级）。
 
 .. seealso:: :mod:`flowing.plugins.clipboard.tools`（三件工具）、
     :mod:`flowing.plugins.cron`（双层启用与同构的 state 键模式先例）

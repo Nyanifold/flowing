@@ -66,7 +66,7 @@ CatalogTemplate: TypeAlias = str
 - 渲染经 Parsable TEMPLATE 语义（先展开 ``$`` 文件引用，再执行
   Jinja2 模板渲染；``include`` 的基准目录是调用方 Agent 的
   ``source_dir``）。
-- 渲染异常 fail-fast 上抛，不静默降级。
+- 渲染异常 fail-fast 上抛（fail-fast：失败立即报错，不静默降级）。
 - 条目中的 ``Skill`` 已在声明期解析入注册表，模板渲染本身不触发
   文件 IO（``$`` FILE_REF 模板例外：模板源自身的读取发生在求值时）。
 
@@ -88,7 +88,7 @@ class Skill:
 
     .. rubric:: 使用示例
 
-    ``.md`` 形式（frontmatter 为 YAML，正文为 Markdown）:
+    ``.md`` 形式（frontmatter 为 YAML，正文为 Markdown）：
 
     .. code-block:: markdown
 
@@ -106,7 +106,7 @@ class Skill:
         {% endif %}
 
     ``.skill.fya`` 形式（块结构声明，``$script`` 只用于定义
-    ``on_load``）:
+    ``on_load``）：
 
     .. code-block:: yaml
 

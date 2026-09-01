@@ -126,7 +126,8 @@ Skill 定义是文件资源，三种等价形式（``SkillRegistry`` 统一解�
   候选文件（属组织异味：读者需回溯优先级才能确定生效者）。
 
 全部不存在 → 解析失败（见 :meth:`SkillRegistry.get`）。
-不存在自动扫描（除 ``skills: _`` 的 PENDING 声明外），所有 Skill
+PENDING 是 ``.fya`` 里的 ``_`` 占位值，表示该字段留待运行期赋值；
+除 ``skills: _`` 的 PENDING 声明外不存在自动扫描，所有 Skill
 均经 Agent 显式引用触发定向查找；``skills:`` 条目支持裸名 / 显式
 相对路径 / glob 三形态，glob 展开时规范名与已显式声明条目相同的跳过
 （先解析显式条目，再展开 glob）。
@@ -173,23 +174,24 @@ LLM 不给 skill 传参：``skill-load`` 工具与 ``agent.skill_load()``
 注入表达式在求值时沿 provide 链上溯、缺失即
 :class:`flowing.errors.MissingProvideError`）；声明期覆盖校验：
 ``skill_add`` 时逐参数检查——不在 ``specified`` 又无 schema 默认值
-→ :class:`flowing.errors.FormatError`（fail-fast，不留到运行期）。
+→ :class:`flowing.errors.FormatError`（fail-fast：失败立即报错，
+不静默降级；不留到运行期）。
 需要 LLM 传参的能力应建模为 Tool。
 
 .. rubric:: 使用示例
 
-手写子类（``setup()`` 中启用并挂钩子）:
+手写子类（``setup()`` 中启用并挂钩子）：
 
 .. code-block:: python
 
     async def setup(self):
         use_skill(self)
         self.add_tool("skill-load")          # 工具本体已由 install() 注册；此处声明对 LLM 可见
-        # 注册开放：声明后任何 Composable 都能挂 handler
+        # 注册开放：声明后任何 Composable 都能挂 handler（handler 由你实现）
         self.hooks.before_skill_load(self._scan_content, by="guardrail")
         self.hooks.after_skill_load(self._log_usage, by="audit")
 
-``.fya`` 声明（``skills:`` 字段与 ``$script`` 里启用）:
+``.fya`` 声明（``skills:`` 字段与 ``$script`` 里启用）：
 
 .. code-block:: yaml
 
@@ -388,7 +390,7 @@ class SkillLoadTool(Tool):
     .. rubric:: 使用示例
 
     启用后对 LLM 可见需显式声明（工具本体由 ``SkillPlugin.install()``
-    注册）:
+    注册）：
 
     .. code-block:: python
 
@@ -581,7 +583,7 @@ def use_skill(
         async def setup(self):
             use_skill(self, catalog_template=DEFAULT_CATALOG_TEMPLATE)
             self.add_tool("skill-load")   # 工具本体已由 install() 注册；此处声明对 LLM 可见
-            # 注册开放：声明后任何 Composable 都能挂 handler
+            # 注册开放：声明后任何 Composable 都能挂 handler（handler 由你实现）
             self.hooks.before_skill_load(self._scan_content, by="guardrail")
             self.hooks.after_skill_load(self._log_usage, by="audit")
 
