@@ -14,7 +14,7 @@ Flowing 的核心立场是「框架只提供机制，不提供策略」。包结
   ``workflow`` / ``clipboard``）——随包发布、显式 ``runtime.use(...)`` 启用。
 - **应用层**：``flowing.composables``（``use_xxx(agent)`` 纯函数式注入）。
 
-运行模型的定稿锚点：消息级树（``Message.id`` + ``parent_id`` 链，
+运行模型锚点：消息级树（``Message.id`` + ``parent_id`` 链，
 ``current_head_id`` 指向消息 id）；Turn 仅为逻辑执行阶段（执行期载体
 :class:`flowing.agent.TurnContext`，不落盘、不进树）；能力三正交
 （可执行对象 / LLM 可见声明 / Agent 级绑定，推广到 Tool / 子 Agent /
@@ -52,9 +52,6 @@ Skill）；provide-inject 沿 ``_parent_id`` 链上溯；实例级钩子系统�
   子模块的规约。
 - 稳定性：本模块导出的全部符号属跨版本稳定契约；``_`` 前缀符号与
   ``flowing.interfaces.cli`` / ``flowing.interfaces.web`` 的细节不属稳定边界。
-
-.. seealso:: 规约总览 ``00-总览.md``（最终架构与命名定稿）、
-    ``01-spec覆盖角度.md``（docstring 五节结构与覆盖检查表）
 """
 
 from flowing.agent import (
