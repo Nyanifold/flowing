@@ -1,78 +1,71 @@
-"""``flowing.composables.reminder`` —— ``use_system_reminder``：每回合注入系统提醒。
+"""flowing.composables.reminder —— 内置系统提醒 Composable（可选、非默认）。
 
 .. rubric:: 功能介绍
 
-应用层 Composable。把一个「提醒内容清单」在每个逻辑 Turn 开始前压缩为
-**一条** ``Message(kind=EVENT)``（多个 Content 块合并），经
-``before_turn`` 向 ``TurnContext.pending_messages`` 附加式注入（M-29
-唯一推荐通道：随批次挂树持久化）。典型内容：当前时间、当前目录、
-任务状态等**高频更新值**——它们不应进 prompt 块（破坏 provider 前缀
-缓存，见 ``flowing.context`` 模块 docstring），消息通道（历史尾部
-追加）是正确位置。
+本模块提供 ``use_system_reminder()``：为单个 Agent 实例启用「每个逻辑
+Turn 开始前注入系统提醒」策略。启用后，每个逻辑 Turn 开始时，默认策略
+把当前可见的提醒内容清单压缩为一条 ``Message(kind=EVENT, ...)``（多个
+内容块合并成一条消息），经 ``before_turn`` 钩子附加进本回合的待挂树
+批次——提醒随批次挂树并持久化，排在触发消息之后。
 
-.. rubric:: 设计动机
+典型内容：当前时间、当前目录、任务状态等高频率更新的值。它们不应进
+prompt 块（破坏 Provider 前缀缓存，见 ``flowing.context`` 模块
+docstring）；消息通道（历史尾部追加）是正确位置。
 
-思路锚定两条既定裁决：注入走 M-29 的 ``before_turn`` 附加式通道；
-清理走 tags 直删（``agent.remove_by_tags``——Agent 层包装，自动处理
-head 回退），不需要自记 ``last_turn_message_id`` 反向扫描。
-安装模式与 :func:`flowing.composables.retry.use_retry` 同构（setup 中
-调用、挂 handler、``remove_by_owner`` 整组卸载）。
+本模块属应用层 / 内置 Composable：随 ``flowing`` 包发布但不自动启用，
+必须由 Agent 开发者在 ``setup()`` 中显式调用。不调用的 Agent 不持有
+任何提醒相关 handler 与状态。
 
-.. rubric:: 参数语义
+.. rubric:: 注册面清单
 
-- ``clean=False``（默认）：注入的提醒消息**留在树上**（持久化历史
-  的一部分，崩溃可恢复）。``clean=True``：``after_turn`` 时按
-  ``tags`` 擦除本回合注入的提醒——代价：每 turn 至少 1 条注入 + 1 条
-  tombstone（写盘量翻倍），且清理后**历史回放中该信息丢失**（崩溃
-  恢复后那条 reminder 已被删除）。
-- ``message_interval=0``：距上次注入后新增消息数 **≥ interval** 才再次
-  注入（``0`` = 每回合都注入）；实现为 Composable 实例属性计数，
-  不需要框架新机制。
-- ``time_interval=0``（秒）：距上次注入的墙钟间隔低于该值则跳过
-  （``0`` = 不限）。与 ``message_interval`` 是「任一不满足即跳过」
-  的与关系。
+- 启用方式：仅阶段二——``setup()`` 中调用 ``use_system_reminder(self)``
+  （恢复管线在新实例上重跑 ``setup()``，天然不叠加）。未启用时零开销：
+  ``before_turn`` / ``after_turn`` 链上无任何 ``by="system-reminder"``
+  handler。
+- 注册的资源：无 provide key、无工具注册、无 Agent 状态键、不改
+  prompt 块。
+- 声明的钩子点：无（本模块只往核心已有的钩子点挂 handler，纯挂载）。
+- 挂载的钩子：``before_turn`` 注入 handler（``by="system-reminder"``，
+  见 :func:`use_system_reminder`）+ ``clean=True`` 时的 ``after_turn``
+  清理 handler（``by="system-reminder"``）。两者共用 ``by``，
+  ``remove_by_owner("system-reminder")`` 可整组移除。
+- 作用域：只影响调用它的那一个 Agent 实例；注入的提醒随批次落盘
+  （``clean=False`` 时持久化、崩溃可恢复），间隔判定状态不落盘。
 
 .. rubric:: 使用示例
 
 .. code-block:: python
 
-    async def setup(self):
+    async def setup(self) -> None:
         use_system_reminder(
             self,
-            contents=[lambda agent: f"当前目录：{agent.cwd}"],
-            clean=True,             # 响应后清洗，不累积到后续轮次
-            message_interval=4,     # 至少隔 4 条新消息再注入
+            contents=[lambda agent: f"当前节点：{agent.node_id}"],
+            message_interval=4,   # 至少隔 4 条新消息再注入
         )
 
-.. rubric:: 行为规约
+.. rubric:: 行为要点
 
-- 安装（同步 ``def``，M-91 范式）：注册 ``before_turn`` handler
-  （``by="system-reminder"``）——把当前可见提醒块压缩成一条
-  ``Message(kind=EVENT, source="system-reminder", content=[...])``，
-  ``tags=["system-reminder"]``，附加到 ``pending_messages`` 末尾
-  （排在触发消息之后）；``clean=True`` 时再注册 ``after_turn``
-  handler（同 ``by``）按 tags 擦除。卸载：
-  ``remove_by_owner("system-reminder")`` 整组移除。
-- 间隔判定的状态（上次注入的消息序/时间戳）存 Composable 闭包/
-  实例属性——纯运行期，不落盘、不进 state 袋。
-- 非行为：不注册模板全局函数、不改 prompt 块；注入内容回调
-  （``contents`` 各项）为 ``(agent) -> str`` 或静态字符串，每次
-  注入现场求值。
-- 边缘情况：提醒清单为空或全部回调返回空串 → 本回合不注入；
-  ``before_turn`` 被 ``Intercepted`` 阻断时批次整体丢弃，提醒随之
-  不注入（同批次语义）。
-
-.. rubric:: 调用关系（审计）
-
-- 调用：``before_turn`` / ``after_turn`` handler 注册（时机：安装）；
-  ``agent.remove_by_tags``（时机：``clean=True`` 时每回合收尾）
-- 被调：无框架内调用方（应用层在 ``setup()`` 中调用）
+- 注入形态：每个满足注入条件的逻辑 Turn 压缩为一条
+  ``Message(kind=EVENT, source="system-reminder", content=[...],
+  tags=["system-reminder"])``，附加到 ``pending_messages`` 末尾（排在
+  触发消息之后），随批次挂树并持久化。
+- 内容求值：``contents`` 各项为 ``(agent) -> str`` 回调或静态字符串，
+  每次注入现场求值；空字符串条目剔除；清单为空（含缺省 ``None``）或
+  全部条目为空串时本回合不注入。
+- 间隔判定：``message_interval`` 与 ``time_interval`` 是与关系——任一
+  不满足即跳过（默认两者均为 0：每回合都注入）；首次注入不受间隔限制。
+- 清理语义：``clean=True`` 时每回合收尾按 ``tags`` 擦除本回合注入的
+  提醒（head 回退由 Agent 层处理）——代价是每回合至少一条注入 + 一条
+  删除标记（写盘量翻倍），且清理后历史回放中该信息丢失（崩溃恢复后
+  那条提醒已被删除）。``clean=False``（默认）时提醒留在树上。
+- 与批次同生共死：``before_turn`` 被 ``Intercepted`` 阻断时整个批次
+  丢弃、不落盘，提醒随之不注入（同批次语义）。
 
 .. seealso::
 
-    - :class:`flowing.agent.TurnContext` —— ``pending_messages`` 附加式
-      注入的载体（其 ``_reminder`` 示例即本 Composable 的雏形）。
-    - :func:`flowing.composables.retry.use_retry` —— 同构的安装模式。
+    :class:`flowing.agent.TurnContext` —— ``pending_messages`` 附加式
+    注入的载体。
+    :func:`flowing.composables.retry.use_retry` —— 同构的安装模式。
 """
 
 from __future__ import annotations
@@ -97,24 +90,89 @@ def use_system_reminder(
     message_interval: int = 0,
     time_interval: float = 0,
 ) -> None:
-    """把系统提醒清单装到 Agent 上（模块 docstring 为完整规约）。
+    """为单个 Agent 实例启用「每回合注入系统提醒」策略（可选、非默认）。
 
-    同步注册型 Composable（M-91）：注册 ``by="system-reminder"`` 的
-    ``before_turn`` 注入 handler（``clean=True`` 时加 ``after_turn``
-    清理 handler）；卸载经 ``remove_by_owner("system-reminder")``。
+    .. rubric:: 功能介绍
 
-    间隔判定的消息计数口径：以消息级树的总结点数（``len(agent._messages)``）
-    为水位——``before_turn`` 触发时 ``turn.message_ids`` 恒为空（本回合
-    批次尚未挂树），骨架注释中的 ``turn.message_ids`` 提法不成立，按
-    「距上次注入后新增消息数」的语义以树水位差实现。首次注入前
-    （``last_count is None``）不做间隔判定——「距上次注入」在从未注入时
-    自然满足（先注入再谈「再次注入」）。
+    注册 ``by="system-reminder"`` 的 ``before_turn`` 注入 handler：每个
+    逻辑 Turn 开始时，把当前可见的提醒内容压缩为一条
+    ``Message(kind=EVENT, source="system-reminder", ...)`` 附加进
+    ``pending_messages`` 末尾（排在触发消息之后），随批次挂树并持久化。
+    ``clean=True`` 时再注册 ``after_turn`` 清理 handler（同 ``by``），
+    每回合收尾按 ``tags`` 擦除本回合注入的提醒。
+
+    本函数是双层启用的阶段二入口，只能在 ``setup()``（或实例存活期内
+    的任意代码）中对已完成初始化的实例调用。
+
+    .. rubric:: 使用示例
+
+    .. code-block:: python
+
+        async def setup(self) -> None:
+            use_system_reminder(
+                self,
+                contents=[
+                    lambda agent: f"当前节点：{agent.node_id}",
+                    "请优先核对金额。",
+                ],
+                clean=True,           # 回合收尾后擦除，不累积到后续轮次
+                message_interval=4,   # 至少隔 4 条新消息再注入
+            )
+
+    .. rubric:: 行为要点
+
+    - ``contents``：提醒内容清单，各项为 ``(agent) -> str`` 回调或静态
+      字符串，每次注入现场求值；空字符串条目剔除；清单为空（含缺省
+      ``None``）或全部条目为空串时本回合不注入。
+    - 注入条件：距上次注入后新增消息数 ``>= message_interval`` 且距上次
+      注入的墙钟间隔 ``>= time_interval``（秒）——两者是与关系，任一不
+      满足即跳过；两者均为 0（默认）时每回合都注入；首次注入不受间隔
+      限制。间隔判定状态是闭包内部状态，纯运行期，不落盘、不进状态袋。
+    - 消息计数口径：以消息级树的总结点数（``len(agent._messages)``）为
+      水位——``before_turn`` 触发时 ``turn.message_ids`` 恒为空（本回合
+      批次尚未挂树），无法用回合消息列表计数。
+    - ``clean=True`` 的代价与边界：每回合至少一条注入 + 一条删除标记
+      （写盘量翻倍）；清理后历史回放中该信息丢失（崩溃恢复后那条提醒
+      已被删除）。
+    - 与批次同生共死：``before_turn`` 被 ``Intercepted`` 阻断时整个批次
+      丢弃、不落盘，提醒随之不注入。
+    - 重复调用：不做幂等去重——每次调用各叠加一组独立的 handler（各自
+      持有独立的间隔状态闭包），允许以不同参数多次启用。恢复管线在新
+      实例上重跑 ``setup()``，钩子注册表随实例重建，天然不叠加。
+    - 不做什么：不注册模板全局函数、不改 prompt 块、不修改
+      ``agent.model``、不持久化任何状态。
+
+    :param agent: 目标 Agent 实例；标准用法是在 ``setup()`` 中传 ``self``。
+    :param contents: 提醒内容清单（``(agent) -> str`` 回调或静态字符串）；
+        缺省 ``None`` 视为空清单。
+    :param clean: 为 ``True`` 时每回合收尾按 ``tags`` 擦除本回合注入的
+        提醒；为 ``False``（默认）时提醒留在树上（持久化、崩溃可恢复）。
+    :param message_interval: 距上次注入后新增消息数达到该值才再次注入，
+        ``>= 0``，默认 ``0``（每回合都注入）。
+    :param time_interval: 距上次注入的墙钟间隔（秒）达到该值才再次注入，
+        ``>= 0``，默认 ``0``（不限）。
+
+    .. seealso::
+
+        :class:`flowing.agent.TurnContext` —— ``pending_messages`` 附加式
+        注入的载体。
     """
     items = list(contents or [])
     # 间隔判定状态：闭包持有，纯运行期——不落盘、不进 state 袋
     state: dict = {"last_count": None, "last_fired": None}
 
     async def _inject(agent: "Agent", turn: "TurnContext") -> "TurnContext":
+        """注入 handler（内部 API，经 ``by="system-reminder"`` 定位与移除）。
+
+        间隔判定（``message_interval`` / ``time_interval`` 与关系，任一
+        不满足即跳过；从未注入过时直接放行）→ ``contents`` 现场求值
+        （空串条目剔除，全空不注入）→ 压缩为一条 ``Message(kind=EVENT,
+        source="system-reminder", tags=["system-reminder"])`` 附加到
+        ``pending_messages`` 末尾（排在触发消息之后）。消息计数以消息树
+        总结点数（``len(agent._messages)``）为水位——``before_turn``
+        触发时 ``turn.message_ids`` 恒为空（本回合批次尚未挂树）。必须
+        ``return turn``。
+        """
         # 间隔判定：message_interval 与 time_interval 与关系（任一不满足
         # 即跳过）；从未注入过时直接放行
         if state["last_count"] is not None:
@@ -141,8 +199,12 @@ def use_system_reminder(
         return turn
 
     async def _cleanup(agent: "Agent", turn: "TurnContext") -> "TurnContext":
-        # clean=True 时每回合收尾按 tags 擦除本回合注入的提醒（head 回退
-        # 由 Agent 层 remove_by_tags 处理）
+        """清理 handler（内部 API，经 ``by="system-reminder"`` 定位与移除）。
+
+        ``clean=True`` 时每回合收尾按 ``tags`` 擦除本回合注入的提醒
+        （head 回退由 Agent 层 :meth:`flowing.agent.Agent.remove_by_tags`
+        处理）。必须 ``return turn``。
+        """
         agent.remove_by_tags({"system-reminder"})
         return turn
 

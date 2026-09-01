@@ -1,40 +1,60 @@
-"""``flowing.composables`` —— 应用层 Composable：纯函数式能力注入。
+"""flowing.composables —— 应用层 Composable：纯函数式能力注入。
 
 .. rubric:: 功能介绍
 
-Composable 是三层架构的**应用层**：普通 Python 函数（命名约定
-``use_xxx(agent, ...)``），在 Agent 的 ``setup()`` 中被调用，往已有钩子点 /
-注册表上挂载 handler 或提供值。初版内置三个：:func:`use_retry`
-（:mod:`flowing.composables.retry`，LLM 错误重试）、:func:`use_compact`
-（:mod:`flowing.composables.compact`，上下文超阈值自动压缩换链）与
-:func:`use_system_reminder`（:mod:`flowing.composables.reminder`，每回合
-注入系统提醒——高频更新值的消息通道注入）；
-场景 Composable（``use_logging`` / ``use_guardrail`` 等）属应用代码，
-框架不预留符号。
+Composable 是三层架构中的应用层：普通 Python 函数（命名约定
+``use_xxx(agent, ...)``），在 Agent 的 ``setup()`` 中被调用，为这一个
+Agent 实例注册钩子 handler 或绑定实例属性。初版内置三个：
+:func:`use_retry`（:mod:`flowing.composables.retry`，LLM 调用失败退避
+重试）、:func:`use_compact`（:mod:`flowing.composables.compact`，上下文
+占用超阈值自动压缩换链）与 :func:`use_system_reminder`
+（:mod:`flowing.composables.reminder`，每回合注入系统提醒）。场景类
+Composable（``use_logging`` / ``use_guardrail`` 等）属应用代码，框架
+不预留符号。
 
-.. rubric:: 设计动机
+Composable 只做「挂载」：注册钩子 handler、绑定实例属性；不修改框架
+核心状态。本包不提供插件（阶段一）能力：不做全局注册、不经过
+``runtime.use()``、没有 ``install()``——调用即生效，作用域严格限于传入
+的那一个 Agent 实例。
 
-- 「机制 vs 策略」：Composable 承载策略（重试几次、审批什么），框架核心
-  只提供钩子点机制；默认策略可被用户同名 Composable 整组覆盖
-  （``remove_by_owner`` + 重新注册）。
-- **双层启用阶段二**：``use_xxx(self)`` 按实例启用，不调用的 Agent 零
-  开销——prompt 无注入、LLM 看不到相关工具、钩子点不存在。
-- 纯 Composable → Plugin 的升级路径：``use_xxx()`` 签名行为不变，只加
-  Plugin 包装类，调用方零修改。
+.. rubric:: 使用示例
 
-.. rubric:: 行为规约
+典型组合（手写 Agent 子类的 ``setup()`` 中按需启用）：
 
-- Composable 只做「挂载」：注册钩子 handler、追加 prompt block、绑定
-  实例方法；不修改框架核心状态。
-- **同步 / async 由内部需求决定**（M-91 范式裁决）：纯注册型
-  Composable 写成同步 ``def``（``use_retry`` / ``use_cron`` /
-  ``use_comm`` / ``use_skill`` 均如此）；只有内部确需 ``await``
-  （读文件、网络请求等）时才用 ``async def``。不为「形态统一」
-  强行 async——调用点写不写 ``await`` 应反映真实需求。
+.. code-block:: python
+
+    from flowing import Agent
+    from flowing.composables import use_compact, use_retry, use_system_reminder
+
+    class MyAgent(Agent):
+        async def setup(self) -> None:
+            use_retry(self, max_retries=3)        # LLM 调用失败：退避重试
+            use_compact(self, threshold=0.8)      # 上下文超阈值：自动压缩换链
+            use_system_reminder(self, contents=[
+                lambda agent: f"当前节点：{agent.node_id}",
+            ])                                    # 每回合注入一条系统提醒
+
+.. rubric:: 行为要点
+
+- 启用方式：双层启用的阶段二——``use_xxx(self)`` 在 ``setup()`` 中按
+  实例启用（恢复管线在新实例上重跑 ``setup()``，钩子注册表随实例重建，
+  天然不叠加）；未调用 ``use_xxx`` 的 Agent 不持有任何相关 handler 与
+  状态——「没启用」是「代码路径从没存在过」，不是「被跳过」，零开销。
+- 同步 / async 形态：由内部是否确需 ``await`` 决定——纯注册型
+  Composable 写成同步 ``def``（本包三个均为同步），调用点不需要
+  ``await``；需要真实等待（退避 sleep、副线查询）的 handler 才是异步
+  函数。
 - 无排序约束：``setup()`` 中调用顺序决定最终结果，后执行覆盖先执行。
+- 本包三个 Composable 均不做幂等去重：重复调用按注册语义各自叠加一组
+  handler（允许以不同参数多次启用）；整组替换用
+  ``remove_by_owner(<by>)`` 移除默认 handler 后自注册。
+- 注册的资源、声明的钩子点与挂载的钩子：见各子模块 docstring 的
+  「注册面清单」。
 
-.. seealso:: :mod:`flowing.plugins`（阶段一插件层）、
-    :class:`flowing.hooks.HookRegistry`（Composable 的主要挂载面）
+.. seealso::
+
+    :mod:`flowing.plugins` —— 阶段一插件层（跨 Agent / 进程级能力）。
+    :class:`flowing.hooks.HookRegistry` —— Composable 的主要挂载面。
 """
 
 from flowing.composables.retry import use_retry
