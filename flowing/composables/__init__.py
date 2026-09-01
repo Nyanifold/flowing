@@ -5,8 +5,8 @@
 Composable 是三层架构中的应用层：普通 Python 函数（命名约定
 ``use_xxx(agent, ...)``），在 Agent 的 ``setup()`` 中被调用，为这一个
 Agent 实例注册钩子 handler 或绑定实例属性。初版内置三个：
-:func:`use_retry`（:mod:`flowing.composables.retry`，LLM 调用失败退避
-重试）、:func:`use_compact`（:mod:`flowing.composables.compact`，上下文
+:func:`use_retry` （:mod:`flowing.composables.retry`，LLM 调用失败退避
+重试）、:func:`use_compact` （:mod:`flowing.composables.compact`，上下文
 占用超阈值自动压缩换链）与 :func:`use_system_reminder`
 （:mod:`flowing.composables.reminder`，每回合注入系统提醒）。场景类
 Composable（``use_logging`` / ``use_guardrail`` 等）属应用代码，框架
@@ -41,7 +41,7 @@ Composable 只做「挂载」：注册钩子 handler、绑定实例属性；不�
   天然不叠加）；未调用 ``use_xxx`` 的 Agent 不持有任何相关 handler 与
   状态——「没启用」是「代码路径从没存在过」，不是「被跳过」，零开销。
 - 同步 / async 形态：由内部是否确需 ``await`` 决定——纯注册型
-  Composable 写成同步 ``def``（本包三个均为同步），调用点不需要
+  Composable 写成同步 ``def`` （本包三个均为同步），调用点不需要
   ``await``；需要真实等待（退避 sleep、副线查询）的 handler 才是异步
   函数。
 - 无排序约束：``setup()`` 中调用顺序决定最终结果，后执行覆盖先执行。

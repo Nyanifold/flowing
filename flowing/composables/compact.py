@@ -22,16 +22,16 @@
 
 .. rubric:: 注册面清单
 
-- 启用方式：仅阶段二——``setup()`` 中调用 ``use_compact(self)``（恢复
+- 启用方式：仅阶段二——``setup()`` 中调用 ``use_compact(self)`` （恢复
   管线在新实例上重跑 ``setup()``，天然不叠加）。未启用时零开销：
   ``after_provider_gen`` 链上无任何 ``by="compact"`` handler，Agent 上
   没有 ``compact_prompt`` 属性，``on_compact`` 钩子点不存在（访问抛
   :class:`flowing.errors.UnknownHookPointError`）。
 - 注册的资源：Agent 侧 ``compact_prompt`` 属性（缺省绑定
   :data:`DEFAULT_COMPACT_PROMPT`，开发者已定义时保留开发者的，见
-  :func:`use_compact`）；副线查询 ``side_query``（``by="_side"``，框架
+  :func:`use_compact`）；副线查询 ``side_query`` （``by="_side"``，框架
   机制，非本模块注册）。无 provide key、无工具注册、无 Agent 状态键。
-- 声明的钩子点：``on_compact``（``by="compact"``，无 ``match_on``）——
+- 声明的钩子点：``on_compact`` （``by="compact"``，无 ``match_on``）——
   压缩观测 / 拦截点，由本模块在使用处 dispatch（谁声明谁 dispatch）。
 - 挂载的钩子：``after_provider_gen["_turn"]`` 检测与换链 handler
   （``by="compact"``，pattern 注册：``match_on="by"``，字面量
@@ -56,8 +56,8 @@
 - 递归防护：检测 handler 经 ``after_provider_gen["_turn"]`` pattern
   注册，副线（含压缩自身的 ``side_query``）与其余来源在 dispatch 层被
   过滤、根本不分发到本 handler——防护不依赖任何状态。
-- 触发条件：``usage_ratio > threshold``（严格大于）；模型未声明
-  ``context_window``（``usage_ratio is None``）时永不触发——不可测则
+- 触发条件：``usage_ratio > threshold`` （严格大于）；模型未声明
+  ``context_window`` （``usage_ratio is None``）时永不触发——不可测则
   不动作。
 - 压缩对回合透明：不 abort、不占用消息队列、不在旧链追加任何压缩相关
   消息；被压缩的任务不感知压缩发生。
@@ -118,7 +118,7 @@ def use_compact(agent: Agent, threshold: float = 0.8) -> None:
        handler（``by="compact"``，pattern 注册：``match_on="by"``，
        字面量 ``"_turn"`` 精确匹配主回合来源）。
 
-    本函数是双层启用的阶段二入口，只能在 ``setup()``（或实例存活期内
+    本函数是双层启用的阶段二入口，只能在 ``setup()`` （或实例存活期内
     的任意代码）中对已完成初始化的实例调用。
 
     .. rubric:: 使用示例
@@ -168,7 +168,7 @@ def use_compact(agent: Agent, threshold: float = 0.8) -> None:
     参数语义：
 
     - ``threshold``：触发阈值，``usage_ratio`` 严格大于它时启动压缩；
-      合法区间 ``0 < threshold <= 1.0``（``usage_ratio`` 不做上限截断，
+      合法区间 ``0 < threshold <= 1.0`` （``usage_ratio`` 不做上限截断，
       ``> 1.0`` 是合法的溢出信号，``threshold=1.0`` 即「只在溢出后压
       缩」）。区间外的值抛 ``ValueError``。
 
@@ -219,7 +219,7 @@ def use_compact(agent: Agent, threshold: float = 0.8) -> None:
         ``<= threshold`` 时不动作；超过阈值时依次 dispatch ``on_compact``
         （``Intercepted`` 取消本次：不建根、不换链）、``side_query`` 取
         摘要（异常或空文本：不换链、不外抛，下一次超阈值的主回合后再试）
-        、摘要非空则挂新根后 ``fork``（``before_fork`` 拦截时新根已落盘
+        、摘要非空则挂新根后 ``fork`` （``before_fork`` 拦截时新根已落盘
         而 head 未切，安全）。检测口径：本轮响应尚未挂树，估计不含它。
         """
         # 无来源判断：pattern 注册（after_provider_gen["_turn"]）保证只有主回合响应会被分发到

@@ -24,13 +24,13 @@ Agent 存活）。
 
 .. rubric:: 注册面清单
 
-- 启用方式：仅阶段二——``setup()`` 中调用 ``use_retry(self)``（恢复
+- 启用方式：仅阶段二——``setup()`` 中调用 ``use_retry(self)`` （恢复
   管线在新实例上重跑 ``setup()``，天然不叠加）。未启用时零开销：
   ``on_provider_error`` / ``before_turn`` 链上无任何 ``by="retry"``
   handler，``on_retry`` 钩子点不存在（访问抛
   :class:`flowing.errors.UnknownHookPointError`）。
 - 注册的资源：无 provide key、无工具注册、无 Agent 状态键。
-- 声明的钩子点：``on_retry``（``by="retry"``，无 ``match_on``）——重试
+- 声明的钩子点：``on_retry`` （``by="retry"``，无 ``match_on``）——重试
   观测点，由本模块在使用处 dispatch（谁声明谁 dispatch）。
 - 挂载的钩子：``before_turn`` 归零 handler（``by="retry"``，每个逻辑
   Turn 开始重置重试计数）+ ``on_provider_error`` 重试决策 handler
@@ -120,10 +120,10 @@ RETRYABLE_ERRORS: tuple[type[BaseException], ...] = (
 )
 """默认策略视为可重试的异常类型元组（「限流 + 基础设施瞬时故障」四类）。
 
-分别是 :class:`flowing.errors.RateLimitedError`（限流）、
-:class:`flowing.errors.ServerError`（服务端错误）、
-:class:`flowing.errors.NetworkError`（网络故障）与
-:class:`flowing.errors.ProviderTimeoutError`（Provider 超时）。
+分别是 :class:`flowing.errors.RateLimitedError` （限流）、
+:class:`flowing.errors.ServerError` （服务端错误）、
+:class:`flowing.errors.NetworkError` （网络故障）与
+:class:`flowing.errors.ProviderTimeoutError` （Provider 超时）。
 
 这是策略清单而非机制清单：机制只保证这些类型在对应故障时被 Provider
 adapter 抛出、且会经过 ``on_provider_error`` 分发；「对它们重试」是
@@ -177,7 +177,7 @@ def use_retry(
     ``max_retries`` 上限；抛出不可重试类异常或未知异常时不做重试，
     本回合以错误结局终止（Agent 存活）。
 
-    本函数是双层启用的阶段二入口，只能在 ``setup()``（或实例存活期内
+    本函数是双层启用的阶段二入口，只能在 ``setup()`` （或实例存活期内
     的任意代码）中对已完成初始化的实例调用。
 
     .. rubric:: 使用示例
@@ -222,7 +222,7 @@ def use_retry(
       重试（与不调用的差别仅在于多了一次空分发）。
     - ``base_delay``：退避基准秒数，``>= 0``；为 0 时不等待直接重试。
       ``backoff="fixed"`` 时即每次的等待时长。
-    - ``backoff``：退避模型，仅接受 ``"exponential"``（默认）或
+    - ``backoff``：退避模型，仅接受 ``"exponential"`` （默认）或
       ``"fixed"``。
 
     重试决策（决策 handler 收到 ``ProviderErrorContext`` 时）：
@@ -239,7 +239,7 @@ def use_retry(
       :class:`flowing.errors.RateLimitedError` 的等待时长为
       ``min(base_delay * 2 ** (attempt - 1), MAX_RETRY_DELAY)``，其余
       三类基础设施错误（``ServerError`` / ``NetworkError`` /
-      ``ProviderTimeoutError``）恒为 ``base_delay``（瞬时基础设施故障
+      ``ProviderTimeoutError``）恒为 ``base_delay`` （瞬时基础设施故障
       不需要幂增长）；``backoff="fixed"`` 时所有可重试错误的等待时长恒
       为 ``base_delay``。不引入随机抖动——单机小工具定位下不存在多客户
       端同步重试打爆服务端的场景，等待时长可预测、可测试；需要抖动的
@@ -253,11 +253,12 @@ def use_retry(
 
     重试观测信号（``on_retry`` 钩子点）：每次放行重试时，在置
     ``can_continue`` 之后、等待之前，以 fire-and-forget 方式向
-    ``on_retry`` 派发一条自洽快照，内容为 ``{"attempt": ...,
-    "max_retries": ..., "delay": ..., "error": ...}``（``error`` 是本次
-    失败的原始异常），供 UI 显示「retrying...(1/10)」之类的进行态。
-    快照发出后订阅者的返回值被忽略（观测语义，不参与决策链）；达到上限
-    放弃重试的路径不发信号；订阅者异常被记录为警告，不影响重试决策。
+    ``on_retry`` 派发一条自洽快照，内容为
+    ``{"attempt", "max_retries", "delay", "error"}`` 四个键
+    （``error`` 的值是本次失败的原始异常），供 UI 显示
+    「retrying...(1/10)」之类的进行态。快照发出后订阅者的返回值被忽略
+    （观测语义，不参与决策链）；达到上限放弃重试的路径不发信号；订阅者
+    异常被记录为警告，不影响重试决策。
 
     重复调用：不做幂等去重——每次调用按注册语义各自叠加一组独立的
     handler（各自持有独立的计数闭包），允许以不同参数多次启用。恢复管线
@@ -268,14 +269,14 @@ def use_retry(
     ``provider_gen()`` 前的检查点正常中止。取消的生效粒度是「当前这次
     退避等待结束」。
 
-    不做什么：不修改 ``agent.model`` / ``agent.model_tag``（「改模型
+    不做什么：不修改 ``agent.model`` / ``agent.model_tag`` （「改模型
     后重试」是用户自定义 handler 的合法写法，默认实现不做）；不产生任何
     消息、不写消息级树；不做跨错误联动（如「连续限流 3 次后换策略」）。
 
     :param agent: 目标 Agent 实例；标准用法是在 ``setup()`` 中传 ``self``。
     :param max_retries: 单个逻辑 Turn 内的最大重试次数，``>= 0``。
     :param base_delay: 退避基准秒数，``>= 0``；为 0 时不等待直接重试。
-    :param backoff: 退避模型，``"exponential"``（默认）或 ``"fixed"``。
+    :param backoff: 退避模型，``"exponential"`` （默认）或 ``"fixed"``。
     :raises ValueError:
         ``max_retries < 0``、``base_delay < 0`` 或 ``backoff`` 不在
         ``{"exponential", "fixed"}`` 中时，于注册任何 handler 之前抛出。
@@ -326,7 +327,7 @@ def use_retry(
         ``ctx.can_continue = True``、派发 ``on_retry`` 观测快照、等待
         ``delay`` 秒后返回，超限则原样返回（不发观测信号）。延迟公式见
         :func:`use_retry` 行为要点。必须 ``return ctx``；不
-        ``raise Intercepted``（错误钩子无阻断语义，决策只经
+        ``raise Intercepted`` （错误钩子无阻断语义，决策只经
         ``can_continue`` 表达）。
         """
         if isinstance(ctx.error, NON_RETRYABLE_ERRORS):

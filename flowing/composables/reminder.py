@@ -4,7 +4,7 @@
 
 本模块提供 ``use_system_reminder()``：为单个 Agent 实例启用「每个逻辑
 Turn 开始前注入系统提醒」策略。启用后，每个逻辑 Turn 开始时，默认策略
-把当前可见的提醒内容清单压缩为一条 ``Message(kind=EVENT, ...)``（多个
+把当前可见的提醒内容清单压缩为一条 ``Message(kind=EVENT, ...)`` （多个
 内容块合并成一条消息），经 ``before_turn`` 钩子附加进本回合的待挂树
 批次——提醒随批次挂树并持久化，排在触发消息之后。
 
@@ -45,10 +45,10 @@ docstring）；消息通道（历史尾部追加）是正确位置。
 
 .. rubric:: 行为要点
 
-- 注入形态：每个满足注入条件的逻辑 Turn 压缩为一条
-  ``Message(kind=EVENT, source="system-reminder", content=[...],
-  tags=["system-reminder"])``，附加到 ``pending_messages`` 末尾（排在
-  触发消息之后），随批次挂树并持久化。
+- 注入形态：每个满足注入条件的逻辑 Turn 压缩为一条 ``Message``——
+  ``kind=EVENT``、``source="system-reminder"``、
+  ``tags=["system-reminder"]``，内容为多个 ``TextBlock`` 合并——附加到
+  ``pending_messages`` 末尾（排在触发消息之后），随批次挂树并持久化。
 - 内容求值：``contents`` 各项为 ``(agent) -> str`` 回调或静态字符串，
   每次注入现场求值；空字符串条目剔除；清单为空（含缺省 ``None``）或
   全部条目为空串时本回合不注入。
@@ -57,7 +57,7 @@ docstring）；消息通道（历史尾部追加）是正确位置。
 - 清理语义：``clean=True`` 时每回合收尾按 ``tags`` 擦除本回合注入的
   提醒（head 回退由 Agent 层处理）——代价是每回合至少一条注入 + 一条
   删除标记（写盘量翻倍），且清理后历史回放中该信息丢失（崩溃恢复后
-  那条提醒已被删除）。``clean=False``（默认）时提醒留在树上。
+  那条提醒已被删除）。``clean=False`` （默认）时提醒留在树上。
 - 与批次同生共死：``before_turn`` 被 ``Intercepted`` 阻断时整个批次
   丢弃、不落盘，提醒随之不注入（同批次语义）。
 
@@ -101,7 +101,7 @@ def use_system_reminder(
     ``clean=True`` 时再注册 ``after_turn`` 清理 handler（同 ``by``），
     每回合收尾按 ``tags`` 擦除本回合注入的提醒。
 
-    本函数是双层启用的阶段二入口，只能在 ``setup()``（或实例存活期内
+    本函数是双层启用的阶段二入口，只能在 ``setup()`` （或实例存活期内
     的任意代码）中对已完成初始化的实例调用。
 
     .. rubric:: 使用示例
@@ -125,7 +125,7 @@ def use_system_reminder(
       字符串，每次注入现场求值；空字符串条目剔除；清单为空（含缺省
       ``None``）或全部条目为空串时本回合不注入。
     - 注入条件：距上次注入后新增消息数 ``>= message_interval`` 且距上次
-      注入的墙钟间隔 ``>= time_interval``（秒）——两者是与关系，任一不
+      注入的墙钟间隔 ``>= time_interval`` （秒）——两者是与关系，任一不
       满足即跳过；两者均为 0（默认）时每回合都注入；首次注入不受间隔
       限制。间隔判定状态是闭包内部状态，纯运行期，不落盘、不进状态袋。
     - 消息计数口径：以消息级树的总结点数（``len(agent._messages)``）为
@@ -146,11 +146,11 @@ def use_system_reminder(
     :param contents: 提醒内容清单（``(agent) -> str`` 回调或静态字符串）；
         缺省 ``None`` 视为空清单。
     :param clean: 为 ``True`` 时每回合收尾按 ``tags`` 擦除本回合注入的
-        提醒；为 ``False``（默认）时提醒留在树上（持久化、崩溃可恢复）。
+        提醒；为 ``False`` （默认）时提醒留在树上（持久化、崩溃可恢复）。
     :param message_interval: 距上次注入后新增消息数达到该值才再次注入，
-        ``>= 0``，默认 ``0``（每回合都注入）。
+        ``>= 0``，默认 ``0`` （每回合都注入）。
     :param time_interval: 距上次注入的墙钟间隔（秒）达到该值才再次注入，
-        ``>= 0``，默认 ``0``（不限）。
+        ``>= 0``，默认 ``0`` （不限）。
 
     .. seealso::
 
@@ -166,11 +166,12 @@ def use_system_reminder(
 
         间隔判定（``message_interval`` / ``time_interval`` 与关系，任一
         不满足即跳过；从未注入过时直接放行）→ ``contents`` 现场求值
-        （空串条目剔除，全空不注入）→ 压缩为一条 ``Message(kind=EVENT,
-        source="system-reminder", tags=["system-reminder"])`` 附加到
-        ``pending_messages`` 末尾（排在触发消息之后）。消息计数以消息树
-        总结点数（``len(agent._messages)``）为水位——``before_turn``
-        触发时 ``turn.message_ids`` 恒为空（本回合批次尚未挂树）。必须
+        （空串条目剔除，全空不注入）→ 压缩为一条 ``Message``
+        （``kind=EVENT``、``source="system-reminder"``、
+        ``tags=["system-reminder"]``）附加到 ``pending_messages`` 末尾
+        （排在触发消息之后）。消息计数以消息树总结点数
+        （``len(agent._messages)``）为水位——``before_turn`` 触发时
+        ``turn.message_ids`` 恒为空（本回合批次尚未挂树）。必须
         ``return turn``。
         """
         # 间隔判定：message_interval 与 time_interval 与关系（任一不满足
