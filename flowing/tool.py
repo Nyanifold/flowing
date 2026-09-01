@@ -2683,15 +2683,13 @@ TOOL_NAMING = NamingRules(
 )
 """Tool 资源的路径形态身份名推断规则表（:class:`flowing.paths.NamingRules`）。
 
-紧邻 :meth:`ToolRegistry.get` 的定向查找链声明（规约与实现同源）：
 ``TOOL.fya`` / ``TOOL.py`` / ``tool.fya`` / ``tool.py`` 通用文件名命中时
-身份名取**目录名**；其余按后缀剥离取文件名（``.tool.fya`` 先于
-``.fya``），结果经 snake→kebab 规范化。使用方：
-:func:`flowing.parser.normalize_entries` （``naming=TOOL_NAMING``）与
-name 断言的推断侧（`ToolRegistry.get` 行为规约）。
+身份名取目录名；其余按后缀剥离取文件名（``.tool.fya`` 先于 ``.fya``），
+结果经 snake → kebab 规范化。使用方：:func:`flowing.parser.normalize_entries`
+（``naming=TOOL_NAMING``）与 name 断言的推断侧（`ToolRegistry.get`）。
 
 .. seealso:: :data:`flowing.runtime.AGENT_NAMING`、
-:data:`flowing.plugins.skills.SKILL_NAMING`
+    :data:`flowing.plugins.skills.SKILL_NAMING`
 """
 
 
@@ -2721,31 +2719,25 @@ _TOOL_FYA_RESERVED = frozenset({
     "expected_status", "timeout", "env", "tools", "overrides", "background",
 })
 """TOOL.fya 保留字段集——其余字段原样落为 tool 实例的普通属性（如
-``requires_approval``，见 `Tool` 行为规约「实例属性开放」；框架不解析、
-不据此做任何自动行为）。``background`` 是 B13 新增保留字段（仅 script
-型合法；cli/request/mcp 声明 → ``FormatError``，见 `_tool_from_fya`）。"""
+``requires_approval``，见 `Tool` 行为要点「实例属性开放」；框架不解析、
+不据此做任何自动行为）。``background`` 仅 script 型合法；cli / request /
+mcp 声明 → ``FormatError`` （见 `_tool_from_fya`）。内部 API。"""
 
 
 def _tool_from_fya(path: Path, identity: str) -> Tool:
     """``.fya`` 命中的实例化分派：按 ``type:`` 构造四型工具实例。内部 API。
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
     - ``name:`` 显式声明仅作一致性断言（不符 → ``NameMismatchError``）；
     - ``args:`` 经 :func:`flowing.params.expand_args_schema` 归一为
-      properties（**``mcp`` 例外**：其 ``args`` 是启动命令参数列表而非
-      参数 schema——MCP 的参数 schema 由 ``list_tools()`` 拉取填充，属
+      properties（``mcp`` 例外：其 ``args`` 是启动命令参数列表而非参数
+      schema——MCP 的参数 schema 由 ``list_tools()`` 拉取填充，属
       `McpTool` 装配链，本层只落声明字段）；
     - ``output:`` → ``ToolDefinition.output_schema``；
     - ``type`` 缺失或非法 → ``FormatError``；各类型必填字段缺失 →
       ``FormatError`` （``cli`` 缺 ``args`` / ``request`` 缺 ``args`` 由
       构造器的 ``MissingSchemaError`` 承载）。
-
-    .. rubric:: 调用关系（审计）
-
-    - 调用：:func:`flowing.parser.load_fya_yaml` （字面解析）；
-      :func:`_script_tool_from_fya` （``type: script``）
-    - 被调：``ToolRegistry._resolve_hit`` （.fya 命中时）
     """
     from flowing.parser import load_fya_yaml   # 模块头依赖图保持单向（parser 不 import tool）
 
@@ -2793,7 +2785,7 @@ def _tool_from_fya(path: Path, identity: str) -> Tool:
     for key, value in fields.items():
         if key not in _TOOL_FYA_RESERVED:
             setattr(tool, key, value)
-    # B13：background 仅 script 型合法——script 显式落属性（值须布尔），
+    # background 仅 script 型合法——script 显式落属性（值须布尔），
     # 其他型声明 → FormatError（解析期 fail fast，不静默忽略）
     if "background" in fields:
         if tool_type == "script":
@@ -2813,12 +2805,12 @@ def _script_tool_from_fya(
     """``type: script`` 的 TOOL.fya 装配：``callable: {路径}::{函数名或类名}``
     指针加载 → `ScriptTool` 子类实例化 / 裸函数提升。内部 API。
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
-    - ``callable:`` 指向**已打标**函数 → ``FormatError`` （通道互斥：
-      显式指针通道与自动提升通道二选一）；
+    - ``callable:`` 指向已打标函数 → ``FormatError`` （通道互斥：显式
+      指针通道与自动提升通道二选一）；
     - fya ``args`` 声明存在时经 :func:`flowing.params.schema_to_model`
-      桥接为校验模型（声明即模型，B1）；缺省从 callable 签名构建
+      桥接为校验模型（声明即模型）；缺省从 callable 签名构建
       （``_infer_from_execute``）；
     - fya 的显式 ``description`` / ``output`` 声明压过一切兜底来源
       （callable docstring 首段是函数路径的最后回退）。
@@ -2882,22 +2874,18 @@ class ToolRegistry:
     .. rubric:: 功能介绍
 
     每个 Runtime 持有一个实例（``runtime.tool_registry``）。注册时间线：
-    **无启动扫描**（「无默认扫描目录」基调）——核心工具（``finish`` /
+    无启动扫描（框架没有默认扫描目录）——核心工具（``finish`` /
     ``subagent-invoke``）随 ``Runtime.__init__`` 注册；插件工具在阶段一
-    ``install()`` 注册；文件形态工具由 :meth:`get` **引用触发**
-    惰性解析并注册；MCP/CLI/Request 在 Agent 解析 ``.fya`` 时创建实例并
-    注册。
+    ``install()`` 注册；文件形态工具由 :meth:`get` 引用触发惰性解析并
+    注册；MCP / CLI / Request 在 Agent 解析 ``.fya`` 时创建实例并注册。
 
-    .. rubric:: 设计动机
-
-    **重名约束按 ``ns::name`` 全限定键判定**（T8 口径修正）：同一命名
-    空间内重名 → 后注册者抛 ``ToolNameConflictError``；**不同命名空间的
-    同名工具允许共存**。需要同一 MCP 服务器不同配置时用不同命名空间或
-    规范名，需要相同实例时复用已有注册。裸名引用的注册表视图依次查
-    ``default::``、``builtin::`` （``default`` 优先 = 插件覆盖原生行为的
-    通道）；自定义命名空间的资源只能以 ``ns::name`` 全限定名引用
-    （见 ``flowing.runtime`` 模块 docstring §7a）。别名冲突不存在——
-    别名是 `ToolEntry` 层（Agent 本地）的概念。
+    重名约束按 ``ns::name`` 全限定键判定：同一命名空间内重名 → 后注册者
+    抛 ``ToolNameConflictError``；不同命名空间的同名工具允许共存。需要
+    同一 MCP 服务器不同配置时用不同命名空间或规范名，需要相同实例时复用
+    已有注册。裸名引用的注册表视图依次查 ``default::``、``builtin::``
+    （``default`` 优先 = 插件覆盖原生行为的通道）；自定义命名空间的资源
+    只能以 ``ns::name`` 全限定名引用。别名冲突不存在——别名是 `ToolEntry`
+    层（Agent 本地）的概念。
 
     .. rubric:: 使用示例
 
@@ -2906,27 +2894,23 @@ class ToolRegistry:
         runtime.tool_registry.register(MakePayment())          # script 单例
         tool = runtime.tool_registry.get("make-payment")       # 按规范名取
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
     - 不变量：任意时刻一个 ``ns::name`` 全限定键至多映射一个 Tool 实例
       （不同命名空间同名允许共存）。
-    - 非行为：不提供别名查找（别名在 `ToolEntry` 层）；不提供 unregister
-      （初版无此需求，销毁随 Runtime 生命周期）。
-
-    .. rubric:: 调用关系（审计）
-
-    - 调用：``无``
-    - 被调：``flowing.runtime.Runtime.register_tool()`` （注册写入）；
-      ``flowing.tool.ToolEntry.llm_definition()`` 与
-      ``before_tool_call`` handler 审批路径（按规范名读取）
-    - 实例化方：``flowing.runtime.Runtime.__init__()`` （构造时初始化
-      全部空存储，本表为其一）
+    - 不提供别名查找（别名在 `ToolEntry` 层）；不提供 unregister（销毁
+      随 Runtime 生命周期）。
 
     .. seealso::
 
         - :attr:`flowing.runtime.Runtime.tool_registry` —— 挂载点。
         - :class:`flowing.tool.ToolEntry` —— 按 ``name_ori`` 查本表。
     """
+
+    _tools: dict[str, Tool]
+    """``ns::规范名`` → Tool 实例。内部 API，不属稳定契约。
+    """
+
 
     _tools: dict[str, Tool]
     """``ns::规范名`` → Tool 实例（命名空间规则见 ``flowing.runtime`` 模块
@@ -2944,29 +2928,12 @@ class ToolRegistry:
         :param tool: 工具实例；script 类型应注册全局单例。
         :param name: 规范名覆写；``None`` 时取 ``tool.definition.name``。
         :param namespace: 命名空间；``None`` → ``"default"``。注册表 key 为
-            ``ns::name``——核心内置工具归 ``builtin::``；裸名引用的注册表
-            视图依次查 ``default::``、``builtin::`` （``default`` 优先 =
-            插件覆盖原生行为的通道），自定义命名空间只能以 ``ns::name``
-            全限定名引用（见 ``flowing.runtime`` 模块 docstring §7a）。
-        :raises ToolNameConflictError: ``ns::name`` 全键已存在（不同命名
-            空间的同名工具允许共存）。
-
-        .. rubric:: 测试案例
-
-        - 前置：已注册 ``"default::github"`` （某 MCP 配置）→ 操作：以同名
-          同命名空间注册另一 MCP 配置 → 期望：抛 `ToolNameConflictError`，
-          原条目不变。
-        - 前置：内置 ``builtin::web-search`` 已存在 → 操作：插件注册同名
-          工具（缺省 ``default::``）→ 期望：不报错，裸名 ``web-search``
-          解析到插件版本（覆盖通道），``builtin::web-search`` 仍可显式
-          引用。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``无``
-        - 被调：``flowing.runtime.Runtime.register_tool()`` （应用层注册
-          入口，每次注册）；``flowing.plugins.skills.SkillPlugin`` 阶段一
-          （经 ``runtime.register_tool`` 注册 ``SkillLoadTool``）
+          ``ns::name``——核心内置工具归 ``builtin::``；裸名引用的注册表
+          视图依次查 ``default::``、``builtin::`` （``default`` 优先 =
+          插件覆盖原生行为的通道），自定义命名空间只能以 ``ns::name``
+          全限定名引用。
+        :raises flowing.errors.ToolNameConflictError: ``ns::name`` 完整键
+          （含命名空间）已存在（不同命名空间的同名工具允许共存）。
         """
         ns = namespace or "default"
         bare = name if name is not None else tool.definition.name
@@ -2978,119 +2945,80 @@ class ToolRegistry:
 
     def get(self, name_or_path: str, *,
             source_dir: Path | None = None) -> Tool:
-        """工具的**唯一解析入口**：注册表快路径 + 文件链慢路径合一。
+        """工具的唯一解析入口——注册表快路径 + 文件链慢路径合一。
 
         .. rubric:: 功能介绍
 
         形态判别委托 :func:`flowing.paths.classify_ref` （词法唯一来源），
         三分语义：
 
-        - **限定名**（含 ``::``，如 ``myplugin::web-search``）：**只查注册表**
+        - 限定名（含 ``::``，如 ``myplugin::web-search``）：只查注册表
           精确键，不走文件查找链（命名空间无法反向映射到文件）；
-        - **裸名**（如 ``payment``）：``source_dir`` 提供时**先走定向文件
-          查找链**（相对 ``source_dir``——文件覆盖注册表）：命中后按所在
-          目录派生键（``@/`` 下相对、根外绝对、文件夹式取上层目录，仅作
-          内部身份标识）**短路复用**已注册实例，未注册才实例化并注册；
+        - 裸名（如 ``payment``）：``source_dir`` 提供时先走定向文件查找
+          链（相对 ``source_dir``——文件覆盖注册表）：命中后按所在目录
+          派生键（``@/`` 下相对、根外绝对、文件夹式取上层目录，仅作内部
+          身份标识）短路复用已注册实例，未注册才实例化并注册；
           ``source_dir`` 缺省时跳过文件链。之后查注册表裸名视图——
           ``default::`` 优先于 ``builtin::`` （插件覆盖原生行为的通道）；
-        - **路径形态**：``@/`` 经 ``project_root`` 定位（无需
-          ``source_dir``）；``./`` / ``../`` 需 ``source_dir``，缺省时
-          报错（``resolve_path`` 现有口径）。跳过注册表，定位后走候选链；
+        - 路径形态：``@/`` 经 ``project_root`` 定位（无需 ``source_dir``，
+          无 launch 上下文时无法锚定 → ``ValueError``）；``./`` / ``../``
+          需 ``source_dir``，缺省时报错。跳过注册表，定位后走候选链；
           命中后同样注册（命名空间派生规则同上）。
 
-        **定向查找链**（按规范名 ``<name>``，``<name_snake>`` 为其 snake_case
-        形式——转换经 :func:`flowing.paths.kebab_to_snake`；首个存在者生效，
-        探测循环委托 :func:`flowing.paths.probe_candidates`）::
+        定向查找链（按规范名 ``<name>``，``<name_snake>`` 为其 snake_case
+        形式，转换经 :func:`flowing.paths.kebab_to_snake`；首个存在者生效，
+        探测委托 :func:`flowing.paths.probe_candidates`）：:
 
             目录内（<name>/ 存在时）：
                 TOOL.fya > <name>.tool.fya > <name>.fya
-              > TOOL.py > tool.py > <name_snake>.py
+                > TOOL.py > tool.py > <name_snake>.py
             目录外：
                 <name>.tool.fya > <name>.fya > <name_snake>.py
 
-        链上顺序只是**确定性裁决规则**——不推荐同一链路真的同时存在多个候选
-        文件（属组织异味：读者需回溯优先级才能确定生效者）。
+        链上顺序只是确定性裁决规则——不推荐同一链路真的同时存在多个候选
+        文件（读者需回溯优先级才能确定生效者）。
 
-        .. rubric:: 设计动机（单入口合并）
+        .. rubric:: 行为要点
 
-        「查注册表」与「解析并注册」曾是两个方法（``get`` /
-        ``get_or_resolve``）；合并为单入口（用户裁决）——调用方不再
-        关心快慢路径，解析只有一个权威（与 ``Runtime.get_agent_class``
-        同构）。两处语义变化：
-
-        - **fail-fast 口径**：裸名未注册时，``source_dir`` 提供则先走
-          文件查找链、均不命中才报「注册表与查找链均不命中」；
-          ``source_dir`` 缺省则只查注册表、不命中即报错，不做文件探测；
-          纯存在性检查用 ``__contains__`` （仅认全限定键，P3-07）；
-        - **热路径口径**：``ToolEntry.llm_definition()`` （每轮上下文
-          组装）与 ``before_tool_call`` 审批路径调本方法时**必命中
-          注册表快路径**——Entry 在装配期已解析落账（文件命中的落账
-          派生限定键，注册表命中的落账裸名），文件解析是声明期行为，
-          运行时不触发文件 IO。
-
-        .. rubric:: 行为规约
-
-        - 形参承载规范名 / 限定名 / 路径，**非别名**——别名到规范名的
-          换算在 Agent 绑定层（``ToolEntry``）。
-        - **继续向下仅裸名语境**：裸名查找时目录存在但无合法入口 → 继续
-          链上下一项；**显式路径**语境下目录无候选 → 直接报错（定点引用
-          的目录为空几乎必为笔误）。
-        - ``.fya`` 与同名 ``.py`` 并存 → 告警 + ``.fya`` 优先（与 Agent
-          的「``.fya`` 优先于手写子类」同措辞）。
+        - 形参承载规范名 / 限定名 / 路径，非别名——别名到规范名的换算在
+          Agent 绑定层（``ToolEntry``）。
+        - 继续向下仅裸名语境：裸名查找时目录存在但无合法入口 → 继续链上
+          下一项；显式路径语境下目录无候选 → 直接报错（定点引用的目录为
+          空几乎必为笔误）。
+        - fail-fast 口径：裸名未注册时，``source_dir`` 提供则先走文件
+          查找链、均不命中才报错；``source_dir`` 缺省则只查注册表、不
+          命中即报错，不做文件探测。纯存在性检查用 ``__contains__``
+          （仅认全限定键）。
+        - 热路径口径：``ToolEntry.llm_definition()`` （每轮上下文组装）
+          与 ``before_tool_call`` 审批路径调本方法时必命中注册表快路径
+          ——Entry 在装配期已解析落账（文件命中的落账派生限定键，注册表
+          命中的落账裸名），文件解析是声明期行为，运行时不触发文件 IO。
+        - ``.fya`` 与同名 ``.py`` 并存 → 告警 + ``.fya`` 优先。
         - ``.py`` 命中后：恰好一个 ``@flowing_tool`` 打标函数 →
           ``_auto_generate_tool`` 提升；或恰好一个 `ScriptTool` 子类 →
           实例化；两者并存 / 多个打标函数 →
           :class:`flowing.errors.AmbiguousToolError`；皆无 →
           :class:`flowing.errors.FormatError`。
-        - ``name`` 断言：命中对象的显式 ``name`` 声明（``.fya`` 字段 /
-          类属性 / 装饰器参数）必须与 ``<name>`` 一致，不符抛
+        - name 断言：命中对象的显式 ``name`` 声明（``.fya`` 字段 / 类
+          属性 / 装饰器参数）必须与 ``<name>`` 一致，不符抛
           :class:`flowing.errors.NameMismatchError`；``<name>`` 的推断
           本体为 :func:`flowing.paths.infer_name` （规则表
-          :data:`TOOL_NAMING`，紧邻本链声明）。
-        - 非行为：不做 glob 展开（``tools:`` 条目的 glob 在装配层
-          展开后逐条进本方法）。装配层遵循「显式优先、glob 跳过同规范名」
-          （与 skills/subagents 同构）；仅不同资源得到同 alias 时才报
-          ``EntryNameConflictError``。
+          :data:`TOOL_NAMING`）。
+        - 不做 glob 展开（``tools:`` 条目的 glob 在装配层展开后逐条进本
+          方法）。
 
         :param name_or_path: 规范名（裸名）、限定名（``ns::name``）或
           路径形态字符串。
-        :param source_dir: 裸名文件链的查找根与 ``./``/``../`` 的相对
+        :param source_dir: 裸名文件链的查找根与 ``./`` / ``../`` 的相对
           基准。缺省（``None``）时：裸名只查注册表（``default::`` /
           ``builtin::``），相对路径报错。声明期调用点（``.fya`` 装配、
-          ``Agent.add_tool``）义务性传入引用方 Agent 的
-          ``source_file`` 所在目录——推荐经
-          :meth:`flowing.agent.Agent.get_tool` 自动携带。
+          ``Agent.add_tool``）义务性传入引用方 Agent 的 ``source_file``
+          所在目录——推荐经 :meth:`flowing.agent.Agent.get_tool` 自动携带。
         :return: 已注册的 Tool 实例。
-        :raises flowing.errors.ToolNotFoundError: 注册表与查找链均不
-          命中。
+        :raises flowing.errors.ToolNotFoundError: 注册表与查找链均不命中。
         :raises flowing.errors.FormatError: 显式路径目录无候选、``.py``
           无任何合法定义、或 ``callable:`` 指向已装饰函数。
-
-        .. rubric:: 测试案例
-
-        - 前置：``tools: [payment]`` 且 ``payment/TOOL.fya`` 存在，
-          ``source_dir`` 提供 → 期望：文件链命中 → 按所在目录派生键
-          注册后返回；再次同名调用（同 ``source_dir``）经派生键短路
-          复用现有实例（不重复实例化）。
-        - 前置：裸名 + ``source_dir=None`` → 期望：只查
-          ``default::``/``builtin::``，不命中即 ``ToolNotFoundError``，
-          不做文件探测。
-        - 前置：``- ./tools/payment`` 指向空目录 → 期望：
-          ``FormatError`` （显式路径不继续向下）。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：:func:`flowing.paths.classify_ref` （形态判别，入口）；
-          ``flowing.runtime.Runtime.resolve_path()`` （路径形态定位）；
-          :func:`flowing.paths.probe_candidates` （候选链探测）；
-          ``flowing.tool._auto_generate_tool()`` （打标函数提升）；
-          ``self.register()`` （命中后落账）
-        - 被调：``flowing.agent.Agent.add_tool()`` （``name`` 未注册
-          的边缘情况，每次添加条目）；``.fya`` ``tools:`` 条目解析（声明
-          期，每条目一次）；``flowing.tool.ToolEntry.llm_definition()``
-          第 1 步（每次上下文组装，必命中快路径）；``before_tool_call``
-          handler 审批路径（每次工具调用，经 ``agent.runtime.tool_registry``，
-          必命中快路径）
+        :raises ValueError: ``@/`` 路径无 launch 上下文（无法锚定项目根）。
 
         .. seealso::
 
@@ -3155,19 +3083,15 @@ class ToolRegistry:
     def _probe_name_chain(
         self, name: str, source_dir: Path
     ) -> "tuple[Path, bool, Path, list[str]] | None":
-        """裸名的定向文件查找链（**内部 API**）：返回 ``(命中路径,
-        是否文件夹式命中, 探测基准目录, 候选名列表)``，全部未命中 → ``None``
-        （调用方继续查注册表裸名视图）。
+        """裸名的定向文件查找链。内部 API，不属稳定契约。
+
+        返回 ``(命中路径, 是否文件夹式命中, 探测基准目录, 候选名列表)``，
+        全部未命中 → ``None`` （调用方继续查注册表裸名视图）。
 
         目录内（``<name>/`` 存在时）：``TOOL.fya > <name>.tool.fya >
         <name>.fya > TOOL.py > tool.py > <name_snake>.py``；目录存在但无
         合法入口 → 继续链上下一项（「继续向下」仅裸名语境）。目录外：
         ``<name>.tool.fya > <name>.fya > <name_snake>.py``。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：:func:`flowing.paths.probe_candidates` （候选链探测）
-        - 被调：:meth:`get` （裸名且 ``source_dir`` 提供时）
         """
         directory = source_dir / name
         if directory.is_dir():
@@ -3185,19 +3109,13 @@ class ToolRegistry:
 
     def _resolve_hit(self, hit: Path, folder_form: bool, base_dir: Path,
                      candidates: list[str], *, ref: str) -> Tool:
-        """候选命中 → 派生键短路 / 实例化注册（**内部 API**）。
+        """候选命中 → 派生键短路 / 实例化注册。内部 API，不属稳定契约。
 
         派生键 = ``<所在目录派生命名空间>::<身份名>`` （文件夹式资源取上层
-        目录；``@/`` 下根相对、根外绝对，仅作内部身份标识，§7a）——已注册
-        则**短路复用**（不重复实例化）；未注册则按后缀分派实例化（``.fya``
-        → :func:`_tool_from_fya`；``.py`` → :meth:`_tool_from_py`）并落账、
+        目录；``@/`` 下根相对、根外绝对，仅作内部身份标识）——已注册则
+        短路复用（不重复实例化）；未注册则按后缀分派实例化（``.fya`` →
+        :func:`_tool_from_fya`；``.py`` → :meth:`_tool_from_py`）并落账、
         回写 ``tool.registry_key``。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：:func:`flowing.paths.infer_name` （身份名推断）；
-          :func:`_tool_from_fya` / :meth:`_tool_from_py` （实例化分派）
-        - 被调：:meth:`get` （文件链/路径形态命中后）
         """
         identity = infer_name(hit, naming=TOOL_NAMING)
         if hit.name.endswith(".fya"):
@@ -3222,15 +3140,15 @@ class ToolRegistry:
     @staticmethod
     def _derived_namespace(ns_dir: Path) -> str:
         """所在目录 → 派生命名空间字符串（``@/`` 下根相对、根外绝对——
-        :func:`flowing.paths.to_project_path` 口径；无 launch 上下文时退化
-        为绝对路径，与「根外绝对」一致）。**内部 API**。"""
+        :func:`flowing.paths.to_project_path` 口径；无 launch 上下文时退
+        化为绝对路径，与「根外绝对」一致）。内部 API，不属稳定契约。"""
         root = _launch_project_root()
         if root is not None:
             return to_project_path(ns_dir, project_root=root)
         return str(ns_dir)
 
     def _tool_from_py(self, path: Path, identity: str) -> Tool:
-        """``.py`` 命中的实例化分派（**内部 API**）。
+        """``.py`` 命中的实例化分派。内部 API，不属稳定契约。
 
         恰好一个 ``@flowing_tool`` 打标函数 → :func:`_auto_generate_tool`
         提升；恰好一个 `ScriptTool` 子类 → 实例化；两者并存 / 多个打标
@@ -3238,12 +3156,6 @@ class ToolRegistry:
         子类的显式 ``name`` 声明仅作一致性断言（不符 →
         ``NameMismatchError``；打标函数的装饰器参数断言在
         :func:`_auto_generate_tool` 内）。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``importlib.util`` 文件加载；:func:`_auto_generate_tool`
-          （打标函数提升）
-        - 被调：:meth:`_resolve_hit` （.py 命中时）
         """
         import importlib.util
 
@@ -3283,42 +3195,27 @@ class ToolRegistry:
 
     def get_tool_class(self, name_or_path: str, *,
                        source_dir: Path | None = None) -> type[Tool]:
-        """取已解析工具的**类对象**（与 ``Runtime.get_agent_class`` 对称）。
+        """取已解析工具的类对象（与 ``Runtime.get_agent_class`` 对称）。
 
         .. rubric:: 功能介绍
 
-        薄委托 ``type(self.get(...))``——不另开解析路径，单一解析权威
-        仍是 :meth:`get`；script 打标工具返回 ``_auto_generate_tool``
-        提升出的 ``ScriptTool`` 子类。
+        薄委托 ``type(self.get(...))``——不另开解析路径，单一解析权威仍是
+        :meth:`get`；script 打标工具返回 ``_auto_generate_tool`` 提升出
+        的 ``ScriptTool`` 子类。Agent 侧解析产物是类、Tool 侧注册产物是
+        单例实例；编译发射、测试断言（``issubclass``）、子类化扩展等场景
+        要的是类而非实例——薄委托保证类语义与实例语义永不漂移。
 
-        .. rubric:: 设计动机
+        .. rubric:: 行为要点
 
-        三资源对齐：Agent 侧解析产物是类（``Runtime.get_agent_class``），
-        Tool 侧注册产物是单例实例；编译发射、测试断言（``issubclass``）、
-        子类化扩展等场景要的是类而非实例。薄委托保证「类语义」与
-        「实例语义」永不漂移。
-
-        .. rubric:: 行为规约
-
-        - 解析 / 注册 / 缓存语义全部继承 :meth:`get` （含限定名只查
-          注册表、命名空间派生、fail-fast 口径）。
-        - 非行为：不绕过注册表直接加载文件；不实例化新对象（取的是
-          已注册单例的类）。
+        - 解析 / 注册 / 缓存语义全部继承 :meth:`get` （含限定名只查注册
+          表、命名空间派生、fail-fast 口径）。
+        - 不绕过注册表直接加载文件；不实例化新对象（取的是已注册单例的
+          类）。
 
         :param name_or_path: 同 :meth:`get`。
         :param source_dir: 同 :meth:`get`。
         :return: 已注册单例的类（``type(实例)``）。
         :raises flowing.errors.ToolNotFoundError: 同 :meth:`get`。
-
-        .. rubric:: 测试案例
-
-        - 前置：``default::make-payment`` 已注册 → 期望：
-          ``get_tool_class("make-payment") is type(registry.get("make-payment"))``。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``self.get()`` （每次调用，唯一解析路径）
-        - 被调：编译/测试/子类化场景（用户代码）
 
         .. seealso:: :meth:`get` —— 唯一解析入口；
             :meth:`flowing.runtime.Runtime.get_agent_class` —— 对称的
@@ -3331,16 +3228,13 @@ class ToolRegistry:
 
         .. rubric:: 功能介绍
 
-        ``x in registry`` 运算符的落点——O(1) 哈希查找的**低层容器协议**。
-        只认全限定键：``"builtin::read" in registry`` 为真；**裸名永不命中**
-        （``"read" in registry`` 恒为假，即便 ``builtin::read`` 在场）。
-
-        .. rubric:: 设计动机（P3-07 裁决：仅全限定）
-
-        裸名解析（``default::`` 优先、``builtin::`` 兜底的优先级链）是
-        :meth:`get` 的**专属职责**——若 ``in`` 也做裸名展开，同一对象上将
-        存在两套语义重叠的查询通道，且 ``in`` 的解析结果不可见（只回布尔值），
-        排查更绕。保持 ``in`` 廉价、无歧义、零解析逻辑。
+        ``x in registry`` 运算符的落点。只认全限定键：``"builtin::read"
+        in registry`` 为真；裸名永不命中（``"read" in registry`` 恒为假，
+        即便 ``builtin::read`` 在场）。裸名解析（``default::`` 优先、
+        ``builtin::`` 兜底的优先级链）是 :meth:`get` 的专属职责——若
+        ``in`` 也做裸名展开，同一对象上将存在两套语义重叠的查询通道，且
+        ``in`` 的解析结果不可见（只回布尔值），排查更绕。保持 ``in``
+        廉价、无歧义、零解析逻辑。
 
         .. rubric:: 使用示例
 
@@ -3349,22 +3243,12 @@ class ToolRegistry:
             "builtin::read" in runtime.tools   # True（全限定键）
             "read" in runtime.tools            # False——裸名请用 get()：
             runtime.tools.get("read")          # 走命名空间优先级解析链
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``无``
-        - 被调：``无`` （全库未见框架内调用点）
         """
         return name in self._tools
 
     def __iter__(self) -> Iterator[Tool]:
-        """遍历全部已注册实例（顺序不保证）。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``无``
-        - 被调：``无`` （全库未见框架内调用点）
-        """
+        """遍历全部已注册实例（顺序不保证）。"""
+     
         return iter(self._tools.values())
 
 
