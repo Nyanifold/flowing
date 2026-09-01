@@ -1436,7 +1436,7 @@ class ToolEntry:
             resolved[self.param_aliases.get(key, key)] = value
         for key, parsable in self.specified.items():  # 第 2 步：specified 惰性求值后覆盖（固定值/注入表达式同路）
             value = parsable.resolve(agent)  # -> Any（注入表达式 {{ self.inject(...) }} 在求值中沿 provide 链上溯）
-            prop = params_schema.get(key)  # -> property dict | None（声明表由调用方传入，S-33）
+            prop = params_schema.get(key)  # -> property dict | None（声明表由调用方传入）
             if prop is not None:
                 value = _coerce(value, prop)  # 声明表无此键时跳过转换，内部校验兜底
             resolved[key] = value
@@ -1448,15 +1448,12 @@ class Tool:
 
     .. rubric:: 功能介绍
 
-    `Tool` 只对执行负责：持有一份默认 `ToolDefinition`，暴露 `execute()`；
-    框架调度层经 `__call__` 统一调用。四种工具类型（script/mcp/cli/request）
-    均以本类（或其子类）为最终产物。
-
-    .. rubric:: 设计动机
-
+    `Tool` 只对执行负责：持有一份默认 `ToolDefinition`，暴露
+    ``execute()``；框架调度层经 ``__call__`` 统一调用。四种工具类型
+    （script / mcp / cli / request）均以本类（或其子类）为最终产物。
     调度职责（awaitable / async generator 检测、Task 包装、caller 注入、
-    返回值包装）集中在 `__call__`，让 `execute()` 保持「零散参数进、普通值
-    出」的最简单签名——工具作者不需要知道 `ToolResult` 的存在。
+    返回值包装）集中在 ``__call__``，让 ``execute()`` 保持「零散参数进、
+    普通值出」的最简单签名——工具作者不需要知道 `ToolResult` 的存在。
 
     .. rubric:: 使用示例
 
@@ -1470,25 +1467,15 @@ class Tool:
             async def execute(self, *, summary: str = "", caller: Agent) -> dict:
                 ...
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
-    - 非行为：`Tool` 不认识钩子、不查注册表、不做参数聚合——这些都在
+    - `Tool` 不认识钩子、不查注册表、不做参数聚合——这些都在
       ``Agent.tool_call()`` / ``_normalize()`` 一侧。
-    - 实例属性开放：``.fya`` 中的非保留字段（如 ``requires_approval: true``）
+    - 实例属性开放：``.fya`` 中的非保留字段（如 ``requires_approval``）
       直接成为 tool 对象的普通属性，框架不解析、不据此做任何自动行为。
-    - 不变量：``self._execution`` 仅在 `__call__` 调度期间非 None；
+    - 不变量：``self._execution`` 仅在 ``__call__`` 调度期间非 ``None``；
       工具内部可检查 ``self._execution.cancel.is_set()`` 以响应 cancel
       （协作式取消，见 :mod:`flowing.agent` 的 `Execution` 契约）。
-
-    .. rubric:: 调用关系（审计）
-
-    - 调用：``无`` （基类不发起框架调用）
-    - 被调：``flowing.agent.Agent.tool_call()`` （经 ``__call__`` 调度，
-      每次工具调用）
-    - 实例化方：各子类构造路径——script 单例（``ToolRegistry.get``
-      引用触发的惰性解析 / 用户直接构造后经 ``register()``）、
-      MCP/CLI/Request（Agent 解析 ``.fya`` 时）、插件工具（如
-      ``flowing.plugins.skills.SkillPlugin`` 阶段一注册 ``SkillLoadTool``）
 
     .. seealso::
 
@@ -1502,47 +1489,42 @@ class Tool:
     """
     registry_key: str | None = None
     """注册表全键（``ns::name``），``ToolRegistry.register`` 时回写；未注册
-    实例为 ``None``。Entry 装配对**文件派生工具**落账本字段为
-    ``name_ori`` （含目录派生命名空间的限定键，热路径精确命中）；注册表
-    命中（``default::``/``builtin::``）的条目仍记裸名。内部 API。
+    实例为 ``None``。Entry 装配对文件派生工具落账本字段为 ``name_ori``
+    （含目录派生命名空间的限定键，热路径精确命中）；注册表命中
+    （``default::`` / ``builtin::``）的条目仍记裸名。内部 API。
     """
     _has_caller: bool
-    """注册/实例化时经 ``inspect`` 检测 `execute()` 签名是否声明 ``caller``
-    参数的缓存标记。内部 API，不属稳定契约。
+    """注册 / 实例化时经 ``inspect`` 检测 ``execute()`` 签名是否声明
+    ``caller`` 参数的缓存标记。内部 API，不属稳定契约。
     """
     _execution: Execution | None
-    """当前调度的执行追踪对象（cancel 信号载体），仅 `__call__` 期间有效。
+    """当前调度的执行追踪对象（cancel 信号载体），仅 ``__call__`` 期间有效。
     内部 API，不属稳定契约。
     """
     _args_model: type[BaseModel]
-    """内部校验用的 Pydantic 模型——**工具创建时**编译一次、终身复用
-    （S-33 裁决：不在每次调用时编译）。来源（B1 裁决）：Python 层
-    ``args_model`` 声明直接用（声明即模型）；未声明时从 ``execute()``
-    签名构建（``_infer_from_execute``）；fya 声明经
+    """内部校验用的 Pydantic 模型——工具创建时编译一次、终身复用。来源：
+    Python 层 ``args_model`` 声明直接用（声明即模型）；未声明时从
+    ``execute()`` 签名构建（``_infer_from_execute``）；``.fya`` 声明经
     :func:`flowing.params.schema_to_model` 桥接。由各子类 ``__init__``
     在 ``definition`` 落定后赋值；覆写 ``__init__`` 的子类必须调
-    ``super().__init__()`` 或自行赋值，否则 `__call__` 的内部校验无模型
-    可用。与 LLM 可见 JSON Schema 同源（双视图契约，见
-    :mod:`flowing.params`），永不漂移。**不做**与 ``execute()`` 签名
-    的一致性检查——签名差异可能是合法 trick（``**kwargs`` 透传、装饰器
-    包装），真写岔由调用时内部校验或直接测试暴露。
-    内部 API，不属稳定契约。
+    ``super().__init__()`` 或自行赋值，否则 ``__call__`` 的内部校验无
+    模型可用。与 LLM 可见 JSON Schema 同源（见 :mod:`flowing.params`），
+    永不漂移。不做与 ``execute()`` 签名的一致性检查——签名差异可能是
+    合法写法（``**kwargs`` 透传、装饰器包装），真写岔由调用时内部校验
+    或直接测试暴露。内部 API，不属稳定契约。
     """
 
+
     async def execute(self, **kwargs: Any) -> Any:
-        """工具业务逻辑入口——**零散参数 + 可选 caller**，不接收 `ToolCall`。
+        """工具业务逻辑入口——零散参数 + 可选 ``caller``，不接收 `ToolCall`。
 
         .. rubric:: 功能介绍
 
         子类覆写本方法。参数来自 `ToolEntry.resolve()` 聚合后的完整字典，
-        由 `__call__` 按签名匹配分发；声明 ``caller: Agent`` 参数时框架自动
-        传入调用方 Agent（用于注入表达式求值 / ``get_resource`` / 访问
-        调用方状态）。
-
-        .. rubric:: 设计动机
-
-        废弃「接收完整 `ToolCall` 对象」的旧写法：工具作者面对的是业务参数，
-        不是框架内部结构。同步函数同样合法（`__call__` 做 awaitable 检测）。
+        由 ``__call__`` 按签名匹配分发；声明 ``caller: Agent`` 参数时框架
+        自动传入调用方 Agent（用于注入表达式求值 / ``get_resource`` /
+        访问调用方状态）。同步函数同样合法（``__call__`` 做 awaitable
+        检测）。
 
         .. rubric:: 使用示例
 
@@ -1553,21 +1535,16 @@ class Tool:
                 return await payment_service.charge(
                     order_id=order_id, amount=amount)
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
-        - 返回值由 `__call__` 自动包装：普通值 → ``completed``；抛异常 →
-          ``error``；返回 ``asyncio.Task`` → ``pending`` （fire-and-forget
-          收据，框架不等待）。
-        - 非行为：不自行构造 `ToolResult`；不处理 specified（固定值/注入
-          表达式，已由调度层聚合进参数）；复杂对象（连接池、客户端）不进
-          参数——以标识符字符串传入，经 ``caller`` 获取真实对象。
-        - 边缘情况：长时间运行的工具应周期性检查
-          ``self._execution.cancel.is_set()`` 以支持协作式取消。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``无`` （基类占位，业务调用由子类覆写实现）
-        - 被调：``flowing.tool.Tool.__call__`` 调度层（每次工具执行）
+        - 返回值由 ``__call__`` 自动包装：普通值 → ``completed``；抛异常
+          → ``error``；返回 ``asyncio.Task`` → ``pending`` （收据，框架
+          不等待）。
+        - 不自行构造 `ToolResult`；不处理 specified（固定值 / 注入表达式
+          已由调度层聚合进参数）；复杂对象（连接池、客户端）不进参数
+          ——以标识符字符串传入，经 ``caller`` 获取真实对象。
+        - 长时间运行的工具应周期性检查 ``self._execution.cancel.is_set()``
+          以支持协作式取消。
 
         .. seealso::
 
@@ -1583,89 +1560,81 @@ class Tool:
         caller: Agent | None = None,
         execution: Execution | None = None,
     ) -> ToolResult:
-        """框架调度层统一入口——**用户永不覆写**。
+        """框架调度层统一入口——用户永不覆写。
 
         .. rubric:: 功能介绍
 
         ``Agent.tool_call()`` 在 ``_normalize()`` 之后经本方法执行工具。
         职责固定五项：
 
-        1. **形态检测**：``inspect.isasyncgen`` （async generator 后台形态
-           ——首 yield 收据 + 后台驱动，B1）→ ``inspect.isawaitable``——
-           同步 ``execute`` 直接调用，异步 ``execute`` await；
-        2. **Task 包装**：异步执行包装为 ``asyncio.Task`` 并关联
-           ``execution`` （cancel 注入的落点——置 abort 信号而非强杀协程）；
-        3. **caller 自动传入**：依 ``_has_caller`` （注册时 inspect 检测）决定
-           是否传 ``caller=``；
-        4. **内部校验**（S-33 裁决，自 ``_normalize`` 迁入）：caller 注入
-           之后、``execute`` 之前，聚合终值按 ``self._args_model`` （创建时
-           编译的 Pydantic 产物）校验。specified（固定值/注入表达式求值
-           结果）/ 默认值属可信来源，本步失败是**框架/宿主配置错误**——异常**在 ``try`` 之外
-           上抛**框架错误通道并记日志，**不**被 ``except Exception`` 吞成
-           ``ToolResult(error)``、不进入 LLM 可见文本（不泄漏隐藏参数的
-           存在）；
-        5. **结果归一与包装**（D5/D12/D19）：返回值（含直通 `ToolResult`
-           逃生舱的 ``output``）经 `normalize_output` 归一——浅层判别、
-           幂等；归一化中的违禁块（``ToolCallBlock`` / ``ThinkingBlock``）
-           ``ValueError`` 属作者 bug，与职责 4 同走框架错误通道**在
-           ``try`` 之外上抛**；``execute`` 内普通异常 → ``ToolResult(error)``
-           （不触发错误钩子）；``execute`` 内抛出的
+        1. 形态检测：``inspect.isasyncgen`` （async generator 后台形态
+           ——首 yield 收据 + 后台驱动）→ ``inspect.isawaitable``——同步
+           ``execute`` 直接调用，异步 ``execute`` await；
+        2. Task 包装：异步执行包装为 ``asyncio.Task`` 并关联
+           ``execution`` （cancel 注入的落点——置 abort 信号而非强杀
+           协程）；
+        3. caller 自动传入：依 ``_has_caller`` （注册时 inspect 检测）
+           决定是否传 ``caller=``；
+        4. 内部校验：caller 注入之后、``execute`` 之前，聚合终值按
+           ``self._args_model`` （创建时编译的 Pydantic 产物）校验。
+           specified（固定值 / 注入表达式求值结果）与默认值属可信来源，
+           本步失败是框架 / 宿主配置错误——异常在 ``try`` 之外上抛框架
+           错误通道并记日志，不被 ``except Exception`` 吞成
+           ``ToolResult(error)``、不进入 LLM 可见文本（不泄漏隐藏参数
+           的存在）；
+        5. 结果归一与包装：返回值（含直通 `ToolResult` 逃生舱的
+           ``output``）经 `normalize_output` 归一——浅层判别、幂等；
+           归一化中的违禁块（``ToolCallBlock`` / ``ThinkingBlock``）
+           ``ValueError`` 属作者 bug，与职责 4 同走框架错误通道在
+           ``try`` 之外上抛；``execute`` 内普通异常 →
+           ``ToolResult(error)`` （不触发错误钩子）；``execute`` 内抛出的
            :class:`flowing.errors.Intercepted` → ``ToolResult.blocked``
            （硬阻断信号语义即 blocked，与 ``before_tool_call`` 拦截同一
            出口、同一 reason 塑形——「有意拒绝」与「意外故障」不进同一
-           LLM 可见通道）；三种后台形态 → ``ToolResult(pending)``：①
-           ``execute`` 是 async generator（首 yield = 收据内容，剩余部分
-           后台驱动逐段投递 EVENT——B1/B3/B4/B7/B8）；② 普通 async
-           ``execute`` + ``background = True`` （仅 script 型，B6/B13——
-           不 await，直接落 Task 分支）；③ 返回 ``asyncio.Task`` （挂
-           ``add_done_callback`` 固定 watcher，D13——完成回调取终值 →
-           `normalize_output` → `output_to_blocks` → 标注块 + 结果块的
-           多块 EVENT 入队；任务异常 → 标注块 + 错误文本块，与同步
-           error 同语义）。三条后台路径统一经 ``Agent.track_background_task``
-           注册（B9：强引用 + 按 id 取消/查询 + destroy 覆盖）。
+           LLM 可见通道）；三种后台形态 → ``ToolResult(pending)``：
+           ① ``execute`` 是 async generator（首 yield = 收据内容，剩余
+           部分后台驱动逐段投递 EVENT）；② 普通 async ``execute`` +
+           ``background = True`` （仅 script 型，不 await，直接落 Task
+           分支）；③ 返回 ``asyncio.Task`` （挂 ``add_done_callback``
+           固定 watcher——完成回调取终值 → `normalize_output` →
+           `output_to_blocks` → 标注块 + 结果块的多块 EVENT 入队；任务
+           异常 → 标注块 + 错误文本块，与同步 error 同语义）。三条后台
+           路径统一经 ``Agent.track_background_task`` 注册（强引用 + 按
+           id 取消 / 查询 + destroy 覆盖）。
 
         :param resolved_args: `ToolEntry.resolve()` 产出并经默认值填充的
-          规范名参数字典；已经过 LLM 视角校验，但**尚未**过内部校验
-          （本方法职责 4）。
+          规范名参数字典；已经过 LLM 视角校验，但尚未过内部校验（本方法
+          职责 4）。
         :param caller: 调用方 Agent；仅当 ``execute`` 声明了 ``caller``
           参数时实际传入。
         :param execution: 本次调用的执行追踪对象；挂到 ``self._execution``
           供工具内部检查 abort 信号。
         :return: 包装后的 `ToolResult`。
-        :raises pydantic.ValidationError: 内部校验失败（specified/inject/
+        :raises pydantic.ValidationError: 内部校验失败（specified /
           默认值的配置错误）——框架错误通道，非 LLM 可见产物。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         - 前置条件：``resolved_args`` 已经过 LLM 视角校验（``_normalize``
           第 1 步）与默认值填充（第 3 步）。
-        - **enqueue 契约**：普通 ``async def execute`` 被 await 到底，结果
-          只作为返回值交给 ``Agent.tool_call``，**不 enqueue**。三种后台
-          形态（async generator / ``background`` 标记 / 返回 ``asyncio.Task``）
+        - enqueue 契约：普通 ``async def execute`` 被 await 到底，结果只
+          作为返回值交给 ``Agent.tool_call``，不 enqueue。三种后台形态
+          （async generator / ``background`` 标记 / 返回 ``asyncio.Task``）
           返回 ``pending`` 收据：async gen 的后续 yield 与 Task 完成由
-          驱动方逐段 **enqueue EVENT**（``source="tool_result"``）；
+          驱动方逐段 enqueue EVENT（``source="tool_result"``）；
           ``background`` 标记复用 Task 分支。因此工具结果是否入队，只由
           ``execute`` 的返回形态决定，与调用上下文无关。
-        - 非行为：不重试、不超时兜底、不审批——重试由可选的
-          ``use_retry()`` 提供，审批在 ``before_tool_call``。
-        - 边缘情况：``execution.cancel`` 在 `execute` 运行期间被置位 →
-          本方法不强制中断 Task，工具自行协作退出；工具不响应时由
-          cancel/stop 族的上层策略处理。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.tool.Tool.execute()`` （每次调度；awaitable
-          检测后调用或 await）；
-          :func:`flowing.tool.normalize_output` （职责 5，每次同步完成
-          路径的归一化）
-        - 被调：``flowing.agent.Agent.tool_call()`` （``_normalize()``
-          之后，每次工具调用）
+        - 不重试、不超时兜底、不审批——重试由可选的 ``use_retry()``
+          提供，审批在 ``before_tool_call``。
+        - 边缘情况：``execution.cancel`` 在 ``execute`` 运行期间被置位
+          → 本方法不强制中断 Task，工具自行协作退出；工具不响应时由
+          cancel / stop 族的上层策略处理。
 
         .. seealso::
 
             - :meth:`flowing.agent.Agent.tool_call` —— 上游调用点（其收尾
-              对 shortcut / 钩子改写产物幂等再归一，D19）。
-            - :class:`flowing.agent.Execution` —— cancel/pause 信号契约。
+              对 shortcut / 钩子改写产物幂等再归一）。
+            - :class:`flowing.agent.Execution` —— cancel / pause 信号契约。
         """
         self._execution = execution  # cancel 注入落点；仅调度期间非 None
         if not hasattr(self, "_has_caller"):
@@ -1679,7 +1648,7 @@ class Tool:
             # 同上逃生舱：创建期未定模型的直接子类，就地按 execute 签名构建
             # 并缓存（与 ScriptTool.__init__ 同一建模入口，编译一次终身复用）
             self._args_model = _infer_from_execute(self.execute)
-        # 职责 4（S-33）：内部校验——caller 注入之后、try 之外。
+        # 职责 4：内部校验——caller 注入之后、try 之外。
         # specified/inject/默认值的配置错误 -> 上抛框架错误通道 + 日志，
         # 不被下方 except Exception 吞成 ToolResult(error)、不进 LLM 可见文本
         # （不泄漏隐藏参数的存在）；日志只记工具名，不记参数值（防敏感值泄露）
@@ -1694,11 +1663,11 @@ class Tool:
         try:
             result = self.execute(**resolved_args)  # -> Any（同步）/ awaitable（异步）/ async gen（后台形态）
             if inspect.isasyncgen(result):
-                # B1/B2：async generator 形态——等待首 yield（准备完成哨兵，
+                # async generator 形态——等待首 yield（准备完成哨兵，
                 # 可空）作 pending 收据；剩余部分 ensure_future 后台驱动（B3/
-                # B4/B7/B8，每个后续 yield 逐段投递 EVENT）。首 yield 前异常
+                # 每个后续 yield 逐段投递 EVENT）。首 yield 前异常
                 # 在此上抛，按 except 顺序分派：Intercepted → blocked（1833）；
-                # 其余 → error（1838，工具调用错误，LLM 立即可见，不挂 pending）
+                # 其余 → error（工具调用错误，LLM 立即可见，不挂 pending）
                 try:
                     receipt = await anext(result)
                 except StopAsyncIteration:
@@ -1706,7 +1675,7 @@ class Tool:
                 if caller is not None:
                     drive_task = asyncio.ensure_future(
                         self._drive_asyncgen(result, caller))
-                    task_id = caller.track_background_task(drive_task)   # B9：注册（强引用 + 按 id 取消/查询 + destroy 覆盖）
+                    task_id = caller.track_background_task(drive_task)   # 注册（强引用 + 按 id 取消/查询 + destroy 覆盖）
                     return ToolResult(status="pending", output=receipt,
                                       background_task_id=task_id)
                 # 编程路径（无 caller）：不注册、不驱动——后台主体不执行；
@@ -1717,8 +1686,8 @@ class Tool:
                                   background_task_id=None)
             if inspect.isawaitable(result):
                 if getattr(self, "background", False) and isinstance(self, ScriptTool):
-                    # B6：background 标记——普通 async execute 的后台化入口，
-                    # 不 await，落下方 Task/pending 分支（仅 script 型生效，B13）
+                    # background 标记——普通 async execute 的后台化入口，
+                    # 不 await，落下方 Task/pending 分支（仅 script 型生效）
                     value = asyncio.ensure_future(result)
                 else:
                     task = asyncio.ensure_future(result)  # Task 包装（abort 为协作式，不强杀）
@@ -1736,8 +1705,8 @@ class Tool:
         finally:
             self._execution = None  # 不变量：_execution 仅 __call__ 期间有效
         if inspect.isasyncgen(value):
-            # 嵌套形态（B14 实现细化）：async def execute 返回 async gen 对象
-            # ——与 execute 自身即 async gen 同一条后台管线（B1/B2 同语义）。
+            # 嵌套形态：async def execute 返回 async gen 对象
+            # ——与 execute 自身即 async gen 同一条后台管线。
             # 本分支在 try 之外——首 yield 前异常在此自行按 except 顺序分派
             try:
                 receipt = await anext(value)
@@ -1778,11 +1747,10 @@ class Tool:
         return ToolResult(status="completed", output=value)
 
     async def _deliver_async_result(self, task: "asyncio.Task", caller: "Agent") -> None:
-        """异步工具完成回调（D13 固定行为，非扩展点）：取终值 → 归一 → 塑形
-        → 标注块 + 结果块的 EVENT 消息（``source="tool_result"``、STEER
-        优先级）入调用方队列；任务异常 → 标注块 + 错误文本块（LLM 可见）。
-
-        **内部 API，不属稳定契约。**
+        """异步工具完成回调（框架固定行为，非扩展点）：取终值 → 归一 →
+        塑形 → 标注块 + 结果块的 EVENT 消息（``source="tool_result"``、
+        STEER 优先级）入调用方队列；任务异常 → 标注块 + 错误文本块
+        （LLM 可见）。内部 API，不属稳定契约。
         """
         marker = TextBlock(text=f"异步工具 {self.definition.name} 的最终结果：")
         if task.cancelled():
@@ -1797,12 +1765,11 @@ class Tool:
             content=blocks, priority=MessagePriority.STEER))
 
     async def _drive_asyncgen(self, agen: "AsyncGenerator", caller: "Agent") -> None:
-        """后台驱动 async generator（B1/B3/B4/B7/B8，`_deliver_async_result` 的
-        兄弟）：后续 yield 逐段投递 EVENT（``source="tool_result"``、STEER 优先
-        级）；中途异常投递错误块 + 诊断日志（与同步 error 同语义，LLM 可见）；
-        取消投递「已取消」后**裸 raise**（任务以 cancelled 终态结束）。
-
-        **内部 API，不属稳定契约。**
+        """后台驱动 async generator（`_deliver_async_result` 的兄弟）：后续
+        yield 逐段投递 EVENT（``source="tool_result"``、STEER 优先级）；
+        中途异常投递错误块 + 诊断日志（与同步 error 同语义，LLM 可见）；
+        取消投递「已取消」后裸 ``raise`` （任务以 cancelled 终态结束）。
+        内部 API，不属稳定契约。
         """
         marker = TextBlock(text=f"异步工具 {self.definition.name}：")
         try:
@@ -1838,12 +1805,11 @@ class Tool:
             _logger.exception("异步工具 %s 后台运行失败", self.definition.name)
 
     async def _background_blocks(self, marker: TextBlock, item: Any) -> list[ContentBlock]:
-        """B7/B8：yield 值归一化塑形（与 `_deliver_async_result`、`as_message`
-        同一实现）；浅层违禁块（``ToolCallBlock`` / ``ThinkingBlock``）**容错
-        转普通文本错误说明**——后台任务已脱离调用栈，「抛异常」无人接收
-        （与 completed 路径的 ``ValueError`` 框架错误通道区分）。
-
-        **内部 API，不属稳定契约。**
+        """yield 值归一化塑形（与 `_deliver_async_result`、`as_message` 同一
+        实现）；浅层违禁块（``ToolCallBlock`` / ``ThinkingBlock``）容错转
+        普通文本错误说明——后台任务已脱离调用栈，「抛异常」无人接收（与
+        completed 路径的 ``ValueError`` 框架错误通道区分）。内部 API，
+        不属稳定契约。
         """
         if _has_forbidden_block(item):
             return [marker, TextBlock(
@@ -1867,23 +1833,19 @@ class ScriptTool(Tool):
 
     .. rubric:: 功能介绍
 
-    工具作者**不直接构造** `ToolDefinition`，而是在子类上声明 ``description``
-    / ``args_model`` 类属性（B1 裁决：参数声明 = Pydantic BaseModel
-    子类，声明即模型——schema 由 ``model_json_schema()`` 派生、执行
-    校验即模型本身）；``__init__`` 时框架自动生成
-    ``self.definition``。``name`` 可省略——缺省由类名 kebab 化推断
-    （``MakePayment`` → ``make-payment``），显式声明仅作一致性断言
-    （不符抛 :class:`flowing.errors.NameMismatchError`）。``args_model``
-    也可省略——从 `execute()` 签名的类型标注与默认值**构建**模型
-    （``_infer_from_execute``）。
+    工具作者不直接构造 `ToolDefinition`，而是在子类上声明
+    ``description`` / ``args_model`` 类属性；``__init__`` 时框架自动
+    生成 ``self.definition``。``name`` 可省略——缺省由类名 kebab 化推断
+    （``MakePayment`` → ``make-payment``），显式声明仅作一致性断言（不符
+    抛 :class:`flowing.errors.NameMismatchError`）。``args_model`` 也可
+    省略——从 ``execute()`` 签名的类型标注与默认值构建模型。
 
-    .. rubric:: 设计动机
-
-    声明与执行写在同一处，元信息不必二次维护。名字一律**推断**（文件名 /
-    目录名 / 类名），任何显式 ``name`` 声明（``.fya`` 字段、类属性、
-    ``@flowing_tool`` 装饰器参数）仅作一致性断言；``description`` /
-    ``parameters`` 仍按 ``.fya`` 显式声明 > 类属性 > docstring /
-    ``execute()`` 签名推断 的优先级链覆盖一切兜底来源。
+    script 工具共有三条等价的定义通道：手写本类子类（主路径）；
+    ``@flowing_tool`` 打标函数（框架自动提升为等价子类）；``.fya`` 的
+    ``callable:`` 指针指向裸函数。名字一律推断（文件名 / 目录名 / 类名），
+    任何显式 ``name`` 声明（``.fya`` 字段、类属性、装饰器参数）仅作一致
+    性断言；``description`` 按显式声明 > 类 docstring 首段 >
+    ``execute()`` docstring 首段的三级回退链取。
 
     .. rubric:: 使用示例
 
@@ -1903,170 +1865,94 @@ class ScriptTool(Tool):
             # name 省略——由类名 kebab 化推断为 "make-payment"
             # （显式写 name = "make-payment" 合法，仅作一致性断言）
             description = "发起支付"
-            args_model = PayArgs          # 参数声明（B1：BaseModel 子类）
+            args_model = PayArgs          # 参数声明（BaseModel 子类）
 
             async def execute(self, *, order_id: str, amount: float,
                               caller: Agent) -> dict:
                 ...
 
-    打标函数路径（``@flowing_tool`` 装饰，框架自动提升为等价子类）：
+    后台工具形态（async generator）：``execute`` 写成 async generator——
+    第一个 ``yield`` 是「准备完成」哨兵（可空值），`Tool.__call__` 等待它
+    作为 ``pending`` 收据（``tool_status="pending"`` 的 TOOL 消息带内容）；
+    后续每个 ``yield`` 由框架后台驱动并逐段投递 EVENT 消息（LLM 可见）；
+    首 yield 前只允许轻量准备，长任务必须放在首 yield 之后（违反的后果
+    是收据延迟——作者责任）。「只要后台、不要中间报告」的普通 async
+    ``execute`` 可声明类属性 ``background = True`` （仅 script 型生效）走
+    同一 ``pending`` 通道：
 
     .. code-block:: python
 
-        # tools/make_payment.py
-        @flowing_tool    # 可带参数断言：@flowing_tool("make-payment")
-        async def make_payment(order_id: str, amount: float,
-                               currency: str = "CNY") -> dict:
-            \"\"\"对指定订单发起支付。\"\"\"
-            ...
-
-    ``.fya`` 路径（``callable:`` 指向**未装饰**的裸函数，产物等价）：
-
-    .. code-block:: yaml
-
-        # make-payment/TOOL.fya
-        type: script
-        description: 对指定订单发起支付。仅在用户明确确认支付意图后调用。
-        callable: ./impl.py::make_payment   # {路径}::{函数名或类名}
-
-    async generator 形态（后台工具，B1/B5/B6）：``execute`` 写成
-    async generator——**第一个 ``yield`` = 「准备完成」哨兵（可空值）**，
-    `Tool.__call__` 等待它作为 pending 收据（TOOL 消息带内容，
-    ``tool_status="pending"``）；后续每个 ``yield`` 由框架后台驱动并逐段
-    投递 EVENT 消息（LLM 可见）；**首 yield 前只允许轻量准备**（长任务
-    必须放在首 yield 之后；违反的后果是收据延迟——作者责任）。「只要
-    后台、不要中间报告」的普通 async ``execute`` 可声明类属性
-    ``background = True`` （**仅 script 型生效**，B13）走同一 pending 通道。
-
-    .. code-block:: python
-
-        # 形态一：仅收据（nohup 启动后静默，无后续 yield——合法）
-        class NoHupTool(ScriptTool):
-            async def execute(self, *, cmd: str, caller: Agent, **args):
-                pid = await launch_nohup(cmd)      # 轻量准备（首 yield 前）
-                yield {"pid": pid}                 # ① 收据（可空值）
-
-        # 形态二：收据 + 最终呈现（后台结束后再 yield 一次 → EVENT）
         class RunWorkflowTool(ScriptTool):
             async def execute(self, *, path: str, caller: Agent, **args):
-                wf = resolve_workflow(path)        # 轻量准备
-                instance = wf(caller, caller.runtime)
+                wf = resolve_workflow(path)                     # 轻量准备
                 yield {"status": "started", "workflow": path}   # ① 收据
-                await instance.run(**args)         # 长任务（后台）
+                await wf.run(**args)                            # 长任务（后台）
                 yield {"status": "done", "workflow": path}      # ② EVENT
 
-        # 形态三：循环推回（流式工具典型——每轮验证自动把结果推回）
-        class TrainNetTool(ScriptTool):
-            async def execute(self, *, dataset: str, epochs: int, caller: Agent, **args):
-                yield {"status": "started", "dataset": dataset, "epochs": epochs}   # ① 收据（任务信息）
-                model = load_model(dataset)        # 后台阶段（首 yield 后）
-                for epoch in range(epochs):
-                    await train_one_epoch(model)
-                    if (epoch + 1) % 10 == 0:
-                        val_loss, val_acc = await validate(model)
-                        yield {"epoch": epoch + 1, "val_loss": val_loss,
-                               "val_acc": val_acc}   # ② 进度 → EVENT
-                yield {"status": "done", "final_val_acc": val_acc}   # ③ 最终呈现
+    async generator 禁止带值 ``return`` （PEP 525 只允许裸 ``return``）
+    ——最终呈现 = 最后一条 ``yield``；没有 ``yield`` 的函数不是 async
+    generator（走普通执行路径）；``background = True`` 只对普通 async
+    ``execute`` （单次返回）生效，async gen 无需标记。
 
-    语义要点：async generator **禁止带值 ``return``**（PEP 525 只允许裸
-    ``return``）——最终呈现 = 最后一条 ``yield``；没有 ``yield`` 的函数
-    不是 async generator（走普通执行路径，行为不变）；``background = True``
-    类属性只对**普通 async ``execute``**（单次返回）生效——async gen 无需
-    标记（``isasyncgen`` 检测即后台，B5，标记正交冗余）。
+    .. rubric:: 行为要点
 
-    .. rubric:: 行为规约
-
-    - **互斥规则**：类属性声明（``name``/``description``/``args_model``）与
-      手写 ``definition`` 类属性**互斥**；同时存在时框架发警告，以显式
+    - 互斥规则：类属性声明（``name`` / ``description`` / ``args_model``）
+      与手写 ``definition`` 类属性互斥；同时存在时框架发警告，以显式
       ``definition`` 为准。
-    - **声明通道互斥**：``callable:`` 指向的函数**不允许**带
-      ``@flowing_tool`` 装饰（打标 = 自动提升通道，``callable:`` = 显式
-      指针通道，二选一）；违反抛 :class:`flowing.errors.FormatError`。
+    - 声明通道互斥：``callable:`` 指向的函数不允许带 ``@flowing_tool``
+      装饰（打标 = 自动提升通道，``callable:`` = 显式指针通道，二选一）；
+      违反抛 :class:`flowing.errors.FormatError`。
+    - script 工具注册为全局单例（Runtime 一份，所有 Agent 共享）——同一
+      份用户代码不应实例化多次。
+    - 每个 ``.py`` 文件至多一个打标函数；与 Tool 子类同文件并存或含多个
+      打标函数 → :class:`flowing.errors.AmbiguousToolError` （定向查找阶段
+      判别）。
     - 类属性在 ``__init__`` 前已就绪，无时序问题。
-    - script 工具注册为**全局单例**（Runtime 一份，所有 Agent 共享）——
-      同一份用户代码不应实例化多次。
-    - 打标函数元信息提取：``name`` ← 文件名去 ``.py`` 并 snake → kebab
-      规范化（``TOOL.py`` / ``tool.py`` 通用名时取目录名）——机制本体
-      :func:`flowing.paths.infer_name` （规则表 :data:`TOOL_NAMING`）；
-      装饰器参数若给出仅作一致性断言（不符抛 ``NameMismatchError``）；
-      ``description`` ← 显式声明 > 类 docstring 首段 > ``execute()`` docstring
-      首段（三级回退链，T6 裁决）；``args_model`` ← 从签名构建
-      （类型标注 → 字段类型、默认值 → default，经
-      :func:`flowing.params.schema_to_model` 同一桥接落成模型）。
-    - **每文件至多一个打标函数**；与 Tool 子类同文件并存或含多个打标
-      函数 → :class:`flowing.errors.AmbiguousToolError`。
 
-    :raises MissingSchemaError: 既无 ``args_model`` 声明、`execute()` 参数又
-      缺类型标注时（签名构建不出字段类型）。
-    :raises AmbiguousToolError: 同一 ``.py`` 文件同时存在打标函数与
-      `ScriptTool` 子类、或含多个打标函数时（目录定向查找阶段）。
-
-    .. rubric:: 测试案例
-
-    - 前置：子类同时声明 ``args_model`` 与 ``definition`` → 操作：实例化 →
-      期望：产生告警日志且 ``self.definition`` 为显式声明的对象。
-
-    .. rubric:: 调用关系（审计）
-
-    - 调用：``flowing.tool._infer_from_execute()`` （``__init__`` 内，
-      ``args_model`` 未声明时——从签名构建模型）
-    - 被调：``无`` （作者基类；框架经子类实例化与 ``Tool.__call__``
-      调度链使用）
-    - 实例化方：用户子类直接构造 / ``flowing.tool._auto_generate_tool()``
-      （打标函数路径，经 :func:`flowing_tool` 登记后由
-      ``ToolRegistry.get()`` 提升）；产物经
-      ``ToolRegistry.register()`` 注册全局单例
+    :raises flowing.errors.MissingSchemaError: 既无 ``args_model`` 声明、
+      ``execute()`` 参数又缺类型标注时（签名构建不出字段类型）。
+    :raises flowing.errors.NameMismatchError: 显式 ``name`` 与推断名不符。
 
     .. seealso::
 
+        - :func:`flowing.tool.flowing_tool` —— 打标函数通道。
         - :func:`flowing.tool._infer_from_execute` —— 签名推断的内部实现。
-        - :func:`flowing.tool._auto_generate_tool` —— 打标函数包装。
-        - :func:`flowing.tool.flowing_tool` —— 打标装饰器。
         - :mod:`flowing.params` —— 声明层规则与桥接子集。
     """
 
     name: str
-    """规范工具名（kebab-case）。**可省略**：缺省由类名 kebab 化推断；
-    显式声明仅作一致性断言（不符抛
-    :class:`flowing.errors.NameMismatchError`）；与显式 ``definition``
-    互斥。
+    """规范工具名（kebab-case）。可省略：缺省由类名 kebab 化推断；显式
+    声明仅作一致性断言（不符抛 :class:`flowing.errors.NameMismatchError`）；
+    与显式 ``definition`` 互斥。
     """
     description: str
-    """工具描述。类属性声明；缺省时按三级回退链取（T6 裁决）：
-    显式 ``description`` > 类 docstring 首段 > ``execute()`` docstring 首段。
+    """工具描述。类属性声明；缺省时按三级回退链取：显式 ``description``
+    > 类 docstring 首段 > ``execute()`` docstring 首段。
     """
     args_model: type[BaseModel] | None
-    """参数声明（B1 裁决：Pydantic BaseModel 子类，声明即模型——LLM
-    schema 由 ``model_json_schema()`` 派生、执行校验即模型本身）；
-    ``None`` 时由 ``_infer_from_execute(self.execute)`` 从签名构建模型。
+    """参数声明：Pydantic ``BaseModel`` 子类，声明即模型——LLM schema 由
+    ``model_json_schema()`` 派生、执行校验即模型本身；``None`` 时由
+    ``_infer_from_execute(self.execute)`` 从签名构建模型。
     """
+
 
     def __init__(self) -> None:
         """自动生成 ``self.definition`` （同步构造，不触网、不注册）。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         - 顺序：显式 ``definition`` 类属性存在 → 直接使用（同时声明
-          ``name``/``description``/``args_model`` 时发**告警日志**，仍以
-          显式 ``definition`` 为准——互斥规则）；否则 ``name`` 缺省由类名
-          kebab 化推断（显式声明仅作一致性断言，不符 →
+          ``name`` / ``description`` / ``args_model`` 时发告警日志，仍以
+          显式 ``definition`` 为准——互斥规则）；否则 ``name`` 缺省由
+          类名 kebab 化推断（显式声明仅作一致性断言，不符 →
           ``NameMismatchError``），``description`` 按三级回退链取（显式
           声明 > 类 docstring 首段 > ``execute()`` docstring 首段，皆无
-          → 空串），并按
-          ``args_model = self.args_model or _infer_from_execute(self.execute)``
-          （未声明时从 ``execute`` 签名构建模型）→
-          ``ToolDefinition(name=..., description=...,
-          params_schema=args_model.model_json_schema()["properties"])``
-          生成。
-        - 后置条件：``self.definition`` 非 None；``self._has_caller`` 已
-          按 `execute` 签名检测完毕。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.tool._infer_from_execute()`` （``args_model``
-          为 ``None`` 时）；``flowing.tool.ToolDefinition`` 构造
-        - 被调：script 工具实例化路径（用户子类构造 /
-          ``flowing.tool._auto_generate_tool()``）
+          → 空串），``args_model`` 未声明时按
+          ``self.args_model or _infer_from_execute(self.execute)`` 取值，
+          最后生成 ``ToolDefinition`` （``params_schema`` 取
+          ``args_model.model_json_schema()["properties"]``）。
+        - 后置条件：``self.definition`` 非 ``None``；``self._has_caller``
+          已按 ``execute`` 签名检测完毕。
         """
         cls = type(self)
         if "definition" in cls.__dict__:
@@ -2089,8 +1975,8 @@ class ScriptTool(Tool):
                 raise NameMismatchError(explicit_name, inferred_name, cls.__name__)
             args_model = getattr(self, "args_model", None)
             if args_model is None:
-                args_model = _infer_from_execute(self.execute)  # 从 execute 签名构建模型（B1）
-            # description 三级回退链（T6）：显式声明 > 类 docstring 首段 >
+                args_model = _infer_from_execute(self.execute)  # 从 execute 签名构建模型
+            # description 三级回退链：显式声明 > 类 docstring 首段 >
             # execute() docstring 首段；皆无 -> 空串。注意用 cls.__doc__
             # 而非 inspect.getdoc(cls)——后者会继承基类 docstring
             description = getattr(cls, "description", None)
@@ -2102,7 +1988,7 @@ class ScriptTool(Tool):
                 params_schema=args_model.model_json_schema()["properties"])  # 声明即模型：schema 从模型派生
         self._has_caller = "caller" in inspect.signature(self.execute).parameters
         self._execution = None
-        # S-33：创建时定内部校验模型——声明即模型（B1），无需再编译；
+        # 创建时定内部校验模型——声明即模型，无需再编译；
         # 显式 definition 路径下若未带模型，就地从 execute 签名构建兜底
         self._args_model = getattr(self, "args_model", None) or _infer_from_execute(self.execute)
 
@@ -2367,7 +2253,7 @@ class McpTool(Tool):
         # 声明实例（组代理）为 None，不可执行；list_tools() 展开产物置为
         # 服务端工具名。内部 API。
         self._server_tool_name: str | None = None
-        # S-33：创建时定内部校验模型（B1：fya 声明经 params.schema_to_model
+        # 创建时定内部校验模型（fya 声明经 params.schema_to_model
         # 桥接——definition.params_schema 即桥接产物 schema，再建最终模型）
         self._args_model = schema_to_model("Args", self.definition.params_schema)
 
@@ -2621,10 +2507,10 @@ class CliTool(Tool):
         self.command = command
         self.shell = shell
         self._execution = None
-        # 创建时编译一次模板（S-33 同立场：不在每次调用时编译）；
+        # 创建时编译一次模板（不在每次调用时编译）；
         # 模板语法错误（声明笔误）在构造期暴露
         self._template = _CLI_JINJA.from_string(command)
-        # S-33：创建时定内部校验模型（B1：fya 声明经 params.schema_to_model
+        # 创建时定内部校验模型（fya 声明经 params.schema_to_model
         # 桥接——definition.params_schema 即桥接产物 schema，再建最终模型）
         self._args_model = schema_to_model("Args", self.definition.params_schema)
 
@@ -2796,7 +2682,7 @@ class RequestTool(Tool):
         # 这些参数从 body/query 排除（类级行为规约第 1 条）
         self._path_params: frozenset[str] = frozenset(
             jinja2.meta.find_undeclared_variables(_ENV_JINJA.parse(self.url)))
-        # S-33：创建时定内部校验模型（B1：fya 声明经 params.schema_to_model
+        # 创建时定内部校验模型（fya 声明经 params.schema_to_model
         # 桥接——definition.params_schema 即桥接产物 schema，再建最终模型）
         self._args_model = schema_to_model("Args", self.definition.params_schema)
 
@@ -3567,52 +3453,33 @@ _FLOWING_TOOL_MARKS: set[Callable[..., Any]] = set()
 
 def flowing_tool(fn: Callable[..., Any] | None = None, *,
                  name: str | None = None) -> Any:
-    """``@flowing_tool`` 打标装饰器——裸函数 → 工具类的自动提升标记。
+    """``@flowing_tool`` 打标装饰器——把裸函数标记为 script 工具。
 
     .. rubric:: 功能介绍
 
     script 工具的两条定义通道之一（另一条是手写 `ScriptTool` 子类）。
-    装饰器**只打标不注册**：在函数上记录标记（进程级打标表），实例化与
-    注册推迟到工具被引用时由
-    :meth:`flowing.tool.ToolRegistry.get` 完成——import 期
-    不需要 Runtime 存在，多 Runtime 安全。
+    装饰器只打标不注册：在函数上记录标记（进程级打标表），实例化与注册
+    推迟到工具被引用时由 :meth:`flowing.tool.ToolRegistry.get` 完成——
+    import 期不需要 Runtime 存在，多 Runtime 安全。
 
-    两种用法：``@flowing_tool`` （名字由文件名/目录名推断）或
-    ``@flowing_tool("make-payment")`` （参数仅作**一致性断言**——必须与
-    推断名一致，不符抛 :class:`flowing.errors.NameMismatchError`）。
+    两种用法：``@flowing_tool`` （名字由文件名 / 目录名推断）或
+    ``@flowing_tool("make-payment")`` （参数仅作一致性断言——必须与推断名
+    一致，不符抛 :class:`flowing.errors.NameMismatchError`）。定义处的
+    显式打标让「这个函数是工具」成为作者意图而非框架猜测。
 
-    .. rubric:: 设计动机
+    .. rubric:: 行为要点
 
-    取消「裸函数隐式自动提升」：定义处的显式打标让「这个函数是工具」成为
-    作者意图而非框架猜测；断言式命名与 Agent / Skill 的 ``name`` 语义统一。
-
-    .. rubric:: 行为规约
-
-    - **每个 ``.py`` 文件至多一个打标函数**；与 Tool 子类同文件并存或
-      含多个打标函数 → :class:`flowing.errors.AmbiguousToolError`。
-    - **通道互斥**：被 ``TOOL.fya`` 的 ``callable: {路径}::{函数名}``
-      指向的函数不允许打标（显式指针通道与自动提升通道二选一），违反
-      抛 :class:`flowing.errors.FormatError`。
-    - 名字推断：文件名去 ``.py`` 并 snake → kebab 规范化；
-      ``TOOL.py`` / ``tool.py`` 通用名时取目录名。
-    - 非行为：不实例化 Tool、不触碰任何 Runtime / 注册表；返回原函数。
+    - 每个 ``.py`` 文件至多一个打标函数；与 Tool 子类同文件并存或含多个
+      打标函数 → :class:`flowing.errors.AmbiguousToolError`。
+    - 通道互斥：被 ``TOOL.fya`` 的 ``callable: {路径}::{函数名}`` 指向的
+      函数不允许打标（显式指针通道与自动提升通道二选一），违反抛
+      :class:`flowing.errors.FormatError`。
+    - 名字推断：文件名去 ``.py`` 并 snake → kebab 规范化；``TOOL.py`` /
+      ``tool.py`` 通用名时取目录名。
+    - 不实例化 Tool、不触碰任何 Runtime / 注册表；返回原函数。
 
     :param fn: 被装饰函数（无参用法由 Python 装饰器协议传入）。
     :param name: 一致性断言参数；``None`` 时纯推断。
-
-    .. rubric:: 测试案例
-
-    - 前置：``make_payment.py`` 含 ``@flowing_tool`` 函数 → 操作：
-      ``get("make-payment")`` → 期望：自动提升并注册。
-    - 前置：``@flowing_tool("other-name")`` 与文件名不符 → 期望：
-      ``NameMismatchError``。
-
-    .. rubric:: 调用关系（审计）
-
-    - 调用：``无`` （仅打标与登记打标表）
-    - 被调：用户工具定义文件（import 期）；产物由
-      ``flowing.tool.ToolRegistry.get`` 消费（时机：引用触发
-      的惰性解析）
 
     .. seealso::
 
@@ -3636,26 +3503,19 @@ def flowing_tool(fn: Callable[..., Any] | None = None, *,
 
 
 def _infer_from_execute(execute: Callable[..., Any]) -> "type[BaseModel]":
-    """从 `execute()` 签名**构建** Pydantic 参数模型。内部 API，不属稳定契约。
+    """从 ``execute()`` 签名构建 Pydantic 参数模型。内部 API，不属稳定契约。
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
-    - 来源（B1：产物是模型，不再是 ParamSpec dict）：参数类型标注 →
-      字段类型（``str/int/float/bool/list/dict`` 等直接映射，复杂标注交
-      Pydantic）；``Field`` 语义的默认值 → 字段 default（有默认 →
-      可选，无 → 必填）；``caller`` 参数跳过（框架注入，不是 LLM
-      参数）；``*args``/``**kwargs`` 形态跳过（不进 schema）。
-    - 构建经 ``pydantic.create_model`` （与 fya 桥接
+    - 来源：参数类型标注 → 字段类型（``str`` / ``int`` / ``float`` /
+      ``bool`` / ``list`` / ``dict`` 等直接映射，复杂标注交 Pydantic）；
+      默认值 → 字段 default（有默认 → 可选，无 → 必填）；``caller``
+      参数跳过（框架注入，不是 LLM 参数）；``*args`` / ``**kwargs``
+      形态跳过（不进 schema）。
+    - 构建经 ``pydantic.create_model`` （与 ``.fya`` 桥接
       :func:`flowing.params.schema_to_model` 同一建模入口）。
-    - :raises MissingSchemaError: 任一业务参数缺类型标注（构建不出
-      字段类型）。
-
-    .. rubric:: 调用关系（审计）
-
-    - 调用：``pydantic.create_model``
-    - 被调：``flowing.tool.ScriptTool.__init__()`` （``args_model`` 未
-      声明时）；``flowing.tool._auto_generate_tool()`` （打标函数元信息
-      提取）
+    - :raises flowing.errors.MissingSchemaError: 任一业务参数缺类型标注
+      （构建不出字段类型）。
 
     .. seealso::
 
@@ -3684,35 +3544,29 @@ def _auto_generate_tool(fn: Callable[..., Any]) -> Tool:
     """把打标函数（``@flowing_tool``）包装为 `ScriptTool` 子类实例。
     内部 API，不属稳定契约。
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
     - 等价于 ``type("<PascalName>", (ScriptTool,), {"execute":
-      staticmethod(fn)})`` 后实例化；元信息按「文件名/docstring/类型标注」
-      提取（名字推断与装饰器参数断言规则见 :func:`flowing_tool`）。
-    - :raises MissingSchemaError: 参数缺类型标注。
-    - :raises AmbiguousToolError: 同一 ``.py`` 同时存在打标函数与 Tool
-      子类、或多个打标函数（由定向查找层抛出，不在本函数内）。
-
-    .. rubric:: 调用关系（审计）
-
-    - 调用：``flowing.tool._infer_from_execute()`` （元信息提取——
-      签名构建模型，B1）
-    - 被调：``flowing.tool.ToolRegistry.get()`` 的 script
-      提升路径（时机：引用触发的惰性解析命中打标函数文件）
+      staticmethod(fn)})`` 后实例化；元信息按「文件名 / docstring / 类型
+      标注」提取（名字推断与装饰器参数断言规则见 :func:`flowing_tool`）。
+    - :raises flowing.errors.MissingSchemaError: 参数缺类型标注。
+    - :raises flowing.errors.AmbiguousToolError: 同一 ``.py`` 同时存在
+      打标函数与 Tool 子类、或多个打标函数（由定向查找层抛出，不在本
+      函数内）。
 
     .. seealso::
 
         - :class:`flowing.tool.ScriptTool` —— 两条定义路径的共同产物。
         - :func:`flowing_tool` —— 打标入口。
     """
-    args_model = _infer_from_execute(fn)  # 元信息提取：签名构建模型（B1）
+    args_model = _infer_from_execute(fn)  # 元信息提取：签名构建模型
     # name ← 文件名去 .py 并 snake → kebab 规范化（TOOL.py/tool.py 通用名
     # 取目录名）；装饰器参数若给出仅作一致性断言（不符 -> NameMismatchError）
     name = infer_name(fn.__code__.co_filename, naming=TOOL_NAMING)
     declared = getattr(fn, "__flowing_tool_name__", None)
     if declared is not None and declared != name:
         raise NameMismatchError(declared, name, fn.__code__.co_filename)
-    # description 三级回退链（T6）在打标函数形态下的落点：显式声明无通道
+    # description 三级回退链在打标函数形态下的落点：显式声明无通道
     # （装饰器无 description 形参）、无类 docstring —— 取函数 docstring 首段
     description = _first_paragraph(fn.__doc__) or ""
     cls = type(kebab_to_pascal(name), (ScriptTool,), {
