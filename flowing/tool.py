@@ -2002,17 +2002,15 @@ _ENV_JINJA = jinja2.Environment(autoescape=False, undefined=jinja2.StrictUndefin
 
 顶层 ``env`` 绑定 ``os.environ`` 只读视图；``StrictUndefined`` 使缺失变量
 fail fast（渲染方就地包成 ``FormatError``），不静默降级为空串。渲染产物
-不进消息、不落盘（凭证口径）。
+不进消息、不落盘。内部 API。
 """
 
 
 def _render_env_templates(values: "dict[str, str] | None") -> "dict[str, str] | None":
     """把映射的每个字符串值按 ``{{ env.X }}`` 模板一次性渲染。内部 API。
 
-    求值时点：装配期（工具实例构造，连接/请求之前一次完成）。缺失变量 →
-    :class:`flowing.errors.FormatError` （fail fast，与 providers 条目加载
-    的 ``MissingEnvironmentVariableError`` 同立场，不共用异常类——该类的
-    构造契约绑定 providers.yaml 语境）。
+    求值时点：装配期（工具实例构造，连接 / 请求之前一次完成）。缺失变量 →
+    :class:`flowing.errors.FormatError` （fail fast，不静默降级）。
     """
     if values is None:
         return None
@@ -2069,12 +2067,12 @@ _CLI_JINJA = jinja2.Environment(
 _CLI_JINJA.filters["raw"] = _shell_raw_filter
 
 _ENV_URL_JINJA = jinja2.Environment(autoescape=False, undefined=jinja2.DebugUndefined)
-"""RequestTool URL 的装配期 env 渲染环境（spec 未写清处落实）。
+"""RequestTool URL 的装配期 env 渲染环境。内部 API。
 
-URL 是**两阶段模板**：装配期先渲染 ``{{ env.X }}`` （DebugUndefined 把
-非 env 的占位原样保留为 ``{{ name }}`` 文本），执行期再以 args 渲染路径
-参数（StrictUndefined）。env 引用缺失时在执行期暴露为渲染错误（error
-结果）——headers/auth 的 env 引用才是装配期 fail fast（`_ENV_JINJA`）。
+URL 是两阶段模板：装配期先渲染 ``{{ env.X }}`` （DebugUndefined 把非 env
+的占位原样保留为 ``{{ name }}`` 文本），执行期再以 args 渲染路径参数
+（StrictUndefined）。env 引用缺失时在执行期暴露为渲染错误（error 结果）
+——headers / auth 的 env 引用才是装配期 fail fast（`_ENV_JINJA`）。
 """
 
 _SHELL_EXECUTABLES: dict[str, "str | None"] = {
@@ -2086,9 +2084,8 @@ _SHELL_EXECUTABLES: dict[str, "str | None"] = {
 }
 """CliTool ``shell`` 声明 → 子进程 executable 映射（``None`` = 默认 sh）。
 
-spec 未写清处落实：spec 只列可选值未给可执行文件名映射；``ps`` 取
-PowerShell 7 的 ``pwsh``。可执行文件不存在 → 子进程启动失败，由
-``__call__`` 包装为 ``status="error"`` 结果（框架级失败语义）。
+``ps`` 取 PowerShell 7 的 ``pwsh``。可执行文件不存在 → 子进程启动失败，
+由 ``__call__`` 包装为 ``status="error"`` 结果。内部 API。
 """
 
 
@@ -2098,11 +2095,11 @@ def _mcp_input_schema_to_params(input_schema: "dict[str, Any] | None") -> dict[s
     内部 API。两点归一：
 
     - property 键裁剪到 :data:`flowing.params.SCHEMA_KEYWORDS` 子集——
-      FastMCP/pydantic 生成的 inputSchema 带 ``title`` 等超子集键，
+      FastMCP / pydantic 生成的 inputSchema 带 ``title`` 等超子集键，
       不裁剪会在 ``schema_to_model`` 桥接时炸 ``FormatError``；
-    - required 口径对齐（框架以 ``default`` 有无派生）：
-      ``required`` 列表之外的 property 若无 ``default`` 补
-      ``default=None``——否则可选参数会被 ``schema_to_model`` 建成必填字段。
+    - required 口径对齐（框架以 ``default`` 有无派生）：``required``
+      列表之外的 property 若无 ``default`` 补 ``default=None``——否则
+      可选参数会被 ``schema_to_model`` 建成必填字段。
     """
     from flowing.params import SCHEMA_KEYWORDS
 
@@ -2119,26 +2116,21 @@ def _mcp_input_schema_to_params(input_schema: "dict[str, Any] | None") -> dict[s
 class McpTool(Tool):
     
     """MCP 工具实例——连接 MCP 服务器并代理其暴露的工具 schema。
-    Agent 侧 ``ToolEntry`` 的 ``inject`` / ``specified`` 对本类同样生效
-    （绑定层与工具类型无关，见 ``ToolEntry.resolve``）。
 
     .. rubric:: 功能介绍
 
     ``type: mcp`` 的实例类。两种来源互斥：``command`` （本地 stdio 进程）
-    或 ``url`` （远程 HTTP/SSE 端点）。默认 `ToolDefinition` 来自 MCP 服务器
-    ``list_tools()`` 返回的 schema，可经 ``overrides`` 局部覆写。
+    或 ``url`` （远程端点，``/sse`` 结尾走 SSE、其余走 streamable HTTP）。
+    默认 `ToolDefinition` 来自 MCP 服务器 ``list_tools()`` 返回的 schema，
+    可经 ``overrides`` 局部覆写。MCP 工具无用户代码，是纯参数化配置——
+    每个声明独立实例（区别于 script 单例）。
 
-    **命名规则**：MCP 声明块代理的是一组服务端工具，注册/解析时每个实际
+    命名规则：MCP 声明块代理的是一组服务端工具，注册 / 解析时每个实际
     工具的规范名 = ``<fya 声明名>-<server 暴露工具名>`` （如声明
     ``name: github``、服务端暴露 ``create-issue`` → 注册规范名
-    ``github-create-issue``）——服务端工具名空间天然带声明名前缀，
-    不同 MCP 来源的同名工具不撞名。Agent 侧引用（``tools:`` 条目 /
+    ``github-create-issue``）——服务端工具名空间天然带声明名前缀，不同
+    MCP 来源的同名工具不撞名。Agent 侧引用（``tools:`` 条目 /
     ``add_tool``）按合成名引用（可照常 ``as`` 别名）。
-
-    .. rubric:: 设计动机
-
-    MCP 工具无用户代码，是纯参数化配置——每个定义独立实例（区别于 script
-    单例）；来源识别规则化，歧义即报错而非猜测。
 
     .. rubric:: 使用示例
 
@@ -2166,33 +2158,27 @@ class McpTool(Tool):
               title: {description: "Issue 标题，不超过 80 字符。"}
 
     模板中的 ``env`` 是渲染上下文顶层对象（绑定 ``os.environ``），凭证经
-    ``{{ env.X }}`` 注入，不硬编码、不进消息、不落盘。
+    ``{{ env.X }}`` 注入，不硬编码、不进消息、不落盘；缺失变量在装配期
+    fail fast（``FormatError``）。
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
-    - 来源识别：存在 ``command`` → stdio；存在 ``url`` → 远程；两者都有 →
-      `AmbiguousMcpSourceError`；两者都无 → `MissingMcpSourceError`。
+    - 来源识别：存在 ``command`` → stdio；存在 ``url`` → 远程；两者都有
+      → `AmbiguousMcpSourceError`；两者都无 → `MissingMcpSourceError`。
     - 同名冲突：同命名空间规范名重名注册永远抛 `ToolNameConflictError`
       ——注册名为合成名 ``<声明名>-<server 暴露名>``，撞名即声明名重复，
-      须换声明名（或不同命名空间，§7a）。
-    - MCP 服务器的 ``outputSchema`` **自动填入**
-      `ToolDefinition.output_schema`，**仅作运行时校验**（归一化前对原料
-      校验、含媒体跳过，D16）——不喂模型（保留校验价值，与 kimi 的显式
-      丢弃不同）。
-    - 非行为：初版不在 `execute` 内做 MCP 连接重试策略；连接失败 →
-      ``status="error"`` 结果。
-
-    .. rubric:: 调用关系（审计）
-
-    - 调用：``无``
-    - 被调：``无`` （执行经 ``Tool.__call__`` 调度链）
-    - 实例化方：Agent 解析 ``.fya`` （``type: mcp``）时创建实例并注册
-      （解析经 :func:`flowing.parser.parse_fya`，实例化在装配层）
+      须换声明名（或注册到不同命名空间）。
+    - MCP 服务器的 ``outputSchema`` 自动填入 `ToolDefinition.output_schema`
+      （随声明携带，adapter 白名单不映射；当前实现不据此做结果校验，也
+      不喂模型）。
+    - 连接失败 / 服务端 ``isError`` → ``status="error"`` 结果；无连接重试
+      策略。
 
     .. seealso::
 
         - :class:`flowing.tool.ToolRegistry` —— 重名约束的执行者。
     """
+
 
     def __init__(
         self,
@@ -2218,14 +2204,9 @@ class McpTool(Tool):
         :param tools: 只暴露的服务端工具名子集；``None`` 全量暴露。
         :param overrides: 对服务端 schema 的局部覆写
           （``{工具名: {description/args: ...}}``）。
-        :raises AmbiguousMcpSourceError: ``command`` 与 ``url`` 同时给出。
-        :raises MissingMcpSourceError: 两者均未给出。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``无``
-        - 被调：``.fya`` 装配层（时机：Agent 装配解析 ``tools:`` 条目
-          命中本类型时，经 :func:`flowing.parser.parse_fya` 产物构造）
+        :raises flowing.errors.AmbiguousMcpSourceError: ``command`` 与
+          ``url`` 同时给出。
+        :raises flowing.errors.MissingMcpSourceError: 两者均未给出。
         """
         if command is not None and url is not None:
             raise AmbiguousMcpSourceError("command 与 url 同时给出")  # 来源互斥
@@ -2260,14 +2241,12 @@ class McpTool(Tool):
     @asynccontextmanager
     async def _connect(self) -> "Any":
         """建立一次 MCP 会话（惰性连接：``list_tools`` / ``execute`` 各连
-        一次，用后关闭；无连接池、无重试策略——spec 明示非行为）。
+        一次，用后关闭；无连接池、无重试策略）。内部 API，不属稳定契约。
 
-        **内部 API，不属稳定契约。** 连接失败异常上抛（``execute`` 内由
-        ``__call__`` 包装为 ``status="error"`` 结果）。
-
-        url 形态的传输判别（spec 未写清处落实）：URL 路径以 ``/sse`` 结尾
-        → SSE；其余 → streamable HTTP。stdio 的 ``env`` 直传
-        ``StdioServerParameters`` （SDK 内与默认环境合并）。
+        连接失败异常上抛（``execute`` 内由 ``__call__`` 包装为
+        ``status="error"`` 结果）。url 形态的传输判别：URL 路径以
+        ``/sse`` 结尾 → SSE；其余 → streamable HTTP。stdio 的 ``env``
+        直传 ``StdioServerParameters`` （SDK 内与默认环境合并）。
         """
         from mcp import ClientSession, StdioServerParameters   # 函数内 import：mcp SDK 重，非 MCP 用户不付 import 成本
 
@@ -2315,36 +2294,30 @@ class McpTool(Tool):
 
         .. rubric:: 功能介绍
 
-        装配期 schema 拉取的唯一入口：``ToolRegistry.get``
-        命中 mcp 型 TOOL.fya 只产**声明实例**（骨架 definition）；装配层在
-        get 解析完成后调用本方法一次——每个服务端工具产一个独立 `McpTool`
-        代理实例，规范名 = ``<fya 声明名>-<server 暴露工具名>``，由装配层
-        经 ``ToolRegistry.register`` 按合成名注册（撞名 →
+        装配期 schema 拉取的唯一入口：``ToolRegistry.get`` 命中 mcp 型
+        TOOL.fya 只产声明实例（骨架 definition）；装配层在 get 解析完成
+        后调用本方法一次——每个服务端工具产一个独立 `McpTool` 代理实例，
+        规范名 = ``<fya 声明名>-<server 暴露工具名>``，由装配层经
+        ``ToolRegistry.register`` 按合成名注册（撞名 →
         ``ToolNameConflictError``，注册表层承载）。``execute`` 不依赖本
         方法（惰性连接），但 LLM 可见声明必须由本方法的产物承载。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         - ``tools`` 子集过滤：声明了 ``tools`` 时仅展开子集内的服务端
           工具；``None`` 全量展开。
         - ``overrides`` 应用：``{工具名: {description/args: ...}}``——
           ``description`` 整体替换；``args`` 经
-          :func:`flowing.params.apply_param_overrides` 对 inputSchema 派生
-          的 properties 稀疏覆写（非法关键字 fail-fast）。
+          :func:`flowing.params.apply_param_overrides` 对 inputSchema
+          派生的 properties 稀疏覆写（非法关键字 fail-fast）。
         - 服务端 ``outputSchema`` 自动填入
-          :attr:`ToolDefinition.output_schema`——仅作运行时校验（D16），
-          不喂模型。
+          :attr:`ToolDefinition.output_schema`——存储、随声明携带；当前
+          实现不据此做结果校验，也不喂模型。
         - MCP ``inputSchema`` → 框架 properties 映射的 required 口径对齐
-          （spec 未写清处落实）：框架以 ``default`` 有无派生 requiredness，
-          服务端 schema 的 ``required`` 列表之外的 property 若无
-          ``default`` 补 ``default=None``——否则可选参数会被
-          ``schema_to_model`` 建成必填字段。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``_connect()`` （一次性会话）；``apply_param_overrides``
-        - 被调：``.fya`` 装配层（时机：``ToolRegistry.get`` 命中 mcp 型
-          之后、Agent 装配 ``tools:`` 条目之前）
+          ：框架以 ``default`` 有无派生 requiredness，服务端 schema 的
+          ``required`` 列表之外的 property 若无 ``default`` 补
+          ``default=None``——否则可选参数会被 ``schema_to_model`` 建成
+          必填字段。
         """
         async with self._connect() as session:
             result = await session.list_tools()
@@ -2361,7 +2334,7 @@ class McpTool(Tool):
                 description=override.get("description",
                                          server_tool.description or ""),
                 params_schema=params,
-                output_schema=server_tool.outputSchema)   # 自动填入，仅运行时校验（D16）
+                output_schema=server_tool.outputSchema)   # 自动填入（存储、随声明携带）
             tool = McpTool(
                 definition=definition, command=self.command, args=self.args,
                 env=self.env, url=self.url, headers=self.headers)
@@ -2372,20 +2345,15 @@ class McpTool(Tool):
     async def execute(self, **kwargs: Any) -> Any:
         """代理调用服务端工具：惰性连接 → ``call_tool`` → 取回产物。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         - 本方法只存在于 ``list_tools()`` 展开产物（``_server_tool_name``
           已置位）上；声明实例（组代理）直接执行 → ``RuntimeError``
           （按合成名 ``<声明名>-<server 名>`` 引用，属声明笔误）。
         - 连接失败 / 服务端 ``isError`` 返回 → 抛异常，由 ``__call__``
-          包装为 ``status="error"`` 结果（无连接重试，spec 明示非行为）。
+          包装为 ``status="error"`` 结果（无连接重试）。
         - 返回形态：服务端 ``structuredContent`` 优先；否则文本块拼合
           （单块 → str，多块 → list[str]，无 → ``None``）。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``_connect()`` （每次执行一次会话）
-        - 被调：``Tool.__call__`` 调度链
         """
         if self._server_tool_name is None:
             raise RuntimeError(
@@ -2410,17 +2378,12 @@ class McpTool(Tool):
 class CliTool(Tool):
     
     """CLI 工具实例——Jinja2 命令模板 + shell 执行。
-    Agent 侧 ``ToolEntry`` 的 ``inject`` / ``specified`` 对本类同样生效
-    （绑定层与工具类型无关，见 ``ToolEntry.resolve``）。
 
     .. rubric:: 功能介绍
 
-    ``type: cli`` 的实例类。``args`` （参数 schema）**必填**，无自动推断来源；
+    ``type: cli`` 的实例类。``args`` （参数 schema）必填，无自动推断来源；
     命令体 ``command`` 为 Jinja2 模板，渲染上下文为 LLM 传入的 args。
-
-    .. rubric:: 设计动机
-
-    让「跑个命令」类能力零代码化；安全默认值：框架自动转义模板插入值，
+    把「跑个命令」类能力零代码化；安全默认值：框架自动转义模板插入值，
     原始拼接必须显式 ``{{ arg | raw }}`` 且框架输出警告。
 
     .. rubric:: 使用示例
@@ -2452,27 +2415,24 @@ class CliTool(Tool):
             stderr:
               type: string
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
     - ``shell`` 可选值：``sh`` （默认）/ ``bash`` / ``ps`` / ``powershell`` /
-      ``cmd``。
-    - 不声明 ``output`` 时默认返回 ``{exit_code, stdout, stderr}``。
-    - 非零退出码**不等于** ``status="error"``——exit_code 是正常输出数据；
+      ``cmd``；非法值在构造期抛 :class:`flowing.errors.FormatError`
+      （fail fast，不留到执行期）。
+    - 返回值恒为 ``{exit_code, stdout, stderr}`` 三字段字典（``output:``
+      声明进入 `ToolDefinition.output_schema`，但不做字段提取）。
+    - 非零退出码不等于 ``status="error"``——exit_code 是正常输出数据；
       仅进程无法启动等框架级失败才产生 ``error``。
 
-    :raises MissingSchemaError: 未声明 ``args`` 时（解析 ``.fya`` 阶段）。
-
-    .. rubric:: 调用关系（审计）
-
-    - 调用：``无``
-    - 被调：``无`` （执行经 ``Tool.__call__`` 调度链）
-    - 实例化方：Agent 解析 ``.fya`` （``type: cli``）时创建实例并注册
-      （解析经 :func:`flowing.parser.parse_fya`，实例化在装配层）
+    :raises flowing.errors.MissingSchemaError: 未声明 ``args`` 时（解析
+      ``.fya`` 阶段）。
 
     .. seealso::
 
         - :class:`flowing.tool.RequestTool` —— 另一类零代码工具。
     """
+
 
     def __init__(
         self,
@@ -2487,14 +2447,8 @@ class CliTool(Tool):
           ``args:``）。
         :param command: Jinja2 命令模板；插入值自动转义，``| raw`` 旁路并
           告警。
-        :param shell: 执行 shell，默认 ``sh``；非法值构造期
-            :class:`flowing.errors.FormatError` （fail fast，不留到执行期）。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``无``
-        - 被调：``.fya`` 装配层（时机：Agent 装配解析 ``tools:`` 条目
-          命中本类型时，经 :func:`flowing.parser.parse_fya` 产物构造）
+        :param shell: 执行 shell，默认 ``sh``；非法值构造期抛
+          :class:`flowing.errors.FormatError` （fail fast，不留到执行期）。
         """
         if not definition.params_schema:
             raise MissingSchemaError("cli 工具必须声明 args（无自动推断来源）")
@@ -2517,19 +2471,14 @@ class CliTool(Tool):
     async def execute(self, **kwargs: Any) -> dict[str, Any]:
         """渲染命令模板 → shell 执行 → ``{exit_code, stdout, stderr}``。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         - 插入值自动经 ``shlex.quote`` 转义（finalize 单点）；显式
           ``{{ arg | raw }}`` 旁路并输出告警日志（每次渲染命中）。
-        - 非零退出码**不是** error——exit_code 是正常输出数据；仅子进程
-          无法启动等框架级失败抛异常（由 ``__call__`` 包装为
+        - 非零退出码不是 error——exit_code 是正常输出数据；仅子进程无法
+          启动等框架级失败抛异常（由 ``__call__`` 包装为
           ``status="error"`` 结果）。
         - stdout / stderr 按 UTF-8 解码（``errors="replace"`` 容错）。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``asyncio.create_subprocess_shell`` （每次执行）
-        - 被调：``Tool.__call__`` 调度链
         """
         command = self._template.render(**kwargs)   # 渲染上下文 = LLM args
         executable = _SHELL_EXECUTABLES[self.shell]
@@ -2550,18 +2499,13 @@ class CliTool(Tool):
 class RequestTool(Tool):
     
     """HTTP/HTTPS 请求工具实例——按 ``args`` 构造请求，零代码。
-    Agent 侧 ``ToolEntry`` 的 ``inject`` / ``specified`` 对本类同样生效
-    （绑定层与工具类型无关，见 ``ToolEntry.resolve``）。
 
     .. rubric:: 功能介绍
 
-    ``type: request`` 的实例类。``url`` 与 ``args`` **必填**；参数到请求的
-    映射自动完成，可用 ``body``/``query`` 显式覆盖。
-
-    .. rubric:: 设计动机
-
-    与 `CliTool` 同理：把「调一个 HTTP API」降为纯声明；凭证只经
-    ``{{ env.X }}`` 模板进入请求头，不进消息、不落盘。
+    ``type: request`` 的实例类。``url`` 与 ``args`` 必填；参数到请求的
+    映射自动完成，可用 ``body`` / ``query`` 显式覆盖。与 `CliTool` 同理：
+    把「调一个 HTTP API」降为纯声明；凭证只经 ``{{ env.X }}`` 模板进入
+    请求头，不进消息、不落盘。
 
     .. rubric:: 使用示例
 
@@ -2597,32 +2541,26 @@ class RequestTool(Tool):
         timeout: 30                        # 秒，默认 30
         expected_status: [200, 201]        # 默认 [200, 201]
 
-    .. rubric:: 行为规约（args→请求映射）
+    .. rubric:: 行为要点（args → 请求映射）
 
     - URL 模板中出现的 ``{{ arg_name }}`` 识别为路径参数，自动从
-      body/query 排除；
-    - 非路径参数按 ``method`` 决定去向：``POST``/``PUT``/``PATCH`` → JSON
-      body；``GET``/``DELETE`` → query string；``body``/``query`` 声明可
-      显式覆盖；
+      body / query 排除；
+    - 非路径参数按 ``method`` 决定去向：``POST`` / ``PUT`` / ``PATCH``
+      → JSON body；``GET`` / ``DELETE`` → query string；``body`` /
+      ``query`` 声明可显式覆盖；
     - ``auth`` 与 ``headers`` 同时声明时，``auth`` 生成的头优先；
     - 响应默认按 JSON 解析作为返回值；声明 ``output`` 时按 schema 提取
-      字段，无关字段忽略；
+      字段，无关字段忽略（非 JSON 响应回退为文本）；
     - 响应状态码不在 ``expected_status`` 内 → ``status="error"`` 结果
       （含状态码与响应摘要），不抛异常。
 
-    :raises MissingSchemaError: 未声明 ``args`` 时。
-
-    .. rubric:: 调用关系（审计）
-
-    - 调用：``无``
-    - 被调：``无`` （执行经 ``Tool.__call__`` 调度链）
-    - 实例化方：Agent 解析 ``.fya`` （``type: request``）时创建实例并
-      注册（解析经 :func:`flowing.parser.parse_fya`，实例化在装配层）
+    :raises flowing.errors.MissingSchemaError: 未声明 ``args`` 时。
 
     .. seealso::
 
         - :class:`flowing.tool.CliTool` —— 零代码工具的另一形态。
     """
+
 
     def __init__(
         self,
@@ -2650,12 +2588,6 @@ class RequestTool(Tool):
         :param body: 强制走 JSON body 的参数名列表。
         :param expected_status: 预期成功状态码；``None`` 等价 ``[200, 201]``。
         :param timeout: 超时秒数，默认 30。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``无``
-        - 被调：``.fya`` 装配层（时机：Agent 装配解析 ``tools:`` 条目
-          命中本类型时，经 :func:`flowing.parser.parse_fya` 产物构造）
         """
         if not definition.params_schema:
             raise MissingSchemaError("request 工具必须声明 args")
@@ -2687,28 +2619,22 @@ class RequestTool(Tool):
         self._args_model = schema_to_model("Args", self.definition.params_schema)
 
     async def execute(self, **kwargs: Any) -> Any:
-        """按 args 构造 HTTP 请求并取回响应（args→请求映射四规则的执行体）。
+        """按 args 构造 HTTP 请求并取回响应（args → 请求映射规则的执行体）。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
-        - URL 模板以 args 渲染（路径参数**不转义**——URL 结构由声明方
-          负责），路径参数自动从 body/query 排除；
-        - 其余参数去向：``query``/``body`` 声明显式覆盖优先；否则按
-          ``method``——``POST``/``PUT``/``PATCH`` → JSON body，
-          ``GET``/``DELETE`` → query string；
+        - URL 模板以 args 渲染（路径参数不转义——URL 结构由声明方负责），
+          路径参数自动从 body / query 排除；
+        - 其余参数去向：``query`` / ``body`` 声明显式覆盖优先；否则按
+          ``method``——``POST`` / ``PUT`` / ``PATCH`` → JSON body，
+          ``GET`` / ``DELETE`` → query string；
         - ``auth`` 展开的请求头与 ``headers`` 冲突时 auth 优先；
         - 响应状态码不在 ``expected_status`` 内 → 抛异常（含状态码与响应
-          摘要），由 ``__call__`` 包装为 ``status="error"`` 结果，
-          不向调用方抛；
+          摘要），由 ``__call__`` 包装为 ``status="error"`` 结果，不向
+          调用方抛；
         - 响应默认按 JSON 解析；声明了 ``output`` （``definition.
           output_schema``）时按 schema 的 properties 提取字段，无关字段
-          忽略；非 JSON 响应回退为文本（spec 未写清处落实）。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``httpx.AsyncClient.request`` （每次执行；httpx 为项目
-          既有依赖，函数内 import 不付非 request 用户的 import 成本）
-        - 被调：``Tool.__call__`` 调度链
+          忽略；非 JSON 响应回退为文本。
         """
         import httpx
 
