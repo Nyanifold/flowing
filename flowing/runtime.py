@@ -707,8 +707,9 @@ class Runtime:
         ``plugin.name``）。未安装时的行为由 ``strict`` 决定：
 
         - ``strict=True`` （默认）：抛 ``KeyError``——直接用写法
-          （``runtime.get_plugin("cron").jobs()``），未安装时立即以清晰
-          异常失败，而非延迟到 ``None.jobs()`` 的 ``AttributeError``；
+          （``runtime.get_plugin("cron").plugin_dir``），未安装时立即以
+          清晰异常失败，而非延迟到 ``None.plugin_dir`` 的
+          ``AttributeError``；
         - ``strict=False``：返回 ``None``——探测写法
           （``if runtime.get_plugin("skill", strict=False) is not None: ...``）。
 
@@ -721,7 +722,7 @@ class Runtime:
         .. code-block:: python
 
             # 直接用（默认形态）
-            jobs = runtime.get_plugin("cron").jobs()
+            plugin_dir = runtime.get_plugin("cron").plugin_dir
 
             # 探测（显式关闭严格）
             if runtime.get_plugin("skill", strict=False) is not None:
@@ -2334,10 +2335,10 @@ class Runtime:
           → 插件收尾（按 ``use()`` 的 install 顺序逐个 ``await``
           ``plugin.shutdown()``；单插件异常记日志后继续——尽力收尾路径）
           → 关闭全部全局状态视图（排空 + 停写；放在插件收尾之后，插件
-          ``shutdown()`` 中仍可写全局状态）→ 通信总线关闭 →
-          ``_shutdown_event.set()``。
-        - 不变量：插件收尾与总线关闭均发生在 ``_shutdown_event.set()``
-          之前——``await runtime`` 解除阻塞时所有善后已完成。
+          ``shutdown()`` 中仍可写全局状态）→ ``_shutdown_event.set()``。
+        - 不变量：插件收尾与全局状态视图关闭均发生在
+          ``_shutdown_event.set()`` 之前——``await runtime`` 解除阻塞时
+          所有善后已完成。
         - 重复调用安全：收尾流程已完成过（事件已置位）的直接返回；已置位
           的事件重复置位无副作用。
         - 空 Runtime（无 Agent）合法：直接跳到插件收尾。
