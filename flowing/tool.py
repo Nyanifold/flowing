@@ -3241,9 +3241,9 @@ class ToolRegistry:
 
         .. code-block:: python
 
-            "builtin::read" in runtime.tools   # True（全限定键）
-            "read" in runtime.tools            # False——裸名请用 get()：
-            runtime.tools.get("read")          # 走命名空间优先级解析链
+            "builtin::read" in runtime.tool_registry   # True（全限定键）
+            "read" in runtime.tool_registry            # False——裸名请用 get()：
+            runtime.tool_registry.get("read")          # 走命名空间优先级解析链
         """
         return name in self._tools
 
