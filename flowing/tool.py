@@ -1,126 +1,131 @@
-"""Flowing 工具系统（``flowing.tool``）——能力三正交中的 Tool 维度。
+"""``flowing.tool`` —— 工具子系统：能力三正交中的 Tool 维度。
 
 .. rubric:: 功能介绍
 
-本模块定义 Flowing 的 Tool 子系统公开类型：可执行对象（`Tool` /
-`ScriptTool` 及三种类型的具体实现 `McpTool` / `CliTool` / `RequestTool`）、
-LLM 可见声明（`ToolDefinition`）、Agent 级绑定（`ToolEntry`）、
-调用与结果（`ToolCall` / `ToolResult` / `ToolStatus`）、
-全局注册表（`ToolRegistry`）、类型标记（`ToolType`）、装饰器
-（`flowing_tool`）与媒体族（`Image` / `File` / `Audio` / `Video` /
-`MediaConverter` / `register_media_converter` / `normalize_output` /
-`output_to_blocks`）。
-框架自带工具（核心内置 ``SubagentInvokeTool`` 与标准件 ``FinishTool``
-等六个文件/shell 工具）在 :mod:`flowing.builtins`（P3-06 裁决）。
+本模块定义工具子系统的全部公开类型：可执行对象（:class:`Tool` 基类、
+:class:`ScriptTool` 作者基类，以及三种按声明驱动的具体实现
+:class:`McpTool` / :class:`CliTool` / :class:`RequestTool`）、LLM 可见
+声明（:class:`ToolDefinition`）、Agent 级绑定（:class:`ToolEntry`）、
+调用与结果（:class:`ToolCall` / :class:`ToolResult`，状态四值见
+:data:`ToolStatus`）、全局注册表（:class:`ToolRegistry`）、工具类型
+判别值（:data:`ToolType`）、打标装饰器（:func:`flowing_tool`），以及
+结果归一与媒体族（:func:`normalize_output` / :func:`output_to_blocks`、
+媒体载体 :class:`Image` / :class:`File` / :class:`Audio` /
+:class:`Video`、转换器 :class:`MediaConverter` /
+:func:`register_media_converter`）。
 
-能力三正交（Tool / 子 Agent / Skill 共享的同一模式，不可合并）：
+框架自带的出厂内置工具（核心 ``SubagentInvokeTool`` 与标准件
+``FinishTool`` 等）定义在 :mod:`flowing.builtins`，不在本模块。
 
-=============  ========================  =================  =======================
-概念           Tool                      子 Agent           Skill
-=============  ========================  =================  =======================
-可执行对象     `Tool`（``execute()``）   Agent 类           Skill 内容
-LLM 可见声明   `ToolDefinition`          catalog XML 条目   catalog XML 条目
-Agent 级绑定   `ToolEntry`               ``SubagentEntry``  ``SkillEntry``（扩展）
-=============  ========================  =================  =======================
+能力三正交（Tool / 子 Agent / Skill 共享同一模式，三个维度各自独立
+演化、互不侵入）：
 
-绑定层的存在理由：同一个 `FinishTool` 在 ReviewerAgent 上 LLM 应看到
-``score``/``pass``/``issues``，在 PaymentAgent 上应看到
-``transaction_id``/``status``/``charged_amount``——通过 entry 覆写而不改全局
-注册表。
+.. list-table::
+   :header-rows: 1
 
-.. rubric:: 设计动机
+   * - 维度
+     - Tool
+     - 子 Agent
+     - Skill
+   * - 可执行对象
+     - :class:`Tool`（``execute()``）
+     - Agent 类
+     - Skill 内容
+   * - LLM 可见声明
+     - :class:`ToolDefinition`
+     - catalog XML 条目
+     - catalog XML 条目
+   * - Agent 级绑定
+     - :class:`ToolEntry`
+     - ``SubagentEntry``
+     - ``SkillEntry`` （扩展）
 
-- **机制 vs 策略**：框架只提供「工具是什么、如何声明、如何调度、在哪挂钩子」
-  的机制；「什么该被审批、参数该取什么值」是策略，由 `before_tool_call`
-  handler、Composable 与应用层决定。框架**不做框架级 interrupt**——审批在
-  handler 内部 ``await`` 暂停实现。
-- **三正交分离**：`Tool` 只对执行负责，`ToolDefinition` 只对「向 LLM 说清楚
-  自己是什么」负责（可序列化纯数据），`ToolEntry` 只对「这个 Agent 如何
-  使用这个 Tool」负责。三者各自演化互不侵入。
-- **最小核心**：Skill 完全经由 Tool 机制实现（``skill-load`` 是普通工具），
-  可整体剥离；Tool 在逻辑 Turn 引擎中有硬编码调用点，不可剥离。
+绑定层独立存在的理由：同一个工具在不同 Agent 上可以呈现不同的 LLM
+视图（如 ``FinishTool`` 在 ReviewerAgent 上暴露 ``score`` / ``pass`` /
+``issues``，在 PaymentAgent 上暴露 ``transaction_id`` / ``status`` /
+``charged_amount``）——通过 `ToolEntry` 覆写实现，不改全局注册表、
+不改工具本身。
 
-.. rubric:: 工具调用流水线（时序不变量）
+本模块全部公开签名属跨版本稳定契约；``_`` 前缀符号为内部 API，不属
+稳定契约。
 
-LLM 在一次逻辑 Turn 中发出工具调用后，框架按以下**固定顺序**处理：
+.. rubric:: 全局约定（跨符号、影响使用的约定）
 
-1. ``Agent.tool_call(tool_call)`` 收到 `ToolCall`，**仅按别名**
-   （``tool_call.name``）在 ``agent._tool_entries`` 中查找 `ToolEntry`，
-   不回退规范名；找不到抛 ``UnknownToolError``。
-2. dispatch ``before_tool_call`` 钩子（value 即 `ToolCall`）：
-   handler 可改写 ``tool_call.args`` 后返回；可将 ``tool_call.shortcut``
-   置 ``True`` 短路后续 handler；可 ``raise Intercepted`` 硬阻断——
-   框架捕获后返回 `ToolResult.blocked(...)`，**不执行**工具。
-3. ``Agent._normalize()``（内部 API，不属稳定契约）在钩子**之后**执行：
-   **LLM 视角校验**（别名命名、隐藏参数已排除的 schema）→ 别名映射
-   回规范名 → specified 惰性求值注入（固定值直给；注入表达式
-   ``{{ self.inject('key') }}`` 在此沿 provide 链上溯取值）→
-   schema 默认值填充。即 `ToolEntry.resolve()` 的聚合在此发生。
-4. `Tool.__call__` 调度层：``caller`` 自动传入（若签名声明）、**内部
-   校验**（S-33 裁决落点：聚合终值对创建时编译的 ``_args_model``
-   Pydantic 模型，失败走框架错误通道、在 ``try`` 之外上抛）、Task 包装
-   （cancel 注入）、返回值包装为 `ToolResult`。
-5. 结果归一化与塑形：``Agent.tool_call`` 收尾对 `ToolResult.output`
-   幂等归一（`normalize_output`，封 shortcut / 钩子改写两缝，D19）；
-   随后经 `ToolResult.as_message()` 塑形（内部调 `output_to_blocks`，
-   D22）转为 ``kind=TOOL`` 消息进入消息级树（``Message.id`` +
-   ``parent_id`` 链），消息完整后 append 落盘。配对元数据在消息字段
-   （``tool_call_id`` / ``tool_status``），``content`` 只含纯内容块
-   （D1/D3）。
+工具调用时序：LLM 在一次逻辑 Turn 中发出工具调用后，框架按固定顺序
+处理。``Agent.tool_call`` 先 dispatch ``before_tool_call`` 钩子
+（handler 可改写 `ToolCall` 的参数；把 `ToolResult` 放进 ``shortcut``
+字段可跳过工具执行；``raise Intercepted`` 硬阻断，工具不执行、结果
+为 ``blocked``），随后仅按别名查找 Agent 的工具绑定表（找不到抛
+``UnknownToolError``）、聚合参数，经 ``Tool.__call__`` 执行，最后
+dispatch ``after_tool_call`` （可改写结果）并在返回前对结果做一次幂等
+归一。完整时序见 :mod:`flowing.agent`，钩子语义见 :mod:`flowing.hooks`。
 
-.. rubric:: 参数合并优先级（定稿）
+``builtin::`` 命名空间：出厂内置工具注册在 ``builtin::`` 命名空间下。
+裸名查找先查 ``default::`` 再查 ``builtin::``——插件 / 应用可以在
+``default::`` 注册同名工具覆盖内置行为，被覆盖的条目仍可用
+``builtin::xxx`` 全限定名显式引用。注册不等于可见：Agent 的工具目录
+只包含它在 ``.fya`` 或 ``add_tool`` 中显式声明的条目；可写文件、
+执行命令等危险工具必须由使用者显式声明，框架不会因为注册就把它们
+暴露给 LLM。
 
-::
+参数优先级：指定值（``specified``，含注入表达式）最高，其次 LLM
+传入参数，最后 schema 默认值。指定值对 LLM 不可见、不可被 LLM 覆盖
+——固定值或宿主上下文注入的参数（``user_id`` / ``trace_id`` 等）用
+指定值声明，这是防篡改的安全边界。注入表达式
+``{{ self.inject('key') }}`` 在调用时以调用方 Agent 为上下文求值，
+沿 provide-inject 链向根查找；链上找不到提供者抛
+``MissingProvideError``。
 
-    specified（含注入表达式）  >  LLM args  >  schema 默认值
+工具业务错误是正常产物：``execute`` 抛普通异常 → ``ToolResult(
+status="error")``，LLM 可见、不触发任何错误钩子；``execute`` 内
+``raise Intercepted`` → ``ToolResult.blocked``。参数 / 返回值中的
+编程错误（参数缺类型标注、返回值含违禁块、返回不可转换对象等）
+走框架错误通道直接上抛（``ValueError`` / ``FormatError`` 等），不包
+成 LLM 可见结果。
 
-- **specified 是防 LLM 篡改通道**（``user_id`` / ``trace_id`` 等敏感值
-  不经过 LLM 消息、不可被 LLM 覆盖）——这是安全边界基石。注入
-  （旧 ``inject`` 键，R-4 裁决已删除）不再有独立通道：specified 值写
-  Parsable 表达式 ``"{{ self.inject('user_id') }}"`` 即注入——调用时
-  以调用方 Agent 为上下文求值、沿 provide 链上溯（链断裂抛
-  ``MissingProvideError``）。
-- specified 参数（固定值与注入表达式）对 LLM **不可见**（从 LLM schema
-  中移除），因此正常情况下三来源不会真正冲突；优先级链只在防御性场景
-  （LLM hallucinate 出同名参数）下生效。
-- Skill 的参数优先级方向**一致**（specified 同为最高），见
-  ``flowing.plugins.skills`` 规约——「specified 参数对 LLM 不可见 ⇒ 幻觉
-  同名参数不采信」是全框架统一的安全不变量（M-54 最终裁决）。
+审批等策略在 ``before_tool_call`` handler 内实现：``requires_approval``
+之类的字段只是 ``.fya`` 的非保留字段，原样成为工具对象的普通属性，
+框架不解析、不据此做任何自动行为。handler 内 ``await`` 审批——通过
+返回原值、改参数返回改写后的 `ToolCall`、拒绝 ``raise Intercepted``。
 
-.. rubric:: 审批模式（无框架级 interrupt）
+路径约定：工具定义文件（``.fya`` / ``.py``）的定位、``@/`` 项目根
+锚定与命名空间派生规则见 :meth:`ToolRegistry.get`；``@/`` 上下文按
+asyncio Task 隔离（见 :mod:`flowing.runtime`）。
 
-``requires_approval`` 是工具 ``.fya`` 的**非保留字段**：框架不解析、不检查、
-不以此做任何自动行为，它直接成为 tool 对象的普通属性。审批完全在
-``before_tool_call`` handler 内部 ``await`` 实现：不需要审批 → 原值通过；
-用户改参数 → 返回修改后的 `ToolCall` 传给下一个 handler；用户拒绝 →
-``raise Intercepted`` → 调度链停止，框架生成 `ToolResult.blocked(...)`。
-调度器看到的只是「一个返回较慢的 handler」。
+.. rubric:: 使用示例
 
-.. rubric:: 文档 14 对齐
+.. code-block:: python
 
-本模块不出现任何物理 Turn 结构。「Turn 结束」一律指
-**逻辑执行阶段**结束（`TurnContext` 收尾），载体是消息级树；工具结果以
-``kind=TOOL`` 消息落树，与逻辑 Turn 无物理绑定。
+    from flowing import ScriptTool
+    from pydantic import BaseModel
 
-.. rubric:: 稳定性
+    class PayArgs(BaseModel):
+        order_id: str
+        amount: float
 
-本模块全部公开签名属跨版本稳定契约；``_`` 前缀符号
-（`_infer_from_execute` / `_auto_generate_tool` / `Tool._has_caller` /
-`Tool._execution` / `Tool._args_model`）为内部 API，不属稳定契约。
-``_coerce`` 的唯一声明在 :mod:`flowing.params`（C-08 裁决），本模块
-经 import 使用。
+    class MakePayment(ScriptTool):
+        \"\"\"对指定订单发起支付。仅在用户明确确认支付意图后调用。\"\"\"
+
+        args_model = PayArgs
+
+        async def execute(self, *, order_id: str, amount: float) -> dict:
+            return {"tx": "fake", "order_id": order_id, "amount": amount}
+
+    tool = MakePayment()          # name 由类名推断为 make-payment
+    result = await tool({"order_id": "o1", "amount": 9.9})
+    assert result.status == "completed"
 
 .. seealso::
 
-    - :mod:`flowing.agent` —— ``Agent.tool_call`` / ``Agent._normalize`` /
-      ``Agent._tool_entries`` 的完整时序。
-    - :mod:`flowing.hooks` —— ``before_tool_call`` 钩子的 dispatch 算法
-      （改写链 / shortcut / Intercepted 重抛）。
-    - :mod:`flowing.params` —— 参数声明（BaseModel / JSON Schema）与桥接。
-    - :mod:`flowing.message` —— ``kind=TOOL`` 消息与消息级树。
+    - :mod:`flowing.agent` —— ``Agent.tool_call`` 的完整工具调用时序。
+    - :mod:`flowing.hooks` —— ``before_tool_call`` / ``after_tool_call``
+      钩子语义。
+    - :mod:`flowing.builtins` —— 出厂内置工具。
+    - :mod:`flowing.params` —— 参数声明与 schema 桥接。
+    - :mod:`flowing.message` —— 工具调用与结果的落树形态。
 """
 
-from __future__ import annotations   # S-43 裁决③：注解延迟求值，配合 TYPE_CHECKING 破注解级循环边
+from __future__ import annotations   # 注解延迟求值，配合 TYPE_CHECKING 破注解级循环边
 
 import asyncio
 import base64
@@ -217,30 +222,32 @@ __all__ = [
 ]
 
 ToolStatus = Literal["completed", "pending", "blocked", "error"]
-"""工具执行结果状态四值（定稿）。
+"""工具执行结果的状态四值。
 
-- ``"completed"``：正常完成，``output`` 承载返回值。
-- ``"pending"``：异步收据——三种形态产生：``execute`` 返回 ``asyncio.Task``；
-  ``execute`` 是 async generator（首 yield = 收据内容）；``background = True``
-  标记的普通 async ``execute``。框架只回收据，真正结果稍后以独立消息到达
-  （fire-and-forget 语义边界）。
-- ``"blocked"``：被 ``before_tool_call`` 钩子 ``raise Intercepted`` 硬阻断，
-工具**未执行**；只能经 `ToolResult.blocked` 工厂产生。
-- ``"error"``：执行抛异常的**正常产物**——LLM 可见、**不触发**任何错误
-钩子（核心错误钩子仅 ``on_provider_error``，见 :mod:`flowing.hooks`）。
+- ``"completed"``：正常完成，返回值承载在 ``output`` 字段。
+- ``"pending"``：异步收据。三种形态产生：``execute`` 返回
+  ``asyncio.Task``；``execute`` 是 async generator（首个 ``yield``
+  即收据内容）；``background = True`` 标记的普通 async ``execute``。
+  框架只回收据，真正结果稍后以独立消息到达（不阻塞逻辑 Turn）。
+- ``"blocked"``：被 ``before_tool_call`` / ``after_tool_call`` 钩子或
+  ``execute`` 内 ``raise Intercepted`` 硬阻断，工具未执行或执行被中断；
+  只能经 ``ToolResult.blocked`` 工厂产生。
+- ``"error"``：执行抛普通异常的正常产物——LLM 可见、不触发任何错误
+  钩子（核心错误钩子仅 ``on_provider_error``，见 :mod:`flowing.hooks`）。
 """
 
 ToolType = Literal["script", "mcp", "cli", "request"]
-"""四种工具类型判别值（``.fya`` 的 ``type:`` 字段取值，定稿）。
+"""四种工具类型判别值（``.fya`` 的 ``type:`` 字段取值）。
 
-- ``"script"``：Python callable（`ScriptTool` 子类 / 裸函数 / ``callable:``
-指向），**全局单例**注册，所有 Agent 共享同一实例。
-- ``"mcp"``：MCP 服务器（stdio / 远程），每定义独立实例。
-- ``"cli"``：命令行工具（Jinja2 命令模板），每定义独立实例。
-- ``"request"``：HTTP/HTTPS 请求，每定义独立实例。
+- ``"script"``：Python callable（`ScriptTool` 子类 / 裸函数 /
+  ``callable:`` 指针指向），全局单例注册——所有 Agent 共享同一实例。
+- ``"mcp"``：MCP 服务器（本地 stdio 进程或远程端点），每个声明
+  独立实例。
+- ``"cli"``：命令行工具（Jinja2 命令模板），每个声明独立实例。
+- ``"request"``：HTTP/HTTPS 请求工具，每个声明独立实例。
 
-script 是单例因为其业务逻辑是用户代码，不应实例化多次；其余三类只是
-参数化配置，无用户代码。
+script 是单例是因为其业务逻辑是用户代码，不应实例化多次；其余三类
+只是参数化配置，没有用户代码。
 """
 
 
