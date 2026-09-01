@@ -2371,7 +2371,6 @@ class Runtime:
             if view._persisted:
                 view._maybe_compact(force=True)   # 压缩时点②的 Runtime 侧落点（请求随 _close 排空一并执行；空袋跳过——避免为零内容命名空间建出实体文件）
             await view._close()
-        # 通信总线关闭（发生在 _shutdown_event.set() 之前）
         self._shutdown_event.set()   # 末尾置位；幂等（重复置位无副作用）；空 Runtime 直接跳到此处
 
     def __await__(self) -> Generator[Any, None, None]:
@@ -2395,7 +2394,7 @@ class Runtime:
         .. rubric:: 行为要点
 
         - 解除阻塞时点：``_shutdown_event.set()`` 之后——此时 destroy /
-          插件收尾 / 总线关闭已全部完成。
+          插件收尾 / 全局状态视图关闭已全部完成。
         - 不消费消息、不做周期任务（Runtime 自身无事件循环职责）。
 
         .. seealso:: :meth:`flowing.runtime.Runtime.shutdown`
