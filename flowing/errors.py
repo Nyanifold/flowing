@@ -5,10 +5,10 @@
 本模块定义 Flowing 框架的全部具名异常类型，是框架核心层（非扩展、非应用层）
 的公共契约。``FlowingError`` 是统一根，向下按职责分为十个类别：配置、注入、
 钩子、工具、资源、Provider、依赖、通信、格式、编译；另有三个异常直接挂根、
-不属任何类别——``EntryNameConflictError``（Agent 绑定层别名冲突）、
-``FormatVersionError`` 与 ``CorruptionError``（jsonl 持久化文件；与声明式
+不属任何类别——``EntryNameConflictError`` （Agent 绑定层别名冲突）、
+``FormatVersionError`` 与 ``CorruptionError`` （jsonl 持久化文件；与声明式
 文件格式的 ``FormatError`` 分层，持久化层不专设中间层）。外加一个刻意游离
-于普通错误语义之外的信号类 ``Intercepted``（钩子 handler 的有意硬阻断信号，
+于普通错误语义之外的信号类 ``Intercepted`` （钩子 handler 的有意硬阻断信号，
 刻意不继承 ``FlowingError``）。
 
 import 期作者笔误刻意用内置 ``ValueError``，不入本层次——如
@@ -511,8 +511,8 @@ class DuplicateHookPointError(HookError):
 
     .. rubric:: 行为要点
 
-    - 字段 ``name``（冲突的钩子点名）、``existing_by``（已注册声明者的 ``by``
-      标识）、``new_by``（本次冲突声明者的 ``by`` 标识）。
+    - 字段 ``name`` （冲突的钩子点名）、``existing_by`` （已注册声明者的 ``by``
+      标识）、``new_by`` （本次冲突声明者的 ``by`` 标识）。
     - ``declare()`` 的 ``by`` 参数必填（框架核心预填钩子点固定为
       ``by="core"``）。
     - 安装期编程错误：调用方不捕获。
@@ -580,13 +580,13 @@ class MissingSchemaError(ToolError):
     .. rubric:: 功能介绍
 
     两种抛出场景：script 工具裸函数的参数缺少类型标注（无法自动提取 schema）；
-    ``cli`` / ``request`` 工具的 ``.fya`` 未声明必填的 ``args``（这两类没有自动
+    ``cli`` / ``request`` 工具的 ``.fya`` 未声明必填的 ``args`` （这两类没有自动
     推断来源）。``.fya`` 显式声明的 ``args`` 优先级最高，显式声明存在时本异常
     不会因类型标注缺失而抛出。
 
     .. rubric:: 行为要点
 
-    - 字段 ``name``（工具规范名）与 ``param``（缺失类型标注的参数名；整体缺失
+    - 字段 ``name`` （工具规范名）与 ``param`` （缺失类型标注的参数名；整体缺失
       时为 ``None``）。
     - 定义期错误：调用方不捕获（fail-fast）。
     - 不可重试。
@@ -715,7 +715,7 @@ class EntryNameConflictError(FlowingError):
 
     .. rubric:: 行为要点
 
-    - 字段 ``alias``（发生冲突的别名）与 ``kind``（冲突所在的绑定层：
+    - 字段 ``alias`` （发生冲突的别名）与 ``kind`` （冲突所在的绑定层：
       ``"tool"`` / ``"skill"`` / ``"subagent"``）。
     - 定义期 / 安装期编程错误：调用方不捕获。
     - 插件挂载前的「先查后跳」（如 ``use_skill`` 保留用户定义）是合法规避，
@@ -822,7 +822,7 @@ class AmbiguousToolError(ToolError):
 
 
 class AmbiguousMcpSourceError(ToolError):
-    """MCP 工具同时声明 ``command``（stdio）与 ``url``（远程）时抛出。
+    """MCP 工具同时声明 ``command`` （stdio）与 ``url`` （远程）时抛出。
 
     .. rubric:: 功能介绍
 
@@ -833,7 +833,7 @@ class AmbiguousMcpSourceError(ToolError):
 
     - ``name`` 字段为声明冲突的 MCP 工具规范名。
     - 定义期错误：调用方不捕获（fail-fast）。
-    - 与 ``MissingMcpSourceError``（两者均未声明）构成「恰好一个来源」的对偶
+    - 与 ``MissingMcpSourceError`` （两者均未声明）构成「恰好一个来源」的对偶
       约束。
 
     .. seealso::
@@ -867,7 +867,7 @@ class MissingMcpSourceError(ToolError):
 
     - ``name`` 字段为缺失来源声明的 MCP 工具规范名。
     - 定义期错误：调用方不捕获（fail-fast）。
-    - 与 ``AmbiguousMcpSourceError``（两者同时声明）构成对偶约束。
+    - 与 ``AmbiguousMcpSourceError`` （两者同时声明）构成对偶约束。
 
     .. seealso::
 
@@ -958,7 +958,7 @@ class ResourceNotFoundError(ResourceError):
 
     .. rubric:: 功能介绍
 
-    ``Runtime.get_resource(name)``（及 ``Agent.get_resource`` 便捷委托）找不到
+    ``Runtime.get_resource(name)`` （及 ``Agent.get_resource`` 便捷委托）找不到
     已注册实例时抛出。Resource 获取无感（不在 ``args`` / inject 中声明），缺失
     只能在读取点暴露；显式异常比返回 ``None`` 更能防止下游 ``AttributeError``
     式的次生错误。
@@ -1005,9 +1005,9 @@ class ProviderError(FlowingError):
 
     .. rubric:: 行为要点
 
-    - 通用字段：``provider``（Provider 条目名）、``model``（模型 ID）、
-      ``status_code``（HTTP 状态码）、``request_id``（服务端请求 ID）、
-      ``retry_after``（服务端建议的重试等待秒数）——均默认 ``None``，供日志、
+    - 通用字段：``provider`` （Provider 条目名）、``model`` （模型 ID）、
+      ``status_code`` （HTTP 状态码）、``request_id`` （服务端请求 ID）、
+      ``retry_after`` （服务端建议的重试等待秒数）——均默认 ``None``，供日志、
       计费与策略层消费。字段置于基类：``Retry-After`` 语义可出现在任意响应
       （503/529 过载同样携带），重试 handler 可无条件消费
       ``retry_after or 默认退避``，不按类型特判。
@@ -1080,7 +1080,7 @@ class ContextLengthError(ProviderError):
 
     .. rubric:: 行为要点
 
-    - 字段继承 ``ProviderError``（``provider`` / ``model``）。
+    - 字段继承 ``ProviderError`` （``provider`` / ``model``）。
     - 不经 ``on_provider_error``：逻辑 Turn 层直接上抛，回合以 error 结局终止
       （``after_turn`` 收尾钩子照常触发，已产生的消息照常持久化），Agent 存活。
     - 与 ``RequestTooLargeError`` 区分：本类是 token 数超限，后者是请求体字节数
@@ -1205,7 +1205,7 @@ class NetworkError(ProviderError):
 
     .. rubric:: 行为要点
 
-    - 字段继承 ``ProviderError``（``status_code`` 为 ``None``——非 HTTP 响应
+    - 字段继承 ``ProviderError`` （``status_code`` 为 ``None``——非 HTTP 响应
       错误）。
     - 经 ``on_provider_error`` 分发；可重试（策略决定）。
 
@@ -1222,13 +1222,13 @@ class ProviderTimeoutError(ProviderError):
     .. rubric:: 功能介绍
 
     请求超过 adapter 的超时预算时抛出。命名自带归属（Provider 层超时），刻意
-    不继承内置 ``TimeoutError``——``except TimeoutError``（内置）不会捕获本类。
+    不继承内置 ``TimeoutError``——``except TimeoutError`` （内置）不会捕获本类。
 
     .. rubric:: 行为要点
 
     - 字段继承 ``ProviderError``。
     - 经 ``on_provider_error`` 分发；可重试（策略决定）。
-    - 不继承内置 ``TimeoutError``（``isinstance(e, builtins.TimeoutError)``
+    - 不继承内置 ``TimeoutError`` （``isinstance(e, builtins.TimeoutError)``
       为假）。
 
     .. seealso::
@@ -1325,7 +1325,7 @@ class MissingEnvironmentVariableError(ProviderError):
 
     .. rubric:: 行为要点
 
-    - 字段 ``var_name``（缺失的环境变量名，不含 ``{{env.`` 前缀）与 ``entry``
+    - 字段 ``var_name`` （缺失的环境变量名，不含 ``{{env.`` 前缀）与 ``entry``
       （引用该变量的 Provider 条目名）。
     - 加载期异常：与调用期异常不在同一时序，不经 ``on_provider_error``。
     - 部署错误：调用方不捕获，修正环境后重新启动。
@@ -1376,7 +1376,7 @@ class ProviderNameConflictError(ProviderError):
     - 与 ``ToolNameConflictError`` 的分层：本类管进程级 adapter 注册表（有
       override 通道）；工具注册表在 Runtime 实例内、无 override 通道。
     - 作者笔误（装饰到非 ``Provider`` 子类 / 缺 ``name`` 的对象）不走本类——
-      刻意抛内置 ``ValueError``（编程错误，不该被恢复逻辑捕获）。
+      刻意抛内置 ``ValueError`` （编程错误，不该被恢复逻辑捕获）。
 
     .. seealso::
 
@@ -1426,7 +1426,7 @@ class DependencyError(FlowingError):
 
     .. rubric:: 行为要点
 
-    - 字段 ``plugin``（环闭合点所在插件名）与 ``missing``（构成环回边的依赖名
+    - 字段 ``plugin`` （环闭合点所在插件名）与 ``missing`` （构成环回边的依赖名
       列表）。
     - 安装期错误：调用方不捕获。
     - 与 ``MissingProvideError`` 互补：本类是启动期静态依赖校验，后者是运行期
@@ -1532,7 +1532,7 @@ class SignalDeliveryError(CommError):
 
     .. rubric:: 行为要点
 
-    - 字段 ``target``（未命中的目标端点 ID）与 ``signal_type``（投递失败的信号
+    - 字段 ``target`` （未命中的目标端点 ID）与 ``signal_type`` （投递失败的信号
       类型，即信号消息的 ``type`` 字段）。
     - 调用方可捕获（如降级为日志）；是否重试由应用层决定（框架不重试）。
 
@@ -1584,10 +1584,10 @@ class SignalTimeoutError(CommError):
 
     .. rubric:: 行为要点
 
-    - 字段 ``target``（请求的目标端点 ID）与 ``timeout``（实际使用的超时秒数）。
+    - 字段 ``target`` （请求的目标端点 ID）与 ``timeout`` （实际使用的超时秒数）。
     - 调用方通常捕获（业务分支）；是否重试由应用层决定。
     - ``CommHandle.destroy()`` 后 pending ``request()`` 的 await 收到的是
-      ``asyncio.CancelledError``（内置），不是本类。
+      ``asyncio.CancelledError`` （内置），不是本类。
 
     .. seealso::
 
@@ -1654,7 +1654,7 @@ class MissingFieldError(FormatError):
 
     .. rubric:: 行为要点
 
-    - 字段 ``field``（检查点处仍为 ``PENDING`` 的字段名）与 ``agent_type``
+    - 字段 ``field`` （检查点处仍为 ``PENDING`` 的字段名）与 ``agent_type``
       （所属 Agent 的类型名）。
     - 声明 / ``setup()`` 实现错误：调用方不捕获。
     - ``PENDING`` 与 ``_UNSET`` 语义不同：后者是参数默认值判定哨兵，不参与
@@ -1738,8 +1738,8 @@ class ReservedAttributeError(FormatError):
 
     .. rubric:: 功能介绍
 
-    Parsable 渲染上下文由框架注入四个保留名：``env``（绑定 ``os.environ``）、
-    ``config``（Runtime 配置）、``agent`` 与 ``self``（实例自身入口）。Agent
+    Parsable 渲染上下文由框架注入四个保留名：``env`` （绑定 ``os.environ``）、
+    ``config`` （Runtime 配置）、``agent`` 与 ``self`` （实例自身入口）。Agent
     实例属性占用这些名字会覆盖注入值，框架在求值前检测到即抛出——保留名冲突是
     静默错误的高发源，显式保留名单加检测比「合并时谁覆盖谁」的隐式规则更清晰。
 
@@ -1781,8 +1781,8 @@ class NameMismatchError(FormatError):
 
     .. rubric:: 行为要点
 
-    - 字段 ``declared``（用户声明的 ``name`` 值）、``inferred``（按路径 / 类名
-      规则推断出的名字）、``source``（冲突来源：``.fya`` 的路径或手写子类的
+    - 字段 ``declared`` （用户声明的 ``name`` 值）、``inferred`` （按路径 / 类名
+      规则推断出的名字）、``source`` （冲突来源：``.fya`` 的路径或手写子类的
       限定类名）。
     - 校验是相等断言而非命名来源：声明与推断一致时无任何效果（名字仍然来自
       推断）。
@@ -1891,10 +1891,10 @@ class FormatVersionError(FlowingError):
 
     .. rubric:: 行为要点
 
-    - 字段 ``path``（文件路径）、``found``（文件声明的版本）、``supported``
+    - 字段 ``path`` （文件路径）、``found`` （文件声明的版本）、``supported``
       （框架当前支持版本）。
     - 部署错误：调用方不捕获（fail-fast）。
-    - 与 ``CorruptionError``（数据损坏）精确区分。
+    - 与 ``CorruptionError`` （数据损坏）精确区分。
 
     .. seealso::
 
@@ -1938,10 +1938,10 @@ class CorruptionError(FlowingError):
 
     .. rubric:: 行为要点
 
-    - 字段 ``path``（损坏行所在文件路径）与 ``lineno``（损坏行的 1 基行号）。
+    - 字段 ``path`` （损坏行所在文件路径）与 ``lineno`` （损坏行的 1 基行号）。
     - 数据事故：调用方不捕获（需人工介入）；抛出前框架记录 ``path:lineno``
       的错误日志。
-    - 与 ``FormatVersionError``（版本问题）精确区分。
+    - 与 ``FormatVersionError`` （版本问题）精确区分。
 
     .. seealso::
 

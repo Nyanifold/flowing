@@ -1,12 +1,12 @@
 """``flowing.plugins.skills.registry`` —— Skill 注册表与注入键。
 
-本模块定义 :data:`skill_registry_key`（provide 注入键）与
-:class:`SkillRegistry`（``ns::name`` 全限定键 → 已解析 ``Skill`` 的
+本模块定义 :data:`skill_registry_key` （provide 注入键）与
+:class:`SkillRegistry` （``ns::name`` 全限定键 → 已解析 ``Skill`` 的
 注册表）。Skill 定义文件的解析（三种形式统一解析为 :class:`Skill`
 实例）也在这里完成（``_parse_skill_*`` 系列内部函数）。
 
-.. seealso:: :mod:`flowing.plugins.skills`（扩展的启用方式与整体契约）、
-    :mod:`flowing.plugins.skills.models`（数据对象）
+.. seealso:: :mod:`flowing.plugins.skills` （扩展的启用方式与整体契约）、
+    :mod:`flowing.plugins.skills.models` （数据对象）
 """
 
 
@@ -170,7 +170,7 @@ class SkillRegistry:
 
         - 返回的 ``Skill`` 是注册表共享实例；调用方不得修改。
         - 全部候选位置都不存在合法定义文件 → 抛
-          :class:`flowing.errors.FlowingError`（消息含规范名与已尝试的
+          :class:`flowing.errors.FlowingError` （消息含规范名与已尝试的
           查找路径）；定义文件存在但解析失败（缺 ``description``、YAML
           语法错误等）→ 解析异常上抛，不写入缓存。
         - 不校验 ``name`` 是否被任何 Agent 声明——注册表对声明无感知

@@ -34,12 +34,12 @@ Turn 引擎中有硬编码调用点，Skill 完全复用 Tool 机制）。
 
 - 注册的资源：
 
-  - provide key：:data:`skill_registry_key`（``InjectionKey["SkillRegistry"]``，
+  - provide key：:data:`skill_registry_key` （``InjectionKey["SkillRegistry"]``，
     键名 ``"skill_registry"``），provide 到 Runtime 根；消费方式
     ``agent.inject(skill_registry_key)`` （沿父链上溯）；未安装
     ``SkillPlugin`` 时 inject 抛
     :class:`flowing.errors.MissingProvideError`。
-  - 工具注册：:class:`SkillLoadTool`（``skill-load``）注册进 Runtime
+  - 工具注册：:class:`SkillLoadTool` （``skill-load``）注册进 Runtime
     全局工具注册表——注册不等于可见：对 LLM 可见仍需 Agent 侧显式
     声明（``.fya`` ``tools:`` 或 ``agent.add_tool("skill-load")``）。
   - ``runtime.register_skill``：``install()`` 把
@@ -82,7 +82,7 @@ Skill 定义是文件资源，三种等价形式（``SkillRegistry`` 统一解�
    推断（命中 ``<name>.md`` 取文件名；命中通用名 ``SKILL.md`` /
    ``skill.md`` 取目录名，kebab-case）；frontmatter 中不禁止写
    ``name``，但仅作一致性断言——与推断值不符抛
-   :class:`flowing.errors.NameMismatchError`（与 Agent / Tool 同一
+   :class:`flowing.errors.NameMismatchError` （与 Agent / Tool 同一
    语义）。``description`` 必填；正文支持 Jinja2 模板。
 2. ``.skill.fya`` 形式：块结构声明，字段见 :class:`Skill`；可含
    ``$script`` 块定义 ``on_load`` 回调。注意 ``.skill.fya`` 的
@@ -106,12 +106,12 @@ Skill 定义是文件资源，三种等价形式（``SkillRegistry`` 统一解�
   并告警」）。
 - 裸名 vs 显式路径分流：裸名条目语境下目录存在但无合法定义文件
   → 继续向下查找；显式路径条目语境下目录无候选 → 直接抛
-  :class:`flowing.errors.FormatError`（定点引用的目录为空几乎必为
+  :class:`flowing.errors.FormatError` （定点引用的目录为空几乎必为
   笔误；分流在 ``use_skill()`` 声明期执行——条目规范化经
-  :func:`flowing.parser.normalize_entries`（``naming=SKILL_NAMING``），
+  :func:`flowing.parser.normalize_entries` （``naming=SKILL_NAMING``），
   形态判别经 :func:`flowing.paths.classify_ref`；
   :meth:`SkillRegistry.get` 只承接裸名语义）。
-- 名字推断：机制本体 :func:`flowing.paths.infer_name`（规则表
+- 名字推断：机制本体 :func:`flowing.paths.infer_name` （规则表
   :data:`SKILL_NAMING`）——命中 ``<name>.xxx`` 候选 → 取文件名；
   命中通用名候选（``SKILL.fya`` / ``skill.fya`` / ``SKILL.md`` /
   ``skill.md``）→ 取目录名（对齐 Agent「``agent.fya`` 命中取
@@ -174,7 +174,7 @@ LLM 不给 skill 传参：``skill-load`` 工具与 ``agent.skill_load()``
 注入表达式在求值时沿 provide 链上溯、缺失即
 :class:`flowing.errors.MissingProvideError`）；声明期覆盖校验：
 ``skill_add`` 时逐参数检查——不在 ``specified`` 又无 schema 默认值
-→ :class:`flowing.errors.FormatError`（fail-fast：失败立即报错，
+→ :class:`flowing.errors.FormatError` （fail-fast：失败立即报错，
 不静默降级；不留到运行期）。
 需要 LLM 传参的能力应建模为 Tool。
 
@@ -406,7 +406,7 @@ class SkillLoadTool(Tool):
       LLM 的返回是简短收据（``{"loaded": <别名>}``），正文不经
       ToolResult——PLUGIN 消息在后续逻辑 Turn 进入上下文。
     - enabled 检查在 LLM 入口：条目 ``enabled=False`` 或未声明 →
-      抛 :class:`flowing.errors.FlowingError`（由 ``Tool.__call__``
+      抛 :class:`flowing.errors.FlowingError` （由 ``Tool.__call__``
       包装为 ``status="error"`` 的 LLM 可见结果），不加载、不入队。
       编程式 ``agent.skill_load()`` 无此检查。
     - 边缘情况：``name`` 缺失（LLM 未传）→ 按常规参数校验失败处理
@@ -417,7 +417,7 @@ class SkillLoadTool(Tool):
     - 不变量：同一 Skill 一次调用只产生一条 PLUGIN 消息；
       ``skill-load`` 的 ToolResult 永不包含正文。
 
-    .. seealso:: :class:`flowing.tool.Tool`（``execute()`` 签名契约与
+    .. seealso:: :class:`flowing.tool.Tool` （``execute()`` 签名契约与
         返回值自动包装）、:class:`SkillResult`、:class:`SkillLoadContext`
     """
 
@@ -493,8 +493,8 @@ class SkillPlugin(Plugin):
     - 不扫描任何目录、不解析任何 Skill 文件（声明期解析由
       :func:`use_skill` 在实例启用时对声明条目一次性完成）。
 
-    .. seealso:: :func:`use_skill`（阶段二入口）、
-        :class:`flowing.plugins.Plugin`（插件基类与 R1–R4 约定）、
+    .. seealso:: :func:`use_skill` （阶段二入口）、
+        :class:`flowing.plugins.Plugin` （插件基类与 R1–R4 约定）、
         :meth:`flowing.runtime.Runtime.use`
     """
 
@@ -541,7 +541,7 @@ class SkillPlugin(Plugin):
           绑函数约定：检查后跳过（核心无 ``register_skill`` 方法，注册入口
           由本插件注入；未安装本插件时该属性不存在）。同步返回。
         - 边缘情况：``skill-load`` 规范名已被占用 →
-          :class:`flowing.errors.ToolNameConflictError`（重名永远
+          :class:`flowing.errors.ToolNameConflictError` （重名永远
           不允许）；``skill_registry_key`` 重复 provide 是覆盖更新
           （后者生效，provide 机制的全局约定——插件间靠键名前缀约定
           避免冲突）。
@@ -649,7 +649,7 @@ def use_skill(
     幂等性边界：第 2 步的钩子点声明与第 3/6/7 步的函数绑定对同一
     实例重复调用是安全的（幂等 / 检查后跳过）；但对同一实例第二次
     完整调用本函数会在第 4 步因别名已存在抛
-    :class:`flowing.errors.EntryNameConflictError`（``skill_add`` 的
+    :class:`flowing.errors.EntryNameConflictError` （``skill_add`` 的
     fail-fast）。recover 重跑 ``setup()`` 时 ``setup`` 作用于新实例，
     不触发此路径。
 
@@ -706,7 +706,7 @@ def use_skill(
        ``specified``）；``args`` 键含 ``as`` → ``FormatError``，无改名
        通道；``enabled`` → 布尔原样。
     3. 冲突：同 alias 已存在 →
-       :class:`flowing.errors.EntryNameConflictError`（绑定层统一
+       :class:`flowing.errors.EntryNameConflictError` （绑定层统一
        fail-fast）。
     4. 预解析、落账与覆盖校验：``registry.get(entry.name_ori,
        source_dir=agent.source_dir())`` 一次性解析（含 disabled，
@@ -733,9 +733,9 @@ def use_skill(
     :raises flowing.errors.EntryNameConflictError: 对同一实例重复
         调用本函数（别名已存在）时。
 
-    .. seealso:: :class:`SkillPlugin`（阶段一入口）、
-        :class:`SkillLoadTool`（LLM 入口，与 ``skill_load`` 同路径）、
-        :class:`SkillEntry`（``skills:`` 声明的绑定产物）
+    .. seealso:: :class:`SkillPlugin` （阶段一入口）、
+        :class:`SkillLoadTool` （LLM 入口，与 ``skill_load`` 同路径）、
+        :class:`SkillEntry` （``skills:`` 声明的绑定产物）
     """
     registry: SkillRegistry = agent.inject(skill_registry_key)  # 第 1 步：未安装 SkillPlugin -> MissingProvideError
     agent.hooks.declare("before_skill_load", by="skill")  # 第 2 步：幂等声明（同名同 by 重复调用幂等）

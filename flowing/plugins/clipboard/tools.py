@@ -1,11 +1,11 @@
 """``flowing.plugins.clipboard.tools`` —— 剪贴板三件工具。
 
 本模块定义 ``clipboard-cut`` / ``clipboard-copy`` / ``clipboard-paste``
-三件工具类：:class:`ClipboardCutTool`（剪切）、:class:`ClipboardCopyTool`
-（复制）、:class:`ClipboardPasteTool`（粘贴）。主模块
+三件工具类：:class:`ClipboardCutTool` （剪切）、:class:`ClipboardCopyTool`
+（复制）、:class:`ClipboardPasteTool` （粘贴）。主模块
 :mod:`flowing.plugins.clipboard.clipboard` 承载启用方式与缓冲契约。
 
-.. seealso:: :mod:`flowing.plugins.clipboard.clipboard`（启用方式、
+.. seealso:: :mod:`flowing.plugins.clipboard.clipboard` （启用方式、
     缓冲契约、路径与行号口径）
 """
 

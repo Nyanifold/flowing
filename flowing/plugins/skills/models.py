@@ -1,15 +1,15 @@
 """``flowing.plugins.skills.models`` —— Skill 扩展的数据对象。
 
-本模块定义 Skill 扩展的全部数据对象：:data:`SKILL_NAMING`（技能文件
-的身份名推断规则表）、:data:`CatalogTemplate`（catalog 渲染模板的
-类型别名）、:class:`Skill`（可执行对象）、:class:`SkillEntry`
+本模块定义 Skill 扩展的全部数据对象：:data:`SKILL_NAMING` （技能文件
+的身份名推断规则表）、:data:`CatalogTemplate` （catalog 渲染模板的
+类型别名）、:class:`Skill` （可执行对象）、:class:`SkillEntry`
 （Agent 级绑定）、:class:`SkillLoadContext` / :class:`SkillContent`
-（加载流程两个钩子点的 value）、:class:`SkillResult`（``skill_load``
+（加载流程两个钩子点的 value）、:class:`SkillResult` （``skill_load``
 的返回值）。
 
-.. seealso:: :mod:`flowing.plugins.skills`（扩展的启用方式与整体契约）、
-    :mod:`flowing.plugins.skills.registry`（注册表）、
-    :mod:`flowing.plugins.skills.skills`（插件与加载流程）
+.. seealso:: :mod:`flowing.plugins.skills` （扩展的启用方式与整体契约）、
+    :mod:`flowing.plugins.skills.registry` （注册表）、
+    :mod:`flowing.plugins.skills.skills` （插件与加载流程）
 """
 
 
@@ -152,7 +152,7 @@ class Skill:
     ``<name>.md`` 候选取文件名；命中通用名候选（``SKILL.fya`` /
     ``skill.fya`` / ``SKILL.md`` / ``skill.md``）取目录名。
     定义文件里不禁止写 ``name``，但仅作一致性断言——与推断值
-    不符抛 :class:`flowing.errors.NameMismatchError`（与 Agent /
+    不符抛 :class:`flowing.errors.NameMismatchError` （与 Agent /
     Tool 同一语义）。
 
     .. seealso:: :class:`SkillRegistry`
@@ -301,14 +301,14 @@ class SkillEntry:
     - ``args`` 的每个值进入 ``specified`` （包装 Parsable，加载时以
       调用方 Agent 实例上下文求值）；``_`` （PENDING）值视为未声明
       该参数（不进 ``specified``，覆盖校验照常）。条目 ``args`` 的
-      参数键含 ``as`` → :class:`flowing.errors.FormatError`（无改名
+      参数键含 ``as`` → :class:`flowing.errors.FormatError` （无改名
       通道——``param_aliases`` 已随「LLM 不传参」删除）。
     - 覆盖校验（声明期 fail-fast）：``skill_add`` 时对
       ``skill.args_schema`` 逐参数检查——不在 ``specified`` 又无
       schema 默认值 → ``FormatError``。
     - ``specified`` 中的注入表达式（``{{ self.inject(...) }}``）在
       加载时沿 provide 链求值，缺失即
-      :class:`flowing.errors.MissingProvideError`（与 Tool 侧一致）。
+      :class:`flowing.errors.MissingProvideError` （与 Tool 侧一致）。
     - ``override_description`` 非 ``None`` 时 catalog ``<description>``
       取覆写值而非 ``Skill.description``；覆写是纯 LLM 可见文本，
       不影响加载与渲染正文。

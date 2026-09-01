@@ -70,8 +70,8 @@
   区间一律 start 包含、end 排除；越界各自报错（fail-fast：失败立即
   报错，不静默降级）。
 
-.. seealso:: :mod:`flowing.plugins.clipboard.tools`（三件工具）、
-    :mod:`flowing.plugins.cron`（双层启用与同构的 state 键模式先例）
+.. seealso:: :mod:`flowing.plugins.clipboard.tools` （三件工具）、
+    :mod:`flowing.plugins.cron` （双层启用与同构的 state 键模式先例）
 """
 
 from __future__ import annotations
@@ -109,7 +109,7 @@ class ClipboardPlugin(Plugin):
       install 只注册）；不挂载任何状态持久化；不读取其他插件状态。
     - 构造无参数、无注册副作用。
 
-    .. seealso:: :func:`use_clipboard`（阶段二入口）
+    .. seealso:: :func:`use_clipboard` （阶段二入口）
     """
 
     name: ClassVar[str] = "clipboard"

@@ -96,11 +96,11 @@ __all__ = [
 # ---------------------------------------------------------------------------
 
 PATH_PREFIXES: tuple[str, ...] = ("./", "../", "@/")
-"""相对路径前缀表：``"./"``（以引用方提供的 ``source_dir`` 为基准）、
-``"../"``（``source_dir`` 的父目录，多级 ``"../../"`` 逐级向上）、
-``"@/"``（项目根，以调用方传入的 ``project_root`` 为基准）。
+"""相对路径前缀表：``"./"`` （以引用方提供的 ``source_dir`` 为基准）、
+``"../"`` （``source_dir`` 的父目录，多级 ``"../../"`` 逐级向上）、
+``"@/"`` （项目根，以调用方传入的 ``project_root`` 为基准）。
 
-绝对路径不在表内，由前导 ``/``（POSIX；Windows UNC 归一后为 ``//``
+绝对路径不在表内，由前导 ``/`` （POSIX；Windows UNC 归一后为 ``//``
 前缀）或 Windows 盘符（``C:/``）另行判定。``~`` 也是合法前缀，永远按
 绝对路径触发：``"~"`` / ``"~/..."`` 经 ``os.path.expanduser`` 展开为
 当前用户家目录（POSIX 为 ``$HOME``，Windows 为 ``%USERPROFILE%``），
@@ -108,7 +108,7 @@ PATH_PREFIXES: tuple[str, ...] = ("./", "../", "@/")
 ``@/`` 或绝对路径，语义更直接。
 
 前缀判定中反斜杠与斜杠等价：``".\\"`` 视同 ``"./"``、``"..\\"`` 视同
-``"../"``、``"~\\"`` 视同 ``"~/"``（多级同理）；实现先做分隔符归一。
+``"../"``、``"~\\"`` 视同 ``"~/"`` （多级同理）；实现先做分隔符归一。
 
 本表是全框架路径前缀的唯一权威来源：``parsable`` 的 ``$`` 引用与
 ``{% include %}``、:func:`classify_ref` 的路径形态判定、
@@ -134,20 +134,20 @@ def classify_ref(raw: str) -> Literal["path", "qualified", "bare"]:
     「去哪找」（注册表查找、路径定位）由各注册表与装配层负责。判定
     顺序固定：
 
-    1. 命中 :data:`PATH_PREFIXES` 任一项、前导 ``/``（绝对路径）、
+    1. 命中 :data:`PATH_PREFIXES` 任一项、前导 ``/`` （绝对路径）、
        Windows 盘符（``C:/``）或 ``~`` 形态 → ``"path"``——整体视为
        路径字符串，内部不再做任何格式解析（路径中出现 ``::`` 只是
        路径字符，不参与切分）；
     2. 含 ``::`` → 看第一个 ``::`` 之前的左段：左段含路径特征（含
-       ``/`` 或反斜杠，或以 ``.py`` 结尾）→ ``"path"``（``文件::类名``
+       ``/`` 或反斜杠，或以 ``.py`` 结尾）→ ``"path"`` （``文件::类名``
        形态，如 ``./agents.py::OrderAgent``——多 Agent 子类文件的
        消歧引用；切分与类名选择语义在调用方，见
        :meth:`flowing.runtime.Runtime.get_agent_class`）；左段为纯
-       标识符 → ``"qualified"``（限定名 ``ns::name``，按第一个 ``::``
+       标识符 → ``"qualified"`` （限定名 ``ns::name``，按第一个 ``::``
        切分，见 :func:`flowing.parser.normalize_entries`）；
     3. 含 ``/`` 或反斜杠字符（且无 ``::``）→ ``"path"``——普通相对
        路径，解析时以引用方提供的 ``source_dir`` 为基准；
-    4. 其余 → ``"bare"``（裸名）。
+    4. 其余 → ``"bare"`` （裸名）。
 
     :param raw: 资源引用字符串。
     :return: ``"path"`` / ``"qualified"`` / ``"bare"`` 之一。
@@ -156,8 +156,8 @@ def classify_ref(raw: str) -> Literal["path", "qualified", "bare"]:
 
     - ``a::b::c`` 判为 ``"qualified"``：本函数只命名形态，多个 ``::``
       不报错——切分语义在调用方，后续查找必然不命中，由查找层报错。
-    - ``a::b/c`` 含 ``::``，判为 ``"qualified"``（不是路径）。
-    - 裸 ``@``（不带斜杠）不命中任何路径形态，落入 ``"bare"``（几乎
+    - ``a::b/c`` 含 ``::``，判为 ``"qualified"`` （不是路径）。
+    - 裸 ``@`` （不带斜杠）不命中任何路径形态，落入 ``"bare"`` （几乎
       必为笔误）。
     - 本函数不校验裸名 / 限定名的字符集（名称校验在各资源装配层）。
 
@@ -192,7 +192,7 @@ def resolve_path(
     project_root: Path,
     source_dir: Path | None = None,
 ) -> Path:
-    """把带前缀的路径字符串解析为 ``pathlib.Path``（``@/`` / ``./`` / ``../`` / 绝对路径）。
+    """把带前缀的路径字符串解析为 ``pathlib.Path`` （``@/`` / ``./`` / ``../`` / 绝对路径）。
 
     .. rubric:: 功能介绍
 
@@ -302,7 +302,7 @@ def probe_candidates(base_dir: Path, candidates: Iterable[str]) -> Path | None:
     :param base_dir: 候选名相对的基准目录。
     :param candidates: 候选文件名列表（相对 ``base_dir``），顺序即
         优先级。
-    :return: 首个存在者的完整路径；全部未命中返回 ``None``（不报错，
+    :return: 首个存在者的完整路径；全部未命中返回 ``None`` （不报错，
         「不命中」的处置是调用方职责）。
 
     .. rubric:: 行为要点
@@ -328,8 +328,8 @@ class NamingRules:
 
     本类型只承载「哪些文件名是通用名、按什么顺序剥离后缀」这两张表，
     不含推断逻辑。框架内各资源模块在紧邻其候选链声明处定义自己的规则
-    常量：Agent 的 ``AGENT_NAMING``（见 ``flowing.runtime``）、Tool 的
-    ``TOOL_NAMING``（见 ``flowing.tool``）、Skill 的 ``SKILL_NAMING``
+    常量：Agent 的 ``AGENT_NAMING`` （见 ``flowing.runtime``）、Tool 的
+    ``TOOL_NAMING`` （见 ``flowing.tool``）、Skill 的 ``SKILL_NAMING``
     （见 ``flowing.plugins.skills``）。
 
     .. rubric:: 使用示例

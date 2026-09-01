@@ -29,14 +29,14 @@ fya 声明层（``args:`` 块）的书写规则：逐参数展开，无 ``type: 
 - 裸类型字符串：``str`` / ``int`` / ``float`` / ``bool`` / ``list`` /
   ``dict`` → 对应 ``{type: ...}`` 单键 property（必填）；
 - YAML 字面量：标量 / 列表字面量 → 按值类型推断 ``type`` 并以值为
-  ``default``（可选）。
+  ``default`` （可选）。
 
 其余值一律是完整 JSON Schema property dict（``{}`` 合法，表示匹配一切
 的 any 类型）。``type:`` 的取值同时识别 Python 风格简写名与 JSON Schema
 名（``type: str`` ≡ ``type: string``，别名表 :data:`TYPE_ALIASES`），并
 支持类型表达式：联合（``str | None``）与泛型嵌套（``list[str]`` /
 ``dict[str, int]``）可组合。可空参数写标准 nullable 形态
-``{type: [string, "null"], default: null}``（Pydantic 侧对应
+``{type: [string, "null"], default: null}`` （Pydantic 侧对应
 ``str | None = None``）。
 
 桥接（:func:`schema_to_model`）认识的 JSON Schema 关键字子集：``type`` /
@@ -44,7 +44,7 @@ fya 声明层（``args:`` 块）的书写规则：逐参数展开，无 ``type: 
 ``minLength`` / ``maxLength`` / ``pattern`` / ``items`` / ``properties``
 ——逐关键字映射为 Pydantic 字段约束；超出子集（``oneOf`` / ``anyOf`` /
 ``$ref`` / ``allOf`` 等组合子）在装配期抛
-:class:`flowing.errors.FormatError`（fail-fast：出错即刻抛异常、不静默
+:class:`flowing.errors.FormatError` （fail-fast：出错即刻抛异常、不静默
 降级）。
 
 覆写（:func:`apply_param_overrides`）供绑定层（``ToolEntry`` /
@@ -139,7 +139,7 @@ def _parse_type_expr(expr: str) -> dict:
       值类型约束由执行层模型承载）。
 
     嵌套与联合可组合（``list[str | None]``）。无法解析 →
-    :class:`flowing.errors.FormatError`（fail-fast）。
+    :class:`flowing.errors.FormatError` （fail-fast）。
     """
     # 微型递归下降解析器。两处行为约束：
     # - 联合成员仅限裸名——JSON Schema 的 type 数组只接受类型名，泛型
@@ -228,13 +228,13 @@ def expand_args_schema(args: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     声明端唯一的糖处理点，逐参数按固定顺序判别：
 
     1. 值是裸类型字符串（:data:`ARG_SHORTHAND` 六个保留字之一）→
-       ``{type: <展开值>}``（必填）；
+       ``{type: <展开值>}`` （必填）；
     2. 值是 dict → 原样作为完整 JSON Schema property（``{}`` 合法，
        any 语义；键超出 :data:`SCHEMA_KEYWORDS` 子集的报错推迟到
        :func:`schema_to_model` 桥接时）；
     3. 值是其余 YAML 字面量（标量 / 列表）→ 按值类型推断 ``type`` 并
-       以值为 ``default``（可选）；值是 ``None``（YAML ``key:`` 空值）
-       → :class:`flowing.errors.FormatError`（连声明意图都无法确认，
+       以值为 ``default`` （可选）；值是 ``None`` （YAML ``key:`` 空值）
+       → :class:`flowing.errors.FormatError` （连声明意图都无法确认，
        fail-fast）。
 
     归一化产物不含 required 信息——必填性恒由 property 的 ``default``
@@ -242,7 +242,7 @@ def expand_args_schema(args: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
 
     :param args: fya ``args:`` 块的原始映射（参数名 → 值）。
     :return: ``{参数名: property dict}``，新构造的 dict（输入不被修改）。
-    :raises flowing.errors.FormatError: 某参数值为 ``None``（空声明）时。
+    :raises flowing.errors.FormatError: 某参数值为 ``None`` （空声明）时。
 
     .. seealso:: :func:`schema_to_model` —— 下一步桥接。
     """
@@ -298,14 +298,14 @@ def schema_to_model(name: str, properties: Mapping[str, dict[str, Any]]) -> type
 
     .. rubric:: 行为要点
 
-    - ``{}`` 空 property → 字段类型为 ``Any``（匹配一切）。
+    - ``{}`` 空 property → 字段类型为 ``Any`` （匹配一切）。
     - ``enum`` 与 ``default`` 共存合法（``default`` 须在 ``enum`` 内，
       校验交 Pydantic）。
     - 返回新模型类，不修改入参；每次调用都创建新模型类，不缓存
       （调用方可自行缓存）。
     - 不做 JSON Schema 全量合规校验：只认上述子集，超子集 fail-fast。
     - 多成员非 null 联合（如 ``[string, integer]``）超出 Python 单类型
-      表达精度，桥接为 ``Any``（子集只承诺 ``[T, "null"]`` 可空形态）。
+      表达精度，桥接为 ``Any`` （子集只承诺 ``[T, "null"]`` 可空形态）。
 
     .. seealso:: :func:`expand_args_schema` —— 前置归一化；
         :func:`apply_param_overrides` —— 补丁应用。
@@ -408,7 +408,7 @@ def apply_param_overrides(
     - 稀疏回填：未出现的参数、未出现的关键字保持基底原值。
     - 必填性：补丁没写 ``default`` → 沿用基底（含基底无 ``default`` 的
       必填性）；显式给了 ``default`` → 该参数变可选；不支持删除已有
-      ``default``（稀疏补丁无删除语义）。
+      ``default`` （稀疏补丁无删除语义）。
     - 未知参数名：``overrides`` 中出现 ``params_schema`` 不存在的键 →
       视为新增参数（补丁 property 直接并入）——Tool 侧 ``FinishTool``
       动态 schema 依赖此语义。
@@ -579,7 +579,7 @@ class InjectionKey(Generic[T]):
         :param other: 要比较的对象。
         :return: ``other`` 为 ``InjectionKey`` 时比较两侧 ``name``
             （忽略泛型参数）；为 ``str`` 时比较 ``self.name == other``；
-            为其它类型时返回 ``NotImplemented``（Python 按默认规则
+            为其它类型时返回 ``NotImplemented`` （Python 按默认规则
             处理，通常结果为 ``False``）。
 
         .. rubric:: 行为要点
@@ -670,7 +670,7 @@ class ConfigKey(Generic[T]):
     - 运行期不做 ``T`` 的类型校验：配置文件里实际值类型与 ``T`` 不符
       时框架不拦截（静态契约，非运行期校验器）。
     - 调用时机约束（消费侧规则）：``get_config`` 在配置就绪前调用抛
-      :class:`flowing.errors.ConfigNotReadyError`（典型即模块顶层 import
+      :class:`flowing.errors.ConfigNotReadyError` （典型即模块顶层 import
       期）；就绪后任何时机可调用（``setup()``、钩子回调、工具 callable、
       ``main()`` 后续代码）。本类本身无此约束——约束在读取配置的
       Runtime 方法上。
@@ -723,7 +723,7 @@ class ConfigKey(Generic[T]):
         :param other: 要比较的对象。
         :return: ``other`` 为 ``ConfigKey`` 时比较两侧 ``name``
             （忽略泛型参数）；为 ``str`` 时比较 ``self.name == other``；
-            为其它类型时返回 ``NotImplemented``（Python 按默认规则
+            为其它类型时返回 ``NotImplemented`` （Python 按默认规则
             处理，通常结果为 ``False``）。
 
         .. rubric:: 行为要点
