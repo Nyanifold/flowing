@@ -1618,9 +1618,11 @@ class Agent:
         袋值为准）→ 读 ``state.jsonl`` 将全部持久化行重放进默认袋。恢复
         边界 = 已持久化消息；进行中的逻辑 Turn 丢弃不续跑。孤立 tool_call
         （PROVIDER 消息引用、但结果消息缺失）合成 ``synthetic=True``
-        占位 TOOL 消息封闭配对。纯数据之外派生的运行时结构（如 cron
-        定时器）由随后的 ``after_recover`` 钩子重建。session 目录不存在
-        时按空 session 处理并报出可诊断错误。
+        占位 TOOL 消息封闭配对，占位 id 为确定性的 ``synthetic-{call_id}``
+        （同一次调用每次恢复合成同一 id，parent 链自愈）；若 provider
+        消息本是分支尾，head 随占位消息上移。纯数据之外派生的运行时结构
+        （如 cron 定时器）由随后的 ``after_recover`` 钩子重建。session
+        目录不存在时按空 session 处理并报出可诊断错误。
         """
         # ① self._tree_store.replay() 逐行重建消息级树（Message.id +
         #    parent_id 链；消息行建树、tombstone/update/move 变更行按序
@@ -1753,7 +1755,8 @@ class Agent:
         .. rubric:: 行为要点
 
         - 等待语义：等「包含我这条消息」的逻辑回合完成；空闲时可能被
-          drain 合并（共享产物），活跃回合中排队等当前回合完成。
+          出队合并（一次取出多条消息，共享同一产物），活跃回合中排队等
+          当前回合完成。
         - 副线不走本方法——副线唯一入口是 :meth:`side_query`。
         - 取消等待 ≠ 取消回合：``await`` 被取消时消息已在队列（可能已
           执行），取消只是不领结果；撤回未出队消息用 :meth:`cancel_queued`。
@@ -2229,8 +2232,9 @@ class Agent:
           ``ProviderResponse`` （adapter 不填，由本方法盖写）。主 Turn
           内层循环传 ``"_turn"``，``side_query`` 传 ``"_side"``；下划线
           开头为框架保留值，插件自定义来源勿用。``after_provider_gen``
-          与 ``on_provider_delta`` 钩子点以 ``match_on="by"`` 声明，
-          handler 可按来源模式过滤注册。
+          与 ``on_provider_delta`` 钩子点以 ``match_on="by"`` 声明——
+          ``match_on`` 指定按 value 的哪个字段过滤注册（此处按来源标记
+          ``by``），handler 可按来源模式过滤注册。
         - 流式中断（abort）：已累积内容保留为 ``partial=True`` 的消息
           随响应返回（保留落盘），``cancelled=True``；取消点起不再
           dispatch delta。
@@ -3142,8 +3146,9 @@ class Agent:
 
         .. rubric:: 功能介绍
 
-        时序：dispatch ``before_tool_call`` （可改写 ``ToolCall`` /
-        ``shortcut`` 短路 / ``raise Intercepted`` 硬阻断）→ 按别名查
+        时序：dispatch ``before_tool_call`` （可改写 ``ToolCall``；
+        handler 可设置 ``tool_call.shortcut`` 直接给出结果、跳过工具
+        执行；``raise Intercepted`` 硬阻断）→ 按别名查
         ``_tool_entries`` → :meth:`_normalize` （LLM 视角校验 / 别名映射
         与 ``ToolEntry.resolve()`` 聚合 / 默认值填充）→ ``Tool.__call__``
         调度（注册 ``Execution(kind="tool")``，finally 清理）→ dispatch
@@ -3823,7 +3828,7 @@ class Agent:
         .. seealso:: :class:`FieldUpdate`、:meth:`watch`
         """
         if not name.startswith("_"):   # 仅实例属性赋值触发；_ 前缀骨架字段初始化不经过本机制
-            old: Any = getattr(self, name, None)   # 字段不存在时规约为 _UNSET 哨兵（flowing.parsable）
+            old: Any = getattr(self, name, None)   # 字段不存在时取 None（getattr 默认值）
             fu = FieldUpdate(name=name, old=old, new=value)   # 写入前构造快照
             # 护栏：hooks 未建立（管线第 2 步预绑 node_id/runtime
             # 早于 __init__）时只经 __dict__.get 探查，缺失即跳过——骨架期
@@ -4246,9 +4251,10 @@ class Agent:
         序列化 ``msg`` 为消息行（含 ``id`` / ``parent_id`` / ``turn_end`` /
         ``partial`` 等）→ ``self._tree_store.submit(行)``——同步返回不代表
         已落盘（产生即排队）。墓碑压缩由 ``FileRecordStore`` drain 任务在
-        队列排空后自主触发。store 已进入 poison 态时本方法同步重抛首次
-        落盘异常（错误在挂树现场爆出，而非静默分叉）。副线消息不经过
-        本方法。
+        队列排空后自主触发。store 已进入 poison 态（写入过程中首次
+        落盘失败后进入的状态，此后每次提交同步重抛同一异常）时本方法
+        同步重抛首次落盘异常（错误在挂树现场爆出，而非静默分叉）。副线
+        消息不经过本方法。
         """
         # 序列化 msg 为消息行 dict -> self._tree_store.submit(行)
         # （同步排队即返；poison 态时 submit 重抛首次落盘异常）
@@ -4261,7 +4267,8 @@ class Agent:
         :class:`flowing.message.MessageChain` 五 op 的落盘通道：与
         :meth:`_persist_message` 共用同一 ``_tree_store`` 队列——消息行与
         变更行在同一 FIFO 中按提交序落盘，重放时按行序应用。``record``
-        约定字段：``{"type": "tombstone", "id": ...}`` /
+        约定字段：``{"type": "tombstone", "id": ...}`` （tombstone 即
+        删除标记行，重放时移除对应消息）/
         ``{"type": "update", "id": ..., "content": [...]}`` /
         ``{"type": "move", "id": ..., "parent_id": ...}``；``insert`` 的
         邻接调整对被重挂的每个子消息各提交一条 ``move`` 行。排队语义 /
