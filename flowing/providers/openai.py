@@ -125,7 +125,7 @@ class OpenAICompletionsProvider(Provider):
       ``cache_read = cached_tokens``、``cache_write = 0``、
       ``output = completion_tokens``、``total_tokens = input + output``；
       原始用量字段全量保留在 ``Usage.raw``。
-    - 不做厂商探测（如按 base_url 猜测能力）——厂商差异属于子类覆写。
+    - 不做厂商探测（如按 ``base_url`` 猜测能力）——厂商差异属于子类覆写。
     - 前缀缓存由 OpenAI 服务端自动处理，adapter 不发送任何缓存标记；
       ``PromptBlock.cache`` 对本格式只是字节稳定性提示，不产生请求级
       效果。
@@ -200,8 +200,7 @@ class OpenAICompletionsProvider(Provider):
         return body
 
     def _map_tool(self, definition) -> dict:
-        """白名单组装：只取 name/description/parameters 三已知字段。
-        """
+        """白名单组装：只取 name/description/parameters 三已知字段。"""
         params = definition.params_schema or {}
         return {
             "type": "function",

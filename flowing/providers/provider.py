@@ -315,7 +315,9 @@ class ProviderResponse:
       框架内不留痕——逐次不漏的计费属插件策略，可在 adapter 层自行
       拦截。
     - ``model``：实际响应的模型 ID（响应侧记录），观测与计费用；不
-      要求与请求侧 ``ModelConfig.model`` 相同，不回填任何结构体。
+      要求与请求侧 ``ModelConfig.model`` 相同，不回填任何结构体。流式
+      路径（``Agent.provider_gen`` 累积 delta 后组装最终响应）由 Agent
+      层填请求侧模型 ID；非流式路径填服务端返回的模型 ID。
     - ``finish``：provider 层概念——「provider 完成了本次响应（无待
       执行 tool_call）」。turn 是否关闭由 agent 层判断
       （``finish or cancelled`` → ``Message.turn_end``），本字段不直接

@@ -180,7 +180,7 @@ class AnthropicMessagesProvider(Provider):
             "system": [
                 # 手动前缀缓存：cache="static" 设 cache_control 必要信息；
                 # cache="dynamic" 不标记；cache="session" 不映射断点
-                # （会话冻结语义的断点策略属后续细化，就地注释说明）
+                # （会话冻结场景的缓存断点语义超出本 adapter 支持范围）
                 {"type": "text", "text": seg.content,
                  **({"cache_control": {"type": "ephemeral"}}
                     if seg.cache == "static" else {})}
@@ -197,8 +197,7 @@ class AnthropicMessagesProvider(Provider):
         return body
 
     def _map_tool(self, definition) -> dict:
-        """白名单组装：只取 name/description/parameters 三已知字段。
-        """
+        """白名单组装：只取 name/description/parameters 三已知字段。"""
         params = definition.params_schema or {}
         return {
             "name": definition.name,
