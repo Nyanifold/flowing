@@ -751,58 +751,44 @@ def output_to_blocks(output: Any, *, error: str | None = None) -> list[ContentBl
 
 @dataclass
 class ToolCall:
-    """LLM 发出的单次工具调用；``before_tool_call`` 钩子的 value 类型。
+    """LLM 发出的单次工具调用——``before_tool_call`` 钩子的 value 类型。
 
     .. rubric:: 功能介绍
 
     `ToolCall` 是「LLM 想调什么」的纯数据载体：从 PROVIDER 消息的工具调用
-    块解析而来，经 ``before_tool_call`` 钩子链传递，最终在 ``_normalize()``
-    中被解包为零散参数喂给 `Tool.execute()`。**注意**：`ToolCall` 只是调用
-    意图，不是可执行对象；`execute()` 不接收 `ToolCall` 整体入参。
-
-    .. rubric:: 设计动机
-
-    钩子 value 统一携带 ``shortcut`` 短路字段（钩子系统定稿约定），
-    `ToolCall` 作为 ``before_tool_call`` 的 value 遵守同一契约。把「调用
-    意图」与「执行对象」分开，使审批/改写类 handler 可以在不接触执行层的
-    情况下检查与修改调用。
+    块（``ToolCallBlock``）解析而来，经 ``before_tool_call`` 钩子链传递，
+    最终被解包为零散参数喂给 ``Tool.execute()``。`ToolCall` 只是调用意图，
+    不是可执行对象；``execute()`` 不接收 `ToolCall` 整体入参。
 
     .. rubric:: 使用示例
 
+    ``before_tool_call`` handler 统一签名 ``(agent, value)``——方法形态
+    ``(self, tool_call)`` 的 ``self`` 即承载 Agent：
+
     .. code-block:: python
 
-        # 钩子 handler 统一签名 (agent, value)——写成方法形态时 self 即承载
-        # Agent：``self`` 只是第一参数的占位符，方法形态 ``(self, tool_call)``
-        # 与自由函数形态 ``(agent, tool_call)`` 本质没有区别
-        async def _request_approval(self, tool_call):
-            tool = self.runtime.tool_registry.get(
-                self._tool_entries[tool_call.name].name_ori
-            )
-            if not getattr(tool, "requires_approval", False):
-                return tool_call                      # 原值通过
-            response = await approval_service.request(tool_call)
-            if response.action == "deny":
-                raise Intercepted("用户拒绝")          # 硬阻断 → blocked
-            return response.modified_tool_call        # 改写后继续
+        from flowing import Intercepted, ToolResult, on
 
-    .. rubric:: 行为规约
+        @on("before_tool_call")
+        async def _approve(self, tool_call):
+            tool_call.args["request_id"] = self.node_id   # 改写参数
+            if tool_call.name == "delete-file":
+                raise Intercepted("删除文件需要人工审批")  # 硬阻断 → blocked
+            if (hit := self._cache.get(tool_call.name)):
+                tool_call.shortcut = ToolResult(           # 短路：跳过执行
+                    status="completed", output=hit)
+            return tool_call
 
-    - handler 三种合法出口：返回（可能改写的）`ToolCall` / 置 ``shortcut``
-      短路 / ``raise Intercepted``；普通异常**直接上抛**，无兜底钩子。
-    - 非行为：`ToolCall` 不做参数校验、不认识 specified——参数聚合
-      全部发生在其后的 ``_normalize()``。
-    - 边缘情况：``args`` 只包含 LLM 原始传入值；hook 改写后出现的同名键
-      会在 ``resolve()`` 中被 specified 覆盖（优先级见模块 docstring）。
+    .. rubric:: 行为要点
 
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``flowing.agent.Agent.tool_call()`` （每次工具调用管线入口）；
-      ``flowing.hooks.HookList.dispatch()`` （作为 ``before_tool_call``
-      钩子链 value，每次 dispatch）
-    - 实例化方：:meth:`from_block`（逻辑 Turn 循环遍历响应 content 的
-      tool_call block 时，逐字调用点见 ``flowing.agent.Agent._run_turn``
-      工具调用循环）；编程路径由 cron / workflow 直接构造（id 约定见
-      :attr:`id` 字段注释）
+    - handler 三种合法出口：返回（可能改写的）`ToolCall` / 把
+      `ToolResult` 放进 ``shortcut`` 字段短路 / ``raise Intercepted``
+      硬阻断；普通异常直接上抛，无兜底钩子。
+    - `ToolCall` 不做参数校验、不认识 specified——参数聚合全部发生在
+      其后的 ``_normalize()``（见 :mod:`flowing.agent`）。
+    - ``args`` 只包含 LLM 原始传入值（键可能是别名）；hook 改写后出现的
+      同名键会在 ``resolve()`` 中被 specified 覆盖（优先级见模块
+      docstring 的参数优先级约定）。
 
     .. seealso::
 
@@ -812,175 +798,115 @@ class ToolCall:
     """
 
     id: str
-    """Provider 侧的调用 ID（如 OpenAI ``tool_call_id``）。是与结果侧
-    ``kind=TOOL`` 消息 ``tool_call_id`` 字段严格配对的依据（配对锚从块层
-    搬到消息字段，D1/D3；``as_message`` 接线，C-05），也是恢复时扫描孤立
-    tool_call 的匹配键（M-25）。
-    编程路径（cron / workflow / 手动构造的 ToolCall）由调用方生成合成
-    字符串——推荐形如 ``<来源类型名>-<uuid4>``（workflow →
-    ``workflow-…``、cron → ``cron-…``，S-41 裁决②）的有语义前缀，
-    亦接受无语义的 uuid；仅作追踪，不参与配对。
+    """Provider 侧的调用 ID（如 OpenAI ``tool_call_id``）。它是与结果侧
+    ``kind=TOOL`` 消息 ``tool_call_id`` 字段严格配对的依据，也是恢复时
+    扫描孤立 tool_call 的匹配键。编程路径（cron / workflow / 手动构造）
+    由调用方生成合成字符串——推荐形如 ``<来源类型名>-<uuid4>``
+    （workflow → ``workflow-…``、cron → ``cron-…``）的有语义前缀，亦
+    接受无语义的 uuid；仅作追踪，不参与配对。
     """
     name: str
-    """LLM 看到的工具名——即 `ToolEntry.name_alias`（别名），**不是**规范名。
-    ``Agent.tool_call()`` 仅按此名在 ``_tool_entries`` 中查找，不回退规范名。
+    """LLM 看到的工具名——即 `ToolEntry.name_alias`（别名），不是规范名。
+    ``Agent.tool_call()`` 仅按此名查找工具绑定表，不回退规范名。
     """
     args: dict[str, Any]
     """LLM 原始传入的参数字典（键为 LLM 可见名，可能是 ``param_aliases``
-    中的别名）。``before_tool_call`` handler 可直接改写本字典；别名→规范名
+    中的别名）。``before_tool_call`` handler 可直接改写本字典；别名 → 规范名
     的映射、specified 聚合在 ``_normalize()`` 中发生，不在本对象上。
     """
     shortcut: "ToolResult | None" = None
-    """钩子短路字段（钩子系统统一契约，spec-draft 06 §16.4 / comment §18）：
-    初值 ``None``，dispatch 以「**非 None** 即短路」门控。handler 把一个
-    `ToolResult` 放进本字段后返回——链停止、默认执行被替代（该
-    `ToolResult` 直接作为本次调用的结果，典型场景：缓存命中跳过工具
-    执行），``after_tool_call`` 照常触发。与 ``raise Intercepted`` 的
-    区别：shortcut 是「正常收场、结果由 handler 提供」，Intercepted 是
-    「硬阻断、结果为 blocked、after 不触发」。shortcut 产物不进
-    `Tool.__call__`，其 ``output`` 可为原料形态——经 ``Agent.tool_call``
-    收尾的 `normalize_output` 幂等归一（D19）。
+    """钩子短路字段：初值 ``None``，钩子链以「非 ``None`` 即短路」门控。
+    handler 把一个 `ToolResult` 放进本字段后返回——钩子链停止、工具默认
+    执行被替代（该 `ToolResult` 直接作为本次调用的结果，典型场景：缓存
+    命中跳过工具执行），``after_tool_call`` 照常触发。与 ``raise
+    Intercepted`` 的区别：shortcut 是正常收场、结果由 handler 提供，
+    Intercepted 是硬阻断、结果为 ``blocked``、``after_tool_call`` 不触发。
+    shortcut 产物不经 ``Tool.__call__``，其 ``output`` 可为原料形态——
+    由 ``Agent.tool_call`` 收尾的 `normalize_output` 幂等归一。
     """
 
     @classmethod
     def from_block(cls, block: ToolCallBlock) -> "ToolCall":
-        """从消息层 :class:`flowing.message.ToolCallBlock` 解析为标准化 `ToolCall`.
+        """从消息层 `ToolCallBlock` 解析为 `ToolCall`（唯一官方转换点）。
 
         .. rubric:: 功能介绍
 
-        剥离 ContentBlock 的通用字段（``type``），产出 ``ToolCall(id, name, args,
-        shortcut=None)``。逻辑 turn 循环遍历响应 content 的 tool_call block 时，
-        经本方法提取后传给 ``Agent.tool_call()``。
+        剥离 ContentBlock 的通用字段（``type``），产出 ``ToolCall(id,
+        name, args, shortcut=None)``。逻辑 Turn 循环遍历响应 content 的
+        tool_call block 时，经本方法提取后传给 ``Agent.tool_call()``。
 
-        .. rubric:: 设计动机
-
-        消息层（block，可序列化、交错混排）与执行层（`ToolCall`，带 ``shortcut``
-        短路字段供钩子链使用）是两张正交的面孔；本方法是唯一的官方转换点。
-        **转换点定在 ToolCall 侧而非 block 侧**（S-43 裁决④，由原
-        ``ToolCallBlock.as_tool_call()`` 迁移而来）：「tool 认识 message、
-        message 不认识 tool」，message.py 不再 import tool.py，消除全库
-        唯一的模块级循环依赖（message ↔ tool）。
-
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         - 纯函数：不修改入参 block，不产生副作用。
-        - 返回值的 ``shortcut`` 恒为 ``None``（短路是钩子链运行期状态，不来自消息）。
-
-        .. rubric:: 测试案例
-
-        - 前置：``ToolCallBlock(type="tool_call", id="c1", name="read_file",
-          args={"path": "a.py"})`` → 操作：``ToolCall.from_block(block)`` →
-          期望：``ToolCall(id="c1", name="read_file", args={"path": "a.py"},
-          shortcut=None)``。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：无（dataclass 构造，`cls(...)` 自身）
-        - 被调：``flowing.agent.Agent._run_turn`` 工具调用循环（时机：响应
-          content 遇 tool_call block 时，每次一个）
+        - 返回值的 ``shortcut`` 恒为 ``None``（短路是钩子链运行期状态，
+          不来自消息）。
 
         .. seealso::
-           :class:`flowing.message.ToolCallBlock`、
-           :meth:`flowing.tool.ToolResult.as_message`（反向转换：结果 → 消息）。
+
+            - :class:`flowing.message.ToolCallBlock` —— 上游（消息层）。
+            - :meth:`flowing.tool.ToolResult.as_message` —— 反向转换：
+              结果 → 消息。
         """
-        # shortcut 恒为 None 初值（C-06 裁决后 ToolCall 已含 id/shortcut
-        # 字段；短路是钩子链运行期状态，不来自消息）
+        # shortcut 恒为 None 初值（短路是钩子链运行期状态，不来自消息）
         return cls(id=block.id, name=block.name, args=block.args)
 
 
 @dataclass
 class ToolResult:
-    """工具执行结果；LLM 可见的调用回执（status/output/error + duration，05 定案 D4/D11）。
+    """工具执行结果——LLM 可见的调用回执。
 
     .. rubric:: 功能介绍
 
-    `ToolResult` 是工具调用链的最终产物：无论成功、失败、异步还是被阻断，
-    对 LLM 与消息树都呈现为同一个结构。结果字段为 ``status`` / ``output``
-    / ``error`` 三者（``output`` 是**唯一结果字段**，构造期收原料——
-    基础值 / 载体四类 / 裸 ``bytes``·``Path`` / 第三方库对象均可，D6）。
-
-    .. rubric:: 设计动机
-
-    - ``status="error"`` 是**正常产物而非异常**：LLM 应当看到工具失败并自行
-      决策（重表述、换工具、向用户报告），因此 error 结果**不触发**任何错误
-      钩子——核心错误钩子仅 ``on_provider_error``（机制 vs 策略）。
-    - ``status="blocked"`` 与 ``"error"`` 区分：blocked 表示「工具根本没执行
-      （被审批/守卫阻断）」，error 表示「执行了但失败」；二者对 LLM 的语义
-      与审计含义不同，不可合并。
-    - ``pending`` 承载 fire-and-forget 边界（三种形态：返回 ``asyncio.Task`` /
-      async generator 首 yield / ``background`` 标记）：框架只回收据，不阻塞
-      逻辑 Turn 等待异步任务。
-    - ``output`` 单字段五形态（D4）：归一化只做非做不可的转换（原料→块），
-      纯 JSON/str 原样放行让钩子消费方拿到自然形态；配对元数据
-      （``tool_call_id`` / ``tool_status``）在消息层，不在本对象上（D1/D3）。
+    `ToolResult` 是工具调用链的最终产物：无论成功、失败、异步还是被
+    阻断，对 LLM 与消息树都呈现为同一个结构。结果字段为 ``status`` /
+    ``output`` / ``error`` 三者；``output`` 是唯一结果字段，构造期收
+    原料（基础值 / 载体四类 / 裸 ``bytes`` / ``Path`` / 第三方库对象
+    均可，经 `normalize_output` 归一）。
 
     .. rubric:: 使用示例
 
+    工具作者通常不直接构造 `ToolResult`——框架自动包装：
+
     .. code-block:: python
 
-        # 工具作者通常不直接构造 ToolResult——框架自动包装：
         async def execute(self, *, order_id: str, caller: Agent) -> dict:
             return {"tx": "abc"}      # → ToolResult(status="completed",
                                       #              output={"tx": "abc"})
 
-        # 媒体返回（载体为可选元数据包装，D6）：
         async def execute(self, *, url: str):
-            return [f"已截取 {url}", Image(path=png_path)]
+            return [f"已截取 {url}", Image(path=png_path)]   # 媒体返回
 
-        # 审批阻断路径（框架内部行为）：
-        result = ToolResult.blocked("用户拒绝了 delete-file 调用")
+    .. rubric:: 行为要点
 
-    .. rubric:: 行为规约
-
-    - 不变量：``status == "blocked"`` 的实例只能经 `ToolResult.blocked`
-      工厂产生——来源两条：``before_tool_call`` / ``after_tool_call``
-      拦截（工具未执行或结果被丢弃），或 ``execute`` 内主动抛出
-      ``Intercepted``（执行被硬阻断于中途）。
-    - 不变量：``status == "error"`` 时 ``error`` 字段非空、``output`` 可为
-      None；``status == "completed"`` 时 ``error is None``、``output``
-      可为 None（语义=工具无实质返回；归一化第一形态，塑形为空
-      content）。
-    - 不变量（D19）：出 ``Agent.tool_call`` 的 ``output`` 恒为**五形态**
-      之一——``None`` / 基础值 / 单块 / 纯基础 list / 混合 list（其中块
-      只有 ``TextBlock`` / ``StructBlock`` / ``MediaBlock``）；归一点 =
-      `Tool.__call__` + ``Agent.tool_call`` 收尾（幂等再归一，封
-      shortcut / 钩子改写两缝）。
-    - 违禁块（D12）：结果中（任何层级、任何路径）出现 ``ToolCallBlock`` /
-      ``ThinkingBlock`` → ``ValueError``（框架错误通道，作者 bug）。
-    - 非行为：`ToolResult` 不携带 trace 等观测数据——观测走钩子
-      与快照层，不进 LLM 可见结构。**例外**：``duration``（执行时长，
-      T3 裁决）由调度层写入，但不进入 ``as_message`` 产物（LLM 不可见）。
+    - ``status="error"`` 是正常产物而非异常：LLM 应当看到工具失败并自行
+      决策（重表述、换工具、向用户报告），因此 error 结果不触发任何错误
+      钩子——核心错误钩子仅 ``on_provider_error``（机制 vs 策略）。
+    - ``status="blocked"`` 与 ``"error"`` 区分：blocked 表示工具根本没
+      执行（被审批 / 守卫阻断），error 表示执行了但失败；二者对 LLM 的
+      语义与审计含义不同，不可合并。``status == "blocked"`` 的实例只能
+      经 `ToolResult.blocked` 工厂产生——来源：``before_tool_call`` /
+      ``after_tool_call`` 拦截（工具未执行或结果被丢弃），或 ``execute``
+      内主动抛出 ``Intercepted``（执行被硬阻断于中途）。
+    - ``pending`` 承载异步边界（三种形态：返回 ``asyncio.Task`` /
+      async generator 首 yield / ``background`` 标记）：框架只回收据，
+      不阻塞逻辑 Turn 等待异步任务。
+    - 出 ``Agent.tool_call`` 的 ``output`` 恒为五形态之一——``None`` /
+      基础值 / 单块 / 纯基础 list / 混合 list（其中块只有 ``TextBlock`` /
+      ``StructBlock`` / ``MediaBlock``）；归一点 = `Tool.__call__` +
+      ``Agent.tool_call`` 收尾（幂等再归一，封 shortcut / 钩子改写两缝）。
+    - 配对元数据（``tool_call_id`` / ``tool_status``）在消息层，不在本
+      对象上（见 `as_message`）。
+    - `ToolResult` 不携带 trace 等观测数据——观测走钩子与快照层，不进
+      LLM 可见结构。例外：``duration`` 由调度层写入，但不进入
+      ``as_message`` 产物（LLM 不可见）。
     - 边缘情况：深层埋藏的非 JSON 对象归一化期放行，`as_message` 塑形时
-      ``StructBlock`` 构造校验失败 → ``ValueError``（D5 诚实失败点）。
-
-    .. rubric:: 测试案例
-
-    - 前置：``execute`` 返回 ``{"tx": "abc"}`` → 操作：框架包装 → 期望：
-      ``status == "completed" and output == {"tx": "abc"} and error is None``。
-    - 前置：``before_tool_call`` handler ``raise Intercepted("拒绝")`` →
-      操作：dispatch → 期望：返回 ``status == "blocked"`` 的 ToolResult，
-      工具的 ``execute`` 未被调用。
-    - 前置：``execute`` 抛 ``ValueError("bad")`` → 期望：
-      ``status == "error"``、``error`` 含 ``"bad"``、不触发 ``on_provider_error``。
-    - 前置：``execute`` 返回 ``Image(path="plot.png")`` → 期望：归一化后
-      ``output`` 为 ``ImageBlock``（单块形态），`as_message` 塑形产
-      ``content == [ImageBlock(...)]``。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``after_tool_call`` 钩子链（每次工具执行后 dispatch，见
-      ``flowing.hooks`` 模块规约）；``flowing.tool.ToolResult.as_message()``
-      （逻辑 Turn 收尾转消息）
-    - 实例化方：``flowing.tool.Tool.__call__`` 调度层（每次工具执行的
-      返回值包装）；``flowing.tool.ToolResult.blocked()`` （``blocked``
-      状态唯一来源）；shortcut / 钩子改写路径的产物经 ``Agent.tool_call``
-      收尾归一（D19）
+      ``StructBlock`` 构造校验失败 → ``ValueError``（诚实失败点）。
 
     .. seealso::
 
         - :class:`flowing.tool.ToolCall` —— 调用意图载体。
-        - :func:`flowing.tool.normalize_output` —— 归一化（D5，幂等）。
-        - :func:`flowing.tool.output_to_blocks` —— 塑形统一出口（D22）。
+        - :func:`flowing.tool.normalize_output` —— 归一化（幂等）。
+        - :func:`flowing.tool.output_to_blocks` —— 塑形统一出口。
         - :meth:`flowing.tool.Tool.__call__` —— 自动包装的调度层。
         - :mod:`flowing.errors` —— ``Intercepted`` 与普通异常的边界。
     """
@@ -989,25 +915,24 @@ class ToolResult:
     """执行状态四值之一，见 `ToolStatus`。
     """
     output: Any = None
-    """唯一结果字段（D4）。构造期收原料；经 `normalize_output` 归一后、
-    出 ``Agent.tool_call`` 恒为五形态之一（``None`` / 基础值 / 单块 /
-    纯基础 list / 混合 list，D19）。``completed`` 时承载返回值；
-    ``pending`` 时为 ``None``（收据）；``error`` 时可为 None；
+    """唯一结果字段。构造期收原料；经 `normalize_output` 归一后、出
+    ``Agent.tool_call`` 恒为五形态之一。``completed`` 时承载返回值；
+    ``pending`` 时为 ``None``（收据）；``error`` 时可为 ``None``；
     ``blocked`` 时为 ``None`` 或阻断原因 str。
     """
     error: str | None = None
-    """错误描述，仅 ``status == "error"`` 时有值。对 LLM 可见（LLM 应能据此
-    自我纠正）；**不触发**错误钩子。
+    """错误描述，仅 ``status == "error"`` 时有值。对 LLM 可见（LLM 应能
+    据此自我纠正）；不触发错误钩子。
     """
     duration: float | None = None
-    """执行时长（秒），由 ``Tool.__call__`` 调度层在起止点写入（T3 裁决：
-    携带但不进入 ``as_message`` 产物——LLM 不可见）。消费方：
-    ``after_tool_call`` handler、审计日志、测试断言。
+    """执行时长（秒），由 ``Tool.__call__`` 调度层写入。携带但不进入
+    ``as_message`` 产物（LLM 不可见）。消费方：``after_tool_call``
+    handler、审计日志、测试断言。
     """
     background_task_id: str | None = None
-    """后台任务注册键（B10，后台机制裁决）：``status="pending"`` 且经
-    `Agent.track_background_task` 注册时非 None；其余状态恒 None。调用方/
-    LLM 可据此按 id 取消或查询后台任务。
+    """后台任务注册键：``status="pending"`` 且经
+    `Agent.track_background_task` 注册时非 ``None``；其余状态恒
+    ``None``。调用方 / LLM 可据此按 id 取消或查询后台任务。
     """
 
     @classmethod
@@ -1017,33 +942,22 @@ class ToolResult:
         .. rubric:: 功能介绍
 
         当 ``before_tool_call`` / ``after_tool_call`` 链中任一 handler
-        ``raise Intercepted``，或 ``execute()`` 内部（含其下游扩展钩子）
-        主动抛出 ``Intercepted`` 时，框架捕获该哨兵异常并调用本工厂生成
-        阻断结果；前一来源工具本体不执行，后一来源执行被阻断于中途。
-
-        .. rubric:: 设计动机
-
-        审批/守卫是策略，但「阻断后给 LLM 什么回执」是机制——统一由本工厂
+        ``raise Intercepted``，或 ``execute()`` 内部主动抛出
+        ``Intercepted`` 时，框架捕获该哨兵异常并调用本工厂生成阻断结果；
+        前一来源工具本体不执行，后一来源执行被阻断于中途。统一由本工厂
         生成，保证所有阻断路径的产物结构一致（LLM 可据此向用户说明
         「该操作被拦截」而不是「执行失败」）。
 
         :param reason: 阻断原因（通常取 ``Intercepted`` 的消息），LLM 可见。
         :return: ``status="blocked"``、``error`` 为 ``None`` 的 `ToolResult`。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
-        - 后置条件：返回实例满足 ``status == "blocked" and error is None``；
-          ``reason`` 非空时作为 ``output``（str 基础值），`as_message`
-          塑形为 ``[TextBlock(reason)]``——LLM 可见形态即文本块，不再是
-          ``{"status": "blocked", "reason": ...}`` JSON（05 定案 §5.2）。
-        - 非行为：本工厂不记录审计日志——审计由 handler 或快照层负责。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``无``
-        - 被调：``flowing.agent.Agent.tool_call()`` 与
-          ``flowing.tool.Tool.__call__()``（捕获
-          ``flowing.errors.Intercepted`` 后生成阻断结果，每次钩子硬阻断）
+        - 后置条件：返回实例满足 ``status == "blocked"`` 且 ``error is
+          None``；``reason`` 非空时作为 ``output``（str 基础值），
+          ``as_message`` 塑形为 ``[TextBlock(reason)]``——LLM 可见形态即
+          文本块。
+        - 本工厂不记录审计日志——审计由 handler 或快照层负责。
 
         .. seealso::
 
@@ -1052,76 +966,60 @@ class ToolResult:
         return cls(status="blocked", output=reason if reason else None, error=None)
 
     def as_message(self, tool_call_id: str, *, source: str | None = None) -> Message:
-        """把本结果塑形为 ``kind=TOOL`` 的消息，供落消息级树（内部调
-        `output_to_blocks`，D22）。
+        """把本结果塑形为 ``kind=TOOL`` 的消息，供落消息级树。
 
         .. rubric:: 功能介绍
 
-        逻辑 Turn 收尾时，框架将每次工具调用的 `ToolResult` 经本方法转为一条
-        ``Message(kind=TOOL, ...)``，以 ``parent_id`` 链入消息级树并在消息
-        完整后 append 落盘。配对元数据上移到消息字段（``tool_call_id`` /
-        ``tool_status``，D1/D3），``content`` 只含纯内容块——塑形（五形态
-        → content 块列表）委托模块级统一出口 `output_to_blocks`，与异步
-        完成回调、cron 消费同一实现。
+        逻辑 Turn 收尾时，框架将每次工具调用的 `ToolResult` 经本方法转为
+        一条 ``Message(kind=TOOL, ...)``，以 ``parent_id`` 链入消息级树
+        并在消息完整后 append 落盘。配对元数据上移到消息字段
+        （``tool_call_id`` / ``tool_status``），``content`` 只含纯内容块
+        ——塑形（五形态 → content 块列表）委托模块级统一出口
+        `output_to_blocks`，与异步完成回调、cron 消费同一实现。
 
-        ``tool_call_id`` 在本方法接线（C-05 裁决）：`ToolResult` 本体不携带
-        调用 id——工具执行层（``Tool.__call__``）从未见过 ``ToolCall`` 对象，
-        全库唯一同时持有两者的点是 ``Agent.tool_call`` 管线，由它在收尾
-        转换时传入 ``tool_call.id``，完成与 ``ToolCallBlock.id`` 的严格配对。
-
-        .. rubric:: 设计动机
-
-        文档 14 后树节点一律是消息，工具结果不例外；把「结果 → 消息」的转换
-        收在 `ToolResult` 上，使 turn 循环无需知晓塑形细节。id 走参数而
-        非 ``ToolResult`` 字段，避免执行层引入「可空中态」。
+        ``tool_call_id`` 在本方法接线：`ToolResult` 本体不携带调用 id——
+        工具执行层（``Tool.__call__``）从未见过 ``ToolCall`` 对象，全库
+        唯一同时持有两者的点是 ``Agent.tool_call`` 管线，由它在收尾转换
+        时传入 ``tool_call.id``，完成与 ``ToolCallBlock.id`` 的严格配对。
 
         :param tool_call_id: 配对的目标调用 id（``ToolCall.id`` /
-          ``ToolCallBlock.id``）；编程路径（cron/workflow 构造的 ToolCall）
-          同样经此接线，配对不断链。
+          ``ToolCallBlock.id``）；编程路径（cron / workflow 构造的
+          ToolCall）同样经此接线，配对不断链。
         :param source: 消息 ``source`` 字段；缺省填 ``"tool_result"``
-          （S-15 裁决：与异步工具结果 EVENT 消息的既有约定同值；工具身份
-          经 ``tool_call_id`` 配对反查，不由 source 携带）。
-        :return: ``kind=TOOL``、``tool_call_id``/``tool_status`` 接线、
+          （与异步工具结果 EVENT 消息的既有约定同值；工具身份经
+          ``tool_call_id`` 配对反查，不由 source 携带）。
+        :return: ``kind=TOOL``、``tool_call_id`` / ``tool_status`` 接线、
           ``content`` 为 `output_to_blocks` 产物（纯内容块，无协议块）的
           新 `Message`；``synthetic=False``、``turn_end=False``。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         - 前置：``self.output`` 已是五形态之一（出 ``Agent.tool_call`` 恒
-          成立，D19）；深层埋藏的非 JSON 对象在塑形时 ``StructBlock``
-          构造校验失败 → ``ValueError``（框架错误通道）。
-        - ``ToolResult.error`` 仅 ``status="error"`` 时非 None，本方法
+          成立）；深层埋藏的非 JSON 对象在塑形时 ``StructBlock`` 构造
+          校验失败 → ``ValueError``（框架错误通道）。
+        - ``ToolResult.error`` 仅 ``status="error"`` 时非 ``None``，本方法
           无需自行判断，直接透传给 `output_to_blocks`（末尾追加
           ``TextBlock(error)``）。
-        - 非行为：本方法**不**负责 append 落盘与 ``parent_id`` 接线——那是
+        - 本方法不负责 append 落盘与 ``parent_id`` 接线——那是
           ``Agent._append_message`` 的职责；本方法只产出未接线的 `Message`。
-        - 边缘情况：``status="pending"`` 也产生消息（收据消息）——返回 Task
-          路径 ``output=None`` → ``content=[]``（空 tool_result 的 API 层兜底
-          属 adapter 职责）；async gen 路径 ``output=首 yield`` → content 带
-          内容，并（注册键非 None 时）末尾**附加**「后台任务 ID」文本块
-          （B10，不动作者 yield 的内容）；异步任务真正完成时的结果由框架另行
-          产生多块 EVENT 消息（D13/D14），与本收据互不覆盖。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：:func:`flowing.tool.output_to_blocks`（每次调用，塑形
-          统一出口）；``flowing.message.Message`` 构造（接线与落盘
-          由 ``flowing.agent.Agent._append_message`` 负责）
-        - 被调：``flowing.agent.Agent._run_turn`` 工具调用循环（时机：
-          每次 ``tool_call()`` 返回后，``result.as_message(tool_call.id)``
-          接线配对再挂树，C-05 裁决）
+        - 边缘情况：``status="pending"`` 也产生消息（收据消息）——返回
+          Task 路径 ``output=None`` → ``content=[]``（空 tool_result 的
+          API 层兜底属 adapter 职责）；async gen 路径 ``output=首 yield``
+          → content 带内容，并（注册键非 ``None`` 时）末尾附加「后台任务
+          ID」文本块（不动作者 yield 的内容）；异步任务真正完成时的结果
+          由框架另行产生多块 EVENT 消息，与本收据互不覆盖。
 
         .. seealso::
 
-            - :func:`flowing.tool.output_to_blocks` —— 塑形统一出口（D22）。
+            - :func:`flowing.tool.output_to_blocks` —— 塑形统一出口。
             - :class:`flowing.message.Message` —— 消息级树的节点结构。
             - :meth:`flowing.agent.Agent._append_message` —— 落树时序。
         """
-        # D22：塑形统一出口 output_to_blocks；配对元数据（tool_call_id /
-        # tool_status）在消息字段，content 只含纯内容块（D1/D3）
+        # 塑形统一出口 output_to_blocks；配对元数据（tool_call_id /
+        # tool_status）在消息字段，content 只含纯内容块
         blocks = output_to_blocks(self.output, error=self.error)  # error 仅 error 态非 None，直接透传
         if self.status == "pending" and self.background_task_id:
-            # B10：pending 收据附加「后台任务 ID」块（不动作者 yield 的内容——
+            # pending 收据附加「后台任务 ID」块（不动作者 yield 的内容——
             # 附加块而非并入，避免污染作者数据；LLM/调用方可据此按 id 引用）
             blocks = [*blocks,
                       TextBlock(text=f"后台任务 ID：{self.background_task_id}")]
@@ -1130,7 +1028,7 @@ class ToolResult:
             tool_call_id=tool_call_id,   # 由 Agent.tool_call 管线接线（ToolCall.id），见 docstring
             tool_status=self.status,
             content=blocks,
-            # S-15 裁决：source 缺省 "tool_result"（与异步 EVENT 结果同值）
+            # source 缺省 "tool_result"（与异步 EVENT 结果同值）
             source=source if source is not None else "tool_result",
             synthetic=False,
             turn_end=False,
