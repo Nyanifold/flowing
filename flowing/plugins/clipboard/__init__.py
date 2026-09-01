@@ -1,7 +1,12 @@
-"""``flowing.plugins.clipboard`` —— 剪贴板扩展包（N-01 / N-02）。
+"""``flowing.plugins.clipboard`` —— 剪贴板扩展包。
 
-对外 API 经本 ``__init__`` 再导出不变：``ClipboardPlugin`` /
-``use_clipboard`` / 三件工具类。
+本包承载剪贴板扩展的全部公开符号：:class:`ClipboardPlugin`（阶段一
+插件）、:func:`use_clipboard`（阶段二启用）以及三件工具类
+（:class:`ClipboardCutTool` / :class:`ClipboardCopyTool` /
+:class:`ClipboardPasteTool`）；对外 API 经本 ``__init__`` 统一再导出。
+
+.. seealso:: :mod:`flowing.plugins.clipboard.clipboard`（启用方式与
+    注册面清单）、:mod:`flowing.plugins.clipboard.tools`（三件工具）
 """
 
 from flowing.plugins.clipboard.clipboard import ClipboardPlugin, use_clipboard
