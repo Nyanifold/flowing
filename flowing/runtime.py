@@ -5,7 +5,7 @@
 本模块是 Flowing 框架的对象图根模块，承载：
 
 - :class:`Runtime`：一个运行中的 flowing 子项目对应一个 Runtime 实例——它持有
-  全部 Agent / Workflow 节点（``_nodes``）、已安装插件、全局工具注册表与
+  全部 Agent / Workflow 节点、已安装插件、全局工具注册表与
   agent 池，并对外提供扩展注册（``use`` / ``register_tool`` 等）、配置读取
   （``get_config`` 等）、节点管理（``create_agent`` / ``recover_agent`` /
   ``get_agent`` / ``archive_agent``）与观测（``snapshot``）API。
@@ -391,7 +391,7 @@ class Runtime:
     .. rubric:: 功能介绍
 
     一个 ``Runtime`` 对应一个运行中的 flowing 子项目：持有全部 Agent /
-    Workflow 节点（``_nodes``）、已安装插件（``_plugins``）、全局工具
+    Workflow 节点、已安装插件、全局工具
     注册表（``tool_registry``）与 agent 池，并提供扩展 API（``use`` /
     ``register_tool`` / ``provide`` / ``register_config_namespace`` 等）、
     节点管理（``create_agent`` / ``recover_agent`` / ``get_agent`` /
@@ -867,7 +867,7 @@ class Runtime:
             agent = await runtime.create_agent("order-agent", parent_id=None,
                                                order_id="123")
 
-        .. rubric:: 行为要点（管线逐阶段，顺序为不变量）
+        .. rubric:: 行为要点
 
         1. ``get_agent_class(agent_type)`` —— 类型名 → 类（惰性解析；裸名
            先查注册表，路径形态经 ``resolve_path``）。
@@ -1077,7 +1077,7 @@ class Runtime:
             # 覆盖：恢复同一个 agent 结构，但用新参数
             agent = await runtime.recover_agent("agent-xxx", order_id="789")
 
-        .. rubric:: 行为要点（管线逐阶段，顺序为不变量）
+        .. rubric:: 行为要点
 
         1. 读池元数据 ``meta = _agent_pool[agent_id]``；不在池中即
            ``KeyError``。
@@ -1196,7 +1196,7 @@ class Runtime:
 
         .. rubric:: 行为要点
 
-        - 只查活实例注册表（``_nodes``）；已 ``destroy()`` 的节点不在其中
+        - 只查活实例注册表；已 ``destroy()`` 的节点不在其中
           （其池记录 / session 仍保留，属 ``get_agent`` 的现场恢复语义）。
         - 不触发任何恢复逻辑。
         - ``strict`` （与 :meth:`get_plugin` 同构）：``True`` （默认）未命中
