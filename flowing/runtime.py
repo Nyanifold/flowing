@@ -2641,7 +2641,7 @@ class Runtime:
                 raise FormatError(
                     f"{path} 内有多个 Agent 子类"
                     f"（{', '.join(c.__name__ for c in candidates)}）——"
-                    "用 路径::ClassName 形态消歧（R21）")
+                    "用 路径::ClassName 形态消歧")
             cls = candidates[0]
         explicit_name = cls.__dict__.get("name")   # name 非机制字段：写了仅作一致性断言
         if explicit_name is not None and explicit_name != name:
