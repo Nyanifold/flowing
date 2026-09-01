@@ -192,9 +192,9 @@ async def cmd_repl(
     4. 过程显示（绑定期间生效，``/use`` 切换时订阅随之迁移）：订阅
        该 Agent 的 ``on_provider_delta``——流式打印生成中的文本；
        ``after_turn_append``——新挂树的 TOOL 消息与 STEER 注入消息
-       打印一行摘要（正文默认折叠）；``after_turn``——后台回合收尾
-       后打印最终文本。多轮推理（ThinkingBlock）经 ``message`` 摘要
-       行可见。
+       打印一行摘要（正文默认折叠）；``after_turn``——非 repl 的
+       ``query()`` 驱动的回合（cron / comm 等触发源）收尾后打印最终
+       文本。多轮推理（ThinkingBlock）在摘要行中可见。
     5. ``/exit``、``/quit`` 或 EOF（Ctrl-D）→ ``runtime.shutdown()``
        → 返回 :data:`EXIT_OK`。
 
@@ -219,7 +219,7 @@ async def cmd_repl(
     - ``pre_prompt_hook``：每次打印提示符之前调用；签名
       ``async (agent: Agent | None, runtime: Runtime) -> None``。
     - ``extra_help_text``：追加到 ``/help`` 输出末尾。
-    - 两者都不得改变绑定状态或消息流。
+    - 这三个注入点都不得改变绑定状态或消息流。
 
     边界与边缘情况：
 

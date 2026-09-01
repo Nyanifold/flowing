@@ -5,7 +5,7 @@
 本模块定义 ``web`` 子命令与 Web 暴露层的唯一交接点：
 :func:`get_frontend_assets`。在 flowing 的架构里，UI 是几个「下游
 应用」的例子——``flowing.interfaces.web`` 承载的只是 ``web`` 子命令
-所需的**内置默认前端资产**：一个用公开 API 拼出的可对话页面（发消息、
+所需的（内置默认）前端资产：一个用公开 API 拼出的可对话页面（发消息、
 流式显示、查快照、选择 / 切换 / 新建 Agent）。
 
 框架核心只提供「HTTP API」这个机制（``flowing serve`` 已完整）；

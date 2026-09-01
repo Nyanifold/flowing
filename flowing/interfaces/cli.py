@@ -133,7 +133,7 @@ def main(argv: list[str] | None = None) -> int:
     .. rubric:: 行为要点
 
     - ``argv is None`` 时取 ``sys.argv[1:]``。
-    - 空 ``argv``、未知子命令、``<path>`` 缺失 → 向 stderr 打印总
+    - 空 ``argv``、未知子命令 → 向 stderr 打印总
       用法（含子命令封闭集清单），返回 :data:`EXIT_USAGE_ERROR`。
       子命令名比较是精确小写匹配，不做前缀或模糊匹配。
     - ``<path>`` 指向不存在的目录 → 返回
@@ -221,7 +221,9 @@ def main(argv: list[str] | None = None) -> int:
 def cmd_compile(path: str) -> int:
     """``flowing compile <path>``：把 ``.fya`` 显式编译为同目录 ``.py``。
 
-    递归扫描 ``<path>`` 下全部 ``*.fya``，逐文件编译为同目录同名
+    递归扫描 ``<path>`` 下全部 ``*.fya`` （工具与技能定义
+    ——``TOOL.fya`` / ``*.tool.fya`` / ``*.skill.fya``——静默跳过，
+    只编译 Agent 定义），逐文件编译为同目录同名
     ``.py`` （去 ``.fya`` 后缀，兼容 ``from payment import
     PaymentAgent`` 这类导入）。hash 元信息写在各产物同目录的
     ``.flowing.meta.yaml`` （三字段：源解析结构 hash / 产物 AST hash /

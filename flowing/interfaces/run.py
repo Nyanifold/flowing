@@ -85,7 +85,7 @@ async def cmd_test(
     .. rubric:: 功能介绍
 
     ``test`` 子命令的职责是冒烟拉起：``launch(path,
-    main_file=main_file, **kwargs)``（``-m`` 可指定替代入口文件，如
+    main_file=main_file, **kwargs)`` （``-m`` 可指定替代入口文件，如
     冒烟专用 ``main_test.py``）成功后取一次 ``runtime.snapshot()``
     验证可观测面就绪，随后 ``runtime.shutdown()`` 并返回
     :data:`EXIT_OK`；``launch`` 或快照断言失败返回

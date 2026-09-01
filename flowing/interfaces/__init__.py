@@ -64,7 +64,7 @@ Runtime」——所有子命令拿到 Runtime 之后做什么，是本包各模�
 - ``1``：运行时错误——``launch`` 失败（子项目 ``main`` 抛异常、
   项目不可 import 等）、serve / web 端口绑定失败、compile 检测到
   产物被外部修改。
-- ``2``：用法错误——未知子命令、``<path>`` 缺失或不存在、
+- ``2``：用法错误——未知子命令、``<path>`` 指向不存在的目录、
   ``<path>`` 之后出现非 ``--key`` 形式的裸参数。
 
 信号处理：CLI 进程对 SIGINT / SIGTERM 安装统一的信号处理器（见
@@ -78,7 +78,7 @@ HTTP 端点集合都是封闭的，不接受运行时注册新命令 / 新端点
 「刚启动项目、想快速发条消息看看、查个快照」的最小观察窗口，不是可
 扩展的交互框架。需要自定义命令或端点时，继承内置实现扩展（``repl-debug``
 对 ``repl`` 的扩展方式即内置注入点的用法），或自己实现一个 repl /
-HTTP server（经 ``message()`` / ``enqueue_message()`` / ``snapshot()``
+HTTP server（经 ``query()`` / ``enqueue_message()`` / ``snapshot()``
 等公开 API）。
 
 流式：``serve`` / ``web`` 的 HTTP API 提供请求/响应模型
@@ -149,7 +149,7 @@ import 等）、serve / web 的端口绑定失败、compile 检测到产物被�
 EXIT_USAGE_ERROR: int = 2
 """退出码：用法错误。
 
-未知子命令、``<path>`` 缺失或指向不存在的目录、``<path>`` 之后出现
+未知子命令、``<path>`` 指向不存在的目录、``<path>`` 之后出现
 非 ``--key`` 形式的裸参数，均以此码退出；用法说明打印到 stderr。
 
 .. seealso:: :func:`flowing.interfaces.cli.main`、:func:`parse_kv_args`
