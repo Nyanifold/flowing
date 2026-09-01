@@ -2,46 +2,86 @@
 
 .. rubric:: 功能介绍
 
-本包承载 Flowing 三层架构的**内置扩展层**：
+本包承载 Flowing 三层架构的内置扩展层，包含两部分：
 
-- :class:`Plugin` —— 所有扩展（含内置）的统一基类，唯一定义点。
-- :mod:`flowing.plugins.skills` —— Skill 扩展（``SkillPlugin`` / ``use_skill``）。
-- :mod:`flowing.plugins.comm` —— 进程内通信扩展（``CommPlugin`` / ``use_comm``）。
-- :mod:`flowing.plugins.cron` —— 定时调度扩展（``CronPlugin`` / ``use_cron``）。
-- :mod:`flowing.plugins.workflow` —— 工作流编排扩展（``WorkflowPlugin`` /
-  ``Workflow``）。
-- :mod:`flowing.plugins.clipboard` —— 剪贴板扩展（``ClipboardPlugin`` /
-  ``use_clipboard``，N-01）。
+- :class:`Plugin` —— 所有扩展（含内置）的统一基类，唯一定义点；
+  扩展作者继承本类并实现 ``install`` 即可接入框架。
+- 随包发布、需显式启用的内置扩展，各自是一个独立子包：
+  :mod:`flowing.plugins.skills`（``SkillPlugin`` / ``use_skill``）、
+  :mod:`flowing.plugins.comm`（``CommPlugin`` / ``use_comm``）、
+  :mod:`flowing.plugins.cron`（``CronPlugin`` / ``use_cron``）、
+  :mod:`flowing.plugins.workflow`（``WorkflowPlugin`` / ``Workflow``）、
+  :mod:`flowing.plugins.clipboard`（``ClipboardPlugin`` / ``use_clipboard``）。
 
-.. rubric:: 设计动机
+启用遵循双层启用模型。阶段一调用 ``runtime.use(plugin)`` 安装全局能力
+（工具、provide 值、配置命名空间、Agent 类型、Resource、全局状态命名
+空间）；阶段二各 Agent 在 ``setup()`` 中调用 ``use_xxx(self)`` 做实例级
+启用。框架核心发布时不预装任何内置扩展；未启用的扩展对 Agent 而言
+从没存在过（零开销，不是被跳过）。``Plugin`` 基类定义在扩展包而非
+``flowing.runtime``：核心只经 :meth:`flowing.runtime.Runtime.use` 消费
+插件接口，不认识任何具体插件。
 
-「机制 vs 策略」与「双层启用」：内置扩展随 ``flowing`` 包发布但**不自动启用**——
-阶段一 ``runtime.use(plugin)`` 安装全局能力，阶段二各 Agent 在 ``setup()`` 中
-调用 ``use_xxx(self)`` 按需启用。未启用的扩展对 Agent「从没存在过」（零开销，
-不是被 skip）。``Plugin`` 基类集中在扩展包而非 ``flowing.runtime``，因为
-「如何成为插件」是扩展层契约；``Runtime.use()`` 只消费该接口。
+.. rubric:: 全局约定（跨符号、影响使用的约定）
 
-.. rubric:: 行为规约
+- 生命周期：框架对插件实例只回调两个方法——安装时的
+  :meth:`Plugin.install` 与关闭时的 :meth:`Plugin.shutdown`。其余运行期
+  协作走 provide/inject 与消息队列，框架不主动调用插件的其它方法。
+- 声明式依赖：插件在 ``dependencies`` 中声明依赖的其它插件注册名，
+  只声明、不自己检查。每次 ``use()`` 安装后，框架对已装插件集合做
+  增量校验：依赖缺失只发 ``warnings.warn`` 警告、不抛错；依赖成环抛
+  :class:`flowing.errors.DependencyError`（报错现场即引入环的那次
+  ``use()``）。
+- 插件约定（consenting adults，靠自觉遵守而非框架校验）：R1
+  ``install`` 只注册——不做业务、不查询其它插件、不修改其它状态；
+  R2 协作不查询——插件间经 provide/inject 或消息队列协作，安装顺序
+  与协作结果无关；R3 注册只在 ``install``——运行时不增删全局注册
+  状态；R4 依赖只声明——不自己检查依赖是否满足。
+- 绑函数约定（检查后跳过）：插件或 Composable 向 Agent 或 Runtime
+  实例绑定函数成员（如 ``use_skill`` 绑定 ``agent.skill_load``、
+  ``SkillPlugin.install`` 绑定 ``runtime.register_skill``）时，仅当
+  对象当前没有该成员才绑定（``hasattr`` 检查，含类级方法）——开发者
+  可能已自定义同名逻辑，绑定方不得覆盖。
+- 命名约定（习惯约定，非强制校验）：插件注册名取「类名去掉 ``Plugin``
+  后缀再转 kebab-case」（``CronPlugin`` → ``"cron"``、``SkillPlugin`` →
+  ``"skill"``）；插件绑到 Agent 的成员以注册名的 underscore 版为前缀
+  （``skill_load``、``comm_handler``），前缀即命名空间，因此不提供
+  改名参数。
+- 注册名是 per-Runtime 作用域的标签，不是全局唯一标识：生态上不排斥
+  两个作用相近的插件取同一个注册名；约束只有一条——每个 Runtime 同时
+  只装一个同名插件，重复安装同名插件时 ``use()`` 抛 ``ValueError``。
+- 同名 provide key 重复注册是覆盖更新（后者生效，inject 实时可见），
+  框架不报错；避免插件间键冲突靠键名前缀约定（插件注册名加 ``:``
+  前缀）。
+- 插件 ``install`` 抛出的异常从 ``use()`` 直接上抛，框架不按插件粒度
+  隔离降级：安装失败的插件不会进入已装集合。
 
-- 框架核心发布时**不预装**任何内置扩展。
-- 同名 provide key 冲突由框架检测，后注册者报错。
-- 依赖校验在 ``use()`` 时增量执行：``Runtime._check_dependencies()`` 做
-  存在性 + DAG 无环校验，失败抛 :class:`flowing.errors.DependencyError`。
-- **插件加载语义：隔离降级而非 fail-fast**（M-03 裁决）。插件的
-  ``install`` 失败（含钩子声明冲突等 :class:`flowing.errors.HookError`
-  家族、provide 冲突）由加载方（CLI / 插件管理器）按插件粒度捕获——
-  坏插件标记为失败并继续加载其余插件，最后统一报告，而非整批中止。
-- **热重载：仅预留可能性，本版本不设计**（M-03 裁决）。R3「运行时不增删
-  全局注册状态」维持不变、不设例外；但本规约的所有相关决策（隔离降级、
-  ``HookError`` 统一兜捕点、注册入口收敛于 ``install``）均有意识地
-  **不堵死**未来引入框架受控热重载的余地。届时若启用，需以新裁决修订
-  R3 并补齐重载路径的完整 spec。
+.. rubric:: 使用示例
+
+.. code-block:: python
+
+    from flowing.plugins import Plugin
+    from flowing.runtime import Runtime
+
+
+    class MyPlugin(Plugin):
+        name = "myplugin"
+        dependencies: list[str] = []   # 依赖其它插件时写其注册名
+
+        def install(self, runtime: Runtime) -> None:
+            runtime.register_tool(MyTool())            # MyTool 是你的工具类
+            runtime.provide("myplugin:service", svc)   # svc 是你的服务对象
+
+        async def shutdown(self) -> None:
+            await svc.close()                          # 释放运行期资源
+
+    runtime.use(MyPlugin())   # 阶段一：安装（每个插件恰好一次 install）
 
 .. seealso:: :meth:`flowing.runtime.Runtime.use`（阶段一入口）、
-    ``00-总览`` 第 1.2 节（三层架构与双层启用）
+    :meth:`flowing.runtime.Runtime.shutdown`（插件收尾阶段）、
+    :class:`flowing.plugins.Plugin`、各内置扩展子包
 """
 
-from __future__ import annotations   # S-43 裁决③：注解延迟求值，配合 TYPE_CHECKING 破注解级循环边
+from __future__ import annotations   # 注解延迟求值：Runtime 仅经 TYPE_CHECKING 导入，避免插件包与 runtime 的注解级循环引用
 
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
