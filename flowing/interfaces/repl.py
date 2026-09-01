@@ -1,6 +1,6 @@
 """``flowing.interfaces.repl`` —— 交互式 REPL 子命令（``repl`` / 别名 ``cli``）。
 
-统一原则与封闭观察窗口原则见 ``flowing.interfaces`` 包 docstring。
+封闭观察窗口原则见 ``flowing.interfaces`` 包 docstring。
 """
 
 import sys

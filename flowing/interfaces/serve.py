@@ -1,6 +1,6 @@
 """``flowing.interfaces.serve`` —— HTTP API 服务子命令（``serve``，纯 API 无前端）。
 
-统一原则、参数分层与退出码约定见 ``flowing.interfaces`` 包 docstring。
+参数分层、退出码与信号处理的总约定见 ``flowing.interfaces`` 包 docstring。
 """
 
 import asyncio

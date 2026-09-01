@@ -1,6 +1,6 @@
 """``flowing.interfaces.run`` —— 一次性执行（``run``）与冒烟测试（``test``）子命令。
 
-统一原则与退出码约定见 ``flowing.interfaces`` 包 docstring。
+退出码约定见 ``flowing.interfaces`` 包 docstring。
 """
 
 import dataclasses
