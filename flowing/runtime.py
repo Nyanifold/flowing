@@ -1420,14 +1420,10 @@ class Runtime:
         .. rubric:: 功能介绍
 
         ``ProvideNode`` 协议实现。注册的值对全树所有节点可见（上溯终点）。
-        ``InjectionKey[T]`` 仅作编译期类型标注；``_provided`` 的 key 始终是
-        ``str``，类型信息不跨节点传递。
-
-        .. rubric:: 设计动机
-
-        应用层概念（宿主工程根、locale、trace adapter）经 provide 注入而非进
-        ``@/`` 路径体系；同 key 重复 provide 即覆盖更新（运行时变更的正规
-        通道，如运行时切换 locale——spec-draft §13.4）。
+        应用层概念（宿主工程根、locale、trace adapter 等）经 provide 注入
+        而非进 ``@/`` 路径体系。``InjectionKey[T]`` 仅作编译期类型标注；
+        注入存储的 key 始终是字符串（``str(key)`` 归一），类型信息不跨
+        节点传递。
 
         .. rubric:: 使用示例
 
@@ -1436,50 +1432,38 @@ class Runtime:
             runtime.provide("locale", "zh")
             runtime.provide("workspace_root", workspace_root)
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
-        - 时序（约定）：影响 Agent **装配期**（setup / 装配钩子）读取的
-          provide 值应在 ``mount()`` / ``create_agent()`` 之前注册——装配期
-          inject 未命中即 ``MissingProvideError``；运行期 provide / 覆盖
-          合法（inject 实时查找即刻可见），是运行时变更的正规通道。
-        - 同 key 重复 provide = **覆盖更新**（后者生效——spec-draft
-          §13.4「provide 值可运行时更新」；``inject`` 每次实时沿链
-          查找、不缓存，更新即刻对后续 inject 可见）。防插件间静默
-          覆盖由 ``InjectionKey`` 前缀约定承担，机制不拦截（S-37
-          裁决：pyi 草稿的「后注册者报错」与 §13.4 冲突，废弃）。
-        - 非行为：value 不做序列化、不进持久化；**API key / 凭证等敏感信息禁止
-          经 provide 传递**（不进消息、不落盘的安全边界）。
+        - 影响 Agent 装配期（setup / 装配钩子）读取的 provide 值应在
+          ``mount()`` / ``create_agent()`` 之前注册——装配期 inject 未命中
+          即 ``MissingProvideError``；运行期 provide / 覆盖合法（inject
+          实时查找即刻可见），是运行时变更的正规通道（如运行时切换
+          locale）。
+        - 同 key 重复 provide 是覆盖更新（后者生效）；``inject`` 每次实时
+          沿链查找、不缓存，更新即刻对后续 inject 可见。防止插件间静默
+          覆盖靠 ``InjectionKey`` / key 名的前缀约定（如 ``"comm:..."``），
+          机制本身不拦截。
+        - value 不做序列化、不进持久化；API key / 凭证等敏感信息禁止经
+          provide 传递（注入值沿链对后代节点可见的安全边界）。
 
         :param key: provide key（字符串，或 ``InjectionKey`` 标注）。
         :param value: 任意对象。
-
-        .. rubric:: 测试案例
-
-        - 前置：``runtime.provide("k", 1)`` → 操作：子 Agent ``inject("k")`` →
-          期望：命中 ``1``（链终点兜底）。
-        - 前置：``provide("k", 1)`` 后 ``provide("k", 2)`` → 期望：
-          后续 ``inject("k")`` 命中 ``2``（覆盖更新即刻可见）。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：无（写 ``_provided``）
-        - 被调：各插件 ``install()``（``runtime.provide(...)``，时机：阶段一安装；示例见 ``flowing.plugins`` / ``flowing.plugins.comm`` / ``flowing.plugins.cron`` / ``flowing.plugins.skills`` / ``flowing._unstable.logging``）
 
         .. seealso:: :class:`flowing.runtime.ProvideNode`、
             :func:`flowing.runtime.inject_from`、
             :class:`flowing.params.InjectionKey`
         """
-        k = str(key)   # InjectionKey[T] 仅编译期类型标注；_provided 的 key 始终是 str
-        # 同 key 重复 provide = 覆盖更新（spec-draft §13.4；inject 实时查找即刻可见）
+        k = str(key)   # InjectionKey[T] 仅编译期类型标注；注入存储的 key 始终是 str
+        # 同 key 重复 provide = 覆盖更新（inject 实时查找即刻可见）
         self._provided[k] = value   # 敏感信息（API key / 凭证）禁止进入
 
     def inject(self, key: str | InjectionKey[T]) -> T:
-        """根级 inject：在 ``Runtime._provided`` 查找（链终点），未命中抛错。
+        """根级 inject：在链终点（本 Runtime 的注入存储）查找，未命中抛错。
 
         .. rubric:: 功能介绍
 
-        ``ProvideNode`` 协议实现，等价于 ``inject_from(self, self, key)``——
-        Runtime 无 ``_parent_id``，查找即终点。
+        ``ProvideNode`` 协议实现，等价于 ``inject_from(self, self, key)``
+        ——Runtime 没有父节点，查找即终点，只查根级注入存储。
 
         .. rubric:: 使用示例
 
@@ -1487,48 +1471,35 @@ class Runtime:
 
             locale = runtime.inject("locale")
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
-        - 只查根级 ``_provided``，无上溯（已是终点）。
-        - 非行为：不查 ``_config_overrides`` / ``_resources``（三个存储
-          语义独立：provide 跟随节点生命周期，Resource 跨 Agent 树外直引，
-          config 覆盖层是运行期配置复写）。
+        - 只查根级注入存储，无上溯（已是终点）。
+        - 不查 ``_config_overrides`` / ``_resources``（三个存储语义独立：
+          provide 跟随节点生命周期，Resource 跨 Agent 树外直引，config
+          覆盖层是运行期配置复写）。
 
         :param key: provide key。
         :return: 命中值。
         :raises flowing.errors.MissingProvideError: 未命中时，携带 ``key``。
 
-        .. rubric:: 测试案例
-
-        - 前置：未 provide ``"nope"`` → 操作：``runtime.inject("nope")`` →
-          期望：``MissingProvideError``。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.runtime.inject_from(self, self, key)``（时机：每次调用，见功能介绍）
-        - 被调：无框架内调用点（Agent / Workflow 的 inject 走各自实现）
-
         .. seealso:: :func:`flowing.runtime.inject_from`、
             :exc:`flowing.errors.MissingProvideError`
         """
-        result: T = inject_from(self, self, key)   # 链终点查找（Runtime 无 _parent_id，等价语义见功能介绍）
+        result: T = inject_from(self, self, key)   # 链终点查找（Runtime 无父节点）
         return result
 
     def get_config(self, key: str | ConfigKey[T], default: T | None = None) -> T | None:
-        """配置读取（实例方法，读取对称原则）；优先级链浅合并后的最终值。
+        """配置读取：返回优先级链浅合并后的最终值（实例方法）。
 
         .. rubric:: 功能介绍
 
-        框架核心层方法。读取按优先级链（环境变量 > 命令行 > 用户级 > 项目级 >
-        默认值）**浅合并**后的配置值。``ConfigKey[T]`` 约束 ``default`` 的类型
-        与泛型参数一致（mypy/pyright 可检查）。
-
-        .. rubric:: 设计动机
-
-        - 读取全部是实例方法，不做模块级全局函数——不存在「隐式拿到某个
-          Runtime」的旁路。
-        - 无命名空间访问控制：注册只是「谁负责校验」的声明；未注册命名空间
-          静默保留、可自由读取。
+        框架核心层方法。读取按优先级链（环境变量 > 命令行参数 > 用户级
+        ``$FLOWING_CONFIG_HOME/config.yaml`` > 项目级 ``@/config.yaml`` >
+        框架推荐默认值）浅合并后的配置值。``ConfigKey[T]`` 约束 ``default``
+        的类型与泛型参数一致（mypy / pyright 可检查）。读取全部是实例
+        方法，不存在「隐式拿到某个 Runtime」的旁路——调用方须持有 Runtime
+        实例。无命名空间访问控制：注册只是「谁负责校验」的声明，未注册
+        命名空间静默保留、可自由读取。
 
         .. rubric:: 使用示例
 
@@ -1537,70 +1508,49 @@ class Runtime:
             timeout = self.get_config("agent.timeout", default=60)   # Agent.setup 内
             lang = runtime.get_config("i18n.default_lang")           # 未注册命名空间也可读
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
-        - **调用时机约束（黑名单式）**：约束实质是**就绪时点**——优先级链
-          合并完成（launch 引导）之前，典型即模块顶层 import 期，调用抛
-          ``ConfigNotReadyError``；合并完成后**任何时机**可调用（setup()、
-          钩子回调、工具 callable、``main()`` 后续代码、插件运行期方法等），
-          读取为现场求值。
+        - 就绪时点：优先级链合并完成（``Runtime()`` 构造尾部）之前，典型
+          即模块顶层 import 期，调用抛
+          :class:`flowing.errors.ConfigNotReadyError`；合并完成后任何时机
+          可调用（``setup()``、钩子回调、工具 callable、``main()`` 后续
+          代码、插件运行期方法等），读取为现场求值。
         - 浅合并语义：同名 key 高优先级覆盖；未覆盖的 key 沿用低优先级值；
           列表值整列表覆盖（不合并）。
-        - 读取顺序：``_config_overrides``（``set_config`` 运行期覆盖层）
-          命中优先，其次为优先级链浅合并结果。
-        - 非行为：不校验 key 属于哪个命名空间；不写回配置文件（写入走
+        - 读取顺序：``set_config`` 运行期覆盖层命中优先，其次为优先级链
+          浅合并结果。
+        - 不校验 key 属于哪个命名空间；不写回配置文件（写入走
           ``set_config``，不持久化）。
+        - 已知核心 key 与默认值：``agent.timeout``（60）、
+          ``agent.max_turns``（20）、``agent.max_depth``（10）、
+          ``runtime.log_level``（``"info"``）。
 
         :param key: 配置 key（点分字符串或 ``ConfigKey[T]``）。
         :param default: key 不存在时的默认值；类型须与 ``ConfigKey[T]`` 一致。
         :return: 配置值或 ``default``。
-        :raises flowing.errors.ConfigNotReadyError: 配置未就绪（模块顶层调用）时。
-
-        .. rubric:: 测试案例
-
-        - 前置：项目级 ``agent.timeout: 60``、用户级 ``agent.timeout: 120`` →
-          期望：``get_config("agent.timeout") == 120``；
-          ``get_config("agent.max_turns") == 20``（未覆盖沿用低优先级）。
-        - 前置：模块顶层调用 → 期望：``ConfigNotReadyError``。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：无（读优先级链浅合并后的配置值）
-        - 被调：无框架内调用点（消费侧为扩展的 ``setup()`` / 钩子回调，示例见 ``flowing.params.ConfigKey``）
+        :raises flowing.errors.ConfigNotReadyError: 配置未就绪（合并完成前
+            调用）时。
 
         .. seealso:: :meth:`flowing.runtime.Runtime.register_config_namespace`、
             :meth:`flowing.runtime.Runtime.set_config`、
             :class:`flowing.params.ConfigKey`
         """
-        # 调用时机约束（黑名单式）：优先级链合并完成（__init__ 尾部）之前——
-        # 典型即模块顶层 import 期——调用抛 ConfigNotReadyError；就绪判定 =
-        # _config_ready 闸（R-06 落实，__dict__ 读取兼管子类 super().__init__()
-        # 之前的过早调用）
+        # 调用时机约束：优先级链合并完成（__init__ 尾部）之前——典型即模块
+        # 顶层 import 期——调用抛 ConfigNotReadyError；就绪判定 = _config_ready
+        # 闸（__dict__ 读取兼管子类 super().__init__() 之前的过早调用）
         if not self.__dict__.get("_config_ready", False):
-            raise ConfigNotReadyError()   # 无字段叶子（固定英文提示消息，X14）
+            raise ConfigNotReadyError()   # 无字段叶子（固定英文提示消息）
         k = str(key)
         if k in self._config_overrides:
             return self._config_overrides[k]   # set_config 运行期覆盖层优先
         return self._merged_config.get(k, default)   # 浅合并产物（点分扁平 key）；未注册命名空间静默保留、可自由读取；ConfigKey[T] 约束 default 类型
 
     def set_config(self, key: str, value: Any) -> None:
-        """运行期配置覆盖（``_config_overrides`` 层，``get_config`` 读取时最优先）。
+        """运行期配置覆盖（写入覆盖层，``get_config`` 读取时最优先）。
 
-        功能与动机：下游产品运行期复写框架配置的通道（``main()`` 内读
-        产品自己的配置文件 → 命中则 ``runtime.set_config("agent.timeout",
-        ...)``）；取代旧的 ``_settings`` 独立存储（``set_setting`` /
-        ``get_setting`` 已删除——独立口袋与配置链互不兑现是双源误导，
-        R17 裁决：完全靠 get/set config）。
-
-        行为边界：同 key 覆盖写（后写胜出）；**不持久化**（进程级，
-        重启即失效——持久覆盖请改配置文件/环境变量）；即时生效语义以各
-        读取方为准（``get_config`` 现场求值），框架不广播变更（无响应式
-        系统）。
-
-        :param key: 配置 key（点分字符串，可覆盖 key 即 §6 已知清单：
-            ``agent.timeout`` / ``agent.max_turns`` / ``agent.max_depth`` /
-            ``runtime.log_level``，及扩展注册的命名空间 key）。
-        :param value: 覆盖值。
+        功能与动机：下游产品运行期复写框架配置的通道——``main()`` 内读
+        产品自己的配置文件，命中则 ``runtime.set_config("agent.timeout",
+        ...)`` 覆盖框架配置链的取值。
 
         .. rubric:: 使用示例
 
@@ -1610,10 +1560,17 @@ class Runtime:
             if "agent.timeout" in product_cfg:
                 runtime.set_config("agent.timeout", product_cfg["agent.timeout"])
 
-        .. rubric:: 调用关系（审计）
+        .. rubric:: 行为要点
 
-        - 调用：无（写 ``_config_overrides``）
-        - 被调：无（框架内零引用；下游产品复写模式入口，见功能介绍）
+        - 同 key 覆盖写（后写胜出）；不持久化（进程级，重启即失效——持久
+          覆盖请改配置文件 / 环境变量）。
+        - 即时生效语义以各读取方为准（``get_config`` 现场求值），框架不
+          广播变更（无响应式系统）。
+
+        :param key: 配置 key（点分字符串；可覆盖 ``agent.timeout`` /
+            ``agent.max_turns`` / ``agent.max_depth`` /
+            ``runtime.log_level`` 等已知 key，及扩展注册的命名空间 key）。
+        :param value: 覆盖值。
 
         .. seealso:: :meth:`flowing.runtime.Runtime.get_config`
         """
@@ -1623,16 +1580,11 @@ class Runtime:
     def config(self) -> dict[str, Any]:
         """项目配置合并视图（Parsable 渲染上下文的 ``config`` 入口）。
 
-        功能与动机：优先级链浅合并产物（``_merged_config``）的**嵌套**形态
-        ——模板里 ``{{ config.agent.timeout }}`` 逐级取值（Jinja attr→item
-        回退）；``get_config`` 消费的是点分扁平形态。现场反摊平，只读语义
-        ——改写返回的 dict 不回写框架。不含 ``set_config`` 的运行期覆盖层
-        （渲染上下文契约是「配置合并视图」，覆盖层只服务 ``get_config``）。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：无（读 ``_merged_config`` 反摊平）
-        - 被调：``flowing.parsable``（渲染上下文组装，每次模板求值）
+        优先级链浅合并产物的嵌套形态——模板里 ``{{ config.agent.timeout }}``
+        逐级取值（Jinja attr→item 回退）；``get_config`` 消费的是点分扁平
+        形态。现场反摊平，只读语义——改写返回的 dict 不回写框架。不含
+        ``set_config`` 的运行期覆盖层（渲染上下文契约是「配置合并视图」，
+        覆盖层只服务 ``get_config``）。
         """
         nested: dict[str, Any] = {}
         for dotted, value in self.__dict__.get("_merged_config", {}).items():
@@ -1656,16 +1608,13 @@ class Runtime:
 
         .. rubric:: 功能介绍
 
-        框架核心层方法。Resource 是跨任务、跨 Agent 树共享的实例存储（知识库、
-        连接池等），生命周期由 Runtime 管理、独立于任何 Agent——因此**不走**
-        inject 链（provide/inject 的值跟随 Agent 生命周期，Resource 在树外直引）。
-
-        .. rubric:: 设计动机
-
-        读写通道对称：``register_resource`` / ``get_resource`` 都是实例方法；
-        旧的模块级全局 ``get_resource()``（TLS/contextvar 隐式拿 Runtime）已废弃。
-        Agent 便捷方法 ``Agent.get_resource()`` 委托 ``self.runtime``；工具
-        callable 经 ``caller.get_resource(...)`` 统一入口。
+        框架核心层方法。Resource 是跨任务、跨 Agent 树共享的实例存储
+        （知识库、连接池等），生命周期由 Runtime 管理、独立于任何 Agent——
+        因此不走 inject 链（provide / inject 的值跟随 Agent 生命周期，
+        Resource 在树外直引）。读写通道对称：``register_resource`` /
+        ``get_resource`` 都是实例方法。Agent 便捷方法 ``Agent.get_resource()``
+        委托 ``self.runtime``；工具 callable 经 ``caller.get_resource(...)``
+        统一入口。
 
         .. rubric:: 使用示例
 
@@ -1679,28 +1628,17 @@ class Runtime:
                 kb = caller.get_resource("kb", KnowledgeBase)
                 return await kb.search(query)
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         - name 未注册 → ``ResourceNotFoundError``。
         - ``type_hint`` 不做运行时校验（纯类型标注通道）。
-        - 非行为：不惰性创建（Resource 在 ``mount()`` 前由 ``register_resource``
+        - 不惰性创建（Resource 在 ``mount()`` 前由 ``register_resource``
           显式注册完毕）；不经 provide 链查找。
 
         :param name: Resource 注册名。
         :param type_hint: 期望类型（仅类型检查器与 IDE 使用）。
         :return: 注册实例。
         :raises flowing.errors.ResourceNotFoundError: name 未注册时。
-
-        .. rubric:: 测试案例
-
-        - 前置：``register_resource("db", pool)`` → 期望：
-          ``runtime.get_resource("db") is pool``。
-        - 前置：未注册 → 期望：``ResourceNotFoundError``。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：无（``_resources`` 查表）
-        - 被调：``flowing.agent.Agent.get_resource``（便捷委托，经 ``self.runtime``）；工具 callable 经 ``caller.get_resource(...)``（时机：每次工具执行，见 ``flowing.tool``）
 
         .. seealso:: :meth:`flowing.runtime.Runtime.register_resource`、
             :meth:`flowing.agent.Agent.get_resource`
@@ -1712,62 +1650,57 @@ class Runtime:
     def register_tool(self, tool: Tool | str, *, namespace: str | None = None) -> None:
         """注册全局工具（``ns::规范名`` → ``Tool``，写入 ``tool_registry``）。
 
-        功能与动机：插件三类资源注册之一（R1：install 只注册）；全局注册表存
-        「可执行对象 + 默认 LLM 可见声明」，Agent 级差异由 ``ToolEntry`` 绑定层
-        覆写，不改全局注册表（能力三正交：对象 / 声明 / 绑定）。
+        .. rubric:: 功能介绍
 
-        **两种入参形态**（R18 裁决）：
+        插件三类资源注册之一（插件 ``install`` 中的注册通道）。全局注册表
+        存「可执行对象 + 默认 LLM 可见声明」，Agent 级差异由 ``ToolEntry``
+        绑定层覆写，不改全局注册表。两种入参形态：
 
         - 已构造的 ``Tool`` 实例——直接注册；
-        - **文件路径字符串**（``.fya`` / ``.py``，支持 ``@/`` ``./`` 等前缀
-          规则）——先经 ``ToolRegistry.get`` 的文件解析链构造出 Tool 再注册
-          （插件随身携带的文件形态工具即在 ``install()`` 中经此通道解析
-          注册；基准目录显式给出，不经 Agent 的 ``source_dir`` 链）。
+        - 文件路径字符串（``.fya`` / ``.py``，支持 ``@/`` ``./`` 等前缀
+          规则）——先经 ``ToolRegistry.get`` 的文件解析链构造出 Tool 再
+          注册（插件随身携带的文件形态工具即在 ``install()`` 中经此通道
+          解析注册；基准目录显式给出，不经 Agent 的 ``source_dir`` 链）。
 
-        行为边界：``ns::name`` 全键冲突时后注册者报错；注册只在 ``install``
-        （R3：运行时不增删）；Agent 侧按**别名**查 ``_tool_entries``（见
-        ``flowing.tool``）。命名空间语义见模块 docstring §7a：``namespace``
-        **显式指定时与文件路径无关**（覆盖目录派生）；缺省时——实例形态落入
-        ``default::``（裸名视图优先层——往 ``default::`` 注册与核心同名的
-        工具即**覆盖原生行为**，被覆盖者仍可用 ``builtin::name`` 显式引用），
-        文件形态从所在目录派生命名空间（§7a）；自定义命名空间的资源只能以
-        ``ns::name`` 全限定名引用。
+        .. rubric:: 行为要点
+
+        - ``ns::name`` 全键冲突时后注册者报错；注册只在 ``install`` 发生
+          （运行时不增删全局注册状态）；Agent 侧按别名查 ``_tool_entries``
+          （见 ``flowing.tool``）。
+        - 命名空间：``namespace`` 显式指定时与文件路径无关（覆盖目录
+          派生）；缺省时——实例形态落入 ``default::``（裸名视图优先层——
+          往 ``default::`` 注册与核心同名的工具即覆盖原生行为，被覆盖者
+          仍可用 ``builtin::name`` 显式引用），文件形态从所在目录派生
+          命名空间；自定义命名空间的资源只能以 ``ns::name`` 全限定名
+          引用（命名空间规则见 :meth:`get_agent_class`）。
 
         :param tool: 已构造的 ``Tool`` 实例，或工具定义文件路径字符串
             （``.fya`` / ``.py``）。
         :param namespace: 命名空间；``None`` → 实例形态 ``"default"`` /
             文件形态按目录派生；显式指定时与文件路径无关。
 
-        .. rubric:: 调用关系（审计）
-
-        - 调用：无（写 ``tool_registry``）
-        - 被调：各插件 ``install()``（``runtime.register_tool(...)``，时机：阶段一注册；示例见 ``flowing.plugins`` / ``flowing.plugins.cron`` / ``flowing.plugins.skills`` / ``flowing.plugins.workflow``）；``Runtime.__init__``（内置工具以 ``namespace="builtin"`` 注册）
-
         .. seealso:: :class:`flowing.tool.Tool`、:class:`flowing.tool.ToolEntry`、
             :attr:`flowing.runtime.Runtime.tool_registry`
         """
         if isinstance(tool, str):
-            # 文件形态（R18）：经 ToolRegistry.get 的文件解析链构造并注册
+            # 文件形态：经 ToolRegistry.get 的文件解析链构造并注册
             # （基准目录显式——插件包目录等，不经 Agent source_dir 链）；
             # get 内部已按目录派生注册命名空间，显式 namespace 时覆盖之
             tool = self.tool_registry.get(tool)   # 文件 → Tool（惰性解析链）
             if namespace is None:
-                return   # get 已按目录派生注册（§7a），不再二次注册
+                return   # get 已按目录派生注册，不再二次注册
         self.tool_registry.register(tool, namespace=namespace)   # ns::name 全键冲突时后注册者报错（由 ToolRegistry.register 承载）
 
     def register_agent_type(self, name: str, agent_class: type[Agent], *,
                             namespace: str | None = None) -> None:
         """注册子 Agent 类型（``ns::注册名`` → Agent 类），使任何 Agent 可以引用。
 
-        功能与动机：插件三类资源注册之一；注册表条目同样**惰性**——
-        ``get_agent_class`` 在 invoke/创建时才解析类。注册表 key 为
-        ``ns::注册名``；名称格式（kebab/snake/Pascal）由框架自动转化。
+        .. rubric:: 功能介绍
 
-        行为边界：``ns::name`` 全键冲突时后注册者报错；注册只在
-        ``install``。命名空间语义见模块 docstring §7a：``namespace`` 缺省
-        落入 ``default::``（裸名视图优先层，同名即覆盖核心内置类型）；
-        建议（非强制）插件用自身注册名作命名空间（``myplugin::xxx``），
-        自定义命名空间的类型只能以全限定名引用。
+        插件三类资源注册之一（插件 ``install`` 中的注册通道）。注册表
+        条目同样惰性——``get_agent_class`` 在 invoke / 创建时才解析类。
+        注册表 key 为 ``ns::注册名``；名称格式（kebab / snake / Pascal）
+        由框架自动转化。
 
         .. rubric:: 使用示例
 
@@ -1779,10 +1712,17 @@ class Runtime:
                                                 namespace="myplugin")
                     # 引用方需写 myplugin::payment-agent
 
-        .. rubric:: 调用关系（审计）
+        .. rubric:: 行为要点
 
-        - 调用：无（写类型注册表）
-        - 被调：各插件 ``install()``（时机：阶段一注册；见 ``flowing.plugins`` 可用注册通道清单与本方法示例）
+        - ``ns::name`` 全键冲突时后注册者报错；注册只在 ``install`` 发生。
+        - 命名空间：缺省落入 ``default::``（裸名视图优先层，同名即覆盖
+          核心内置类型）；建议（非强制）插件用自身注册名作命名空间
+          （``myplugin::xxx``）；自定义命名空间的类型只能以全限定名引用
+          （命名空间规则见 :meth:`get_agent_class`）。
+
+        :param name: 注册名（身份名推断的锚点）。
+        :param agent_class: Agent 子类。
+        :param namespace: 命名空间（缺省 ``"default"``）。
 
         .. seealso:: :meth:`flowing.runtime.Runtime.get_agent_class`、
             :class:`flowing.agent.Agent`
@@ -1795,13 +1735,12 @@ class Runtime:
     def register_config_namespace(self, name: str, schema: Any) -> None:
         """声明扩展的配置命名空间（「谁负责校验」的声明，非访问控制）。
 
-        功能与动机：框架只解析核心命名空间（``agent`` / ``runtime``），其余 key
-        透传给经本方法声明的扩展；扩展对已声明命名空间有完全控制权（校验、默认
-        值、类型转换——经 ``schema`` 表达，具体形态由扩展自定）。未注册命名空间
-        静默保留，``get_config()`` 可自由读取。
+        .. rubric:: 功能介绍
 
-        行为边界：多扩展注册同一命名空间 → ``ConfigNamespaceConflictError``；
-        注册只在 ``install``（R3）。
+        框架只解析核心命名空间（``agent`` / ``runtime``），其余 key 透传给
+        经本方法声明的扩展；扩展对已声明命名空间有完全控制权（校验、默认
+        值、类型转换——经 ``schema`` 表达，具体形态由扩展自定）。未注册
+        命名空间静默保留，``get_config()`` 可自由读取。
 
         .. rubric:: 使用示例
 
@@ -1809,17 +1748,13 @@ class Runtime:
 
             runtime.register_config_namespace("i18n", I18nSchema)
 
-        .. rubric:: 测试案例
+        .. rubric:: 行为要点
 
-        - 前置：两个插件注册 ``"i18n"`` → 期望：第二个
-          ``ConfigNamespaceConflictError``。
-        - 前置：config.yaml 含未注册命名空间 ``foo:`` → 期望：不报错，
-          ``get_config("foo.bar")`` 可读。
+        - 多扩展注册同一命名空间 → ``ConfigNamespaceConflictError``；
+          注册只在 ``install`` 发生。
 
-        .. rubric:: 调用关系（审计）
-
-        - 调用：无（写 ``_config_namespaces``）
-        - 被调：各插件 ``install()``（时机：阶段一注册；示例见 ``flowing.plugins`` 与 ``flowing.errors.ConfigNamespaceConflictError``）
+        :param name: 配置命名空间名（点分 key 的第一段）。
+        :param schema: 扩展自定的校验 / 默认值 / 类型转换声明。
 
         .. seealso:: :meth:`flowing.runtime.Runtime.get_config`、
             :exc:`flowing.errors.ConfigNamespaceConflictError`
@@ -1831,13 +1766,11 @@ class Runtime:
     def register_resource(self, name: str, instance: Any) -> None:
         """注册共享 Resource（name → 任意实例，不要求继承基类）。
 
-        功能与动机：与 ``get_resource`` 读写对称；Resource 生命周期跨 Agent
-        （GB 级索引、连接池等加载一次全局共享），与 provide/inject 的区分原则：
-        **值跟随 Agent 生命周期 → provide/inject；跨 Agent 跨任务 → Resource**。
+        .. rubric:: 功能介绍
 
-        行为边界：name 在 Runtime 内全局唯一，重复注册 →
-        ``ResourceNameConflictError``；必须在启动根 Agent（``mount()``）前完成；
-        框架不代管 instance 的析构。
+        与 ``get_resource`` 读写对称；Resource 生命周期跨 Agent（GB 级索引、
+        连接池等加载一次全局共享）。与 provide / inject 的区分原则：值跟随
+        Agent 生命周期 → provide / inject；跨 Agent 跨任务 → Resource。
 
         .. rubric:: 使用示例
 
@@ -1846,10 +1779,15 @@ class Runtime:
             runtime.register_resource("kb", KnowledgeBase("./index/product-docs"))
             runtime.register_resource("order_db", DatabasePool(dsn))
 
-        .. rubric:: 调用关系（审计）
+        .. rubric:: 行为要点
 
-        - 调用：无（写 ``_resources``）
-        - 被调：各插件 ``install()`` / 子项目 ``main()``（时机：``mount()`` 前注册完毕；见 ``flowing.plugins`` 注册通道清单）
+        - name 在 Runtime 内全局唯一，重复注册 →
+          ``ResourceNameConflictError``。
+        - 必须在启动根 Agent（``mount()``）前完成。
+        - 框架不代管 instance 的析构。
+
+        :param name: Resource 注册名。
+        :param instance: 任意实例。
 
         .. seealso:: :meth:`flowing.runtime.Runtime.get_resource`、
             :exc:`flowing.errors.ResourceNameConflictError`
