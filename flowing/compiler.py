@@ -1,52 +1,69 @@
-"""``.fya`` 显式编译器——构建期把声明式 Agent 编译为同目录 ``.py``。
+"""``flowing.compiler`` —— ``.fya`` 显式编译器：构建期把声明式 Agent 编译为同目录 ``.py``。
 
 .. rubric:: 功能介绍
 
-本模块是「``.fya`` → Agent 类」的**合成层本体**（三层架构：parser
-字面层 → 装配层 → 本模块合成层）。两个入口同源：
+本模块是「``.fya`` → Agent 类」的合成层本体（三层架构：parser 字面层
+→ 装配层 → 本模块合成层）。两个入口同源：
 
-- **内存形态**（:func:`compile_fya_class`）：``.fya`` → 内存中的 Agent
+- 内存形态（:func:`compile_fya_class`）：``.fya`` → 内存中的 Agent
   类——运行期的唯一合成点（``Runtime.get_agent_class`` 路径形态、
   ``mount()``、装配层资源引用全部经此）；
-- **落盘形态**（:func:`compile_fya_file`）：= 内存合成 + 写出同目录
-  ``.py``（去 ``.fya`` 后缀，兼容 ``from payment import PaymentAgent``），
+- 落盘形态（:func:`compile_fya_file`）：内存合成 + 写出同目录
+  ``.py`` （去 ``.fya`` 后缀，兼容 ``from payment import PaymentAgent``），
   产物可被 linter / type checker / mypy 静态分析——生产部署与 CI 推荐。
 
-（旧设计中的 Import Hook / ``flowing.importer`` 形态已删除——运行期
-一律走字符串名惰性解析，不需要 import 期钩子；用户手写 Python 直接引用
-fya 定义的类时走显式编译产物。）
+运行期不需要 import 期钩子：Agent 类一律经 ``Runtime.get_agent_class``
+按字符串名惰性解析；用户手写 Python 直接引用 fya 定义的类时走显式编译
+产物。
 
-.. rubric:: 设计动机
+.. rubric:: 全局约定（跨符号、影响使用的约定）
 
-- **同目录产物**（comment §6.3/§100.2 覆盖旧 ``flowing build`` +
-  ``.flowing-build/`` 方案）：``payment.fya`` → ``payment.py``，标准
-  import 链无需任何 hook 即可工作；
-- **hash 防覆盖闸**（P3-10 裁决）：meta 写在**产物同目录**的
-  ``.flowing.meta.yaml``（每目录一份，条目以 ``.fya`` 文件名为键），
-  三字段 ``fya_hash`` / ``py_hash`` / ``compiler_version``。
-  两个 hash 均取**语义口径**：``fya_hash`` 哈希解析前端产出的结构
-  （注释/空行变化不触发重编译）；``py_hash`` 哈希产物 ``.py`` 的
-  AST（``ast.parse`` 后规范化转储）——格式化改动不算「外部修改」，
-  语义被手改才 → :class:`flowing.errors.ArtifactModifiedError` 中止，
-  **不静默覆盖**（编译产物可读但不应手改；手改请转正为手写子类，
-  03 §9.3）；
-- **不允热重启**：编译只发生在构建/启动阶段，运行期不监听文件变更
-  （comment §6.5）——并发模型无需处理「运行中 Agent vs 重新解析的类」。
+- 同目录产物：``payment.fya`` → ``payment.py``，标准 import 链无需
+  任何 hook 即可工作。
+- hash 防覆盖闸：编译元数据写在产物同目录的 ``.flowing.meta.yaml``
+  （每目录一份，条目以 ``.fya`` 文件名为键），三字段含义见下表。编译
+  产物可读但不应手改；语义被手改 → :class:`flowing.errors.ArtifactModifiedError`
+  中止，不静默覆盖（手改请转正为手写子类）。
 
-.. rubric:: 不变量与互斥
+  .. list-table:: ``.flowing.meta.yaml`` 条目（每目录一份，条目以 ``.fya`` 文件名为键）
+     :header-rows: 1
 
-- 同一逻辑的 ``.fya`` 与手写 ``.py`` **等价互斥**（03 §9.3）；同名并存时
-  ``.fya`` 优先并告警（告警通道属 import 侧规约）。
-- 编译是**幂等**的：``fya_hash`` 未变且 ``compiler_version`` 一致 →
+     * - 字段
+       - 含义
+       - 不匹配时
+     * - ``fya_hash``
+       - 源 ``.fya`` 解析结构的哈希（注释 / 空行变化不影响）
+       - 与当前解析结果不同 → 重编译
+     * - ``py_hash``
+       - 产物 ``.py`` 的 AST 哈希（格式化改动不影响）
+       - 与产物实际哈希不符 → ``ArtifactModifiedError`` 中止（不覆盖）
+     * - ``compiler_version``
+       - 编译器版本（:data:`COMPILER_VERSION`）
+       - 与当前版本不同 → 强制重编译
+
+- 编译是幂等的：``fya_hash`` 未变且 ``compiler_version`` 一致 →
   跳过；冲突中止后重跑可继续，已产出文件不回滚。
-- 非行为：不删除无对应 ``.fya`` 的孤儿 ``.py``；不编译手写 ``.py``
-  Agent；不拉起 Runtime、不执行 ``main``。
+- 不允热重启：编译只发生在构建 / 启动阶段，运行期不监听文件变更。
+- 等价互斥：同一逻辑的 ``.fya`` 与手写 ``.py`` 等价互斥；同名并存时
+  ``.fya`` 优先并告警（优先级判定在 ``Runtime.get_agent_class`` 的解析
+  侧）。
+- 本模块只做编译：不删除无对应 ``.fya`` 的孤儿 ``.py``；不编译手写
+  ``.py`` Agent；不拉起 Runtime、不执行 ``main``。
+
+.. rubric:: 使用示例
+
+.. code-block:: python
+
+    from pathlib import Path
+    from flowing.compiler import compile_fya_file
+
+    product = compile_fya_file(Path("agents/payment.fya"))   # 生成同目录 payment.py
 
 .. seealso::
 
     - :func:`flowing.interfaces.cli.cmd_compile` —— 本模块的 CLI 壳。
     - :mod:`flowing.parser` —— 字面层前端（``FyaDocument`` 来源）。
-    - :mod:`flowing.errors` —— `CompileError` / `ArtifactModifiedError`。
+    - :mod:`flowing.errors` —— ``CompileError`` / ``ArtifactModifiedError``。
 """
 
 from __future__ import annotations
@@ -62,7 +79,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
-from ruamel.yaml import YAML   # R-10：全项目统一 ruamel（meta 读写与 parser 同库）
+from ruamel.yaml import YAML   # 全项目统一 ruamel（meta 读写与 parser 同库）
 
 from flowing.errors import (
     ArtifactModifiedError,
@@ -86,17 +103,17 @@ __all__ = [
 COMPILER_VERSION: str = "0.1.0"
 """编译器版本——写入 meta 的 ``compiler_version`` 字段。
 
-**升版策略（P3-10 裁决）**：版本是缓存键的一部分——meta 中记录的
-``compiler_version`` 与当前值不同 → 视同 ``fya_hash`` 变化，**强制
-重编译**（防发射格式漂移后旧产物被静默沿用）。框架升级的代价是全
-项目 ``.fya`` 首次编译时一次性集体重跑，幂等且廉价。
+版本是缓存键的一部分：meta 中记录的 ``compiler_version`` 与当前值不同
+→ 视同 ``fya_hash`` 变化，强制重编译（防发射格式漂移后旧产物被静默
+沿用）。框架升级的代价是全项目 ``.fya`` 首次编译时一次性集体重跑，
+幂等且廉价。
 """
 
 _ENTRY_FIELDS = ("tools", "subagents")
 """Agent ``.fya`` 的资源列表字段（glob 展开 + EntryRef 规范化的对象）。"""
 
 _META_FILENAME = ".flowing.meta.yaml"
-"""产物同目录的 meta 文件名（P3-10：每目录一份，条目以 .fya 文件名为键）。"""
+"""产物同目录的 meta 文件名（每目录一份，条目以 .fya 文件名为键）。"""
 
 _USER_SETUP_NAME = "_fya_user_setup"
 """``$script`` 中用户 ``setup`` 在装配包装下的改名（生成 setup 的委托目标）。"""
@@ -106,12 +123,12 @@ _MISSING: Any = object()
 
 
 # ---------------------------------------------------------------------------
-# 装配层：具名块填回（四条导航规则，规则文本见 subagents.SubagentEntry 规约）
+# 装配层：具名块填回（四条导航规则，规则文本见 subagents.SubagentEntry 行为要点）
 # ---------------------------------------------------------------------------
 
 
 def _find_mapping_key(mapping: Mapping[str, Any], segment: str) -> str | None:
-    """dict 段寻址（规则 2）：精确 key 优先；``as`` 键**仅以别名段**寻址。
+    """dict 段寻址（规则 2）：精确 key 优先；``as`` 键仅以别名段寻址。
 
     含 ``as`` 的 key（``working_dir as cwd``）不匹配其规范名段——有了别名
     就不允许规范名段寻址（与列表段「声明了 ``as`` 必须写别名」同一原则）。
@@ -128,27 +145,27 @@ def _find_mapping_key(mapping: Mapping[str, Any], segment: str) -> str | None:
 
 
 def _merge_named_blocks(fields: dict[str, Any], blocks: Mapping[str, str]) -> None:
-    """把具名块填回顶层字段映射（**装配层导航四条规则的唯一落点**）。
+    """把具名块填回顶层字段映射（装配层导航四条规则的唯一落点）。
 
-    **内部 API，不属稳定契约。** 原地修改 ``fields``（含 EntryRef 条目的
+    内部 API，不属稳定契约。原地修改 ``fields`` （含 EntryRef 条目的
     ``body`` 覆写映射）。四条规则（规则文本的权威出处是
-    :class:`flowing.subagents.SubagentEntry` 行为规约）：
+    :class:`flowing.subagents.SubagentEntry` 行为要点）：
 
-    1. **列表段**（``tools`` / ``subagents`` 等 entry 列表）：按条目
-       **别名**精确匹配（``EntryRef.alias``），未命中 →
+    1. 列表段（``tools`` / ``subagents`` 等 entry 列表）：按条目
+       别名精确匹配（``EntryRef.alias``），未命中 →
        :class:`FormatError`；无下标语法（词法层已禁止）；命中后进入该
        条目的覆写声明空间（``body``）；
-    2. **dict 段**：精确 key；key 含 ``as`` 时仅以别名段寻址
+    2. dict 段：精确 key；key 含 ``as`` 时仅以别名段寻址
        （``$tools.pay.args.cwd.description:`` 命中 ``working_dir as cwd``
        键，``...args.working_dir...`` 不命中）；中间段缺失 →
        :class:`FormatError`（末端缺失才算「目标缺失」，见规则 4）；
-    3. **PENDING 槽**：其后还有路径段 → 物化为空映射继续深入
+    3. PENDING 槽：其后还有路径段 → 物化为空映射继续深入
        （override 位 ``_`` = 空补丁语义）；即末端 → 按规则 4 写入；
-    4. **末端**：目标缺失或为 ``PENDING`` → 写入；已有实际值 → 冲突
+    4. 末端：目标缺失或为 ``PENDING`` → 写入；已有实际值 → 冲突
        :class:`FormatError`。
 
     块体写入前剥掉尾部换行（块体原文以 ``---``/EOF 收尾，必带行尾换行；
-    该换行是容器格式而非内容——spec 未写清处的落实口径）。
+    该换行是容器格式而非内容）。
     末端落在列表别名段（路径在条目处耗尽）→ :class:`FormatError`
     （块只能写进映射键，不能整体替换条目）。
     """
@@ -204,7 +221,7 @@ def _merge_named_blocks(fields: dict[str, Any], blocks: Mapping[str, str]) -> No
 
 
 def _rename_user_setup(script: str) -> str:
-    """``$script`` 顶层 ``def setup`` 文本级改名 ``_fya_user_setup``（保留原文格式）。
+    """``$script`` 顶层 ``def setup`` 文本级改名 ``_fya_user_setup`` （保留原文格式）。
 
     改名只动 ``def`` 行（AST 定位后切片替换），注释/格式/其余成员原样
     保留；无顶层 ``setup`` → 原样返回。仅在装配层需要生成包装 ``setup``
@@ -240,12 +257,12 @@ def _script_setup_fn(script: str, name: str, fya_path: Path) -> Any:
 def _annotation_to_schema_type(annotation: Any, *, context: str) -> Any:
     """setup 签名注解 → JSON Schema ``type`` 段（推导 args_model 用）。
 
-    支持内建六型与 ``Optional[X]``/``X | None``（→ ``[t, "null"]``）；
+    支持内建六型与 ``Optional[X]``/``X | None`` （→ ``[t, "null"]``）；
     其余 → :class:`FormatError`（声明端 fail-fast，不猜测语义）。
     """
     if isinstance(annotation, str):
         # 脚本带 `from __future__ import annotations` 时注解是字符串——
-        # 在内建命名空间求值（spec 未写清处的落实口径）
+        # 在内建命名空间求值
         import builtins
 
         try:
@@ -268,15 +285,15 @@ def _annotation_to_schema_type(annotation: Any, *, context: str) -> Any:
 def _setup_signature(setup_fn: Any, *, class_name: str) -> tuple[dict[str, Any] | None, frozenset[str] | None]:
     """用户 setup 签名 → ``(args properties, 透传参数集)``。
 
-    - ``**kwargs`` / ``*args`` 吸收形态 → ``(None, None)``（无
+    - ``**kwargs`` / ``*args`` 吸收形态 → ``(None, None)`` （无
       args_model；透传参数集 ``None`` = 全量透传）；无参形态 →
-      ``(None, frozenset())``（无 args_model；包装 setup 不透传任何
+      ``(None, frozenset())`` （无 args_model；包装 setup 不透传任何
       参数，避免空参 setup 收到 kwargs 炸 TypeError）；
-    - 参数缺类型标注 → 内置 ``ValueError``（spec：构造期抛 ValueError——
-      作者笔误，编程错误通道）；默认值须 JSON 可序列化（要发射进产物
+    - 参数缺类型标注 → 内置 ``ValueError`` （构造期抛——作者笔误，
+      编程错误通道）；默认值须 JSON 可序列化（要发射进产物
       .py 与桥接进 schema）；
     - 正常形态 → ``(properties, frozenset(参数名))``——透传参数集供
-      装配层生成的包装 setup 过滤 ``kwargs``（编译期定死，产物运行期
+      装配层生成的包装 setup 过滤 ``kwargs`` （编译期定死，产物运行期
       不做签名探测）。
     """
     sig = inspect.signature(setup_fn)
@@ -366,8 +383,8 @@ def _agent_naming():
 def _source_file_value(fya_path: Path) -> str:
     """``source_file`` 类属性注入值：根内 ``@/`` 相对形式，根外/无上下文 → 绝对路径。
 
-    （spec 只写「``@/`` 路径」；无 launch 上下文时 ``@/`` 不可表达，绝对
-    路径同样被 ``resolve_path`` 原样接受——spec 未写清处的落实口径。）
+    无 launch 上下文时 ``@/`` 不可表达，绝对路径同样被 ``resolve_path``
+    原样接受。
     """
     resolved = fya_path.resolve()
     root = _project_root()
@@ -382,7 +399,7 @@ def _source_file_value(fya_path: Path) -> str:
 def _build(fya_path: Path) -> _Assembly:
     """``.fya`` → 发射源码（解析 → 装配 → 合成三步一体；内存/落盘两形态共享）。
 
-    - 字面层：``parse_fya``（**不带** ``entry_fields``——glob 条目过不了
+    - 字面层：``parse_fya`` （不带 ``entry_fields``——glob 条目过不了
       ``normalize_entries``，资源列表由本层先经 ``_expand_glob_entries``
       分流展开，展开产物即 ``list[EntryRef]``）；
     - 装配：具名块填回（``_merge_named_blocks`` 四条导航规则）、``name``
@@ -463,7 +480,7 @@ def _build(fya_path: Path) -> _Assembly:
         if user_setup_fn is not None:
             derived_props, setup_params = _setup_signature(user_setup_fn, class_name=class_name)
             if derived_props is not None:
-                # 校验对照（spec：参数必须有对应字段；类型兼容检查未实现）
+                # 校验对照（参数必须有对应字段；类型兼容检查未实现）
                 for pname in derived_props:
                     if pname not in args_props:
                         raise FormatError(
@@ -504,10 +521,10 @@ def _emit_source(
     """发射产物 .py 源码（固定模板）。
 
     模板：文件头注释（来源与「勿手改」提示）→ 按需 import → 模块级
-    ``_FYA_*`` 数据常量（刻意**不**放类体——``_check_pending`` 会扫类
+    ``_FYA_*`` 数据常量（刻意不放类体——``_check_pending`` 会扫类
     MRO，条目覆写里的 PENDING 空补丁会被误判为未兑现字段）→
     ``class <Name>(Agent):`` 类属性赋值 → ``$script`` 原文嵌入类体 →
-    装配层生成的 ``setup``（前置段：``_extra`` 合入 + 条目绑定 →
+    装配层生成的 ``setup`` （前置段：``_extra`` 合入 + 条目绑定 →
     按编译期定死的透传参数集委托用户 setup）。
     """
     imports = ["from flowing import Agent"]
@@ -516,7 +533,7 @@ def _emit_source(
     body_lines.append(f"source_file = {_emit_value(_source_file_value(fya_path))}")
     for attr, value in (("description", description), ("system_prompt", system_prompt)):
         if value is _MISSING:
-            continue   # 未声明：description 缺省 None；system_prompt 缺省由创建管线裁决
+            continue   # 未声明：description 缺省 None；system_prompt 缺省由创建管线决定
         if value is None:
             body_lines.append(f"{attr} = None")
         elif value is PENDING:
@@ -607,7 +624,7 @@ def textwrap_indent(body_lines: list[str]) -> str:
 
 
 # ---------------------------------------------------------------------------
-# hash 与 meta（P3-10 防覆盖闸）
+# hash 与 meta（防覆盖闸）
 # ---------------------------------------------------------------------------
 
 
@@ -628,11 +645,11 @@ def _normalize_for_hash(value: Any) -> Any:
 
 def _fya_hash(doc: FyaDocument) -> str:
     """``fya_hash``：解析结构口径——``repr`` 规范化后的
-    ``FyaDocument``（注释/空行不进解析产物，天然不影响 hash）。
+    ``FyaDocument`` （注释/空行不进解析产物，天然不影响 hash）。
 
-    块体与 ``$script`` 原文在 hash 前剥尾部换行（``rstrip("\r\n")``）——
-    与发射侧口径一致（块体以 ``---``/EOF 收尾必带行尾换行，属容器格式而
-    非内容；文件末尾增删空行不应触发重编译，spec 未写清处的落实口径）。
+    块体与 ``$script`` 原文在 hash 前剥尾部换行——与发射侧口径一致
+    （块体以 ``---`` / EOF 收尾必带行尾换行，属容器格式而非内容；
+    文件末尾增删空行不应触发重编译）。
     """
     blocks = {k: v.rstrip("\r\n") for k, v in doc.blocks.items()}
     script = doc.script.rstrip("\r\n") if doc.script is not None else None
@@ -671,11 +688,11 @@ def _save_meta(meta_path: Path, meta: Mapping[str, Any]) -> None:
 
 
 def compile_fya_class(fya_path: Path) -> type:
-    """``.fya`` → 内存中的 Agent 类（**运行期唯一合成点**）。
+    """``.fya`` → 内存中的 Agent 类（运行期唯一合成点）。
 
     .. rubric:: 功能介绍
 
-    时序：``parser.parse_fya``（字面层，文本 → ``FyaDocument``）→ 装配
+    流水：``parser.parse_fya`` （字面层，文本 → ``FyaDocument``）→ 装配
     （具名块填回、EntryRef 判别、``args`` 经
     :func:`flowing.params.expand_args_schema` 归一化 +
     :func:`flowing.params.schema_to_model` 桥接为 ``args_model``）→
@@ -683,28 +700,20 @@ def compile_fya_class(fya_path: Path) -> type:
     ``system_prompt`` 等，``$script`` 块的 ``setup``/``@on`` 成员并入
     类体）。产物是普通 Python 类，与手写子类同一类模型（等价互斥）。
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
     - 同步、纯内存：不写任何文件（落盘形态是 :func:`compile_fya_file`
       = 本函数 + 写出 ``.py``）。
-    - 每次调用现场合成，无缓存（调用方的注册表/惰性解析层负责去重）。
-    - ``.fya`` 与同名手写 ``.py`` 并存时不归本函数管（``fya`` 优先并
-      告警的裁决在 ``Runtime.get_agent_class`` 的解析侧）。
-    - 实现形态（spec 未写清处的落实）：合成与发射同源——
-      本函数 = ``_build`` 发射源码 + 新模块内 ``exec`` 取类；
-      ``FormatError`` 族（声明错误）原样上抛，其余合成失败包装为
+    - 每次调用现场合成，无缓存（调用方的注册表 / 惰性解析层负责去重）。
+    - ``.fya`` 与同名手写 ``.py`` 并存时的优先级由
+      ``Runtime.get_agent_class`` 的解析侧决定（``.fya`` 优先并告警），
+      本函数不处理。
+    - 声明错误（``FormatError`` 族）原样上抛；其余合成失败包装为
       :class:`flowing.errors.CompileError`。
 
     :param fya_path: 源 ``.fya`` 路径。
     :return: 合成的 Agent 子类。
     :raises flowing.errors.CompileError: 解析或合成失败。
-
-    .. rubric:: 调用关系（审计）
-
-    - 调用：``_build``（解析 + 装配 + 发射，每次调用）
-    - 被调：``flowing.runtime.Runtime.get_agent_class``（路径形态类型
-      解析）、``Runtime.mount``（经 ``get_agent_class``）、
-      :func:`compile_fya_file`（落盘形态的合成步）
 
     .. seealso:: :func:`compile_fya_file` —— 落盘形态。
     """
@@ -728,19 +737,19 @@ def compile_fya_file(fya_path: Path) -> Path:
 
     时序四步：
 
-    1. **合成**：经 :func:`compile_fya_class` 同源的 ``_build`` 得到发射
+    1. 合成：经 :func:`compile_fya_class` 同源的 ``_build`` 得到发射
        源码（字面层 + 装配 + 合成一步完成）；
-    2. **发射**：生成 ``.py`` 源码——Parsable 值以**类体赋值**形式写出
+    2. 发射：生成 ``.py`` 源码——Parsable 值以类体赋值形式写出
        （如 ``system_prompt = Parsable('$./system-prompt.md')``），
        ``$script`` 块原样嵌入；
-    3. **meta 校验**：读**同目录** ``.flowing.meta.yaml``（每目录一份，
-       条目以 ``fya_path.name`` 为键）中本文件的条目——
-       产物 ``.py`` 已存在且记录的 ``py_hash``（AST 口径）与实际不符 →
+    3. meta 校验：读同目录 ``.flowing.meta.yaml`` （每目录一份，
+       条目以 ``fya_path.name`` 为键）中本文件的条目——产物 ``.py``
+       已存在且记录的 ``py_hash`` （AST 口径）与实际不符 →
        抛 :class:`flowing.errors.ArtifactModifiedError`（不覆盖）；
-       ``fya_hash``（解析结构口径）未变且 ``compiler_version`` 一致 →
+       ``fya_hash`` （解析结构口径）未变且 ``compiler_version`` 一致 →
        跳过发射，直接返回产物路径（幂等）；版本不同 → 强制重编译
        （见 :data:`COMPILER_VERSION`）；
-    4. **写盘**：写产物 ``.py`` 并更新 meta 条目三字段
+    4. 写盘：写产物 ``.py`` 并更新 meta 条目三字段
        （``fya_hash`` / ``py_hash`` / ``compiler_version``）。
 
     :param fya_path: 源 ``.fya`` 路径。
@@ -750,27 +759,14 @@ def compile_fya_file(fya_path: Path) -> Path:
       不静默覆盖。
     :raises flowing.errors.CompileError: 解析或发射失败。
 
-    .. rubric:: 测试案例
-
-    - 前置：合法 ``payment.fya``，无既有产物 → 操作：编译 → 期望：同目录
-      出现 ``payment.py``，meta 三字段写入；再编译一次 → 期望：no-op。
-    - 前置：手工改动产物 ``.py`` → 操作：编译 → 期望：
-      ``ArtifactModifiedError``，产物未被覆盖。
-
-    .. rubric:: 调用关系（审计）
-
-    - 调用：``_build``（与 :func:`compile_fya_class` 同源的合成步）；
-      meta 读写（ruamel/hashlib）
-    - 被调：:func:`compile_project`（时机：项目级编译逐文件）
-
     .. seealso:: :func:`compile_project` —— 项目级入口。
     """
     fya_path = Path(fya_path)
     product = fya_path.with_suffix(".py")   # 同目录去 .fya 后缀
-    # 第 1-2 步：_build（compile_fya_class 同源）合成 + 发射（类体赋值形式写出）
+    # 合成与发射（与 compile_fya_class 同源的 _build；Parsable 以类体赋值写出）
     assembly = _build(fya_path)
-    # 第 3 步：meta 校验（py_hash 不匹配 -> ArtifactModifiedError；
-    # fya_hash 未变且版本一致 -> 幂等跳过）
+    # meta 校验：py_hash 不匹配 -> ArtifactModifiedError；fya_hash 未变且
+    # compiler_version 一致 -> 幂等跳过
     meta_path = fya_path.parent / _META_FILENAME
     meta = _load_meta(meta_path)
     entry = meta.get(fya_path.name)
@@ -782,7 +778,7 @@ def compile_fya_file(fya_path: Path) -> Path:
         if (entry.get("fya_hash") == assembly.fya_hash
                 and entry.get("compiler_version") == COMPILER_VERSION):
             return product   # 幂等 no-op
-    # 第 4 步：写产物 + 更新 meta 三字段
+    # 写产物 + 更新 meta 三字段
     product.write_text(assembly.source, encoding="utf-8")
     meta[fya_path.name] = {
         "fya_hash": assembly.fya_hash,
@@ -800,9 +796,8 @@ _TOOL_SKILL_FYA_GENERIC = frozenset({"TOOL.fya", "tool.fya"})
 def _is_agent_fya(path: Path) -> bool:
     """``.fya`` 是否 Agent 声明（排除 tool/skill 形态——它们不是本编译器的对象）。
 
-    spec 原文为「递归扫描 ``*.fya``」；工具（``TOOL.fya`` / ``*.tool.fya``）
-    与 skill（``*.skill.fya``）有各自命名形态与装配层，误当 Agent 合成必炸
-    ——按命名形态排除（spec 未写清处的落实口径）。
+    工具（``TOOL.fya`` / ``*.tool.fya``）与 skill（``*.skill.fya``）有
+    各自命名形态与装配层，误当 Agent 合成必炸——按命名形态排除。
     """
     name = path.name
     if name in _TOOL_SKILL_FYA_GENERIC:
@@ -816,35 +811,22 @@ def compile_project(path: Path) -> list[Path]:
     .. rubric:: 功能介绍
 
     ``flowing compile <path>`` 的唯一编译入口。meta 随产物走——每个
-    ``.fya`` 的 hash 条目写入其**所在目录**的 ``.flowing.meta.yaml``
-    （P3-10 裁决，不再集中于项目根）。逐个调用
-    :func:`compile_fya_file`；任一文件抛
-    `ArtifactModifiedError` 则**中止**（已产出文件不回滚——编译幂等，
+    ``.fya`` 的 hash 条目写入其所在目录的 ``.flowing.meta.yaml``。
+    逐个调用 :func:`compile_fya_file`；任一文件抛
+    ``ArtifactModifiedError`` 则中止（已产出文件不回滚——编译幂等，
     重跑可继续）。
 
-    :param path: 项目根目录。
-    :return: 全部产物 ``.py`` 路径（按扫描序，``sorted`` 保证稳定）。
-    :raises flowing.errors.ArtifactModifiedError: 首个 hash 冲突处中止。
-
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
     - 边缘情况：无 ``.fya`` 文件 → 返回空列表（调用方 CLI 打印
       「无可编译文件」并正常退出）。
     - 重复执行：无变更时全量命中 ``fya_hash``，等价 no-op。
-    - 非行为：不清理孤儿 ``.py``；不编译手写 ``.py``；不编译 tool /
-      skill 形态的 ``.fya``（``TOOL.fya`` / ``*.tool.fya`` /
-      ``*.skill.fya``——见 :func:`_is_agent_fya`）。
+    - 不编译 tool / skill 形态的 ``.fya`` （``TOOL.fya`` /
+      ``*.tool.fya`` / ``*.skill.fya``——见 :func:`_is_agent_fya`）。
 
-    .. rubric:: 测试案例
-
-    - 前置：项目含两个 ``.fya`` → 操作：编译两次 → 期望：第一次返回
-      两个产物路径且 meta 写入；第二次返回同样两个路径且为 no-op。
-
-    .. rubric:: 调用关系（审计）
-
-    - 调用：:func:`compile_fya_file`（时机：逐文件）
-    - 被调：``flowing.interfaces.cli.cmd_compile``（时机：子命令 ``compile``
-      分发，同步直调、不经事件循环）
+    :param path: 项目根目录。
+    :return: 全部产物 ``.py`` 路径（按扫描序，``sorted`` 保证稳定）。
+    :raises flowing.errors.ArtifactModifiedError: 首个 hash 冲突处中止。
 
     .. seealso:: :func:`flowing.interfaces.cli.cmd_compile` —— CLI 壳与退出码映射。
     """
