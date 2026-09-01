@@ -5,8 +5,9 @@
 本模块承载子智能体（子 Agent）子系统的绑定与结果类型：
 
 - :class:`SubagentEntry` —— Agent 对子 Agent 类型的一次「用法声明」，
-  能力三正交的 Agent 级绑定层（与 :class:`flowing.tool.ToolEntry`
-  同构）：LLM 看到的别名与描述、参数覆写 / 指定值 / 注入。
+  能力三正交（可执行对象 / LLM 可见声明 / Agent 级绑定三个维度）的
+  Agent 级绑定层（与 :class:`flowing.tool.ToolEntry` 同构）：LLM 看到
+  的别名与描述、参数覆写 / 指定值 / 注入。
 - :class:`SubagentInvocation` —— ``before_subagent_invoke`` /
   ``after_subagent_invoke`` 钩子的 value。
 - :class:`SubagentResult` —— 子 Agent 一次唤起的返回结果。
@@ -27,7 +28,7 @@ catalog 渲染留在 :mod:`flowing.agent`——本模块只定义管线操作的
   ``after_subagent_invoke`` （先于交付，handler 可改写 result）→ 交付。
   两个钩子都挂在父 Agent 的 hooks 上。
 - 子 Agent 产出有两条载体：``invoke_subagent`` 同步返回
-  :class:`SubagentResult`（不入父队列，调用方自行处置）；后台唤起路径
+  :class:`SubagentResult` （不入父队列，调用方自行处置）；后台唤起路径
   （``subagent-invoke`` 工具的 ``asynchronized=True``）完成时以独立
   ``Message(kind=SUBAGENT)`` 推入父 Agent 队列，LLM 在后续回合感知。
   两条路径内容同源：都采用 ``after_subagent_invoke`` 改写后的 result。
@@ -217,13 +218,16 @@ class SubagentEntry:
                 currency: USD                                   # 裸值 → specified
                 user_id: "{{ self.inject('user_id') }}"        # 注入表达式
 
-    编程式等价（``setup()`` 中）：
+    编程式等价（``setup()`` 中，走同一 body 判别管线）：
 
     .. code-block:: python
 
-        entry = self.add_agent("payment", alias="pay",
-                               body={"description": "发起支付。"})
-        entry.override_params["currency"] = {"default": "CNY"}
+        entry = self.add_agent(
+            "payment", alias="pay",
+            body={"description": "发起支付。",
+                  "args": {"amount as sum": {"description": "支付金额（元）"},
+                           "currency": "USD",
+                           "user_id": "{{ self.inject('user_id') }}"}})
 
     .. rubric:: 行为要点
 
@@ -246,8 +250,9 @@ class SubagentEntry:
       写进映射键，不能整体替换条目）。块内可写的键为覆写声明名
       （``system_prompt`` / ``description`` / ``args`` 等）。
     - 省略 ``as`` 时别名由 :func:`flowing.parser.normalize_entries` 按
-      引用形态推断（裸名 / 限定名 name 段 / 路径形态经
-      :func:`flowing.paths.infer_name`），规则见该函数。
+      引用形态推断（裸名如 ``payment``；限定名如 ``ns::payment`` 取
+      name 段；路径形态经 :func:`flowing.paths.infer_name`），规则见该
+      函数。
     - 同 alias 重复（``.fya`` ``subagents:`` 列表内，含推断撞名——如
       ``./a/payment`` 与 ``./b/payment`` 都推断出 ``payment``）→
       :class:`flowing.errors.EntryNameConflictError`——与 tool / skill
@@ -287,8 +292,9 @@ class SubagentEntry:
     override_system_prompt: Parsable | None = None
     """覆写声明的子 Agent system prompt；``None`` = 无覆写。由 ``.fya``
     的 ``system_prompt:`` 或编程式 body 写入；``_`` （PENDING）归一为
-    ``None`` （空补丁）。注意：当前版本子 Agent 创建时使用其类自身
-    声明的 ``system_prompt``，本字段只保存覆写声明、尚未参与创建。
+    ``None`` （空补丁：声明了覆写位但内容为空，从基底全量回填）。注意：
+    当前版本子 Agent 创建时使用其类自身声明的 ``system_prompt``，本字段
+    只保存覆写声明、尚未参与创建。
     """
     override_description: Parsable | None = None
     """覆写 LLM 看到的描述；``None`` 使用子类原描述。在
@@ -314,8 +320,8 @@ class SubagentEntry:
     enabled: bool = True
     """是否渲染进 catalog（LLM 可见）；``False`` 时 LLM 看不到该子
     Agent，但仍可编程式 ``invoke_subagent()`` 唤起。直接置 ``True`` /
-    ``False`` 切换，下一次上下文组装生效（条目表是普通字典，没有
-    ``ManagedList`` 那样的容器级停用操作）。
+    ``False`` 切换，下一次上下文组装生效（没有 ``ManagedList`` 那样的
+    容器级停用 API；临时停用直接置 ``False``）。
     """
 
     def resolve(self, parent: Agent, args: dict[str, Any]) -> dict[str, Any]:
@@ -373,7 +379,7 @@ class SubagentEntry:
 
         Agent 每次组装上下文时对每个 ``enabled=True`` 的条目调用本
         方法，产物进入
-        :data:`DEFAULT_SUBAGENT_CATALOG_TEMPLATE`（或 Agent 级覆写模板）
+        :data:`DEFAULT_SUBAGENT_CATALOG_TEMPLATE` （或 Agent 级覆写模板）
         的 ``entries`` 上下文。预计算在 Python 侧完成，模板只负责排布。
 
         :return: ``{"name": 别名, "description": 已解析描述串, "params_xml": 已应用覆写 / 改名 / 排除规则后的参数段 XML}``。
@@ -604,8 +610,8 @@ DEFAULT_SUBAGENT_CATALOG_TEMPLATE: str = (
     （含前导 ``<params>`` 片段或空串）。
 
   预计算在 Python 侧完成，模板只负责排布（不在模板内
-  ``.resolve()``——与 skills 模板的「模板内现场求值」不同，本模板的
-  求值已前移到 ``catalog_view``）。
+  ``.resolve()``——与 skills 模板的「模板内求值」不同，本模板的求值
+  已前移到 ``catalog_view``）。
 - ``agent``：父 Agent 实例。
 
 .. rubric:: 行为要点

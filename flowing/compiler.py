@@ -23,7 +23,7 @@
 - hash 防覆盖闸：编译元数据写在产物同目录的 ``.flowing.meta.yaml``
   （每目录一份，条目以 ``.fya`` 文件名为键），三字段含义见下表。编译
   产物可读但不应手改；语义被手改 → :class:`flowing.errors.ArtifactModifiedError`
-  中止，不静默覆盖（手改请转正为手写子类）。
+  中止，不静默覆盖（要保留手改内容，请改写为手写子类）。
 
   .. list-table:: ``.flowing.meta.yaml`` 条目（每目录一份，条目以 ``.fya`` 文件名为键）
      :header-rows: 1
@@ -158,7 +158,7 @@ def _merge_named_blocks(fields: dict[str, Any], blocks: Mapping[str, str]) -> No
     2. dict 段：精确 key；key 含 ``as`` 时仅以别名段寻址
        （``$tools.pay.args.cwd.description:`` 命中 ``working_dir as cwd``
        键，``...args.working_dir...`` 不命中）；中间段缺失 →
-       :class:`FormatError`（末端缺失才算「目标缺失」，见规则 4）；
+       :class:`FormatError` （末端缺失才算「目标缺失」，见规则 4）；
     3. PENDING 槽：其后还有路径段 → 物化为空映射继续深入
        （override 位 ``_`` = 空补丁语义）；即末端 → 按规则 4 写入；
     4. 末端：目标缺失或为 ``PENDING`` → 写入；已有实际值 → 冲突
@@ -258,7 +258,7 @@ def _annotation_to_schema_type(annotation: Any, *, context: str) -> Any:
     """setup 签名注解 → JSON Schema ``type`` 段（推导 args_model 用）。
 
     支持内建六型与 ``Optional[X]``/``X | None`` （→ ``[t, "null"]``）；
-    其余 → :class:`FormatError`（声明端 fail-fast，不猜测语义）。
+    其余 → :class:`FormatError` （声明端 fail-fast，不猜测语义）。
     """
     if isinstance(annotation, str):
         # 脚本带 `from __future__ import annotations` 时注解是字符串——
@@ -746,7 +746,7 @@ def compile_fya_file(fya_path: Path) -> Path:
     3. meta 校验：读同目录 ``.flowing.meta.yaml`` （每目录一份，
        条目以 ``fya_path.name`` 为键）中本文件的条目——产物 ``.py``
        已存在且记录的 ``py_hash`` （AST 口径）与实际不符 →
-       抛 :class:`flowing.errors.ArtifactModifiedError`（不覆盖）；
+       抛 :class:`flowing.errors.ArtifactModifiedError` （不覆盖）；
        ``fya_hash`` （解析结构口径）未变且 ``compiler_version`` 一致 →
        跳过发射，直接返回产物路径（幂等）；版本不同 → 强制重编译
        （见 :data:`COMPILER_VERSION`）；

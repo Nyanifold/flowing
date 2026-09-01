@@ -7,7 +7,7 @@
 （或中间的 :class:`RawFya`）。:class:`FyaDocument` 分三部分：
 
 - ``fields``：顶层 YAML 映射（``_`` 已映射为 :data:`flowing.parsable.PENDING`；
-  调用方经 ``entry_fields`` 声明的资源列表已规范化为 ``list[EntryRef]``）；
+  ``entry_fields`` 声明的资源列表已规范化为 ``list[EntryRef]``）；
 - ``blocks``：具名块（``$<点分路径>:``）块体原文，原样持有、不填回——
   填回（merge）属装配层；
 - ``script``：``$script`` 块原文。
@@ -22,7 +22,7 @@
   块头为分隔后次行 ``$<点分路径>:`` （路径段为纯标识符，无下标）；
   块体为到下一个 ``---`` 或 EOF 的原文；
 - ``$script`` 是保留块名：内容单独取出，不进 ``blocks``；
-- YAML 标量恰为 ``_`` → :data:`~flowing.parsable.PENDING`（递归进嵌套
+- YAML 标量恰为 ``_`` → :data:`~flowing.parsable.PENDING` （递归进嵌套
   dict/list）；``$"_"`` 是普通字符串不受影响；非字符串 YAML 值保持原生
   类型（``Parsable`` 包装是装配层职责）。
 
@@ -174,7 +174,7 @@ def parse_fya(
     entry_fields: Collection[str] = (),
     naming: NamingRules | None = None,
 ) -> FyaDocument:
-    """``.fya`` 文本 → :class:`FyaDocument`（字面层流水一次走完）。
+    """``.fya`` 文本 → :class:`FyaDocument` （字面层流水一次走完）。
 
     .. rubric:: 功能介绍
 
@@ -204,7 +204,7 @@ def parse_fya(
 
     - ``entry_fields`` 中声明但文件里不存在的字段：不报错（缺省视为
       无声明——字段缺失语义由装配层按「必填 / 可选」各自决定）。
-    - 声明字段的值不是列表 → :class:`FormatError`（资源列表必须是
+    - 声明字段的值不是列表 → :class:`FormatError` （资源列表必须是
       YAML 列表）。
     - ``naming`` 仅在条目规范化遇路径形态时需要；其余形态可缺省。
     - 边缘情况：空文件 / 仅 YAML 无块 / 仅块无 YAML——均合法，
@@ -216,7 +216,8 @@ def parse_fya(
     :param naming: 路径形态条目的别名推断规则表。
     :return: 规范化后的声明文档。
     :raises flowing.errors.FormatError: 声明字段的值不是列表；或切分 /
-        YAML 加载阶段发现非法结构（见各函数）。
+        YAML 加载阶段发现非法结构（块路径重复、块头不合法、顶层非映射、
+        YAML 语法错误等）。
 
     .. seealso:: :class:`FyaDocument` —— 产物契约。
     """
@@ -277,7 +278,7 @@ def split_fya(text: str) -> RawFya:
         # raw.blocks == {"system_prompt": "你好"}
 
     :param text: ``.fya`` 文件全文。
-    :return: :class:`RawFya`（YAML 段原文 / 具名块 / ``$script``）。
+    :return: :class:`RawFya` （YAML 段原文 / 具名块 / ``$script``）。
     :raises flowing.errors.FormatError: 块分隔后缺块头、块头非法、块路径
         重复或 ``$script`` 重复。
 
@@ -337,14 +338,16 @@ def load_fya_yaml(text: str) -> dict[str, Any]:
     - 非字符串 YAML 值保持原生类型（``max_turns: 10`` → ``int``）；
       ``Parsable`` 包装属装配层。
     - 空文本 → 空 dict；顶层不是映射（如标量 / 列表）→
-      :class:`FormatError`（报文含首个非注释非空行的行号）；YAML 语法
-      错误 → :class:`FormatError`（包装原始异常，报文含行号）。
+      :class:`FormatError` （报文含首个非注释非空行的行号）；YAML 语法
+      错误 → :class:`FormatError` （包装原始异常，报文含行号）。
     - 本函数不做环境变量展开、不做 ``$`` 引用解析（那是 Parsable
       求值期）。
 
     .. rubric:: 使用示例
 
     .. code-block:: python
+
+        from flowing.parsable import PENDING
 
         load_fya_yaml("a: _")["a"] is PENDING          # True
 
@@ -408,7 +411,7 @@ def split_as(s: str) -> tuple[str, str | None]:
     .. rubric:: 行为要点
 
     - 按两侧至少一个空白的 ``as`` 切分；出现多个 ``as`` →
-      :class:`FormatError`（嵌套引用无意义，几乎必为笔误）；
+      :class:`FormatError` （嵌套引用无意义，几乎必为笔误）；
     - ``as`` 任一侧为空串 → :class:`FormatError`；
     - 返回的两段均 ``strip``；内部空白原样保留（``ref`` 可能是含
       目录段的路径，但不会含首尾空白）。
@@ -478,7 +481,7 @@ def normalize_entries(
       承诺（``PENDING`` 只存在于可按名寻址的位置：标量字段与覆写值）。
     - 单键映射的值为 ``PENDING`` （``- payment: _``）→ 解析为空
       覆写 ``{}`` （空补丁语义：声明了覆写位、内容为空，可从原始定义
-      全量回填）；值为标量 / 列表 → :class:`FormatError`（覆写集合必须
+      全量回填）；值为标量 / 列表 → :class:`FormatError` （覆写集合必须
       是映射或 ``_``）。
     - 重复别名不在本层报错：撞名检测（``EntryNameConflictError``）
       是装配层职责（它需要目标身份做 glob 例外判定，本层没有）。
