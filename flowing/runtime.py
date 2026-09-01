@@ -65,7 +65,7 @@ provide-inject 链：Runtime 是链终点。``Runtime.provide(key, value)`` 注�
 provide 值 / 配置命名空间 / Agent 类型 / Resource / 全局状态命名空间），
 各 Agent 再在 ``setup()`` 中经 ``use_xxx(self)`` 做实例级启用（阶段二）。
 依赖校验随 ``use()`` 增量执行：已装插件依赖图成环抛
-:class:`flowing.errors.DependencyError`（报错现场即引入环的那次 ``use()``）；
+:class:`flowing.errors.DependencyError` （报错现场即引入环的那次 ``use()``）；
 依赖缺失只 ``warnings.warn`` 警告、不抛错（``use()`` 可分批）。未启用的
 扩展对 Agent 零开销（不是被 skip）。
 
@@ -354,11 +354,11 @@ def _check_pending(instance: "Agent", agent_type: str) -> None:
 
     扫实例 ``__dict__`` 与类 MRO 属性中的 ``PENDING`` 哨兵（含
     ``Parsable`` 包裹形态——``Parsable.source is PENDING``），命中即抛
-    :class:`flowing.errors.MissingFieldError`（单字段结构（``field`` /
+    :class:`flowing.errors.MissingFieldError` （单字段结构（``field`` /
     ``agent_type``），多字段命中时报首个（定义序），其余待修复后下次
     创建再报）；``instance.hooks._pending_on`` 非空（``@on`` 暂记的钩子
     点在 setup 结束前未被 declare）→ 抛
-    :class:`flowing.errors.UnknownHookPointError`（消息列出钩子点名与
+    :class:`flowing.errors.UnknownHookPointError` （消息列出钩子点名与
     方法名）。
     """
     from flowing.parsable import PENDING, Parsable   # 局部 import：模块头依赖图保持单向
@@ -647,7 +647,7 @@ class Runtime:
         状态命名空间），随后 Agent 在 ``setup()`` 中经 ``use_xxx(self)`` 做
         实例级启用（阶段二）；未启用的扩展对 Agent 零开销。插件声明式依赖
         （``dependencies``）的校验随本方法增量执行：已装插件依赖图成环抛
-        :class:`flowing.errors.DependencyError`（报错现场即引入环的那次
+        :class:`flowing.errors.DependencyError` （报错现场即引入环的那次
         ``use()``）；依赖缺失只 ``warnings.warn`` 警告、不抛错（「声明了
         依赖但实际用不上」是合法形态，``use()`` 可分批）。
 
@@ -899,7 +899,7 @@ class Runtime:
            （声明只落 defaults 表，不落盘）；state 写透立即可用。
         6. ``await instance.setup(**kwargs)``。
         7. PENDING 检查（固定步骤，非钩子）：``PENDING`` 哨兵未兑现抛
-           :class:`flowing.errors.MissingFieldError`（见
+           :class:`flowing.errors.MissingFieldError` （见
            ``flowing.parsable.PENDING``）；``@on`` 暂记未结算（目标钩子点
            在 setup 结束前未被 declare）抛
            :class:`flowing.errors.UnknownHookPointError`，消息列出未消费
@@ -2401,7 +2401,7 @@ class Runtime:
 
         创建 / 恢复管线的第一步；也是插件 / 用户代码取类对象的公开入口。
         与 ``ToolRegistry.get`` / ``SkillRegistry.get`` 同构。形态判别委托
-        :func:`flowing.paths.classify_ref`（词法唯一来源），三种引用形态：
+        :func:`flowing.paths.classify_ref` （词法唯一来源），三种引用形态：
 
         - 限定名（含 ``::``，如 ``myplugin::payment-agent``）：只查注册表
           精确键，不走文件查找链；
@@ -2409,7 +2409,7 @@ class Runtime:
           （相对 ``source_dir``——文件覆盖注册表）；``source_dir`` 缺省时
           跳过文件链。之后查注册表裸名视图——``default::`` 优先于
           ``builtin::`` （插件覆盖原生行为的通道）。需要文件上下文的调用
-          走 :meth:`flowing.agent.Agent.get_agent_class`（自动携带
+          走 :meth:`flowing.agent.Agent.get_agent_class` （自动携带
           ``source_dir``）；
         - 路径形态（``./`` / ``@/`` / glob）经 ``resolve_path`` 定位
           ``.fya`` 或手写 ``.py`` 后编译 / 加载（``@/`` 锚 ``project_root``
@@ -2689,7 +2689,7 @@ class Runtime:
 
         每次 ``use()`` 安装后对当前已装集合校验：
 
-        - 成环 → 抛 :class:`flowing.errors.DependencyError`（报错现场即
+        - 成环 → 抛 :class:`flowing.errors.DependencyError` （报错现场即
           引入环的那次 ``use()``；``use()`` 可分批——缺依赖不报错，只有
           真成环才报）；
         - 依赖缺失 → ``warnings.warn`` 警告不抛（「声明了依赖但实际用
