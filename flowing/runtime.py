@@ -118,7 +118,7 @@ JSON 可序列化；``_provided`` 的值内容（凭证等敏感值）绝不进�
     :mod:`flowing.plugins` —— ``Plugin`` 基类与扩展层约定。
 """
 
-from __future__ import annotations   # S-43 裁决③：注解延迟求值，配合 TYPE_CHECKING 破注解级循环边
+from __future__ import annotations   # 注解延迟求值，配合 TYPE_CHECKING 破注解级循环边
 
 import asyncio
 import json
@@ -133,7 +133,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, TypeVar, overload
 
-from ruamel.yaml import YAML   # 与 flowing.model 同一 yaml 库选型（R-10 澄清）
+from ruamel.yaml import YAML   # 与 flowing.model 同一 yaml 库选型
 
 from flowing.persistence import FileRecordStore, StateView
 from flowing.errors import (
@@ -390,51 +390,46 @@ class Runtime:
 
     .. rubric:: 功能介绍
 
-    一个 ``Runtime`` = 一个运行中的 flowing 子项目：持有全部 Agent
-    实体（``_nodes``）、已安装插件（``_plugins``）、全局工具/子智能体
-    注册表，并提供扩展 API（``register_tool`` / ``provide`` 等）与观测
-    通道（``snapshot``）。持久化状态的**声明与访问在 Agent 侧**
-    （``agent.state.register`` 键登记 / ``Agent.state`` 显式视图读写——
-    双袋、无命名空间，P3-03 配套裁决；``register_state(name)`` 开命名
-    空间，D3）；Runtime/插件的**全局**状态保留命名空间
-    （``Runtime.register_state(ns)`` 开启 / ``Runtime.states`` 注册表 /
-    ``Runtime.state`` 默认袋，D13），其加载与
-    派生时机由插件内部管理（核心只提供开启/写透/创建即 replay）。
-    Runtime 另管全局目录、池扫描与管线编排。
+    一个 ``Runtime`` 对应一个运行中的 flowing 子项目：持有全部 Agent /
+    Workflow 节点（``_nodes``）、已安装插件（``_plugins``）、全局工具
+    注册表（``tool_registry``）与 agent 池，并提供扩展 API（``use`` /
+    ``register_tool`` / ``provide`` / ``register_config_namespace`` 等）、
+    节点管理（``create_agent`` / ``recover_agent`` / ``get_agent`` /
+    ``archive_agent``）与观测通道（``snapshot``）。
 
-    架构性契约（生命周期两段式、创建/恢复两条管线的逐阶段不变量、
-    恢复语义、关闭语义）统一维护在**模块 docstring**，此处不重复展开，
-    避免双写漂移。
+    实例不直接构造：唯一创建路径是 ``launch(path, **kwargs)`` 内由子项目
+    ``main()`` 构造（可任意子类）；绕过 ``launch`` 直接 ``Runtime()`` 会因
+    ``@`` 上下文未登记而抛 ``RuntimeError``。构造时固化 ``project_root``、
+    注册内置工具与标准子智能体、扫描 provider 候选清单与 agent 池——
+    均不实例化任何 Provider / Agent（懒加载原则）。
 
-    .. rubric:: 行为规约
+    Runtime 是 provide-inject 链的终点：``Runtime.provide`` 注册的值对全树
+    所有节点可见，``Runtime.inject`` 只查根级存储。
 
-    - 创建即注册：Agent 诞生必经 ``_nodes`` 注册（结构保证「不可能
-      创建而不注册」）。**三档遗忘强度**：
-      **destroy**（``Agent.destroy()``）= 丢实例、从 ``_nodes`` 摘除，
-      池 key 与名录保留——可经 ``recover_agent`` / ``get_agent`` 现场
-      恢复；**archive**（:meth:`archive_agent`）= ``_nodes`` / 池 /
-      ``core`` 名录一并移除整棵子树，session 文件留档——运行时完全
-      遗忘（``get_agent`` 返回 ``None``），重新引入需外部运维把 id
-      加回名录；**删除** = 物理删除 session 目录 + 名录项，不可逆——
-      **框架不提供删除功能**，应用层需要删除已有归档文件请自行实现
-      （建议先归档再删除：先经 ``archive_agent`` 收编运行时引用，
-      再删文件，避免活引用指向已消失的目录）。
-    - ``shutdown()`` 的返回与 ``await runtime`` 解除阻塞表达「已关闭」
-      的观测语义——无生命周期状态投影字段。
+    .. rubric:: 行为要点
 
-    .. rubric:: 调用关系（审计）
-
-    - 调用：无（类声明层）
-    - 被调：无（类声明层；成员方法的被调关系见各方法 rubric）
-    - 实例化方：无框架内实例化点——由子项目 ``main()`` 在 ``flowing.runtime.launch`` 登记的 ``@`` 上下文内构造（示例见 ``flowing.interfaces.run.cmd_run`` docstring）；绕过 launch 构造抛 ``RuntimeError``
+    - 创建即注册：Agent 诞生必经 ``_nodes`` 注册（结构保证「不可能创建而
+      不注册」）。节点的遗忘分三档：
+      - destroy（``Agent.destroy()``）：丢实例、从 ``_nodes`` 摘除，池 key
+        与名录保留——可经 ``recover_agent`` / ``get_agent`` 现场恢复；
+      - archive（``archive_agent``）：``_nodes`` / 池 / ``core`` 名录一并
+        移除整棵子树，session 文件留档——运行时完全遗忘（``get_agent``
+        返回 ``None``），重新引入需外部运维把 id 加回名录；
+      - 删除：物理删除 session 目录 + 名录项，不可逆——框架不提供删除
+        功能，应用层需要删除已有归档文件请自行实现（建议先归档再删除，
+        避免活引用指向已消失的目录）。
+    - ``shutdown()`` 的返回与 ``await runtime`` 解除阻塞表达「已关闭」的
+      观测语义——不提供 ``status`` 字段之类的生命周期状态投影。
+    - 一个进程可同时运行多个 Runtime（``@`` 上下文按 asyncio Task 隔离），
+      互不共享存储。
 
     .. seealso:: :class:`flowing.agent.Agent`、
-       :meth:`flowing.agent.Agent.register_state`
+        :meth:`flowing.agent.Agent.register_state`
     """
 
     _nodes: dict[str, ProvideNode]
-    """活体表（node_id → 节点实体；Agent / Workflow 均注册在内，
-    spec-draft 02 §5.2 裁决）。内部 API，不属稳定契约。
+    """活体表（node_id → 节点实体；Agent / Workflow 均注册在内）。
+    内部 API，不属稳定契约。
     """
     _plugins: dict[str, Any]
     """已安装插件表（插件 name → 实例），``get_plugin`` 的查询源。
@@ -447,13 +442,9 @@ class Runtime:
     ``_nodes`` 首条目。参见 :class:`ProvideNode`。
     """
     runtime: "Runtime"
-    """:class:`ProvideNode` 协议成员：链终点的 ``runtime`` 自指（同 Vue 根组件
-    ``this.$root === this`` 语义）；``__init__`` 时真实赋值——仅注解不赋值
-    方案被否决：类级 ``runtime: "Runtime"`` 只是类型注解，**不产生实例
-    属性**（注解不进实例 ``__dict__``）；Python 3.12+ 的 ``isinstance``
-    对 ``runtime_checkable`` 协议也用 ``hasattr`` 判数据成员，缺赋值会使
-    ``isinstance(runtime, ProvideNode)`` 为假——协议检查假阴性，故必须
-    在 ``__init__`` 里 ``self.runtime = self`` 真实赋值。
+    """:class:`ProvideNode` 协议成员：链终点的 ``runtime`` 自指——Runtime 的
+    ``runtime`` 指向自己，以此表达「本节点就是链终点」（``__init__`` 时
+    真实赋值）。
     """
     project_root: Path
     """``@`` 上下文的固化值：``__init__`` 时从 ``_current_project_root`` 读取；
@@ -464,10 +455,11 @@ class Runtime:
     读取经 Agent 的 ``tool_call`` 按别名查 ``_tool_entries``（见 ``flowing.tool``）。
     """
     provider_registry: ProviderRegistry
-    """Provider 懒实例化表（providers.yaml 条目名 → ``Provider`` 实例；
-    C-04 裁决补声明）。``Agent.provider_gen()`` 的 provider 懒获取入口；
-    候选清单扫描完成后构造。adapter **类**的进程级注册表是
-    ``flowing.providers.provider._provider_adapters``，与本表（条目实例）分层。
+    """Provider 懒实例化表（providers.yaml 条目名 → ``Provider`` 实例）。
+    ``Agent.provider_gen()`` 的 provider 懒获取入口；候选清单在构造期扫描
+    完成后就位。adapter 类的进程级注册表是
+    ``flowing.providers.provider._provider_adapters``，与本表（条目实例）
+    分层。
     """
     _provided: dict[str, Any]
     """根级 provide 存储，inject 链终点；敏感信息（API key / 凭证）禁止进入。
@@ -475,9 +467,9 @@ class Runtime:
     """
     _config_overrides: dict[str, Any]
     """运行期配置覆盖层（``set_config`` 的写入目标）：``get_config`` 读取时
-    **先于**优先级链合并结果命中——「下游产品运行期复写框架配置」的通道
-    （如 ``set_config("agent.timeout", ...)``）。**不持久化**（进程级，
-    重启即失效；持久覆盖请改配置文件）。内部 API，不属稳定契约。
+    优先于优先级链合并结果命中——「下游产品运行期复写框架配置」的通道
+    （如 ``set_config("agent.timeout", ...)``）。不持久化（进程级，重启即
+    失效；持久覆盖请改配置文件）。内部 API，不属稳定契约。
     """
     _config_namespaces: dict[str, Any]
     """配置命名空间注册表（命名空间 → 扩展声明的 schema）；注册只是「谁负责校验」
@@ -489,29 +481,29 @@ class Runtime:
     """
     _agent_pool: dict[str, dict[str, Any]]
     """agent 池注册表：``agent_id → {agent_type, parent_agent_id, created_at, args}``；
-    池 key 的唯一权威来源是全局 ``core`` 名录（见模块 docstring §8-9），
-    **value 是元数据不是实例**。内部 API，不属稳定契约。
+    池 key 的唯一权威来源是全局 ``core`` 名录（见 ``archive_agent`` /
+    ``recover_agent``）；value 是元数据不是实例。内部 API，不属稳定契约。
     """
     _agent_types: dict[str, type[Agent]]
     """子 Agent 类型注册表（``ns::注册名`` → Agent 类；裸名视图 =
-    ``default::`` / ``builtin::``，见模块 docstring §7a）；
-    ``register_agent_type`` 的写入目标，``get_agent_class`` 的查找源
-    （S-37 补声明）。内部 API，不属稳定契约。
+    ``default::`` / ``builtin::``，见 ``get_agent_class``）；
+    ``register_agent_type`` 的写入目标，``get_agent_class`` 的查找源。
+    内部 API，不属稳定契约。
     """
     _states: dict[str, StateView]
     """全局持久化状态命名空间表（命名空间 → ``StateView``）；
     ``register_state`` 写入（创建即 replay）、``states`` property 暴露
-    （S-37 补声明；D13 后含 ``core`` + ``default`` 两内建）。
+    （含 ``core`` + ``default`` 两个框架自登记的内建命名空间）。
     内部 API，不属稳定契约。
     """
     _persist_dir: Path
-    """持久化根目录；默认 ``<cwd>/.flowing``（S-37 裁决），
+    """持久化根目录；默认 ``<cwd>/.flowing``，
     ``set_persist_dir`` 覆写（``mount()`` 前）。内部 API，不属稳定契约。
     """
     _model_tags_path: Path | None
     """模型标签文件路径（默认 ``~/.flowing/model-tags.yaml``，``FLOWING_MODEL_TAGS``
-    环境变量优先；``set_model_tags`` 可编程覆盖）。**默认启用**——模型标签是
-    模型解析的常规通道，无默认文件时按"未定义标签回退 default、default 也缺报错"
+    环境变量优先；``set_model_tags`` 可编程覆盖）。模型标签是模型解析的
+    常规通道，无默认文件时按「未定义标签回退 default、default 也缺报错」
     处理（见 ``flowing.model``）。内部 API，不属稳定契约。
     """
     _models_path: Path | None
@@ -531,8 +523,8 @@ class Runtime:
     内部 API，不属稳定契约。
     """
     _config_ready: bool
-    """配置就绪闸（R-06 落实）：优先级链浅合并在 ``__init__`` 尾部同步
-    完成前为 ``False``，``get_config`` 未就绪即抛 ``ConfigNotReadyError``。
+    """配置就绪闸：优先级链浅合并在 ``__init__`` 尾部同步完成前为
+    ``False``，``get_config`` 未就绪即抛 ``ConfigNotReadyError``。
     内部 API，不属稳定契约。
     """
     _merged_config: dict[str, Any]
@@ -541,9 +533,8 @@ class Runtime:
     """
     env: MappingProxyType
     """``os.environ`` 只读视图——Parsable 渲染上下文的 ``env`` 入口
-    （``{{ env.X }}`` 经 Jinja 的 attr→item 回退命中，R-4 澄清：env 直接
-    以可点号引用对象进渲染上下文）。构造期建立，随进程环境快照语义
-    （``os.environ`` 的活视图）。
+    （``{{ env.X }}`` 经 Jinja 的 attr→item 回退命中，env 直接以可点号
+    引用对象进渲染上下文）。构造期建立，是 ``os.environ`` 的活视图。
     """
 
     def __init__(self) -> None:
@@ -552,13 +543,9 @@ class Runtime:
         .. rubric:: 功能介绍
 
         必须在 ``flowing.launch`` 登记的 ``@`` 上下文内调用（通常由子项目
-        ``@/main.py`` 的 ``main()`` 调用）。构造时固化 ``project_root``、初始化
-        全部空存储、执行 Provider 候选清单与 agent 池的**扫描**（不实例化）。
-
-        .. rubric:: 设计动机
-
-        ``__init__`` 必须同步（``async`` 构造是反模式）；重量级初始化（Provider
-        实例化、agent 实例化）全部推迟到首次使用（懒加载原则）。
+        ``@/main.py`` 的 ``main()`` 调用）。构造时固化 ``project_root``、
+        初始化全部空存储、执行 Provider 候选清单与 agent 池的扫描（不
+        实例化——懒加载原则，重量级初始化推迟到首次使用）。
 
         .. rubric:: 使用示例
 
@@ -570,30 +557,20 @@ class Runtime:
                 runtime = MyRuntime()              # @ 自动绑定
                 return runtime
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
-        - 前置条件：``_current_project_root`` 已登记（即在 ``launch`` 的调用栈内）。
-        - 构造期副作用仅限：固化 ``project_root``、初始化空存储、核心内置
-          工具注册（``subagent-invoke`` / ``finish``，S-01/S-02 裁决）、扫描
-          ``providers.yaml`` / ``FLOWING_PROVIDER_MODULES`` 构建候选清单、扫描
-          持久化目录构建 agent 池注册表。**不实例化**任何 Provider 或 Agent。
-        - 一进程可构造多个实例（各自 Task 的 contextvar 隔离），互不共享存储。
-        - 非行为：不启动工作循环（没有 Agent 时没有 Task）、不打开端口、不读
-          ``config.yaml`` 之外的项目文件。
+        - 前置条件：``_current_project_root`` 已登记（即在 ``launch`` 的
+          调用栈内）；违反抛 ``RuntimeError``。
+        - 构造期副作用仅限：固化 ``project_root``、初始化空存储、核心
+          内置工具注册（``subagent-invoke`` / ``finish``）、扫描
+          providers.yaml 构建 Provider 候选清单、扫描持久化目录构建
+          agent 池注册表。不实例化任何 Provider 或 Agent。
+        - 一进程可构造多个实例（各自 Task 的 contextvar 隔离），互不
+          共享存储。
+        - 不启动工作循环（没有 Agent 时没有 Task）、不打开端口。
 
-        :raises RuntimeError: 未经 ``flowing.launch`` 登记 ``@`` 上下文（绕过唯一
-            入口）时抛出。
-
-        .. rubric:: 测试案例
-
-        - 前置：launch 上下文内 → 操作：``Runtime()`` → 期望：成功且
-          ``project_root`` 正确；provider 实例缓存为空（未实例化）。
-        - 前置：裸 Python 进程无 launch → 期望：``RuntimeError``。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.runtime._current_project_root`` 的 ``get()``（时机：构造时固化 ``project_root``，见行为规约前置条件）
-        - 被调：无框架内调用方（由子项目 ``main()`` 构造；可任意子类化）
+        :raises RuntimeError: 未经 ``flowing.launch`` 登记 ``@`` 上下文
+            （绕过唯一入口）时抛出。
 
         .. seealso:: :func:`flowing.runtime.launch`
         """
@@ -603,21 +580,20 @@ class Runtime:
         self.project_root = root   # 固化 @ 上下文（构造后不改）
         self.node_id = "runtime-0"
         self.runtime = self   # ProvideNode 协议成员：链终点的 runtime 自指
-            # （同 Vue 根组件 this.$root === this）；仅注解不赋值被否决——
-            # Python 3.12+ isinstance 对 runtime_checkable 协议也检查数据成员
+            # （仅注解不赋值不会产生实例属性——isinstance(runtime, ProvideNode)
+            # 需要数据成员真实存在）
         self._nodes = {self.node_id: self}   # 自注册为 _nodes 首条目——inject 链终点
             # 可达性的结构保证之一（另一根：根节点 _parent_id 指向本 id）；
             # shutdown 销毁循环须跳过自身（Runtime 无 destroy()）
         self._plugins = {}
         self.tool_registry = ToolRegistry()
         self._agent_types = {}   # 须在 register_builtins 之前初始化（ExploreAgent 注册写本表）
-        # 框架自带工具与标准子智能体注册（P3-06：全部物理归
-        # flowing.builtins）：核心内置 subagent-invoke / finish +
-        # 六个标准文件/shell 工具 + ExploreAgent，随 Runtime 天生在场，
-        # 归属 builtin:: 命名空间（裸名视图的兜底层，可被 default:: 覆盖，
-        # 见模块 docstring §7a）；
+        # 框架自带工具与标准子智能体注册（物理实现全部在
+        # flowing.builtins）：核心内置 subagent-invoke / finish + 六个标准
+        # 文件/shell 工具 + ExploreAgent，随 Runtime 天生在场，归属
+        # builtin:: 命名空间（裸名视图的兜底层，可被 default:: 覆盖）；
         # 对 LLM 的可见性仍由 Agent 级 ``.fya`` ``tools:`` 声明或显式
-        # ``add_tool`` 控制（注册 ≠ 可见，框架不静默附加——S-19）
+        # ``add_tool`` 控制（注册 ≠ 可见，框架不静默附加）
         register_builtins(self)
         self._provided = {}
         self._config_overrides = {}
@@ -625,39 +601,38 @@ class Runtime:
         self._resources = {}
         self._agent_pool = {}
         self._states = {}
-        self._persist_dir = Path.cwd() / ".flowing"   # 默认持久化根（S-37 裁决）：本质是 flowing 启动路径——启动时可经 set_persist_dir 手动指定，默认为 cwd（R-07 澄清）；set_persist_dir 覆写（mount 前）
+        self._persist_dir = Path.cwd() / ".flowing"   # 默认持久化根：启动路径即 flowing 启动处；set_persist_dir 覆写（mount 前）
         config_home = Path(os.environ.get(
             "FLOWING_CONFIG_HOME", os.path.expanduser("~/.flowing")))
         self._model_tags_path = Path(os.environ.get(
             "FLOWING_MODEL_TAGS",
-            str(config_home / "model-tags.yaml")))   # 默认启用（用户裁决：模型标签不可不启用；env 优先、默认 $FLOWING_CONFIG_HOME/model-tags.yaml，set_model_tags 可覆盖）
+            str(config_home / "model-tags.yaml")))   # 默认启用（模型标签不可不启用）：env 优先、默认 $FLOWING_CONFIG_HOME/model-tags.yaml、set_model_tags 可覆盖
         self._models_path = Path(os.environ.get(
             "FLOWING_MODELS_PATH",
             str(config_home / "models.yaml")))   # 构造期就地换算有效默认路径（Agent._resolve_model_tag 要求非 None）
         self._shutdown_event = asyncio.Event()
-        # 扫描 providers.yaml + FLOWING_PROVIDER_MODULES 构建 provider 候选清单
-        # （S-03 裁决具名：load_provider_candidates；懒加载原则：不实例化任何
-        # Provider，见模块 docstring §10）。路径解析：FLOWING_PROVIDERS_PATH
+        # 扫描 providers.yaml 构建 provider 候选清单（load_provider_candidates；
+        # 懒加载原则：不实例化任何 Provider）。路径解析：FLOWING_PROVIDERS_PATH
         # 环境变量优先，否则 $FLOWING_CONFIG_HOME/providers.yaml（默认
         # ~/.flowing/）；set_providers 可在 mount 前编程覆盖
         self._providers_path = Path(os.environ.get(
             "FLOWING_PROVIDERS_PATH",
             str(config_home / "providers.yaml")))
         self.provider_registry = ProviderRegistry(load_provider_candidates(self._providers_path))
-        # R-06 落实：配置优先级链三层浅合并（框架默认 < 项目级 @/config.yaml
-        # < 用户级 $FLOWING_CONFIG_HOME/config.yaml）在 __init__ 尾部同步完成，
-        # 完成后置就绪闸；命令行层不进链（由调用方经 set_config 落
-        # _config_overrides 表达），env 层暂无 key 映射规约（FLOWING_* 均为
-        # 路径/开关类，由各自消费点直读）
+        # 配置优先级链三层浅合并（框架默认 < 项目级 @/config.yaml < 用户级
+        # $FLOWING_CONFIG_HOME/config.yaml）在 __init__ 尾部同步完成，完成后
+        # 置就绪闸；命令行层不进链（由调用方经 set_config 落 _config_overrides
+        # 表达），env 层暂无 key 映射规约（FLOWING_* 均为路径/开关类，由各自
+        # 消费点直读）
         self._config_ready = False
         self._merged_config = self._merge_config_layers()
         self._config_ready = True
-        self.env = MappingProxyType(os.environ)   # os.environ 只读视图（渲染上下文 env 入口，R-5）
-        # R-07 落实（D13）：框架自登记 core + default 两全局命名空间——
-        # core 管框架注册表（agents/session_dirs/plugins）、default 管
-        # runtime 自身生命周期状态 + 小插件键（键前缀隔离）；register_state
-        # 创建即 replay（开空间即恢复），随后池扫描（构造期只读——不在 cwd
-        # 建默认目录，零持久化场景不污染工作目录）
+        self.env = MappingProxyType(os.environ)   # os.environ 只读视图（渲染上下文 env 入口）
+        # 框架自登记 core + default 两全局命名空间——core 管框架注册表
+        # （agents/session_dirs/plugins）、default 管 runtime 自身生命周期
+        # 状态 + 小插件键（键前缀隔离）；register_state 创建即 replay（开
+        # 空间即恢复），随后池扫描（构造期只读——不在 cwd 建默认目录，
+        # 零持久化场景不污染工作目录）
         self.register_state("core")
         self.register_state("default")
         self._scan_agent_pool()
@@ -668,18 +643,13 @@ class Runtime:
         .. rubric:: 功能介绍
 
         框架核心层方法，双层启用的第一层。插件在 ``install`` 中注册全局能力
-        （工具 / provide 值 / 配置命名空间 / 状态回调），随后 Agent 在 ``setup()``
-        中经 ``use_xxx(self)`` 做实例级启用（阶段二）；不调用的 Agent 零开销。
-
-        .. rubric:: 设计动机
-
-        - 内置扩展随包发布但**不自动启用**：未启用的扩展代码路径「从没存在过」，
-          不是「被 skip」。
-        - **可分批调用**：依赖校验随 ``use()`` 增量执行（R9：与 mount 解绑）——
-          成环即抛 ``DependencyError``；缺依赖只警告（``warnings.warn``）不抛，
-          分批安装不受影响（R4：依赖只声明，检查是框架职责）。
-        - 实参顺序仍被尊重（按序执行 ``install``），但顺序**不再**是依赖正确性
-          的保障。
+        （工具 / provide 值 / 配置命名空间 / Agent 类型 / Resource / 全局
+        状态命名空间），随后 Agent 在 ``setup()`` 中经 ``use_xxx(self)`` 做
+        实例级启用（阶段二）；未启用的扩展对 Agent 零开销。插件声明式依赖
+        （``dependencies``）的校验随本方法增量执行：已装插件依赖图成环抛
+        :class:`flowing.errors.DependencyError`（报错现场即引入环的那次
+        ``use()``）；依赖缺失只 ``warnings.warn`` 警告、不抛错（「声明了
+        依赖但实际用不上」是合法形态，``use()`` 可分批）。
 
         .. rubric:: 使用示例
 
@@ -688,40 +658,28 @@ class Runtime:
             runtime.use(SkillPlugin())
             runtime.use(CommPlugin(), GuardrailPlugin())   # 分批合法
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
-        - 时序约定（**非强制**，文档要求）：推荐在首个 ``mount()`` /
-          ``create_agent()`` / ``recover_agent()`` 之前完成全部 ``use()``。
-          框架不校验——之后 ``use()`` 不报错，但已创建的 Agent 不会
-          retroactively 获得迟装插件注册的能力（R3「注册只在 install」
-          是约定而非机制；依赖校验在每次 ``use()`` 后增量执行，见 R9）。
-        - 同名 provide key：覆盖更新（由 ``provide`` 的覆盖语义承载，
-          spec-draft §13.4——后者生效，inject 实时可见）。
-        - 每次安装后调 ``_check_dependencies()`` 增量校验已装子图（成环抛错、
-          缺失警告）；不实例化 Provider / Agent（R1 反模式：
-          ``install`` 里 ``await runtime.create_agent(...)`` 属违规用法，框架不
-          阻止但行为不受支持）。
-        - 边缘情况：重复安装同名插件 → 后安装者报错（插件表 key 冲突）。
+        - 推荐在首个 ``mount()`` / ``create_agent()`` / ``recover_agent()``
+          之前完成全部 ``use()``。框架不校验调用时机——之后 ``use()`` 不报错，
+          但已创建的 Agent 不会获得迟装插件注册的能力（插件注册只在
+          ``install`` 发生）。
+        - 同名 provide key 重复注册是覆盖更新（由 ``provide`` 的覆盖语义
+          承载，后者生效，inject 实时可见）。
+        - 每次安装后对当前已装集合做依赖增量校验（成环抛错、缺失警告）；
+          不实例化 Provider / Agent——``install`` 里调用
+          ``await runtime.create_agent(...)`` 属违规用法，框架不阻止但行为
+          不受支持。
+        - 重复安装同名插件 → 后安装者报 ``ValueError``（插件表 key 冲突，
+          一个 Runtime 同时只装一个同名插件）。
 
         :param plugins: 待安装插件实例，按顺序 install。
-        :raises flowing.errors.ConfigNamespaceConflictError: 插件注册了已被占用的
-            配置命名空间时（经 ``register_config_namespace`` 抛出）。
-
-        .. rubric:: 测试案例
-
-        - 前置：``use(A())`` 其中 A 声明依赖未安装的 ``"x"`` → 期望：
-          ``warnings.warn`` 警告，不抛错；``use(B())``（A↔B 成环）→ 期望：
-          ``DependencyError``。
-        - 前置：两个插件注册同一配置命名空间 → 期望：
-          ``ConfigNamespaceConflictError``。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.plugins.Plugin.install()``（时机：每次 ``use()`` 按实参顺序，每插件恰好一次，见 ``flowing.plugins`` 规约）
-        - 被调：无框架内调用方（子项目 ``main()`` 阶段一安装；插件 install 示例见 ``flowing.plugins``）
+        :raises flowing.errors.ConfigNamespaceConflictError: 插件注册了已被
+            占用的配置命名空间时（经 ``register_config_namespace`` 抛出）。
+        :raises flowing.errors.DependencyError: 安装后已装插件依赖图成环时。
+        :raises ValueError: 重复安装同名插件时。
 
         .. seealso:: :meth:`flowing.runtime.Runtime.mount`、
-            :meth:`flowing.runtime.Runtime._check_dependencies`、
             :class:`flowing.plugins.Plugin`
         """
         for plugin in plugins:   # 按实参顺序执行 install；可分批调用
@@ -731,7 +689,7 @@ class Runtime:
                     "（后安装者报错；spec 未具名异常类型，属编程错误，用内置 ValueError）")
             plugin.install(self)
             self._plugins[plugin.name] = plugin
-        self._check_dependencies()   # 增量校验已装子图：成环抛 DependencyError；缺失 warnings.warn 不抛（R9：与 mount 解绑）
+        self._check_dependencies()   # 增量校验已装子图：成环抛 DependencyError；缺失 warnings.warn 不抛
         # install 中 register_state 已创建即 replay（开空间即恢复，D13）；
         # 写透落盘需要持久化根目录——有插件即建（原引导 _materialize 的职责；
         # 无状态插件 use() 也建目录——持久化根，无害）
@@ -751,17 +709,9 @@ class Runtime:
         - ``strict=False``：返回 ``None``——探测写法
           （``if runtime.get_plugin("skill", strict=False) is not None: ...``）。
 
-        .. rubric:: 设计动机
-
-        本方法的两种现存用法对「未安装」有相反诉求（C-01 裁决）：观测示例
-        假定插件已装、要直接链式调用；``_unstable/logging`` 插件的**存在前提**
-        是探测 skills/comm/cron/workflow 是否安装、未装属正常路径而非错误。
-        单一形态只能偏袒一方；加 ``strict`` 旗标让两种写法各自成立，且不
-        新增异常类型（复用 ``KeyError``，与 ``_plugins`` 的 dict 语义一致）。
-
-        默认取 ``True``：**探测一定是有意主动触发的**——调用方明知自己在
-        做存在性检查，显式写 ``strict=False`` 是意图的自我声明；而「直接用」
-        是更常见的形态，应享受更短的写法与更响亮的失败。
+        默认取 ``True``：探测是有意主动触发的存在性检查，显式写
+        ``strict=False`` 是意图的自我声明；「直接用」是更常见的形态，
+        应享受更短的写法与更响亮的失败。
 
         .. rubric:: 使用示例
 
@@ -774,14 +724,11 @@ class Runtime:
             if runtime.get_plugin("skill", strict=False) is not None:
                 ...
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
-        - 同步、幂等、无副作用；只是 ``_plugins`` 的只读查询。
-        - 非行为：不实例化插件（实例化只发生在 ``use()``）；不触发
-          ``install``；不做依赖解析。
-        - 边缘情况：``name`` 从未安装 → 默认 ``KeyError`` / ``strict=False``
-          下 ``None``；同名插件重复安装的可能性在 ``use()`` 处已被拦截，
-          本方法读到的必然是唯一实例。
+        - 同步、只读查询，无副作用；不实例化插件（实例化只发生在
+          ``use()``）、不触发 ``install``、不做依赖解析。
+        - 同名插件重复安装已被 ``use()`` 拦截，本方法读到的必然是唯一实例。
 
         :param name: 插件的 ``name`` 类属性值（如 ``"cron"``）。
         :param strict: 未安装时是否抛 ``KeyError``（默认 ``True``；传 ``False``
@@ -789,19 +736,6 @@ class Runtime:
         :returns: 插件实例，或未安装且 ``strict=False`` 时的 ``None``。
         :raises KeyError: ``strict=True``（默认）且插件未安装。
 
-        .. rubric:: 测试案例
-
-        - 前置：``use(CronPlugin())`` 后 → 期望：``get_plugin("cron")`` 是该实例；
-          ``get_plugin("missing")`` 抛 ``KeyError``；
-          ``get_plugin("missing", strict=False) is None``。
-        - 前置：未 ``use()`` 任何插件 → 期望：任意 ``name`` 默认抛 ``KeyError``。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：无具名符号（读 ``self._plugins``）
-        - 被调：``flowing.snapshot``（模块 docstring 与 ``snapshot()`` 插件观测示例）、
-          ``flowing._unstable.logging``（install 时探测四扩展，须用 ``strict=False``
-          形态）、下游观测代码（``runtime.get_plugin("cron").jobs()`` 式只读 API 查询）
         .. seealso:: :meth:`flowing.runtime.Runtime.use`、
             :class:`flowing.plugins.Plugin`、
             :meth:`flowing.runtime.Runtime.snapshot`
@@ -817,48 +751,37 @@ class Runtime:
         agent_id: str | None = None,
         **kwargs: Any,
     ) -> ProvideNode:
-        """挂载根节点（文件 → 根）；**非阻塞**，返回即节点已就绪。
+        """挂载根节点（文件 → 根）：创建或恢复 ``parent_id=None`` 的根节点。
 
         .. rubric:: 功能介绍
 
-        创建或恢复 ``parent_id=None`` 的根节点：``node`` 统一为**路径字符串**
-        （M-61 最终裁决）——``.fya`` 路径（如 ``"@/root.fya"``）创建 Agent
-        根，Workflow 定义文件路径创建 Workflow 根；两种文件形态按解析
-        结果区分（Workflow 定义文件内需恰好一个 ``Workflow`` 子类，见
-        :mod:`flowing.plugins.workflow`）。**可多次调用**（多根并存，如
-        多项目宿主）；不调用也合法（嵌入大程序，按需 ``create_agent()``）。
+        ``node`` 统一为路径字符串：``.fya`` 路径（如 ``"@/root.fya"``）
+        创建 Agent 根，Workflow 定义文件路径创建 Workflow 根（文件内需
+        恰好一个 ``Workflow`` 子类，见 :mod:`flowing.plugins.workflow`）。
+        可多次调用（多根并存，如多项目宿主）；不调用也合法（嵌入大程序，
+        按需 ``create_agent()``）。
 
-        **mount / create_agent / recover_agent 对照**：
+        mount / create_agent / recover_agent 三者分工：
 
-        - ``mount(path)``：输入是**文件路径**（mount 负责 文件 → 类 的解析
-          与装配），挂到对象图上 Runtime 之下成为根（``parent_id=None``），
-          其余管线与 ``create_agent`` 完全一致（内部直接委托）。
-        - ``create_agent(agent_type)``：输入是**类型名**，新建任意节点。
-        - ``recover_agent(id)`` / ``get_agent(id)``：输入是**已有 id**，
-          恢复/现场恢复，不新建。
+        - ``mount(path)``：输入是文件路径（负责 文件 → 类 的解析与装配），
+          挂到对象图上 Runtime 之下成为根，其余管线与 ``create_agent``
+          完全一致（内部直接委托）。
+        - ``create_agent(agent_type)``：输入是类型名，新建任意节点。
+        - ``recover_agent(id)`` / ``get_agent(id)``：输入是已有 id，
+          恢复 / 现场恢复，不新建。
 
-        **幂等挂载（指定 ``agent_id`` 时）**：手动 mount 的根是特殊节点，
-        应当指定固定 id——``agent_id`` 已存在于池中 → **走恢复**
-        （委托 ``recover_agent``，含休眠记录的现场恢复），而非新建；不存在
-        → 新建。第二次重启再 mount 同一文件同一 id，语义是「同一个根
-        回来了」，不是「又创建了一个根」。``agent_id=None`` 则每次新建
-        新根（自动生成 id）——多根并存/临时根的形态。
-
-        根节点的类型只由 ``node`` 解析决定；``agent_id`` 只是身份指定，
-        不改变类型。
+        幂等挂载（指定 ``agent_id`` 时）：手动 mount 的根是特殊节点，
+        应当指定固定 id——``agent_id`` 已存在于池中则走恢复（委托
+        ``recover_agent``，含休眠记录的现场恢复）而非新建；不存在则新建。
+        第二次启动再 mount 同一文件同一 id，语义是「同一个根回来了」，
+        不是「又创建了一个根」。``agent_id=None`` 则每次新建新根（自动
+        生成 id）——多根并存 / 临时根的形态。根节点的类型只由 ``node``
+        解析决定；``agent_id`` 只是身份指定，不改变类型。
 
         ``**kwargs`` 透传给节点初始化（Agent 形态进 ``setup(**kwargs)``；
-        Workflow 形态进其实例化），与 :meth:`create_agent` 的
-        ``**kwargs`` 同一契约：写入池元数据持久化、是节点身份的一部分、
-        应可 JSON 序列化。
-
-        .. rubric:: 设计动机
-
-        - mount 是「初始化 → 运行」边界；依赖校验**不在**此处（R9 裁决：
-          校验在 ``use()`` 时增量执行，与 mount 解绑——mount 只做
-          根节点挂载）。
-        - 根与子 Agent 走**同一条唯一创建入口**：mount 内部调
-          ``create_agent(parent_id=None, **kwargs)``，仅 ``parent_id`` 不同。
+        Workflow 形态进其实例化），与 :meth:`create_agent` 的 ``**kwargs``
+        同一契约：写入池元数据持久化、是节点身份的一部分、应可 JSON
+        序列化。
 
         .. rubric:: 使用示例
 
@@ -871,26 +794,21 @@ class Runtime:
                                 repo="flowing")                    # Workflow 根
             await runtime.mount("@/root.fya", locale="zh")         # 第二个根（不同 id）
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
-        - 内部顺序（不变量）：``agent_id`` 非空且在池中 → 委托
-          ``recover_agent``；否则 → 创建管线（委托 ``create_agent`` /
-          Workflow 等价路径）。mount 不承担依赖校验（R9：校验在
-          ``use()`` 时增量执行，与 mount 解绑）。
-        - 三语义：**挂接**（解析文件生成子类 / 绑定 ``runtime``；根节点
-          ``parent_id=None``，inject 链终点为 ``Runtime._provided``）；
-          **实例化**（走完整创建/恢复管线，前置条件是全部 ``use()`` 已完成）；
-          **激活**（消息队列进入消费状态，工作循环 Task 后台运行）。
-        - 返回后不变量：节点已注册进 ``_nodes``、工作循环已启动、队列为空
-          （挂起在 ``await queue.get()``）。**返回 ≠ 有活干**。
+        - 内部顺序：``agent_id`` 非空且在池中 → 委托 ``recover_agent``；
+          否则 → 创建管线（委托 ``create_agent`` / Workflow 等价路径）。
+          mount 不承担插件依赖校验（校验在 ``use()`` 时增量执行）。
+        - 返回后：节点已注册进 ``_nodes``、工作循环已启动、队列为空
+          （挂起在 ``await queue.get()``）。返回不代表有活干。
         - Workflow 根：无 Turn 循环、不调 LLM；其子 Agent 的 ``parent_id``
           指向 Workflow，provide 链经 Workflow 上溯到 Runtime。
         - ``agent_id`` 仅适用于 ``.fya`` Agent 根；Workflow 根不支持指定
-          ``agent_id``（Workflow 的 ``node_id`` 由 Workflow 自身分配），
-          传了抛 :class:`ValueError`。
-        - 非行为：不接受已构造的实例（实例形态统一走
-          ``create_agent`` 等价管线，mount 只做文件 → 节点）；不读取
-          消息、不启动网络服务、不等待任何回合结果。
+          （Workflow 的 ``node_id`` 由 Workflow 自身分配），传了抛
+          :class:`ValueError`。
+        - 不接受已构造的实例（实例形态统一走 ``create_agent`` 等价管线，
+          mount 只做文件 → 节点）；不读取消息、不启动网络服务、不等待
+          任何回合结果。
 
         :param node: ``.fya`` 路径或 Workflow 定义文件路径（支持路径前缀
             规则）。
@@ -900,27 +818,13 @@ class Runtime:
             指定类型。
         :param kwargs: 节点初始化参数（身份的一部分，见上文）。
         :return: 创建或恢复的根节点（``Agent`` 或 ``Workflow``）。
-
         :raises FileNotFoundError: 路径不存在时。
-
-        .. rubric:: 测试案例
-
-        - 前置：正常项目 → 操作：``await mount("@/root.fya")`` → 期望：
-          返回的 Agent ``node_id in runtime._nodes``，``snapshot()`` 可见
-          ``loaded is True``。
-        - 前置：已 mount 一个根 → 操作：再次 ``mount(...)`` → 期望：
-          创建第二个 ``parent_id=None`` 的根节点，两者并存互不影响。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``self.create_agent(parent_id=None, **kwargs)``（时机：Agent 根路径，见设计动机）；``self.recover_agent``（时机：幂等挂载命中既有 id）；Workflow 等价路径（时机：Workflow 定义文件路径，见 ``flowing.plugins.workflow``）
-        - 被调：无框架内调用方（子项目 ``main()`` 新建策略入口；CLI 只经 launch 拿 Runtime）
 
         .. seealso:: :meth:`flowing.runtime.Runtime.create_agent`、
             :meth:`flowing.runtime.Runtime.recover_agent`、
             :class:`flowing.plugins.workflow.Workflow`
         """
-        resolved = self.resolve_path(node)   # 统一为路径字符串（M-61）
+        resolved = self.resolve_path(node)   # 统一为路径字符串
         if not resolved.exists():
             raise FileNotFoundError(f"mount 路径不存在：{resolved}")
         self._ensure_persist_ready()   # 首个 mount 前的持久化就位（persist 目录 + 插件清单 + 兜底引导）
@@ -935,9 +839,9 @@ class Runtime:
         if agent_id is not None:
             raise ValueError("agent_id 仅适用于 .fya Agent 根；Workflow 根不支持指定 agent_id")
         # Workflow 根（等价路径）：定义文件内需恰好一个 Workflow 子类
-        # 函数体内局部 import 保留并刻意为之（S-43 裁决③）：TYPE_CHECKING 化后这是
-        # runtime → plugins.workflow 的唯一运行时边；mount 被调用时两模块均已加载完毕，
-        # 局部 import 无循环风险，且使模块头依赖图保持单向。
+        # 函数体内局部 import 刻意为之：TYPE_CHECKING 化后这是
+        # runtime → plugins.workflow 的唯一运行时边；mount 被调用时两模块
+        # 均已加载完毕，局部 import 无循环风险，且使模块头依赖图保持单向。
         from flowing.plugins.workflow import resolve_workflow
         workflow_class = resolve_workflow(node)
         workflow: Workflow = workflow_class()   # 实例化 + 绑定 runtime（等价管线细节见 flowing.plugins.workflow）
@@ -947,21 +851,14 @@ class Runtime:
                            agent_id: str | None = None,
                            session_dir: str | Path | None = None,
                            **kwargs: Any) -> Agent:
-        """**唯一真正执行创建的代码路径**（纯新建）：分配新 ``agent_id``，走创建管线。
+        """创建新 Agent（纯新建路径）：分配新 ``node_id``，走完整创建管线并注册。
 
         .. rubric:: 功能介绍
 
-        框架核心层方法。``mount()`` / ``Agent.create_subagent()`` /
-        ``Workflow.create_agent()`` 全部委托本方法——委托方只提供「自己的
-        ``node_id`` 作为 ``parent_id``」。``agent_type`` 统一为**字符串类型名**
-        （非类对象；类对象无法持久化，已被裁决废弃）。
-
-        .. rubric:: 设计动机
-
-        前处理（ID 分配、``runtime`` / ``_parent_id`` 绑定）与后处理
-        （``_nodes`` 注册、池元数据写入）都收敛在本方法内——「**不可能创建而不
-        注册**」是结构保证。旧 ``Agent.create()`` 类方法直调的四隐患（不在
-        ``_nodes``、inject 链断裂、树销毁遗漏、ID 前缀混乱）由唯一入口根除。
+        框架核心层方法，唯一真正执行创建的代码路径。``mount()`` /
+        ``Agent.create_subagent()`` / ``Workflow.create_agent()`` 全部委托
+        本方法——委托方只提供「自己的 ``node_id`` 作为 ``parent_id``」。
+        ``agent_type`` 统一为字符串类型名（非类对象；类对象无法持久化）。
 
         .. rubric:: 使用示例
 
@@ -970,120 +867,88 @@ class Runtime:
             agent = await runtime.create_agent("order-agent", parent_id=None,
                                                order_id="123")
 
-        .. rubric:: 行为规约（管线逐阶段，顺序为不变量）
+        .. rubric:: 行为要点（管线逐阶段，顺序为不变量）
 
-        1. ``get_agent_class(agent_type)`` —— 类型名 → 类（惰性解析；
-           裸名先查注册表，路径形态经 ``resolve_path``）。
-        2. ``agent_class.__new__`` → 绑定 ``node_id``（``agent_id`` 指定时即
-           该值，须不在池注册表与活体表中，重复抛 ``ValueError``；缺省
-           ``f"{_id_prefix}-{uuid4()}"``）、``runtime = self``、
-           ``_parent_id = parent_id if parent_id is not None
-           else self.node_id``（``None`` 翻译为 Runtime 的 node_id——「根」由
-           「父是 Runtime」表达，``_parent_id`` 字段内不出现 ``None``）。
-           **目录存在性检查（R22，create 侧严格）**：计算 ``_session_dir``
-           后，若该 id 不在池/活体表但**目录已存在** → 抛
-           ``FileExistsError``（消息指明「目录已存在：可能是已 archive 的
-           留档（``archive_agent``）或指定错了 session_dir / agent_id」；
-           runtime 不在此销毁任何内容，由调用方捕获决定——改 id /
-           先删目录 / 运维恢复）。例外：``agent_id`` 未指定（框架自动
-           生成 uuid）时撞目录不报错，重新生成随机 id（uuid 碰撞概率
-           为零，此为防御性兜底）。**id 的权威是 agent 池**（名录），
-           目录只是佐证——recover 归档 id 同样报错（池中无即
-           ``KeyError``，R9 节归档留档态）。
-        3. ``instance.__init__(...)``（同步骨架，**含** ``_open_stores``
-           建立持久化后端与 ``_extra``，P3-03 裁决）。
-        3b. **身份四键整写 ``meta.json``**（D2/D12）：``agent_type`` /
-            ``parent_agent_id`` / ``created_at`` / ``args``，JSON 整写、
-            非状态、Runtime 属主。前置条件全部在 setup 前已知（args 来自
-            调用方；before_create 对 kwargs 的改写不落盘——恢复时经
-            ``before_recover`` 重新表达）。
-        4. ``kwargs = await hooks.before_create.dispatch(instance, kwargs)``
-           —— 可改写 kwargs。**定位**：``setup()`` 刻意不区分 create /
-           recover（两管线各跑一次、作用相同），「只应在创建时做、恢复时
-           不做」的逻辑由钩子对承担管线判别——``before_create`` /
-           ``after_create`` 仅 create 触发，``before_recover`` /
-           ``after_recover`` 仅 recover 触发。注意 handler 只能来自类上
-           ``@on`` 声明（实例 hooks 由 ``_init_hooks`` 在 ``__init__``
-           注册；插件/Composable 的挂载通道是 setup 里的 ``use_xxx``，
-           赶不上本钩子）；与 ``before_tool_call['invoke-subagent']``
-           的分工：后者只覆盖工具唤起路径，本钩子覆盖全部创建路径。
-           **此刻实例可用的东西（R23）**：骨架已就位——``_extra`` 可写
-           （塞运行期对象）、hooks 已建、**可 ``register_state`` 声明
-           状态键**（声明只落 defaults 表，不落盘）；state 写透立即可用
-           （无写闸门，D5——create 无重放不冲突）。
-        5. ``await instance.setup(**kwargs)``。
-        6. **PENDING 检查**（固定步骤，非钩子；``PENDING`` 哨兵未兑现则抛错，
-           见 ``flowing.parsable.PENDING``）。**S-29 扩展**：同一步检查
-           ``instance.hooks._pending_on``——``@on`` 暂记未结算（目标钩子点
-           在 setup 结束前未被 declare）→ 抛
-           ``flowing.errors.UnknownHookPointError``，消息列出未消费的
-           hook_name 与方法名。
-        7. 池注册：全局 ``core`` 名录写入新 ``agent_id``（``states["core"]
-        7. 池注册：全局 ``core`` 名录写入新 ``agent_id``（``states["core"]
-           ["agents"]`` 追加，写透）+ ``_agent_pool[node_id]``（``agent_type`` /
-           ``parent_agent_id`` / ``created_at`` / ``args``）——**args 是
-           Agent 身份的一部分**（身份四键已在第 3b 步整写进 ``meta.json``，
-           D12；本步仅构建内存池条目，args 用 before_create 改写后的最终值）。
-           因此 ``**kwargs`` 应可 JSON 序列化（不可序列化值初版仅约定
-           为不被持久化，恢复时缺失）。
-        8. ``_nodes[node_id] = instance``（创建即注册，结构保证「不可能创建而
-           不注册」）。
-        9. ``await hooks.after_create.dispatch(instance)``。
-        10. 常驻工作循环 Task 启动，返回 instance。
+        1. ``get_agent_class(agent_type)`` —— 类型名 → 类（惰性解析；裸名
+           先查注册表，路径形态经 ``resolve_path``）。
+        2. ``__new__`` 并绑定 ``node_id``（``agent_id`` 指定时即该值，须
+           不在池注册表与活体表中，重复抛 ``ValueError``；缺省
+           ``f"{_id_prefix}-{uuid4()}"``）、``runtime`` 与 ``_parent_id``
+           （``parent_id=None`` 翻译为 Runtime 的 ``node_id``——「根」由
+           「父是 Runtime」表达）。目录存在性检查：该 id 不在池 / 活体表
+           但 session 目录已存在 → 抛 ``FileExistsError``（可能是已归档
+           的留档（``archive_agent``）或指定错了 ``session_dir`` /
+           ``agent_id``；框架不在此销毁任何内容，由调用方捕获决定——
+           改 id / 先删目录 / 运维恢复）。``agent_id`` 未指定（自动生成
+           uuid）时撞目录不报错，重新生成随机 id（uuid 碰撞概率为零，
+           此为防御性兜底）。
+        3. ``instance.__init__()`` —— 同步骨架，建立持久化后端与
+           ``_extra``。
+        4. 身份四键整写 ``meta.json``：``agent_type`` / ``parent_agent_id`` /
+           ``created_at`` / ``args``，JSON 整写、非状态。前置条件全部在
+           setup 前已知；``before_create`` 对 kwargs 的改写不落盘——恢复时
+           经 ``before_recover`` 重新表达。
+        5. ``kwargs = await hooks.before_create.dispatch(instance, kwargs)``
+           —— 可改写 kwargs。本钩子仅创建管线触发（recover 不触发），
+           是「只应在创建时做」的逻辑落点；handler 只能来自类上 ``@on``
+           声明（实例 hooks 在 ``__init__`` 注册，插件 / Composable 的
+           挂载通道是 setup 里的 ``use_xxx``，赶不上本钩子）。与
+           ``before_tool_call["invoke-subagent"]`` 的分工：后者只覆盖工具
+           唤起路径，本钩子覆盖全部创建路径。此刻实例骨架已就位：
+           ``_extra`` 可写、hooks 已建、可 ``register_state`` 声明状态键
+           （声明只落 defaults 表，不落盘）；state 写透立即可用。
+        6. ``await instance.setup(**kwargs)``。
+        7. PENDING 检查（固定步骤，非钩子）：``PENDING`` 哨兵未兑现抛
+           :class:`flowing.errors.MissingFieldError`（见
+           ``flowing.parsable.PENDING``）；``@on`` 暂记未结算（目标钩子点
+           在 setup 结束前未被 declare）抛
+           :class:`flowing.errors.UnknownHookPointError`，消息列出未消费
+           的钩子点名与方法名。
+        8. 池注册：全局 ``core`` 名录追加新 ``agent_id``（写透）+
+           ``_agent_pool[node_id]``（``agent_type`` / ``parent_agent_id`` /
+           ``created_at`` / ``args``，args 用 ``before_create`` 改写后的
+           最终值）。因此 ``**kwargs`` 应可 JSON 序列化（不可序列化值
+           不被持久化，恢复时缺失）。
+        9. ``_nodes[node_id] = instance`` —— 创建即注册。
+        10. ``await hooks.after_create.dispatch(instance)``。
+        11. 常驻工作循环 Task 启动，返回 instance。
 
-        - 后置条件：Agent 已激活、就绪、工作循环运行；队列为空时挂起等待。
-        - 非行为：不加载持久化状态（那是 ``recover_agent`` 管线的
-          ``instance._restore()``）；
-          不接受类对象作为 ``agent_type``；不带 ``resume`` 之类的双语义参数。
+        - 后置条件：Agent 已激活、就绪、工作循环运行；队列为空时挂起
+          等待。
+        - 不加载持久化状态（那是 ``recover_agent`` 管线的
+          ``instance._restore()``）；不接受类对象作为 ``agent_type``；
+          不带 ``resume`` 之类的双语义参数。
 
         :param agent_type: 字符串类型名（裸名或路径形态，经 ``get_agent_class``
             惰性解析）。
         :param parent_id: 父节点 id（``None`` = 根节点，内部翻译为 Runtime 的
-            ``node_id``，inject 链直连链终点；API 层的 ``None`` 仅是人体工学
-            默认值，不落进实例字段与池元数据）。
-        :param session_dir: 该 agent 的 **session 持久化目录**（``tree.jsonl`` /
+            ``node_id``，inject 链直连链终点；API 层的 ``None`` 只是默认值，
+            不落进实例字段与池元数据）。
+        :param session_dir: 该 agent 的 session 持久化目录（``tree.jsonl`` /
             ``state.jsonl`` 所在目录）。``None`` → 默认 ``persist_dir / node_id``；
-            指定为**绝对路径**原样使用，**相对路径**以 ``runtime._persist_dir``
-            为基准解析。持久化存储形式：``persist_dir`` 内存相对形式、根外存
-            绝对路径（与 :meth:`to_project_path` 的 M-64 表示约定同构）；
-            存入池元数据 ``session_dir`` 字段与 ``core`` 名录 ``session_dirs``
-            映射，恢复/池扫描据此定位。属框架机制字段，**不进** args。
+            指定为绝对路径原样使用，相对路径以 ``runtime._persist_dir`` 为
+            基准解析。存储形式：``persist_dir`` 内相对、根外绝对（与
+            :meth:`to_project_path` 的表示约定同构）；存入池元数据
+            ``session_dir`` 字段与 ``core`` 名录 ``session_dirs`` 映射，
+            恢复 / 池扫描据此定位。属框架机制字段，不进 args。
         :param agent_id: 指定该 agent 的 ``node_id``（可选）。``None`` → 自动生成
-            ``{_id_prefix}-{uuid4()}``；指定值须**不在**池注册表与活体表中
-            （与 :meth:`recover_agent` 的「要求已存在」对称：create 要求不存在），
-            重复 → :class:`ValueError`。不校验格式，可以使用 ``agent-`` 前缀
-            （与自动生成的 ``{_id_prefix}-{uuid4()}`` 形态保持一致，便于看
-            id 知类型），建议使用可作目录名的字符（缺省 ``session_dir``
-            时即 session 目录名）。
+            ``{_id_prefix}-{uuid4()}``；指定值须不在池注册表与活体表中
+            （与 :meth:`recover_agent` 的「要求已存在」对称：create 要求
+            不存在），重复 → :class:`ValueError`。不校验格式，可以使用
+            ``agent-`` 前缀（与自动生成的形态保持一致，便于看 id 知类型），
+            建议使用可作目录名的字符（缺省 ``session_dir`` 时即 session
+            目录名）。
         :param kwargs: 实例化参数，透传 ``before_create`` → ``setup(**kwargs)``，
             并作为 args 持久化。
         :return: 创建并注册完毕的 Agent。
         :raises KeyError: ``agent_type`` 无法解析（注册表与路径均不命中）时。
         :raises ValueError: ``agent_id`` 指定且已存在于池注册表或活体表时。
+        :raises FileExistsError: 指定 id 不在池 / 活体表但 session 目录已
+            存在时（归档留档态或指定错误）。
         :raises flowing.errors.MissingFieldError: PENDING 检查失败（延迟定义
-            未兑现）时（S-09 裁决：统一指名具体类；哨兵语义见
-            ``flowing.parsable``）。
+            未兑现）时；哨兵语义见 ``flowing.parsable``。
         :raises flowing.errors.UnknownHookPointError: ``@on`` 暂记未结算
-            （``hooks._pending_on`` 非空——目标钩子点在 setup 结束前未被
-            declare，S-29）时。
-
-        .. rubric:: 测试案例
-
-        - 前置：``before_create`` handler 改写 kwargs → 期望：``setup()`` 收到改写
-          后的 kwargs，池元数据 args 为改写后值。
-        - 前置：``setup()`` 留下 ``PENDING`` 未赋值 → 期望：抛错且不写入
-          ``_nodes``（管线中断，无半注册实例）。
-        - 前置：创建两个 Agent → 期望：``node_id`` 均带 ``agent-`` 前缀且唯一。
-        - 前置：``agent_id="agent-xxx"`` 指定且不在池/活体表 → 操作：
-          ``create_agent(..., agent_id="agent-xxx")`` → 期望：成功且
-          ``node_id == "agent-xxx"``。
-        - 前置：``agent_id="agent-xxx"`` 已存在于池（或活体表）→ 操作：同上 →
-          期望：抛 :class:`ValueError`，不产生任何注册。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``self.get_agent_class()``（管线第 1 步）；``flowing.hooks.HookList.dispatch``（before_create / after_create，管线第 4、9 步）；``instance.setup()``（管线第 5 步，见 ``flowing.agent.Agent.setup``）；``self.states["core"]`` 名录写透（管线第 7 步）
-        - 被调：``flowing.runtime.Runtime.mount``（Agent 根路径，每次 mount）；``flowing.agent.Agent.create_subagent``（每次创建子 Agent）；``flowing.plugins.workflow.Workflow.create_agent``（每次 Workflow 创建 Agent）
+            （目标钩子点在 setup 结束前未被 declare）时。
 
         .. seealso:: :meth:`flowing.runtime.Runtime.recover_agent`、
             :meth:`flowing.agent.Agent.create_subagent`、
@@ -1091,9 +956,9 @@ class Runtime:
         """
         from uuid import uuid4
 
-        self._ensure_persist_ready()   # 入口就位：persist 目录 + core 插件清单 + 兜底引导
-        agent_class = self.get_agent_class(agent_type)   # 第 1 步：类型名 → 类（惰性解析）
-        instance: Agent = agent_class.__new__(agent_class)   # 第 2 步：__new__ + 绑定
+        self._ensure_persist_ready()   # 入口就位：persist 目录 + core 插件清单
+        agent_class = self.get_agent_class(agent_type)   # 类型名 → 类（惰性解析）
+        instance: Agent = agent_class.__new__(agent_class)   # __new__ + 绑定
         if agent_id is not None:
             # 指定 agent_id：须不在池注册表与活体表中（创建冲突即报错——与
             # recover_agent 的「要求已存在」对称；_nodes 含 Workflow 节点，一并防撞）
@@ -1103,7 +968,7 @@ class Runtime:
                     "（create 要求不存在，恢复请用 recover_agent）")
             node_id = agent_id
             resolved_session = self._resolve_session_dir(session_dir, node_id)
-            # 目录存在性检查（R22，create 侧严格）：id 不在池/活体表但目录
+            # 目录存在性检查（create 侧严格）：id 不在池/活体表但目录
             # 已存在 → FileExistsError（可能是 archive 留档或指定错了
             # session_dir / agent_id；runtime 不销毁任何内容，由调用方决定）
             if resolved_session.exists():
@@ -1132,15 +997,15 @@ class Runtime:
         # 管线负责建 session 目录（FileRecordStore 惰性打开句柄时不建父目录；
         # 目录存在性检查已过，此处 mkdir 即「创建即注册」的物理侧）
         resolved_session.mkdir(parents=True, exist_ok=True)
-        instance.__init__()   # 第 3 步：同步骨架
-        # 第 3b 步（D2/D12）：身份四键整写 meta.json（JSON 整写、非状态、
-        # Runtime 属主）。前置条件核对：agent_type/parent_agent_id/args
-        # 来自调用方、created_at 现取、session_dir 由管线预绑——全部在
-        # setup 前已知，可行；before_create 对 kwargs 的改写不落盘（恢复
-        # 时经 before_recover 重新表达，两条路径自洽）
+        instance.__init__()   # 同步骨架
+        # 身份四键整写 meta.json（JSON 整写、非状态、Runtime 属主）。前置
+        # 条件核对：agent_type/parent_agent_id/args 来自调用方、created_at
+        # 现取、session_dir 由管线预绑——全部在 setup 前已知，可行；
+        # before_create 对 kwargs 的改写不落盘（恢复时经 before_recover
+        # 重新表达，两条路径自洽）
         created_at = datetime.now(timezone.utc).isoformat()
         try:
-            json.dumps(kwargs)   # args 应可 JSON 序列化；不可序列化值初版不被持久化（恢复时缺失）
+            json.dumps(kwargs)   # args 应可 JSON 序列化；不可序列化值不被持久化（恢复时缺失）
             persisted_args = kwargs
         except TypeError:
             _logger.warning("agent %s 的 args 不可 JSON 序列化，meta.json 按空 args 持久化", node_id)
@@ -1151,20 +1016,18 @@ class Runtime:
             "created_at": created_at,
             "args": dict(persisted_args),
         }, ensure_ascii=False, indent=2), encoding="utf-8")
-        kwargs = await instance.hooks.before_create.dispatch(instance, kwargs)   # 第 4 步：可改写 kwargs
-        await instance.setup(**kwargs)   # 第 5 步
-        # 第 6 步：PENDING 检查（固定步骤，非钩子；R-05 落实为模块级
-        # _check_pending——含 S-29 扩展的 hooks._pending_on 结算）
+        kwargs = await instance.hooks.before_create.dispatch(instance, kwargs)   # 可改写 kwargs
+        await instance.setup(**kwargs)
+        # PENDING 检查（固定步骤，非钩子；见 _check_pending——含 @on 暂记结算）
         _check_pending(instance, agent_type)
         # 模型初始解析（agent.py 类属性契约「实例化时由 model_tag 解析填充
-        # 初始值」的管线落点——spec 管线步骤未具名列出）：setup 已直接赋
-        # self.model（ModelConfig 任意模型通道）或改过 model_tag（__setattr__
-        # 已重解析）则跳过；解析失败（模型文件缺失 / 标签未定义）即创建失败
-        # ——fail fast，不留「创建成功但首次调用才爆雷」的窗口
+        # 初始值」的管线落点）：setup 已直接赋 self.model（ModelConfig 任意
+        # 模型通道）或改过 model_tag（__setattr__ 已重解析）则跳过；解析
+        # 失败（模型文件缺失 / 标签未定义）即创建失败——fail fast，不留
+        # 「创建成功但首次调用才爆雷」的窗口
         if "model" not in instance.__dict__:
             instance.model = instance._resolve_model_tag(instance.model_tag)
-        # 第 7 步：池注册——core 名录**追加**（读-改-写写透；spec 骨架的
-        # `= [node_id]` 整表替换是笔误，会丢掉既有名录项）
+        # 池注册——core 名录追加（读-改-写写透；整表替换会丢掉既有名录项）
         core = self.states["core"]
         core["agents"] = [*core.get("agents", []), node_id]
         core["session_dirs"] = {
@@ -1178,9 +1041,9 @@ class Runtime:
             "session_dir": self._store_session_dir(instance._session_dir),   # 自定义 session 目录（None 时为默认路径的存储形式）
             "args": dict(kwargs),     # args 是 Agent 身份的一部分；内存条目用 before_create 改写后的最终值（与 meta.json 的原始值对应，恢复时经 before_recover 再改写）
         }
-        self._nodes[node_id] = instance   # 第 8 步：创建即注册
-        await instance.hooks.after_create.dispatch(instance)   # 第 9 步
-        instance._loop_task = asyncio.create_task(instance._work_loop())   # 第 10 步：常驻工作循环 Task 启动（具名句柄，destroy 第 2 步的取消落点）
+        self._nodes[node_id] = instance   # 创建即注册
+        await instance.hooks.after_create.dispatch(instance)
+        instance._loop_task = asyncio.create_task(instance._work_loop())   # 常驻工作循环 Task 启动（具名句柄，destroy 的取消落点）
         return instance
 
     async def recover_agent(self, agent_id: str, **override_args: Any) -> Agent:
@@ -1190,20 +1053,13 @@ class Runtime:
 
         框架核心层方法。从 agent 池元数据 + 该 agent 自己的 session 目录
         （``tree.jsonl`` / ``core.jsonl`` / ``state.jsonl`` / ``meta.json``）
-        重建实例。与 ``create_agent`` 共用
-        管线结构，差异仅两处：``node_id`` 用已有 id；恢复多一步
-        ``instance._restore()``（D2 重排：位于 ``before_recover`` 之前）。
-
-        .. rubric:: 设计动机
-
-        - 「新建 vs 恢复」是两条语义不同的路径，塞进一个函数会产生隐式规则
-          （反模式），故独立成方法。
-        - recover 无独立 ``recover()`` 方法——两条管线各跑一次 ``setup()``，
-          故 ``setup()`` 必须可重入（见 ``flowing.agent.Agent.setup``）；恢复专属
-          逻辑挂在 ``before_recover`` / ``after_recover`` 钩子上。
-        - 恢复路径经 ``setup(**args)`` 触发 ``before_recover`` / ``after_recover``
-          钩子对，**不再触发** ``before_create`` / ``after_create``——两条钩子对
-          完全独立，不会意外双触发。
+        重建实例。与 ``create_agent`` 共用管线结构，差异仅两处：``node_id``
+        用已有 id；恢复多一步 ``instance._restore()``（位于
+        ``before_recover`` 之前）。恢复路径经 ``setup(**args)`` 触发
+        ``before_recover`` / ``after_recover`` 钩子对，不再触发
+        ``before_create`` / ``after_create``——两条钩子对完全独立。
+        恢复与创建是两条语义不同的路径，故独立成方法，不合并为带
+        ``resume`` 参数的单函数。
 
         .. rubric:: 使用示例
 
@@ -1221,87 +1077,72 @@ class Runtime:
             # 覆盖：恢复同一个 agent 结构，但用新参数
             agent = await runtime.recover_agent("agent-xxx", order_id="789")
 
-        .. rubric:: 行为规约（管线逐阶段，顺序为不变量）
+        .. rubric:: 行为要点（管线逐阶段，顺序为不变量）
 
-        1. 读池元数据 ``meta = _agent_pool[agent_id]``。
+        1. 读池元数据 ``meta = _agent_pool[agent_id]``；不在池中即
+           ``KeyError``。
         2. ``get_agent_class(meta["agent_type"])``。
-        3. ``args = dict(meta.get("args", {})); args.update(override_args)``
+        3. ``args = dict(meta.get("args", {}))``，``override_args`` 覆盖
            —— 默认透传持久化 args，override 覆盖。
-        4. ``__new__`` → ``node_id = agent_id``（已有 id，**不是**新 UUID）、
-           ``runtime``、``_parent_id = meta["parent_agent_id"]``、
-           ``_session_dir``（``meta["session_dir"]`` 回绑；缺省
-           ``persist_dir / agent_id``，兼容旧数据）。
-        5. ``__init__``（同步骨架，含 ``_open_stores`` 建立持久化后端与
-           ``_extra``，P3-03 裁决）。
-        6. ``await instance._restore()`` —— **只有 recover 有这一步**；
-           Agent 双袋重放自己 session 目录的 ``tree.jsonl`` /
-           ``core.jsonl`` / ``state.jsonl``（**D2 重排**：前移到
-           ``before_recover`` 之前——重放是读/加载，放钩子前无碍）。
-        7. ``args = await hooks.before_recover.dispatch(instance, args)``
-           （可改写）→ ``await instance.setup(**args)``（触发
-           before/after_recover 钩子对，**不再触发** before_create/
-           after_create；setup 中写 state 合法且不被重放覆盖——先重放
-           后 setup，见规格 §3.3）。
-        8. **PENDING 检查**（固定步骤，非钩子；含 S-29 扩展——
-           ``hooks._pending_on`` 非空 → ``UnknownHookPointError``，
-           同 create 管线第 6 步）。
-        9. ``_nodes`` 注册。
-        10. ``await hooks.after_recover.dispatch(instance)`` —— 语义从
-            「恢复完成」变「setup 完成后的恢复后钩子」。
-        11. 常驻工作循环 Task 启动，返回 instance。
+        4. ``__new__`` → ``node_id = agent_id``（已有 id，不是新 UUID）、
+           ``runtime``、``_parent_id = meta["parent_agent_id"]``（meta 存
+           的是翻译后的实际值，直接回绑）、``_session_dir``（
+           ``meta["session_dir"]`` 回绑；缺省 ``persist_dir / agent_id``，
+           兼容旧数据）。
+        5. 父链可达性：父在池但不在 ``_nodes`` → 逐级向上
+           ``recover_agent(parent_id)``（到 Runtime 止——inject 上溯依赖
+           父链完整，父缺位会在子恢复后造成 ``MissingProvideError`` 假
+           故障）；父悬空（既不在 ``_nodes`` 也不在池、且非
+           ``runtime-0``）→ ``warnings.warn`` 孤儿警告，仍继续恢复本节点
+           （运维应跑 ``archive_orphans()`` 清理）。
+        6. ``__init__()`` —— 同步骨架，建立持久化后端与 ``_extra``。
+        7. ``await instance._restore()`` —— 只有 recover 有这一步；重放
+           该 agent session 目录的 ``tree.jsonl`` / ``core.jsonl`` /
+           ``state.jsonl``（重放是读 / 加载，先于 ``before_recover``——
+           重放后 setup 中写 state 不再被覆盖）。
+        8. ``args = await hooks.before_recover.dispatch(instance, args)``
+           （可改写）→ ``await instance.setup(**args)``。
+        9. PENDING 检查（固定步骤，非钩子）：同 create 管线——``PENDING``
+           哨兵未兑现抛 ``MissingFieldError``；``@on`` 暂记未结算抛
+           ``UnknownHookPointError``。
+        10. ``_nodes`` 注册。
+        11. ``await hooks.after_recover.dispatch(instance)``。
+        12. 常驻工作循环 Task 启动，返回 instance。
 
         - 恢复后不变量：已持久化消息全部在（可继续对话）；``current_head_id``
-          指向消息树中最后持久化的消息；队列待消费消息在，恢复后作为新逻辑 Turn
-          处理；进行中的逻辑 Turn 不恢复（未持久化消息丢弃，撕裂末行丢弃）。
-        - 恢复**不递归子** agent（子代经「有 key 无 value → 现场恢复」在
-          ``get_agent`` 时惰性重建）；但**向上递归父链**（R14：父在池不在
-          ``_nodes`` → 逐级 recover 到 Runtime 止；父悬空 → 孤儿警告、
-          继续恢复本节点，其 inject 上溯将在断裂处以 MissingProvideError
-          告终，运维应跑 ``archive_orphans()`` 清理）。
-        - 非行为：不做「半截 Turn 精确续跑」；不触发 ``before_create`` /
-          ``after_create``；不校验 ``override_args`` 与创建时 args 的一致性。
+          指向消息树中最后持久化的消息；队列待消费消息在，恢复后作为新
+          逻辑 Turn 处理；进行中的逻辑 Turn 不恢复（未持久化消息丢弃，
+          撕裂末行丢弃）。
+        - 恢复不递归子 agent（子代经「有 key 无 value → 现场恢复」在
+          ``get_agent`` 时惰性重建）；但向上递归父链（见管线第 5 步）。
+        - 不做「半截 Turn 精确续跑」；不校验 ``override_args`` 与创建时
+          args 的一致性。
 
         :param agent_id: 池注册表中已有的 agent id。
         :param override_args: 覆盖持久化 args 的参数。
         :return: 恢复并注册完毕的 Agent。
-        :raises KeyError: ``agent_id`` 不在池注册表中时（初版仅约定为该内置异常，
-            不引入专用异常类型）。
-
-        .. rubric:: 测试案例
-
-        - 前置：agent 创建时 ``order_id="123"`` → 操作：``recover_agent(id)`` →
-          期望：``setup`` 收到 ``order_id="123"``。
-        - 前置：同上 → 操作：``recover_agent(id, order_id="789")`` → 期望：
-          收到 ``order_id="789"``。
-        - 前置：创建管线注册过 ``before_create`` handler → 操作：``recover_agent``
-          → 期望：``before_create`` **不被**触发，``before_recover`` 被触发。
-        - 前置：session 中消息树含完整消息 + 撕裂末行 → 期望：完整消息恢复，
-          撕裂末行丢弃，``current_head_id`` 指向最后完整消息。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``self.get_agent_class()``（管线第 2 步）；``flowing.hooks.HookList.dispatch``（before_recover / after_recover）；``instance.setup()``（管线第 7 步）；``instance._restore()``（管线第 6 步，仅 recover，见 ``flowing.agent.Agent._restore``）
-        - 被调：``flowing.runtime.Runtime.get_agent``（「有 key 无 value → 现场恢复」，每次触发）；子项目 ``main()`` 恢复策略（用户代码）
+        :raises KeyError: ``agent_id`` 不在池注册表中时。
 
         .. seealso:: :meth:`flowing.runtime.Runtime.create_agent`、
             :meth:`flowing.runtime.Runtime.get_agent`、
             :meth:`flowing.agent.Agent.setup`、
             :meth:`flowing.agent.Agent._restore`
         """
-        self._ensure_persist_ready()   # 入口就位：persist 目录 + core 插件清单 + 兜底引导
-        meta = self._agent_pool[agent_id]   # 第 1 步：读池元数据；不在池中即 KeyError
-        agent_class = self.get_agent_class(meta["agent_type"])   # 第 2 步
+        self._ensure_persist_ready()   # 入口就位：persist 目录 + core 插件清单
+        meta = self._agent_pool[agent_id]   # 读池元数据；不在池中即 KeyError
+        agent_class = self.get_agent_class(meta["agent_type"])
         args: dict[str, Any] = dict(meta.get("args", {}))
-        args.update(override_args)   # 第 3 步：override 覆盖持久化 args
-        instance: Agent = agent_class.__new__(agent_class)   # 第 4 步：node_id 用已有 id（身份连续）
+        args.update(override_args)   # override 覆盖持久化 args
+        instance: Agent = agent_class.__new__(agent_class)   # node_id 用已有 id（身份连续）
         instance.node_id = agent_id
         instance.runtime = self
         instance._parent_id = meta["parent_agent_id"]   # meta 存的是翻译后实际值（根条目为 Runtime 的 node_id），直接回绑
-        # 第 4b 步（R14）：父链可达性——父在池但不在 _nodes → 逐级向上
-        # recover_agent(parent_id)（到 Runtime 止：根条目的父是 runtime-0，
-        # 在 _nodes 中即终止；inject 上溯依赖父链完整，父缺位会在子恢复后
-        # 造成 MissingProvideError 假故障）；父悬空（既不在 _nodes 也不在
-        # 池、且非 runtime-0）→ warnings.warn 孤儿警告，仍继续恢复本节点
+        # 父链可达性：父在池但不在 _nodes → 逐级向上 recover_agent(parent_id)
+        # （到 Runtime 止：根条目的父是 runtime-0，在 _nodes 中即终止；inject
+        # 上溯依赖父链完整，父缺位会在子恢复后造成 MissingProvideError 假
+        # 故障）；父悬空（既不在 _nodes 也不在池、且非 runtime-0）→
+        # warnings.warn 孤儿警告，仍继续恢复本节点（不抛错，保持可用性；
+        # 运维应跑 archive_orphans() 清理）
         # （不抛错，保持可用性；运维应跑 archive_orphans() 清理）
         recover_parent = instance._parent_id
         if recover_parent != self.node_id and recover_parent not in self._nodes:
@@ -1322,22 +1163,20 @@ class Runtime:
                 f"recover_agent：{agent_id} 的 session 目录缺失"
                 f"（{instance._session_dir}）——按空 session 恢复")
             instance._session_dir.mkdir(parents=True, exist_ok=True)
-        instance.__init__()   # 第 5 步：同步骨架
-        # 第 6 步（D2 重排）：_restore 前移到 setup 前——双袋重放（core +
-        # default）先做完，setup 中写 state 不再被重放覆盖、读 state 可见
-        # 持久值（闸门职责由「先重放后 setup」结构性替代，见规格 §3.3）
-        await instance._restore()   # 仅 recover 有；重放 tree.jsonl / core.jsonl / state.jsonl（后端已在 __init__ 建立，P3-03）
+        instance.__init__()   # 同步骨架
+        # _restore 前移到 setup 前：双袋重放先做完，setup 中写 state 不再被
+        # 重放覆盖、读 state 可见持久值
+        await instance._restore()   # 仅 recover 有；重放 tree.jsonl / core.jsonl / state.jsonl（后端已在 __init__ 建立）
         args = await instance.hooks.before_recover.dispatch(instance, args)   # 可改写 args
         await instance.setup(**args)   # 触发 before/after_recover 钩子对（不触发 before/after_create）
-        # 第 7 步：PENDING 检查（同 create 管线——R-05 落实为模块级
-        # _check_pending，含 S-29 的 _pending_on 结算检查）
+        # PENDING 检查（同 create 管线——见 _check_pending，含 @on 暂记结算）
         _check_pending(instance, meta["agent_type"])
         # 模型初始解析（同 create 管线落点；setup 已直接赋 self.model 则跳过）
         if "model" not in instance.__dict__:
             instance.model = instance._resolve_model_tag(instance.model_tag)
-        self._nodes[agent_id] = instance   # 第 8 步：创建即注册
-        await instance.hooks.after_recover.dispatch(instance)   # 第 9 步
-        instance._loop_task = asyncio.create_task(instance._work_loop())   # 第 10 步：常驻工作循环 Task 启动（具名句柄，destroy 第 2 步的取消落点）
+        self._nodes[agent_id] = instance   # 创建即注册
+        await instance.hooks.after_recover.dispatch(instance)
+        instance._loop_task = asyncio.create_task(instance._work_loop())   # 常驻工作循环 Task 启动（具名句柄，destroy 的取消落点）
         return instance
 
     def get_node(self, node_id: str, *, strict: bool = True) -> ProvideNode | None:
