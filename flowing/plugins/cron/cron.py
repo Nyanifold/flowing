@@ -132,6 +132,11 @@ handler、没有 ``cron_jobs`` 状态键。
   插件键随 ``state.jsonl`` 自动重放进单袋；随后 ``after_recover`` handler
   （``by="cron"``）读出任务表，把该 Agent 的任务重建进中央调度器并重新
   武装定时器（``_load_jobs``），再做错过触发的合并回顾（``_sweep``）。
+- 崩溃语义：``state.jsonl`` 是追加式日志，崩溃时最坏撕坏末行，恢复重放
+  时坏行被形状校验丢弃；盘可能略旧于崩溃前的内存表，但内存表随进程
+  消失，以盘为准重建即自动收敛。游标（``last_fired_at``）写透与执行
+  完成之间崩溃时，恢复后该次触发可能重复执行一次——交付语义是
+  at-least-once（至少一次），不是 exactly-once，执行器应容忍重复。
 
 错过提醒：一律合并（单规则）。``coalesced_count`` 是 cron 表达式在
 ``(last_fired_at ?? created_at, now]`` 区间内的理想触发次数；游标只在
@@ -196,7 +201,7 @@ handler、没有 ``cron_jobs`` 状态键。
             )
 
         @self.hooks.on_cron_trigger["daily_*"]
-        def _(self, trigger):
+        def _(self, trigger: CronTrigger):
             if trigger.fire.coalesced_count > 5:
                 trigger.shortcut = True   # 积压过多则跳过本次
             return trigger
@@ -420,7 +425,7 @@ def use_cron(agent: Agent) -> None:
                     )
 
                 @self.hooks.on_cron_trigger["daily_*"]
-                def _(self, trigger):
+                def _(self, trigger: CronTrigger):
                     if trigger.fire.coalesced_count > 5:
                         trigger.shortcut = True   # 积压过多则跳过本次
                     return trigger
@@ -456,7 +461,7 @@ def use_cron(agent: Agent) -> None:
                 )
 
             @self.hooks.on_cron_trigger["daily_*"]
-            def _(self, trigger):
+            def _(self, trigger: CronTrigger):
                 if trigger.fire.coalesced_count > 5:
                     trigger.shortcut = True
                 return trigger
