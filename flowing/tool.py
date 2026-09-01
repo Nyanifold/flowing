@@ -57,8 +57,8 @@
 字段可跳过工具执行；``raise Intercepted`` 硬阻断，工具不执行、结果
 为 ``blocked``），随后仅按别名查找 Agent 的工具绑定表（找不到抛
 ``UnknownToolError``）、聚合参数，经 ``Tool.__call__`` 执行，最后
-dispatch ``after_tool_call`` （可改写结果）并在返回前对结果做一次幂等
-归一。完整时序见 :mod:`flowing.agent`，钩子语义见 :mod:`flowing.hooks`。
+dispatch ``after_tool_call`` （可改写结果）并在返回前对结果做一次
+幂等归一（已归一的值重复归一结果不变）。完整时序见 :mod:`flowing.agent`，钩子语义见 :mod:`flowing.hooks`。
 
 ``builtin::`` 命名空间：出厂内置工具注册在 ``builtin::`` 命名空间下。
 裸名查找先查 ``default::`` 再查 ``builtin::``——插件 / 应用可以在
@@ -76,8 +76,8 @@ dispatch ``after_tool_call`` （可改写结果）并在返回前对结果做一
 沿 provide-inject 链向根查找；链上找不到提供者抛
 ``MissingProvideError``。
 
-工具业务错误是正常产物：``execute`` 抛普通异常 → ``ToolResult(
-status="error")``，LLM 可见、不触发任何错误钩子；``execute`` 内
+工具业务错误是正常产物：``execute`` 抛普通异常 →
+``ToolResult(status="error")``，LLM 可见、不触发任何错误钩子；``execute`` 内
 ``raise Intercepted`` → ``ToolResult.blocked``。参数 / 返回值中的
 编程错误（参数缺类型标注、返回值含违禁块、返回不可转换对象等）
 走框架错误通道直接上抛（``ValueError`` / ``FormatError`` 等），不包
@@ -945,7 +945,7 @@ class ToolResult:
 
         当 ``before_tool_call`` / ``after_tool_call`` 链中任一 handler
         ``raise Intercepted``，或 ``execute()`` 内部主动抛出
-        ``Intercepted`` 时，框架捕获该哨兵异常并调用本工厂生成阻断结果；
+        ``Intercepted`` 时，框架捕获 ``Intercepted`` 并调用本工厂生成阻断结果；
         前一来源工具本体不执行，后一来源执行被阻断于中途。统一由本工厂
         生成，保证所有阻断路径的产物结构一致（LLM 可据此向用户说明
         「该操作被拦截」而不是「执行失败」）。
@@ -963,7 +963,7 @@ class ToolResult:
 
         .. seealso::
 
-            - :class:`flowing.errors.Intercepted` —— 触发本工厂的哨兵异常。
+            - :class:`flowing.errors.Intercepted` —— 触发本工厂的阻断信号异常。
         """
         return cls(status="blocked", output=reason if reason else None, error=None)
 
@@ -1143,7 +1143,8 @@ class ToolDefinition:
           （深合并回填）。补丁应用委托
           :func:`flowing.params.apply_param_overrides`——关键字超出桥接
           子集时抛 :class:`flowing.errors.FormatError` （声明笔误
-          fail-fast）。requiredness 不主动推断：没写 ``default`` 沿用
+          fail-fast，即尽早报错、不静默容忍）。requiredness 不主动
+          推断：没写 ``default`` 沿用
           基底；显式给 ``default`` 变可选。
         :param override_description: 描述覆写；``None`` 保持原描述。
         :param specified_params: 要从 LLM 视图中移除的参数名集合（调用方
@@ -1288,8 +1289,7 @@ class ToolEntry:
       指定值叠加）；其它值（含 ``{{ self.inject('key') }}`` 注入表达式）
       → ``specified`` （LLM 不可见，调用时以调用方 Agent 为上下文现场
       求值，注入表达式在此沿 provide 链上溯）；值是 ``_`` （``PENDING``）
-      → 空补丁：装配时解析为空，深层块（如示例 ``$tools.pay.args.cwd.
-      description:``）可逐字段填充，未被填充则合成时从基底定义全量回填，
+      → 空补丁：装配时解析为空，深层块（如示例 ``$tools.pay.args.cwd.description:``）可逐字段填充，未被填充则合成时从基底定义全量回填，
       不报错。
     - ``enabled=False`` 时条目不进 ``Context.tools`` （LLM 不可见），但
       编程式路径仍可经注册表访问——可见性与可执行性分离。
@@ -1345,8 +1345,8 @@ class ToolEntry:
         .. rubric:: 功能介绍
 
         上下文组装（``Agent._assemble_context()``）时对每个 ``enabled``
-        entry 调用本方法，产物进入 ``Context.tools``。每次现场求值，无
-        缓存。
+        entry 调用本方法，产物进入 ``Context.tools``。每次调用都重新
+        求值，不缓存结果。
 
         .. rubric:: 行为要点（四步，顺序为不变量）
 
@@ -1355,7 +1355,7 @@ class ToolEntry:
         2. 计算 ``hidden = set(self.specified.keys())``——specified 参数
            （固定值与注入表达式）对 LLM 不可见；
         3. ``override_description`` 非 ``None`` 时以 ``agent`` 为上下文
-           现场求值（Parsable 自动求值），随后
+           当场求值（Parsable 自动求值），随后
            ``definition.clone_with_overrides(self.name_alias,
            self.override_params, <渲染后描述>, specified_params=hidden)``
            生成新定义（原始定义不变）；
@@ -1584,7 +1584,7 @@ class Tool:
            错误通道并记日志，不被 ``except Exception`` 吞成
            ``ToolResult(error)``、不进入 LLM 可见文本（不泄漏隐藏参数
            的存在）；
-        5. 结果归一与包装：返回值（含直通 `ToolResult` 逃生舱的
+        5. 结果归一与包装：返回值（含直接构造 `ToolResult` 返回的
            ``output``）经 `normalize_output` 归一——浅层判别、幂等；
            归一化中的违禁块（``ToolCallBlock`` / ``ThinkingBlock``）
            ``ValueError`` 属作者 bug，与职责 4 同走框架错误通道在
@@ -1874,7 +1874,7 @@ class ScriptTool(Tool):
                 ...
 
     后台工具形态（async generator）：``execute`` 写成 async generator——
-    第一个 ``yield`` 是「准备完成」哨兵（可空值），`Tool.__call__` 等待它
+    第一个 ``yield`` 是「准备完成」标记（可空值），`Tool.__call__` 等待它
     作为 ``pending`` 收据（``tool_status="pending"`` 的 TOOL 消息带内容）；
     后续每个 ``yield`` 由框架后台驱动并逐段投递 EVENT 消息（LLM 可见）；
     首 yield 前只允许轻量准备，长任务必须放在首 yield 之后（违反的后果
@@ -2421,7 +2421,7 @@ class CliTool(Tool):
 
     - ``shell`` 可选值：``sh`` （默认）/ ``bash`` / ``ps`` / ``powershell`` /
       ``cmd``；非法值在构造期抛 :class:`flowing.errors.FormatError`
-      （fail fast，不留到执行期）。
+      （声明期尽早报错，不留到执行期）。
     - 返回值恒为 ``{exit_code, stdout, stderr}`` 三字段字典（``output:``
       声明进入 `ToolDefinition.output_schema`，但不做字段提取）。
     - 非零退出码不等于 ``status="error"``——exit_code 是正常输出数据；
@@ -2634,8 +2634,7 @@ class RequestTool(Tool):
         - 响应状态码不在 ``expected_status`` 内 → 抛异常（含状态码与响应
           摘要），由 ``__call__`` 包装为 ``status="error"`` 结果，不向
           调用方抛；
-        - 响应默认按 JSON 解析；声明了 ``output`` （``definition.
-          output_schema``）时按 schema 的 properties 提取字段，无关字段
+        - 响应默认按 JSON 解析；声明了 ``output``（``definition.output_schema``）时按 schema 的 properties 提取字段，无关字段
           忽略；非 JSON 响应回退为文本。
         """
         import httpx
