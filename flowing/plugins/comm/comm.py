@@ -27,7 +27,9 @@
     :meth:`flowing.runtime.Runtime.use`）；
   - 阶段二：``setup()`` 中 ``use_comm(self)`` —— 为该实例注册端点、
     声明钩子点、挂载清理 handler；recover 在新实例重跑 ``setup()``
-    时安全；同一实例重复调用（端点 ID 相同）复用已有句柄，见
+    时安全（进程重启则总线随插件重新安装而新建；同进程内先
+    ``destroy()`` 再重跑则旧端点已注销，不会重名报错）；同一实例
+    重复调用（端点 ID 相同）复用已有句柄，见
     :func:`use_comm` 行为要点。
 
 - 注册的资源：provide key ``communication_key``，其类型参数为
@@ -42,7 +44,7 @@
   dispatch）。注册开放：声明后任何扩展都可挂 handler，无需再声明。
 
 - 挂载的钩子：``before_destroy`` 上的清理 handler（``by="comm"``）——
-  Agent ``destroy()`` 时调用 ``handle.destroy()`` 注销端点、取消订阅、
+  Agent ``destroy()`` 时调用 ``handle.destroy()`` 取消订阅、注销端点、
   取消挂起的请求；整组可经 ``remove_by_owner("comm")`` 移除。
 
 - 未启用时的行为（未安装 ``CommPlugin`` 的 Runtime、未调用
@@ -70,6 +72,7 @@
 端点是可通信实体在总线上的地址（端点 ID 即寻址）。端点 ID 统一为
 语义化名称（不使用 UUID）：可读、可路由、可发现；唯一性由总线全局
 注册表保证，重名注册抛 :class:`flowing.errors.DuplicateEndpointError`。
+总线本身不提供端点枚举 / 发现 API——发现机制由应用层目录服务承担。
 
 - Agent 端点：``use_comm()`` 时自动注册，ID 取 ``use_comm(name=...)``
   显式指定的语义名，缺省回退 ``agent.node_id`` （语义名只存在于唤起方 /
@@ -396,7 +399,7 @@ class Communication:
         return handle
 
     def send(self, sender: str, target: str, type: str, payload: dict[str, Any]) -> None:
-        """点对点发送信号，立即返回（即发即忘）。
+        """点对点发送信号，立即返回（即发即忘：不等待接收方处理完成）。
 
         .. rubric:: 功能介绍
 
@@ -448,7 +451,8 @@ class Communication:
         .. rubric:: 功能介绍
 
         生成 ``correlation_id`` （UUID），在 ``reply_handler`` 的挂起表
-        中登记本次请求，发送带 ``correlation_id`` 与 ``reply_to=sender``
+        （等待对端回复的请求的登记处）中登记本次请求，发送带
+        ``correlation_id`` 与 ``reply_to=sender``
         的信号信封，然后阻塞等待对端经 ``reply()`` 回传的 payload。
         回复信封以保留类型 ``'_reply'`` 投递回 ``reply_handler``，接收
         侧按 ``correlation_id`` 匹配并完成本次等待——回复信封不
@@ -721,8 +725,9 @@ class CommHandle:
     - 未注入接收回调的句柄收到信号 / 事件时被静默忽略（noop）。
     - ``destroy()`` 可重复调用（幂等），首次调用完成全部清理，后续
       调用为空操作；清理后该句柄不再代表任何端点——向已注销的端点 ID
-      发送信号会抛 ``SignalDeliveryError``，继续使用销毁后的句柄不受
-      支持。
+      发送信号会抛 ``SignalDeliveryError``；向其它存活端点发送仍可
+      工作（发送只查目标端点表，不校验发送方），但继续使用销毁后的
+      句柄不被推荐。
     - ``destroy()`` 不触发任何钩子（销毁事件的观察走 Agent 侧的
       ``before_destroy`` 钩子，与本方法正交）。
 
@@ -865,24 +870,29 @@ class CommHandle:
 
         .. code-block:: python
 
-            async def check_dangerous(self, tool_call):
-                if not is_dangerous(tool_call):   # is_dangerous 由你实现
-                    return tool_call
-                try:
-                    result = await self.comm_handler.request(
-                        target="ui-main",
-                        type="permission_request",
-                        payload={"tool_name": tool_call.name,
-                                 "tool_args": tool_call.args},
-                        timeout=120.0,
-                    )
-                except SignalTimeoutError:
-                    raise Intercepted("审批超时")
-                if result.get("approved"):
-                    return tool_call
-                raise Intercepted(result.get("reason", "用户拒绝"))
+            class GuardrailAgent(Agent):
+                # Agent 子类：setup() 中启用通信并挂审批 handler。
 
-            agent.hooks.before_tool_call(check_dangerous, by="guardrail")
+                def setup(self):
+                    use_comm(self)
+                    self.hooks.before_tool_call(self.check_dangerous, by="guardrail")
+
+                async def check_dangerous(self, tool_call):
+                    if not is_dangerous(tool_call):   # is_dangerous 由你实现
+                        return tool_call
+                    try:
+                        result = await self.comm_handler.request(
+                            target="ui-main",
+                            type="permission_request",
+                            payload={"tool_name": tool_call.name,
+                                     "tool_args": tool_call.args},
+                            timeout=120.0,
+                        )
+                    except SignalTimeoutError:
+                        raise Intercepted("审批超时")
+                    if result.get("approved"):
+                        return tool_call
+                    raise Intercepted(result.get("reason", "用户拒绝"))
 
         .. rubric:: 行为要点
 
@@ -1048,8 +1058,9 @@ class CommPlugin(Plugin):
 
     .. rubric:: 行为要点
 
-    - ``install()`` 只做 provide 注册（插件约定 R1：install 只注册；
-      无工具、无配置命名空间、无钩子声明）。
+    - ``install()`` 只做 provide 注册（插件约定 R1——install 只注册，
+      约定定义见 :mod:`flowing.plugins`；本插件无工具、无配置命名
+      空间、无钩子声明）。
     - 重复安装同名插件（再次 ``runtime.use(CommPlugin())``）→
       ``ValueError`` （一个 Runtime 同时只装一个同名插件，见
       :meth:`flowing.runtime.Runtime.use`）。
@@ -1146,7 +1157,8 @@ def use_comm(agent: Agent, *, name: str | None = None) -> None:
     .. rubric:: 行为要点
 
     - 钩子点声明（同名且同 ``by``）幂等：recover 在新实例重跑
-      ``setup()`` 时重复声明不报错；声明后任何代码都可向 ``on_signal`` /
+      ``setup()`` 时重复声明不报错（进程重启或同进程先 ``destroy()``
+      再重跑，均无残留声明）；声明后任何代码都可向 ``on_signal`` /
       ``on_event`` 挂 handler，无需再声明（注册开放）。
     - handler 按 ``envelope.type`` / ``envelope.topic`` 经 ``fnmatch``
       规则过滤注册（``@agent.hooks.on_signal["<pattern>"]`` 装饰器
