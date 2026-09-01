@@ -2634,7 +2634,7 @@ class RequestTool(Tool):
         - 响应状态码不在 ``expected_status`` 内 → 抛异常（含状态码与响应
           摘要），由 ``__call__`` 包装为 ``status="error"`` 结果，不向
           调用方抛；
-        - 响应默认按 JSON 解析；声明了 ``output``（``definition.output_schema``）时按 schema 的 properties 提取字段，无关字段
+        - 响应默认按 JSON 解析；声明了 ``output`` （``definition.output_schema``）时按 schema 的 properties 提取字段，无关字段
           忽略；非 JSON 响应回退为文本。
         """
         import httpx
@@ -2907,11 +2907,6 @@ class ToolRegistry:
         - :attr:`flowing.runtime.Runtime.tool_registry` —— 挂载点。
         - :class:`flowing.tool.ToolEntry` —— 按 ``name_ori`` 查本表。
     """
-
-    _tools: dict[str, Tool]
-    """``ns::规范名`` → Tool 实例。内部 API，不属稳定契约。
-    """
-
 
     _tools: dict[str, Tool]
     """``ns::规范名`` → Tool 实例（命名空间规则见 ``flowing.runtime`` 模块
