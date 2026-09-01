@@ -44,10 +44,12 @@ Composable 只做「挂载」：注册钩子 handler、绑定实例属性；不�
   Composable 写成同步 ``def`` （本包三个均为同步），调用点不需要
   ``await``；需要真实等待（退避 sleep、副线查询）的 handler 才是异步
   函数。
-- 无排序约束：``setup()`` 中调用顺序决定最终结果，后执行覆盖先执行。
+- 无排序约束：``setup()`` 中调用顺序决定最终结果，后注册的 handler
+  排在链尾执行。
 - 本包三个 Composable 均不做幂等去重：重复调用按注册语义各自叠加一组
   handler（允许以不同参数多次启用）；整组替换用
-  ``remove_by_owner(<by>)`` 移除默认 handler 后自注册。
+  ``remove_by_owner()`` （参数取各子模块注册面清单中的 ``by`` 值）
+  移除默认 handler 后自注册。
 - 注册的资源、声明的钩子点与挂载的钩子：见各子模块 docstring 的
   「注册面清单」。
 

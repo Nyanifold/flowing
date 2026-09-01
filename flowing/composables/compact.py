@@ -24,8 +24,9 @@
 
 - 启用方式：仅阶段二——``setup()`` 中调用 ``use_compact(self)`` （恢复
   管线在新实例上重跑 ``setup()``，天然不叠加）。未启用时零开销：
-  ``after_provider_gen`` 链上无任何 ``by="compact"`` handler，Agent 上
-  没有 ``compact_prompt`` 属性，``on_compact`` 钩子点不存在（访问抛
+  ``after_provider_gen`` 链上无任何 ``by="compact"`` handler，
+  ``use_compact`` 不会为 Agent 绑定 ``compact_prompt`` 属性，
+  ``on_compact`` 钩子点不存在（访问抛
   :class:`flowing.errors.UnknownHookPointError`）。
 - 注册的资源：Agent 侧 ``compact_prompt`` 属性（缺省绑定
   :data:`DEFAULT_COMPACT_PROMPT`，开发者已定义时保留开发者的，见
@@ -151,8 +152,8 @@ def use_compact(agent: Agent, threshold: float = 0.8) -> None:
       ``raise Intercepted`` 则本次压缩取消——不调 ``side_query``、不建
       新根、不换链，本回合照常继续。
     - 摘要：经 ``side_query`` 让模型基于当前完整上下文产出交接摘要
-      （指令为 ``compact_prompt`` resolve 后的文本；副线调用不挂树、
-      不落盘，来源标记为 ``by="_side"``）。
+      （指令为 ``compact_prompt`` 经 Parsable 模板求值（resolve）后的
+      文本；副线调用不挂树、不落盘，来源标记为 ``by="_side"``）。
     - 换链：摘要非空时把它作为新根挂树（``parent_id is None``、
       ``kind=SYSTEM``、``source="compact"``），再 ``fork`` 到新根。旧链
       物理完整保留。
