@@ -288,8 +288,7 @@ class SubagentEntry:
     """覆写声明的子 Agent system prompt；``None`` = 无覆写。由 ``.fya``
     的 ``system_prompt:`` 或编程式 body 写入；``_`` （PENDING）归一为
     ``None`` （空补丁）。注意：当前版本子 Agent 创建时使用其类自身
-    声明的 ``system_prompt``，本字段只保存声明、尚未参与创建——见重写
-    报告遗留问题。
+    声明的 ``system_prompt``，本字段只保存覆写声明、尚未参与创建。
     """
     override_description: Parsable | None = None
     """覆写 LLM 看到的描述；``None`` 使用子类原描述。在
@@ -372,8 +371,8 @@ class SubagentEntry:
 
         .. rubric:: 功能介绍
 
-        上下文组装（``Agent._assemble_context``）时对每个
-        ``enabled=True`` 的条目调用本方法，产物进入
+        Agent 每次组装上下文时对每个 ``enabled=True`` 的条目调用本
+        方法，产物进入
         :data:`DEFAULT_SUBAGENT_CATALOG_TEMPLATE`（或 Agent 级覆写模板）
         的 ``entries`` 上下文。预计算在 Python 侧完成，模板只负责排布。
 

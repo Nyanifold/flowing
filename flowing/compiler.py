@@ -44,9 +44,9 @@
 - 编译是幂等的：``fya_hash`` 未变且 ``compiler_version`` 一致 →
   跳过；冲突中止后重跑可继续，已产出文件不回滚。
 - 不允热重启：编译只发生在构建 / 启动阶段，运行期不监听文件变更。
-- 等价互斥：同一逻辑的 ``.fya`` 与手写 ``.py`` 等价互斥；同名并存时
-  ``.fya`` 优先并告警（优先级判定在 ``Runtime.get_agent_class`` 的解析
-  侧）。
+- 声明途径等价：同一逻辑的 ``.fya`` 与手写 ``.py`` 是等价的两条声明
+  途径；同名并存时 ``.fya`` 优先并告警（优先级判定在
+  ``Runtime.get_agent_class`` 的解析侧）。
 - 本模块只做编译：不删除无对应 ``.fya`` 的孤儿 ``.py``；不编译手写
   ``.py`` Agent；不拉起 Runtime、不执行 ``main``。
 
@@ -698,7 +698,8 @@ def compile_fya_class(fya_path: Path) -> type:
     :func:`flowing.params.schema_to_model` 桥接为 ``args_model``）→
     合成（生成 Agent 子类：类属性注入 ``source_file``/``description``/
     ``system_prompt`` 等，``$script`` 块的 ``setup``/``@on`` 成员并入
-    类体）。产物是普通 Python 类，与手写子类同一类模型（等价互斥）。
+    类体）。产物是普通 Python 类，与手写子类同属一个类模型（二者是
+    等价的两条声明途径，同目录并存时 ``.fya`` 优先）。
 
     .. rubric:: 行为要点
 
