@@ -6,7 +6,7 @@
 Python 代码显式写出，与 goal mode（LLM 按目标自主决定路径）是两种正交
 的编排方式。Workflow 适用于流程已知、要确定性、可重复的场景——审批流、
 验证-修复循环、固定步骤流水线。使用时继承 :class:`Workflow` 实现
-``run()``（编排主体），把编排要用的子 Agent、工具、消息能力接入运行
+``run()`` （编排主体），把编排要用的子 Agent、工具、消息能力接入运行
 时，然后经代码直接驱动或 ``run-workflow`` 工具（LLM 入口）拉起。
 
 边界（本扩展不提供）：
@@ -26,7 +26,7 @@ Python 代码显式写出，与 goal mode（LLM 按目标自主决定路径）�
   重复安装同名插件（再次 ``runtime.use(WorkflowPlugin())``）抛
   ``ValueError``。
 - 注册的资源：安装时向 ``runtime.tool_registry`` 注册
-  :class:`RunWorkflowTool`（:class:`flowing.tool.ScriptTool` 子类，
+  :class:`RunWorkflowTool` （:class:`flowing.tool.ScriptTool` 子类，
   规范名 ``run-workflow``，落在 ``default::`` 命名空间）。不注册
   provide 值、不声明 Agent 状态键、不挂 prompt 块。
 - 声明的钩子点：无（本扩展不声明新的钩子点）。Workflow 实例有自己的
@@ -67,7 +67,7 @@ Workflow 驱动子 Agent 的唯一入口是 :meth:`Workflow.create_agent`
 ``before/after_subagent_invoke`` 钩子（创建管线只有 ``before_create`` /
 ``after_create``）。并行无需专门 API——``asyncio.gather`` 即原语。
 
-Workflow 的工具调用是 :meth:`Workflow.tool_call`（规范名 + 零散参数），
+Workflow 的工具调用是 :meth:`Workflow.tool_call` （规范名 + 零散参数），
 走 Workflow 自己的钩子（``self.hooks`` 的 ``before_tool_call`` /
 ``after_tool_call``），与任何 Agent 的钩子完全独立——Agent 侧挂的审批 /
 安全 / 审计 handler 不会在 workflow 的工具调用上触发。
@@ -144,14 +144,14 @@ class Workflow(ABC):
 
     .. rubric:: 功能介绍
 
-    继承本类并实现 :meth:`run`（编排主体），然后以
+    继承本类并实现 :meth:`run` （编排主体），然后以
     ``MyWorkflow(caller, runtime)`` 构造实例并 ``await instance.run(...)``
     驱动，或经 ``run-workflow`` 工具（LLM 入口）按定义文件路径拉起。
     构造时实例在节点树与 provide 链上就位（见模块 docstring「对象图中的
     位置与生命周期」）。实例拥有与 Agent 同构但完全独立的装备：``hooks``
     （自己的 ``HookRegistry``，供工具调用拦截与观察）、``provide`` /
-    ``inject``（provide 链上的一环）、``create_agent`` / ``tool_call``
-    （驱动子 Agent 与工具的入口）、``caller``（发起方，可反向驱动）。
+    ``inject`` （provide 链上的一环）、``create_agent`` / ``tool_call``
+    （驱动子 Agent 与工具的入口）、``caller`` （发起方，可反向驱动）。
 
     .. rubric:: 使用示例
 
@@ -189,8 +189,8 @@ class Workflow(ABC):
       对象：workflow 无跨运行状态（运行状态不持久化，崩溃不续跑）。
     - ``node_id`` 构造时分配（``workflow-*`` 前缀）并注册进
       ``runtime._nodes``，生命周期内不变；``_parent_id`` 为
-      ``caller.node_id``（``caller=None`` 时为 Runtime 节点 id）。
-    - ``caller=None``（根节点 workflow）时，一切 ``self.caller.*`` 调用
+      ``caller.node_id`` （``caller=None`` 时为 Runtime 节点 id）。
+    - ``caller=None`` （根节点 workflow）时，一切 ``self.caller.*`` 调用
       都是对 ``None`` 取属性，抛 ``AttributeError``——框架不预设检查，
       编排代码自行保证。
     - ``provide`` 的值对本 workflow 创建的全部 Agent 及后代可见，对其它
@@ -241,9 +241,9 @@ class Workflow(ABC):
 
         .. rubric:: 行为要点
 
-        - 构造时分配 ``node_id``（``workflow-*`` 前缀）、创建独立的
+        - 构造时分配 ``node_id`` （``workflow-*`` 前缀）、创建独立的
           ``hooks``、初始化内部 provide 表与子 Agent 表、设定
-          ``_parent_id``（``caller.node_id`` 或 Runtime 节点 id）并注册
+          ``_parent_id`` （``caller.node_id`` 或 Runtime 节点 id）并注册
           进 ``runtime._nodes``。
         - 本方法不启动任何任务（``run()`` 由调用方驱动），不解析任何
           workflow 定义文件（实例化的是已解析的类）。
@@ -276,7 +276,7 @@ class Workflow(ABC):
 
         全部编排逻辑（创建/复用/销毁子 Agent、调用工具、反向驱动 caller、
         并行 gather、分支循环）都写在这里。参数由调用方传入，可含自然语言
-        ``prompt``（通常作为子 Agent 的任务描述转发）。
+        ``prompt`` （通常作为子 Agent 的任务描述转发）。
 
         .. rubric:: 行为要点
 
@@ -285,8 +285,8 @@ class Workflow(ABC):
           ``await`` 的返回值。
         - 工具拉起时，本方法的返回值不进入收据与完成消息（收据与完成
           消息由 :class:`RunWorkflowTool` 固定生成，见其 docstring）；
-          workflow 若要向 caller 交付结果，用 ``caller.enqueue_message(
-          ...)`` 自行投递。
+          workflow 若要向 caller 交付结果，用 ``caller.enqueue_message(...)``
+          自行投递。
         - 框架不限制运行时长、节点数、并发数；不捕获本方法抛出的异常——
           异常终止本次运行并向触发方传播（工具拉起路径上体现为后台任务
           失败，框架不做自动重试）。
@@ -298,7 +298,7 @@ class Workflow(ABC):
             任务提示词。
         :param kwargs: 其余运行参数，由调用方传入（经 ``run-workflow``
             工具拉起时即 LLM 传的参数，见 :class:`RunWorkflowTool`）。
-        :return: workflow 结果（``dict``）或 ``None``（纯编排副作用）。
+        :return: workflow 结果（``dict``）或 ``None`` （纯编排副作用）。
 
         .. seealso:: :meth:`create_agent`、:meth:`tool_call`
         """
@@ -309,8 +309,8 @@ class Workflow(ABC):
 
         .. rubric:: 功能介绍
 
-        委托 ``runtime.create_agent(agent_type, parent_id=self.node_id,
-        **kwargs)``，走完整创建管线：``__init__`` → ``before_create`` →
+        委托 ``runtime.create_agent(agent_type, parent_id=self.node_id, **kwargs)``，
+        走完整创建管线：``__init__`` → ``before_create`` →
         ``setup`` → PENDING 检查 → 池元数据写盘 → ``_nodes`` 注册 →
         ``after_create`` → 工作循环启动。创建即入 agent 池；本 workflow
         把实例记入内部子 Agent 表，供 ``destroy()`` 级联归档。
@@ -385,7 +385,7 @@ class Workflow(ABC):
           （value 为 ``ToolCall``；handler 可改写 ``args``、可设置
           ``shortcut`` 直接给出结果、可 ``raise Intercepted`` 阻断——
           阻断时返回 ``ToolResult.blocked(...)``，工具本体不执行）→
-          调度工具 → dispatch ``after_tool_call``（value 为
+          调度工具 → dispatch ``after_tool_call`` （value 为
           ``ToolResult``，可改写；``raise Intercepted`` 时返回 ``blocked``）
           → 收尾归一（return 前幂等再跑一次 ``normalize_output``，封
           shortcut 与 after 改写两条缝）→ 返回最终 ``ToolResult``。

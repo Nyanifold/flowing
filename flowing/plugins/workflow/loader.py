@@ -23,7 +23,7 @@ _BARE_CALL_REWRITES = {"create_agent": "create_agent", "agent": "create_agent",
 
 class _BareCallRewriter(ast.NodeTransformer):
     """调用表达式级裸名改写：``create_agent(`` / ``agent(`` / ``tool_call(``
-    （``ast.Name`` 直接调用）前补 ``self.``（``agent`` 归一到
+    （``ast.Name`` 直接调用）前补 ``self.`` （``agent`` 归一到
     ``create_agent``）。ast 级改写天然不误伤字符串与注释；属性调用
     （``x.create_agent(...)``）与同名局部变量遮蔽之外的语义分析不做
     （已知限制，文档不承诺）。"""
@@ -53,8 +53,8 @@ def resolve_workflow(path: str) -> type[Workflow]:
     - 绝对路径，或 ``@/`` 前缀的项目根相对路径（``@`` 上下文由
       :func:`flowing.launch` 登记），如 ``"@/flows/verify_fix.py"``；
     - 无 ``.py`` 后缀的 kebab-case 路径，如 ``"@/flows/verify-fix"``：
-      先按原样补 ``.py``（``flows/verify-fix.py``），未命中再把连字符转
-      下划线补 ``.py``（``flows/verify_fix.py``）；两个候选同时存在属
+      先按原样补 ``.py`` （``flows/verify-fix.py``），未命中再把连字符转
+      下划线补 ``.py`` （``flows/verify_fix.py``）；两个候选同时存在属
       歧义，抛 :class:`flowing.errors.FlowingError`。
 
     定义文件两种形态（加载时判定，互斥）：
@@ -63,9 +63,9 @@ def resolve_workflow(path: str) -> type[Workflow]:
        （import 进来的他处子类不计）——直接返回该类；文件同时存在顶层
        ``run`` 函数时忽略函数（类形态优先）。
     2. 函数形态：文件内没有 ``Workflow`` 子类，但有一个顶层
-       ``async def run(prompt=None, ...)``（不带 ``self`` 参数）——
+       ``async def run(prompt=None, ...)`` （不带 ``self`` 参数）——
        编译为生成的 ``Workflow`` 子类后返回。函数形态下 ``run`` 体内可
-       直接调用 ``create_agent(...)``（简写 ``agent(...)`` 等价）与
+       直接调用 ``create_agent(...)`` （简写 ``agent(...)`` 等价）与
        ``tool_call(...)``，免写 ``self.`` 前缀与 import；生成类名由文件
        名推导（kebab-case 转 PascalCase，如 ``verify-fix.py`` →
        ``VerifyFix``）。
@@ -97,9 +97,9 @@ def resolve_workflow(path: str) -> type[Workflow]:
       代码直接调用方依赖异常控制流，无需判空返回值。经 ``run-workflow``
       工具（LLM 入口）调用时，同一异常由工具层包装为 ``status="error"``
       的 LLM 可见结果——包装只发生在工具边界。
-    - 路径不存在 → :class:`flowing.errors.FlowingError`（消息含解析后的
+    - 路径不存在 → :class:`flowing.errors.FlowingError` （消息含解析后的
       路径）；文件内有两个以上本文件定义的 ``Workflow`` 子类、或既无子类
-      又无顶层 ``run`` 函数 → 同样抛 ``FlowingError``（消息说明歧义或
+      又无顶层 ``run`` 函数 → 同样抛 ``FlowingError`` （消息说明歧义或
       缺失）。
     - 文件顶层语句随加载执行一次（与 ``.fya`` 加载一致）；每次调用现场
       解析，无缓存。
@@ -121,7 +121,7 @@ def resolve_workflow(path: str) -> type[Workflow]:
 
 
 def _locate_file(resolved: Path, *, raw: str) -> Path:
-    """定位定义文件：直接命中即用；无 ``.py` 后缀的 kebab 末段依次尝试
+    """定位定义文件：直接命中即用；无 ``.py`` 后缀的 kebab 末段依次尝试
     两候选（原样补 ``.py`` → 连字符转下划线补 ``.py``），双命中歧义抛错。
     """
     if resolved.is_file():
@@ -147,7 +147,7 @@ def _locate_file(resolved: Path, *, raw: str) -> Path:
 def _load_workflow_class(file_path: Path) -> type[Workflow]:
     """加载定义文件（顶层语句执行一次，与 ``.fya`` 加载一致）并做两形态
     互斥判定：恰好一个本文件定义的 ``Workflow`` 子类 → 直接返回（类形态
-    优先）；否则有合法顶层 ``async def run``（无 self）→ 函数形态编译。
+    优先）；否则有合法顶层 ``async def run`` （无 self）→ 函数形态编译。
     """
     module_name = f"flowing_workflow_{file_path.stem}_{uuid4().hex[:8]}"
     spec = importlib.util.spec_from_file_location(module_name, file_path)
