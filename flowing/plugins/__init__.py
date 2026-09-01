@@ -14,7 +14,7 @@
   :mod:`flowing.plugins.clipboard` （``ClipboardPlugin`` / ``use_clipboard``）。
 
 启用遵循双层启用模型。阶段一调用 ``runtime.use(plugin)`` 安装全局能力
-（工具、provide 值、配置命名空间、Agent 类型、Resource、全局状态命名
+（工具、``provide`` 值、配置命名空间、Agent 类型、Resource、全局状态命名
 空间）；阶段二各 Agent 在 ``setup()`` 中调用 ``use_xxx(self)`` 做实例级
 启用。框架核心发布时不预装任何内置扩展；未启用的扩展对 Agent 而言
 从没存在过（零开销，不是被跳过）。``Plugin`` 基类定义在扩展包而非
@@ -50,8 +50,9 @@ Workflow 根时局部解析 :func:`flowing.plugins.workflow.resolve_workflow`。
 - 注册名是 per-Runtime 作用域的标签，不是全局唯一标识：生态上不排斥
   两个作用相近的插件取同一个注册名；约束只有一条——每个 Runtime 同时
   只装一个同名插件，重复安装同名插件时 ``use()`` 抛 ``ValueError``。
-- 同名 provide key 重复注册是覆盖更新（后者生效，inject 实时可见），
-  框架不报错；避免插件间键冲突靠键名前缀约定（插件注册名加 ``:``
+- 同名 ``provide`` key 重复注册是覆盖更新（后者生效，``inject`` 实时
+  可见），框架不报错；避免插件间键冲突靠键名前缀约定（插件注册名加
+  ``:``
   前缀）。
 - 插件 ``install`` 抛出的异常从 ``use()`` 直接上抛，框架不按插件粒度
   隔离降级：安装失败的插件不会进入已装集合。
@@ -100,7 +101,7 @@ class Plugin:
 
     阶段一（Runtime 安装）的契约载体：``runtime.use(plugin)`` 按实参顺序
     对每个插件实例调用一次 :meth:`install`，插件在此注册全局能力（工具、
-    provide 值、配置命名空间、Agent 类型、Resource、全局状态命名空间）。
+    ``provide`` 值、配置命名空间、Agent 类型、Resource、全局状态命名空间）。
     插件实例由用户代码构造后传入 ``Runtime.use()``，框架不实例化插件。
     本类是扩展的唯一基类；子类须显式声明 :attr:`name` 与
     :attr:`dependencies` （:attr:`namespace` 可选），并按需实现
