@@ -23,7 +23,7 @@ Runtime，并发 ``launch`` 互不串扰）、import 子项目入口 ``main.py``
 ``RuntimeError``。
 
 ``launch`` 只负责把子项目拉起为 Runtime：不解析配置（配置读取经
-:meth:`Runtime.get_config` 与宿主启动层）、不认识插件（插件经
+:meth:`Runtime.get_config` 与宿主启动层（``flowing.interfaces`` 各入口））、不认识插件（插件经
 :meth:`Runtime.use` 显式启用）、不决定新建还是恢复（那是子项目 ``main()``
 的策略，如 ``main(resume: str | None = None)``）、不启动任何服务端口（暴露
 方式由调用方决定，CLI / HTTP / Web / 测试 / 嵌入五种入口共用本函数）。
@@ -52,13 +52,15 @@ provide-inject 链：Runtime 是链终点。``Runtime.provide(key, value)`` 注�
 ``provide`` 传递——注入值沿链对后代节点可见。通用查找算法与节点协议见
 :mod:`flowing.provide`。
 
-配置读取：优先级链（环境变量 > 命令行参数 > 用户级
-``$FLOWING_CONFIG_HOME/config.yaml`` > 项目级 ``@/config.yaml`` > 框架
-推荐默认值）在 ``Runtime()`` 构造时完成浅合并——合并完成后任何时机
-均可调用 :meth:`Runtime.get_config`；合并前（典型即模块顶层 import 期）
-调用抛 :class:`flowing.errors.ConfigNotReadyError`。``get_config`` 不做
-命名空间访问控制：任何代码可读任何命名空间，注册只是「谁负责校验」的
-声明。
+配置读取：``get_config`` 的读取顺序是——``set_config`` 运行期覆盖层最
+优先，其次为构造期浅合并结果（用户级 ``$FLOWING_CONFIG_HOME/config.yaml``
+> 项目级 ``@/config.yaml`` > 框架推荐默认值）。环境变量与命令行参数不
+直接进入本链：``FLOWING_*`` 环境变量由各自消费点直读，命令行参数经
+``set_config`` 表达。浅合并在 ``Runtime()`` 构造时完成——合并完成后
+任何时机均可调用 :meth:`Runtime.get_config`；合并前（典型即模块顶层
+import 期）调用抛 :class:`flowing.errors.ConfigNotReadyError`。
+``get_config`` 不做命名空间访问控制：任何代码可读任何命名空间，注册
+只是「谁负责校验」的声明。
 
 插件启用：``Runtime.use(plugin)`` 是插件启用入口（阶段一），按实参顺序
 执行各插件的 ``install(runtime)``；插件在 install 中注册全局能力（工具 /
@@ -410,6 +412,7 @@ class Runtime:
 
     - 创建即注册：Agent 诞生必经 ``_nodes`` 注册（结构保证「不可能创建而
       不注册」）。节点的遗忘分三档：
+
       - destroy（``Agent.destroy()``）：丢实例、从 ``_nodes`` 摘除，池 key
         与名录保留——可经 ``recover_agent`` / ``get_agent`` 现场恢复；
       - archive（``archive_agent``）：``_nodes`` / 池 / ``core`` 名录一并
@@ -1143,7 +1146,6 @@ class Runtime:
         # 故障）；父悬空（既不在 _nodes 也不在池、且非 runtime-0）→
         # warnings.warn 孤儿警告，仍继续恢复本节点（不抛错，保持可用性；
         # 运维应跑 archive_orphans() 清理）
-        # （不抛错，保持可用性；运维应跑 archive_orphans() 清理）
         recover_parent = instance._parent_id
         if recover_parent != self.node_id and recover_parent not in self._nodes:
             if recover_parent in self._agent_pool:
@@ -1192,7 +1194,8 @@ class Runtime:
 
         .. code-block:: python
 
-            parent = runtime.get_node(agent._parent_id)
+            parent = runtime.get_node(
+                runtime.snapshot(keys={"nodes"}).nodes[agent.node_id].parent_id)
 
         .. rubric:: 行为要点
 
@@ -1489,17 +1492,19 @@ class Runtime:
         return result
 
     def get_config(self, key: str | ConfigKey[T], default: T | None = None) -> T | None:
-        """配置读取：返回优先级链浅合并后的最终值（实例方法）。
+        """配置读取：返回运行期覆盖层或构造期浅合并后的最终值（实例方法）。
 
         .. rubric:: 功能介绍
 
-        框架核心层方法。读取按优先级链（环境变量 > 命令行参数 > 用户级
-        ``$FLOWING_CONFIG_HOME/config.yaml`` > 项目级 ``@/config.yaml`` >
-        框架推荐默认值）浅合并后的配置值。``ConfigKey[T]`` 约束 ``default``
-        的类型与泛型参数一致（mypy / pyright 可检查）。读取全部是实例
-        方法，不存在「隐式拿到某个 Runtime」的旁路——调用方须持有 Runtime
-        实例。无命名空间访问控制：注册只是「谁负责校验」的声明，未注册
-        命名空间静默保留、可自由读取。
+        框架核心层方法。读取顺序：``set_config`` 运行期覆盖层最优先，其次
+        为构造期浅合并结果（用户级 ``$FLOWING_CONFIG_HOME/config.yaml`` >
+        项目级 ``@/config.yaml`` > 框架推荐默认值）。环境变量与命令行参数
+        不直接进入本链——``FLOWING_*`` 由各自消费点直读，命令行参数经
+        ``set_config`` 表达。``ConfigKey[T]`` 约束 ``default`` 的类型与
+        泛型参数一致（mypy / pyright 可检查）。读取全部是实例方法，不存在
+        「隐式拿到某个 Runtime」的旁路——调用方须持有 Runtime 实例。无
+        命名空间访问控制：注册只是「谁负责校验」的声明，未注册命名空间
+        静默保留、可自由读取。
 
         .. rubric:: 使用示例
 
@@ -1510,15 +1515,16 @@ class Runtime:
 
         .. rubric:: 行为要点
 
-        - 就绪时点：优先级链合并完成（``Runtime()`` 构造尾部）之前，典型
-          即模块顶层 import 期，调用抛
+        - 就绪时点：浅合并完成（``Runtime()`` 构造尾部）之前，典型即模块
+          顶层 import 期，调用抛
           :class:`flowing.errors.ConfigNotReadyError`；合并完成后任何时机
           可调用（``setup()``、钩子回调、工具 callable、``main()`` 后续
-          代码、插件运行期方法等），读取为现场求值。
+          代码、插件运行期方法等），读取为现场求值（每次读取都重新计算，
+          不缓存结果）。
         - 浅合并语义：同名 key 高优先级覆盖；未覆盖的 key 沿用低优先级值；
           列表值整列表覆盖（不合并）。
-        - 读取顺序：``set_config`` 运行期覆盖层命中优先，其次为优先级链
-          浅合并结果。
+        - 读取顺序：``set_config`` 运行期覆盖层命中优先，其次为浅合并
+          结果。
         - 不校验 key 属于哪个命名空间；不写回配置文件（写入走
           ``set_config``，不持久化）。
         - 已知核心 key 与默认值：``agent.timeout`` （60）、
@@ -1664,7 +1670,7 @@ class Runtime:
 
         .. rubric:: 行为要点
 
-        - ``ns::name`` 全键冲突时后注册者报错；注册只在 ``install`` 发生
+        - ``ns::name`` 完整键（含命名空间）冲突时后注册者报错；注册只在 ``install`` 发生
           （运行时不增删全局注册状态）；Agent 侧按别名查 ``_tool_entries``
           （见 ``flowing.tool``）。
         - 命名空间：``namespace`` 显式指定时与文件路径无关（覆盖目录
@@ -1689,7 +1695,7 @@ class Runtime:
             tool = self.tool_registry.get(tool)   # 文件 → Tool（惰性解析链）
             if namespace is None:
                 return   # get 已按目录派生注册，不再二次注册
-        self.tool_registry.register(tool, namespace=namespace)   # ns::name 全键冲突时后注册者报错（由 ToolRegistry.register 承载）
+        self.tool_registry.register(tool, namespace=namespace)   # ns::name 完整键（含命名空间）冲突时后注册者报错（由 ToolRegistry.register 承载）
 
     def register_agent_type(self, name: str, agent_class: type[Agent], *,
                             namespace: str | None = None) -> None:
@@ -1714,7 +1720,7 @@ class Runtime:
 
         .. rubric:: 行为要点
 
-        - ``ns::name`` 全键冲突时后注册者报错；注册只在 ``install`` 发生。
+        - ``ns::name`` 完整键（含命名空间）冲突时后注册者报错；注册只在 ``install`` 发生。
         - 命名空间：缺省落入 ``default::`` （裸名视图优先层，同名即覆盖
           核心内置类型）；建议（非强制）插件用自身注册名作命名空间
           （``myplugin::xxx``）；自定义命名空间的类型只能以全限定名引用
@@ -1727,7 +1733,7 @@ class Runtime:
         .. seealso:: :meth:`flowing.runtime.Runtime.get_agent_class`、
             :class:`flowing.agent.Agent`
         """
-        # ns::name 全键冲突时后注册者报错（注册表 = 类注解 _agent_types）
+        # ns::name 完整键（含命名空间）冲突时后注册者报错（注册表 = 类注解 _agent_types）
         key = f"{namespace or 'default'}::{name}"
         self._agent_types[key] = agent_class   # 条目惰性：get_agent_class 在 invoke/创建时才解析
         agent_class.registry_key = key   # 回写（与 Tool/Skill.registry_key 同构；文件派生注册点同律）
@@ -1882,11 +1888,11 @@ class Runtime:
 
         把 ``path`` 登记为模型标签映射文件（``model-tags.yaml``）的来源，
         覆盖默认路径。模型标签是单值映射（标签 → 单个模型条目名，无候选
-        列表、无 fallback 链；「换模型」只能动态改 ``self.model`` 或
-        ``model_tag``）。标签来源的优先级从高到低：本方法登记的路径
-        （代码级）> ``FLOWING_MODEL_TAGS`` 环境变量指向的文件 > 默认
-        ``$FLOWING_CONFIG_HOME/model-tags.yaml``——本方法只登记单个文件
-        路径，不存在多文件合并。
+        列表、无回退链——标签未定义即报错；「换模型」只能动态改
+        ``self.model`` 或 ``model_tag``）。标签来源的优先级从高到低：本方法
+        登记的路径（代码级）> ``FLOWING_MODEL_TAGS`` 环境变量指向的文件 >
+        默认 ``$FLOWING_CONFIG_HOME/model-tags.yaml``——本方法只登记单个
+        文件路径，不存在多文件合并。
 
         .. rubric:: 使用示例
 
@@ -1899,7 +1905,7 @@ class Runtime:
         - 仅登记映射来源，解析发生在 ``self.model`` 求值时（现场求值，
           无缓存；文件解析经 :func:`flowing.model.load_model_tags`）。
         - 路径支持 ``@/`` 前缀规则。
-        - 标签无映射 → 模型调用时直接报错（无 fallback；未定义标签回退
+        - 标签无映射 → 模型调用时直接报错（无回退链：未定义标签回退
           ``default``，``default`` 也未定义 → 报错，见 ``flowing.model``）。
 
         :param path: 模型标签映射文件路径。
@@ -1910,7 +1916,7 @@ class Runtime:
         resolved = self.resolve_path(str(path))   # 路径支持 @/ 前缀规则
         # 仅登记映射来源（存储字段 = 类注解 _model_tags_path）；解析现场求值于
         # self.model（flowing.model.load_model_tags 消费），无缓存；
-        # 标签无映射 → 模型调用时直接报错（无 fallback，见 flowing.model）
+        # 标签无映射 → 模型调用时直接报错（无回退链，见 flowing.model）
         self._model_tags_path = resolved
 
     def set_models(self, path: str | Path) -> None:
@@ -1987,7 +1993,8 @@ class Runtime:
 
         目录内两类条目并列：① 每 agent 一个 session 目录
         （``agent_id == session_id``），内含 ``tree.jsonl`` （一行一个
-        Message 及 tombstone 等变更记录行）、``core.jsonl`` （核心袋，
+        Message 及 tombstone 等变更记录行——tombstone 即删除标记，
+        历史记录里代表这条消息已被删除）、``core.jsonl`` （核心袋，
         框架私有）+ ``state.jsonl`` （默认袋 set/delete 行）与
         ``meta.json`` （身份四键，JSON 整写）；② 全局命名空间文件：
         ``<namespace>.jsonl`` 一空间一文件（Runtime / 插件级状态，
@@ -2250,7 +2257,8 @@ class Runtime:
           ``agent.source_file`` 所在目录，见 ``flowing.agent``）。
         - 仅用于 flowing 项目资源引用；不涉及 flowing 自身的配置读取——
           框架配置（``providers.yaml`` / ``config.yaml`` / 用户级配置）由
-          宿主启动层直接读取，其值经 config / provide 注入系统，路径本身
+          宿主启动层（``flowing.interfaces`` 各入口）直接读取，其值经
+          config / provide 注入系统，路径本身
           不进入任何对象。
         - 输入语法：``@/`` / ``./`` / ``../`` / 绝对路径（``is_absolute``
           判定，POSIX 前导 ``/`` 与 Windows 盘符 / UNC 均算），以及含 ``/``
