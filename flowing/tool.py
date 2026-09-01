@@ -229,9 +229,10 @@ ToolStatus = Literal["completed", "pending", "blocked", "error"]
   ``asyncio.Task``；``execute`` 是 async generator（首个 ``yield``
   即收据内容）；``background = True`` 标记的普通 async ``execute``。
   框架只回收据，真正结果稍后以独立消息到达（不阻塞逻辑 Turn）。
-- ``"blocked"``：被 ``before_tool_call`` / ``after_tool_call`` 钩子或
-  ``execute`` 内 ``raise Intercepted`` 硬阻断，工具未执行或执行被中断；
-  只能经 ``ToolResult.blocked`` 工厂产生。
+- ``"blocked"``：被钩子硬阻断的产物——``before_tool_call`` 拦截
+  （工具未执行）／ ``after_tool_call`` 拦截（工具已执行完、结果被丢弃）
+  ／ ``execute`` 内 ``raise Intercepted`` （执行被中断于中途）；只能经
+  ``ToolResult.blocked`` 工厂产生。
 - ``"error"``：执行抛普通异常的正常产物——LLM 可见、不触发任何错误
   钩子（核心错误钩子仅 ``on_provider_error``，见 :mod:`flowing.hooks`）。
 """
@@ -536,6 +537,7 @@ async def _media_to_block(
       bytes 魔数；``forced`` 非 ``None`` （显式载体声明）时块类别不再
       经路由。
     - 文件名填充链：显式 ``name`` > path 文件名 > hash.ext 合成。
+
     内部 API。
     """
     if isinstance(data, str):
@@ -654,7 +656,7 @@ async def normalize_output(value: Any) -> Any:
                 data=v, path=None, mime_type=None, name=None, forced=None)
         if isinstance(v, Path):
             # 裸 Path 与载体同口径：相对路径 → ValueError（spec 未单列裸
-            # Path 的相对路径处置，按载体规则同口径落实——见报告对照表）
+            # Path 的相对路径处置，按载体规则同口径落实）
             if not v.is_absolute():
                 raise ValueError(f"裸 Path 结果须为绝对路径: {v!r}")
             return await _media_to_block(
@@ -785,7 +787,7 @@ class ToolCall:
 
     - handler 三种合法出口：返回（可能改写的）`ToolCall` / 把
       `ToolResult` 放进 ``shortcut`` 字段短路 / ``raise Intercepted``
-      硬阻断；普通异常直接上抛，无兜底钩子。
+      硬阻断；普通异常直接上抛，没有会捕获它的兜底钩子。
     - `ToolCall` 不做参数校验、不认识 specified——参数聚合全部发生在
       其后的 ``_normalize()`` （见 :mod:`flowing.agent`）。
     - ``args`` 只包含 LLM 原始传入值（键可能是别名）；hook 改写后出现的
@@ -899,8 +901,8 @@ class ToolResult:
     - 配对元数据（``tool_call_id`` / ``tool_status``）在消息层，不在本
       对象上（见 `as_message`）。
     - `ToolResult` 不携带 trace 等观测数据——观测走钩子与快照层，不进
-      LLM 可见结构。例外：``duration`` 由调度层写入，但不进入
-      ``as_message`` 产物（LLM 不可见）。
+      LLM 可见结构。例外：``duration`` 是预留字段（当前实现不写入，恒为
+      ``None``），即使有值也不进入 ``as_message`` 产物（LLM 不可见）。
     - 边缘情况：深层埋藏的非 JSON 对象归一化期放行，`as_message` 塑形时
       ``StructBlock`` 构造校验失败 → ``ValueError`` （诚实失败点）。
 
@@ -927,9 +929,8 @@ class ToolResult:
     据此自我纠正）；不触发错误钩子。
     """
     duration: float | None = None
-    """执行时长（秒），由 ``Tool.__call__`` 调度层写入。携带但不进入
-    ``as_message`` 产物（LLM 不可见）。消费方：``after_tool_call``
-    handler、审计日志、测试断言。
+    """执行时长（秒）——预留字段，当前实现不写入（恒为 ``None``）。即使
+    有值也不进入 ``as_message`` 产物（LLM 不可见）。
     """
     background_task_id: str | None = None
     """后台任务注册键：``status="pending"`` 且经
@@ -945,10 +946,11 @@ class ToolResult:
 
         当 ``before_tool_call`` / ``after_tool_call`` 链中任一 handler
         ``raise Intercepted``，或 ``execute()`` 内部主动抛出
-        ``Intercepted`` 时，框架捕获 ``Intercepted`` 并调用本工厂生成阻断结果；
-        前一来源工具本体不执行，后一来源执行被阻断于中途。统一由本工厂
-        生成，保证所有阻断路径的产物结构一致（LLM 可据此向用户说明
-        「该操作被拦截」而不是「执行失败」）。
+        ``Intercepted`` 时，框架捕获 ``Intercepted`` 并调用本工厂生成
+        阻断结果：``before_tool_call`` 拦截时工具未执行；``after_tool_call``
+        拦截时工具已执行完、结果被丢弃；``execute`` 内拦截时执行被中断
+        于中途。统一由本工厂生成，保证所有阻断路径的产物结构一致（LLM
+        可据此向用户说明「该操作被拦截」而不是「执行失败」）。
 
         :param reason: 阻断原因（通常取 ``Intercepted`` 的消息），LLM 可见。
         :return: ``status="blocked"``、``error`` 为 ``None`` 的 `ToolResult`。
@@ -1742,7 +1744,7 @@ class Tool:
                 return ToolResult(status="pending", output=None,
                                   background_task_id=task_id)
             return ToolResult(status="pending", output=None)
-        # 职责 5（D5/D12/D19）：归一化在 try 之外——浅层判别、幂等；
+        # 职责 5：归一化在 try 之外——浅层判别、幂等；
         # 违禁块（ToolCallBlock/ThinkingBlock）ValueError 属作者 bug，
         # 上抛框架错误通道，不被吞成 ToolResult(error)
         value = await normalize_output(value)
@@ -2909,8 +2911,8 @@ class ToolRegistry:
     """
 
     _tools: dict[str, Tool]
-    """``ns::规范名`` → Tool 实例（命名空间规则见 ``flowing.runtime`` 模块
-    docstring §7a）。内部 API，不属稳定契约。
+    """``ns::规范名`` → Tool 实例（命名空间规则见 ``flowing.runtime``）。
+    内部 API，不属稳定契约。
     """
 
     def __init__(self) -> None:
