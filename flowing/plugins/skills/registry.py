@@ -332,7 +332,7 @@ def _parse_skill_file(name: str, source_dir: Path) -> Skill:
 
     - 定向查找：按规范名 ``name`` 在 ``source_dir`` 下首个存在者生效——
       ``<name>/`` 目录内 ``SKILL.fya > skill.fya > <name>.skill.fya >
-      <name>.fya > SKILL.md > skill.md``（裸名语境目录无合法定义文件时
+      <name>.fya > SKILL.md > skill.md`` （裸名语境目录无合法定义文件时
       继续向下；显式路径目录无候选 → ``FormatError``，定位层分流）→
       目录外 ``<name>.skill.fya > <name>.fya > <name>.md``；``.fya`` 系
       与 ``.md`` 并存 → 告警且 ``.fya`` 系优先；通用名命中 → 规范名取
