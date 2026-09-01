@@ -1798,57 +1798,46 @@ class Runtime:
 
 
     def snapshot(self, *, keys: set[str] | None = None) -> RuntimeSnapshot:
-        """一致性只读快照：Runtime 全局状态的观测入口。
+        """一致性只读快照：Runtime 全局状态的观测入口（拉取通道）。
 
         .. rubric:: 功能介绍
 
         返回 :class:`flowing.snapshot.RuntimeSnapshot`——节点表、插件清单、
-        agent 池、provider 候选名、设置、资源的一次性只读视图。
+        agent 池、provider 候选名、配置覆盖层、资源的一次性只读视图。
         供测试断言、repl ``/snapshot``、serve ``GET /snapshot`` 使用。
-        插件状态不在快照中（M-81：无命名空间挂载机制），经
+        插件状态不在快照中（框架不为插件提供快照命名空间挂载机制），经
         :meth:`get_plugin` 拿插件自己的只读 API 观测。
-
-        .. rubric:: 设计动机
-
-        观测走只读视图而非直接读内部 dict：内部可变对象与控制信号
-        （``asyncio.Event`` 等）不暴露，快照是可序列化、可断言的稳定面。
 
         .. rubric:: 使用示例
 
         .. code-block:: python
 
             snap = runtime.snapshot()
-            assert snap.agents["agent-xxx"]["loaded"] is True
+            assert snap.agents["agent-xxx"].loaded is True
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
         - 只读：修改返回对象不影响 Runtime；字段为拷贝或 Info 视图。
         - 一致性：单次调用内各字段取同一时刻的读值。
-        - ``keys``（S3）：``None``（默认）收集全部切面；指定时只收集
-          指定字段（其余为 ``None``）。需要多切面同一时刻一致 → 同一次
-          调用传入全部所需 key。
-        - **可序列化**：全部字段 JSON 可序列化（``GET /snapshot`` 直接
-          序列化即消费点），见 :mod:`flowing.snapshot` 总括不变量。
-        - 不暴露项：``_executions`` 的控制信号、``_provided`` 的值内容
-          （凭证等敏感值绝不进入快照）。
+        - ``keys``：``None``（默认）收集全部切面；指定时只收集指定字段
+          （其余为 ``None``）。需要多切面同一时刻一致 → 同一次调用传入
+          全部所需 key。
+        - 可序列化：全部字段 JSON 可序列化（``GET /snapshot`` 直接序列化
+          即消费点）。
+        - 不暴露项：``_provided`` 的值内容（凭证等敏感值绝不进入快照）、
+          控制信号对象。
         - 完整字段契约见 :mod:`flowing.snapshot` 模块级 docstring。
 
-        .. rubric:: 测试案例
-
-        - 前置：Runtime 已 mount 根 Agent → 操作：``snapshot()`` → 期望：
-          ``nodes`` 含 ``runtime-0`` 条目（其 ``parent_id`` 为 ``None``）
-          且根 Agent 条目的 ``parent_id`` 为 ``"runtime-0"``。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：无（构造 ``RuntimeSnapshot`` 只读视图）
-        - 被调：``flowing.interfaces.cli`` repl ``/snapshot`` 命令、``cmd_serve`` / ``cmd_web`` 的 ``GET /snapshot`` 端点、``cmd_test`` 冒烟断言（时机：各见 ``flowing.interfaces`` 包 docstring）
+        :param keys: 要收集的切面名集合（``nodes`` / ``agents`` /
+            ``plugins`` / ``providers`` / ``config_overrides`` /
+            ``resources``）；``None`` 收集全部。
+        :return: ``RuntimeSnapshot`` 只读视图。
 
         .. seealso:: :meth:`flowing.agent.Agent.snapshot`、
             :class:`flowing.snapshot.RuntimeSnapshot`
         """
         def _want(name: str) -> bool:
-            return keys is None or name in keys   # S3：None 收集全部切面；指定时只收集指定字段（其余为 None）
+            return keys is None or name in keys   # None 收集全部切面；指定时只收集指定字段（其余为 None）
 
         # nodes：_nodes 的 NodeInfo 只读投影（类型取共享 ID 空间前缀——
         # runtime-/agent-/workflow-；parent_id 对 Runtime 自身为 None——链终点无父）
@@ -1887,17 +1876,17 @@ class Runtime:
         )   # _provided 的值内容绝不进入快照（凭证边界）
 
     def set_model_tags(self, path: str | Path) -> None:
-        """加载模型标签映射文件（可选初始化步骤，``mount()`` 之前调用）。
+        """指定模型标签映射文件的来源（可选初始化步骤，``mount()`` 之前调用）。
 
-        功能与动机：模型标签**单值化**（标签 → 单个模型条目，无候选列表、无
-        fallback 链；「换模型」只能动态改 ``self.model`` 或 ``model_tag``）。
-        用户级映射（``$FLOWING_CONFIG_HOME/model-tags.yaml``）优先于项目级
-        （``@/model-tags.yaml``）；``FLOWING_MODEL_TAGS`` 环境变量最优先。
-        旧名 ``tags.yaml`` / ``FLOWING_TAG_MAPPING_PATH`` 已废弃。
+        .. rubric:: 功能介绍
 
-        行为边界：仅登记映射来源，解析发生在 ``self.model`` 求值时（现场求值，
-        无缓存）；路径支持 ``@/`` 前缀规则；标签无映射 → 模型调用时直接报错
-        （无 fallback）。
+        把 ``path`` 登记为模型标签映射文件（``model-tags.yaml``）的来源，
+        覆盖默认路径。模型标签是单值映射（标签 → 单个模型条目名，无候选
+        列表、无 fallback 链；「换模型」只能动态改 ``self.model`` 或
+        ``model_tag``）。标签来源的优先级从高到低：本方法登记的路径
+        （代码级）> ``FLOWING_MODEL_TAGS`` 环境变量指向的文件 > 默认
+        ``$FLOWING_CONFIG_HOME/model-tags.yaml``——本方法只登记单个文件
+        路径，不存在多文件合并。
 
         .. rubric:: 使用示例
 
@@ -1905,31 +1894,33 @@ class Runtime:
 
             runtime.set_model_tags("@/model-tags.yaml")
 
-        .. rubric:: 调用关系（审计）
+        .. rubric:: 行为要点
 
-        - 调用：无（仅登记映射来源，解析现场求值于 ``self.model``）
-        - 被调：无框架内调用点（可选初始化步骤，子项目 ``main()`` 于 ``mount()`` 前调用；消费方为 ``flowing.model`` 标签解析）
+        - 仅登记映射来源，解析发生在 ``self.model`` 求值时（现场求值，
+          无缓存；文件解析经 :func:`flowing.model.load_model_tags`）。
+        - 路径支持 ``@/`` 前缀规则。
+        - 标签无映射 → 模型调用时直接报错（无 fallback；未定义标签回退
+          ``default``，``default`` 也未定义 → 报错，见 ``flowing.model``）。
+
+        :param path: 模型标签映射文件路径。
 
         .. seealso:: :class:`flowing.model.ModelConfig`、
             :meth:`flowing.runtime.Runtime.resolve_path`
         """
         resolved = self.resolve_path(str(path))   # 路径支持 @/ 前缀规则
-        # 仅登记映射来源（存储字段 = 类注解 _model_tags_path）；解析现场求值于 self.model，无缓存
-        # （文件解析经 flowing.model.load_model_tags——S-03 裁决具名；P1-23：产物为
-        # 标签→条目名映射，「条目名→ModelConfig」经 flowing.model.load_models 产物 join）；
+        # 仅登记映射来源（存储字段 = 类注解 _model_tags_path）；解析现场求值于
+        # self.model（flowing.model.load_model_tags 消费），无缓存；
         # 标签无映射 → 模型调用时直接报错（无 fallback，见 flowing.model）
         self._model_tags_path = resolved
 
     def set_models(self, path: str | Path) -> None:
         """指定 models.yaml 来源路径（可选初始化步骤，``mount()`` 之前调用）。
 
-        功能与动机：与 :meth:`set_model_tags` 对称的 models 侧通道——默认
-        ``$FLOWING_CONFIG_HOME/models.yaml``（``FLOWING_MODELS_PATH`` 环境变量
-        重定向），本方法以编程方式覆盖来源。
+        .. rubric:: 功能介绍
 
-        行为边界：仅登记来源（``_models_path``），解析发生在 ``self.model``
-        求值时（``flowing.model.load_models``，现场求值、无缓存）；路径支持
-        ``@/`` 前缀规则。
+        与 :meth:`set_model_tags` 对称的 models 侧通道——默认
+        ``$FLOWING_CONFIG_HOME/models.yaml``（``FLOWING_MODELS_PATH`` 环境
+        变量重定向），本方法以编程方式覆盖来源。
 
         .. rubric:: 使用示例
 
@@ -1937,10 +1928,13 @@ class Runtime:
 
             runtime.set_models("@/models.yaml")
 
-        .. rubric:: 调用关系（审计）
+        .. rubric:: 行为要点
 
-        - 调用：无（仅登记来源，解析现场求值于 ``self.model`` 解析链）
-        - 被调：无框架内调用点（可选初始化步骤，子项目 ``main()`` 于 ``mount()`` 前调用；消费方为 ``flowing.model``）
+        - 仅登记来源，解析发生在 ``self.model`` 求值时
+          （:func:`flowing.model.load_models`，现场求值、无缓存）。
+        - 路径支持 ``@/`` 前缀规则。
+
+        :param path: models.yaml 文件路径。
 
         .. seealso:: :meth:`flowing.runtime.Runtime.set_model_tags`、
             :meth:`flowing.runtime.Runtime.resolve_path`
@@ -1954,14 +1948,11 @@ class Runtime:
     def set_providers(self, path: str | Path) -> None:
         """指定 providers.yaml 来源路径（可选初始化步骤，``mount()`` 之前调用）。
 
-        功能与动机：与 :meth:`set_model_tags` 对称的 providers 侧通道——默认
-        ``$FLOWING_CONFIG_HOME/providers.yaml``（``FLOWING_PROVIDERS_PATH``
-        环境变量重定向），本方法以编程方式覆盖来源并**重建候选清单**。
+        .. rubric:: 功能介绍
 
-        行为边界：登记来源并立即重建 ``provider_registry``（候选清单是构造期
-        产物，``mount()`` 前调用可覆盖；构造期无 provider 实例化，重建安全）；
-        路径支持 ``@/`` 前缀规则；凭证（api_key 等）随文件，安全边界见
-        ``flowing.providers`` 包 docstring。
+        与 :meth:`set_model_tags` 对称的 providers 侧通道——默认
+        ``$FLOWING_CONFIG_HOME/providers.yaml``（``FLOWING_PROVIDERS_PATH``
+        环境变量重定向），本方法以编程方式覆盖来源并立即重建候选清单。
 
         .. rubric:: 使用示例
 
@@ -1969,11 +1960,15 @@ class Runtime:
 
             runtime.set_providers("@/providers.yaml")
 
-        .. rubric:: 调用关系（审计）
+        .. rubric:: 行为要点
 
-        - 调用：``flowing.providers.load_provider_candidates``（时机：每次
-          ``set_providers`` 调用重建候选清单）
-        - 被调：无框架内调用点（可选初始化步骤，子项目 ``main()`` 于 ``mount()`` 前调用）
+        - 登记来源并立即重建 ``provider_registry``（候选清单是构造期产物，
+          ``mount()`` 前调用可覆盖；构造期无 provider 实例化，重建不丢
+          任何已实例化条目——安全）。
+        - 路径支持 ``@/`` 前缀规则；凭证（api_key 等）随文件，安全边界见
+          ``flowing.providers`` 包 docstring。
+
+        :param path: providers.yaml 文件路径。
 
         .. seealso:: :meth:`flowing.runtime.Runtime.set_models`、
             :meth:`flowing.runtime.Runtime.set_model_tags`、
@@ -1988,29 +1983,28 @@ class Runtime:
     def set_persist_dir(self, path: str | Path) -> None:
         """设置持久化目录（可选初始化步骤，``mount()`` 之前调用）。
 
-        功能与动机：目录内两类条目并列——① 每 agent 一 session 目录
-        （``agent_id == session_id``，父子平级），内含文件：
-        ``tree.jsonl``（一行一个 Message + tombstone 等变更记录行）、
-        ``core.jsonl``（核心袋，框架私有）+ ``state.jsonl``（默认袋
-        set/delete 行——框架核心键裸名、插件键带注册名前缀）与
-        ``meta.json``（身份四键，JSON 整写，D12）；
-        ② **全局命名空间文件**：``<namespace>.jsonl`` 一空间一文件
-        （Runtime/插件级状态，``core`` 含已注册 agent id 名录——池 key 的
-        唯一权威来源；显式删除 = 删 session 目录 + 删名录项的一次操作）。
+        .. rubric:: 功能介绍
+
+        目录内两类条目并列：① 每 agent 一个 session 目录
+        （``agent_id == session_id``），内含 ``tree.jsonl``（一行一个
+        Message 及 tombstone 等变更记录行）、``core.jsonl``（核心袋，
+        框架私有）+ ``state.jsonl``（默认袋 set/delete 行）与
+        ``meta.json``（身份四键，JSON 整写）；② 全局命名空间文件：
+        ``<namespace>.jsonl`` 一空间一文件（Runtime / 插件级状态，
+        ``core`` 含已注册 agent id 名录——池 key 的唯一权威来源）。
         本方法只设定全局目录——文件的物理读写由各持有者的
         :class:`flowing.persistence.FileRecordStore` 实例执行
         （:mod:`flowing.persistence`），不经 Runtime 中转。
 
-        行为边界：路径支持 ``@/`` 前缀规则；运行时切换目录不受支持（在
-        ``mount()`` / ``create_agent()`` 之后调用的行为未定义，属用法错误）。
-        调用本方法后、池扫描 / 首个 ``mount()`` 之前，框架重放全部全局
-        命名空间文件（恢复持久值进内存）。
+        .. rubric:: 行为要点
 
-        .. rubric:: 调用关系（审计）
+        - 路径支持 ``@/`` 前缀规则；显式设定即建目录。
+        - 调用后、池扫描 / 首个 ``mount()`` 之前，框架重放全部全局命名
+          空间文件（恢复持久值进内存）。
+        - 运行时切换目录不受支持：在 ``mount()`` / ``create_agent()``
+          之后调用的行为未定义，属用法错误。
 
-        - 调用：无（仅设定全局持久化目录；物理读写由
-          :class:`flowing.persistence.FileRecordStore` 执行）
-        - 被调：无框架内调用点（可选初始化步骤，子项目 ``main()`` 于 ``mount()`` 前调用）
+        :param path: 持久化根目录路径。
 
         .. seealso:: :meth:`flowing.runtime.Runtime.recover_agent`、
             :meth:`flowing.runtime.Runtime.register_state`、
@@ -2018,9 +2012,9 @@ class Runtime:
         """
         self._persist_dir = self.resolve_path(str(path))   # 覆写默认 <cwd>/.flowing；路径支持 @/ 前缀规则
         self._persist_dir.mkdir(parents=True, exist_ok=True)   # 显式设定即建目录（默认路径则推迟到首个 mount/create 才建，见 _ensure_persist_ready）
-        # 重指全部已注册命名空间的存储后端到新目录（R-07：__init__ 已对默认
-        # 路径做过一次注册即 replay，本方法须让既有视图改读新目录——重建
-        # store、清内存持久值，随后 _bootstrap_persistence 全量重放）。
+        # 重指全部已注册命名空间的存储后端到新目录（__init__ 已对默认路径
+        # 做过一次注册即 replay，本方法须让既有视图改读新目录——重建 store、
+        # 清内存持久值，随后 _bootstrap_persistence 全量重放）。
         # 前置约定：mount()/create_agent() 之前调用（之后调用行为未定义）；
         # 此刻各命名空间尚无业务写入（框架自身尚未写 core），重建安全
         for namespace, view in self._states.items():
@@ -2031,52 +2025,36 @@ class Runtime:
         self._bootstrap_persistence()
 
     def register_state(self, namespace: str, backend: str = "file") -> StateView:
-        """开启/注册一个**全局**持久化状态命名空间（Runtime/插件级）。
+        """开启 / 注册一个全局持久化状态命名空间（Runtime / 插件级）。
 
         .. rubric:: 功能介绍
 
-        状态**不挂在任何 agent 名下**：写在持久化根目录的
+        状态不挂在任何 agent 名下：写在持久化根目录的
         ``<namespace>.jsonl``（一空间一文件，``'file'`` 后端细节）。
-        承载 Runtime/插件的全局状态——框架的 ``core`` 全局命名空间含
-        已注册 agent id 名录与已安装插件清单；``default`` 是 Runtime
-        自身生命周期状态 + 小插件键的默认袋（D13，经 :attr:`state`
-        property 访问）；插件的全局登记类状态（如通信扩展的全局路由
-        表）走自定义命名空间。**加载/派生时机完全由插件内部管理**（最终
-        裁决）：核心只提供基础设施——开启、写透、**创建即 replay**
-        （开空间即恢复，与 Agent 侧 :meth:`Agent.register_state` 对称）；
-        何时读出持久值派生运行时结构是插件自己的事（懒重建、显式
-        初始化方法均可），核心不提供 ``load`` 恢复回调（Agent 侧的
-        派生重建走 ``after_recover`` 钩子）。
+        承载 Runtime / 插件的全局状态——框架自登记的 ``core`` 全局命名
+        空间含已注册 agent id 名录与已安装插件清单；``default`` 是
+        Runtime 自身生命周期状态 + 小插件键的默认袋（经 :attr:`state`
+        property 访问）；插件的全局登记类状态（如通信扩展的全局路由表）
+        走自定义命名空间。加载 / 派生时机完全由插件内部管理：核心只提供
+        基础设施——开启、写透、创建即 replay（开空间即恢复，与 Agent 侧
+        :meth:`Agent.register_state` 对称）；何时读出持久值派生运行时结构
+        是插件自己的事（懒重建、显式初始化方法均可），核心不提供
+        ``load`` 恢复回调（Agent 侧的派生重建走 ``after_recover`` 钩子）。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
-        - **幂等**：同命名空间重复声明 = 空操作返回同一视图（D3 语义；
-          无定义可比——defaults 参数已随 D4 消除）。
-        - **创建即 replay**：声明时即重放持久值进 ``_persisted``——
-          ``use()`` 后引导与 ``_ensure_persist_ready`` 兜底重放不再需要
-          （恢复绑定在命名空间创建）。
+        - 幂等：同命名空间重复声明是空操作、返回同一视图。
+        - 创建即 replay：声明时即重放持久值进内存（恢复绑定在命名空间
+          创建——``use()`` 后引导与 ``_ensure_persist_ready`` 兜底重放
+          不再需要）。
         - ``backend`` 当前仅 ``'file'``；其它值 → ``ValueError``。
-        - 重放产物是裸持久值（JSON 纯数据）；派生运行时结构的重建
-          时机与方式由插件内部管理，异常由插件自行处理。
+        - 重放产物是裸持久值（JSON 纯数据）；派生运行时结构的重建时机
+          与方式由插件内部管理，异常由插件自行处理。
 
         :param namespace: 全局命名空间名（建议带插件前缀，如
             ``"comm.routes"``——框架不参与命名）。
         :param backend: 后端（当前仅 ``'file'``）。
         :return: 全局 :class:`flowing.persistence.StateView`。
-
-        .. rubric:: 测试案例
-
-        - 前置：注册 ``"x"`` 并写 ``runtime.states["x"].k = 1`` → 进程
-          重启 → 期望：重放后 ``runtime.states["x"].k == 1``。
-        - 前置：两插件声明同命名空间 → 期望：幂等返回同一视图。
-        - 前置：``install()`` 中开启命名空间 → 期望：创建即 replay，
-          持久值立即可见。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：无（开启全局命名空间并返回 ``StateView``）
-        - 被调：各插件 ``install()``（开启全局命名空间，时机：阶段一）；
-          框架自身 ``core`` / ``default`` 命名空间登记（时机：``__init__``）
 
         .. seealso:: :attr:`states`、:attr:`state`、:meth:`set_persist_dir`、
             :meth:`flowing.agent.Agent.register_state`
@@ -2086,8 +2064,8 @@ class Runtime:
         existing = self._states.get(namespace)
         if existing is not None:
             return existing   # 幂等：同 ns → 同视图
-        # 路径基 = _persist_dir（默认 <cwd>/.flowing，S-37；开空间即恢复，
-        # 不再依赖 set_persist_dir 之后的引导重放）
+        # 路径基 = _persist_dir（默认 <cwd>/.flowing；开空间即恢复，
+        # 不依赖 set_persist_dir 之后的引导重放）
         view = StateView(FileRecordStore(
             self._persist_dir / f"{namespace}.jsonl", merge_last_line=True))
         # 创建即 replay（开空间即恢复）
@@ -2100,22 +2078,15 @@ class Runtime:
                 persisted.pop(record["key"], None)
             # 未知行形态（meta 已被 replay 吸收）静默跳过
         if persisted:
-            view._maybe_compact(force=True)   # 压缩三时点①的 Runtime 侧落点
+            view._maybe_compact(force=True)   # 压缩时点①的 Runtime 侧落点
         self._states[namespace] = view
         return view
 
     @property
     def states(self) -> Mapping[str, StateView]:
-        """全局命名空间注册表（D13）：只读 Mapping 视图——``["ns"]`` /
-        ``in`` / ``.get()`` 均可用（读写语义继承
+        """全局命名空间注册表：只读 Mapping 视图——``["ns"]`` / ``in`` /
+        ``.get()`` 均可用（读写语义继承
         :class:`flowing.persistence.StateView` 的类级契约）。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：无（返回注册表视图）
-        - 被调：``flowing.runtime.Runtime.create_agent`` 池注册步
-          （``states["core"]["agents"]`` 写透，管线第 7 步）；插件代码
-          读写全局状态（时机：声明后任意时刻）
 
         .. seealso:: :meth:`register_state`、:attr:`state`
         """
@@ -2123,9 +2094,8 @@ class Runtime:
 
     @property
     def state(self) -> StateView:
-        """Runtime 默认袋（D13）：``states["default"]``——与
-        ``agent.state`` 对称（runtime 自身生命周期状态 + 小插件键的
-        落点）。"""
+        """Runtime 默认袋：``states["default"]``——与 ``agent.state`` 对称
+        （runtime 自身生命周期状态 + 小插件键的落点）。"""
         return self._states["default"]
 
     # ------------------------------------------------------------------
