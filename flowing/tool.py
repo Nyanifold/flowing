@@ -28,7 +28,7 @@
      - 子 Agent
      - Skill
    * - 可执行对象
-     - :class:`Tool`（``execute()``）
+     - :class:`Tool` （``execute()``）
      - Agent 类
      - Skill 内容
    * - LLM 可见声明
@@ -252,12 +252,12 @@ script 是单例是因为其业务逻辑是用户代码，不应实例化多次�
 
 
 # ──────────────────────────────────────────────────────────────────
-# 结果归一化与媒体通道（05 定案：D4–D10、D12、D19、D22）
+# 结果归一化与媒体通道
 # ──────────────────────────────────────────────────────────────────
 
 
 def _validate_carrier(carrier: "Image | File | Audio | Video") -> None:
-    """载体四类共用构造校验（作者 bug → 框架错误通道 ValueError）。
+    """载体四类共用的构造校验（作者笔误 → ``ValueError``）。
 
     - ``data`` / ``path`` 至少其一；
     - ``path`` 须为绝对路径。
@@ -271,30 +271,31 @@ def _validate_carrier(carrier: "Image | File | Audio | Video") -> None:
 
 @dataclass
 class Image:
-    """执行层媒体载体（图片）——工具作者侧词汇，Block 对作者彻底透明（D6）。
+    """工具返回图片时使用的媒体载体（消息层 Block 对工具作者透明）。
 
     .. rubric:: 功能介绍
 
-    `execute()` 返回媒体的**可选元数据包装**（不是必经路径）：裸 ``bytes``
-    / ``pathlib.Path`` 直收；需要显式 MIME、文件名、或推翻推断结果
-    （如 ``File(path="x.png")`` 强制文件块而非图片块）时才用本载体。
-    第三方库对象（如 ``PIL.Image.Image``）也直收（D10 注册表）。命名无
-    ``Block`` 后缀 = 层次宣言：作者接口面（含直构 `ToolResult` 的逃生舱）
-    完全不出现消息层 Block。
+    工具作者通常不需要本载体：``execute`` 直接返回裸 ``bytes`` 或
+    ``pathlib.Path`` 即可，框架自动推断 MIME 与文件名并转为消息层的
+    ``ImageBlock``。需要显式指定 MIME、文件名，或推翻推断结果（如
+    ``File(path="x.png")`` 强制文件块而非图片块）时才构造本载体。
+    第三方库对象（如 ``PIL.Image.Image``）也直接返回，经
+    :func:`register_media_converter` 注册的转换器处理。工具作者接口面
+    不出现消息层 Block——载体 → 块的转换只发生在
+    :func:`flowing.tool.normalize_output` （async，可能读盘）。
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
-    - ``data`` / ``path`` 至少其一，都没有 → ``ValueError``（作者 bug，
-      框架错误通道）；``path`` 须绝对路径，相对路径 → ``ValueError``。
-    - MIME 路由（D7）：推断链 = 显式 ``mime_type`` > path 后缀
-      （``mimetypes``）> bytes 魔数 > 来源库元数据；``image/*`` →
-      ``ImageBlock``、``audio/*`` → ``AudioBlock``、``video/*`` →
-      ``VideoBlock``、其余/推不出 → ``FileBlock``（**宁文件勿图**）。
-      显式载体声明永远压过推断。
-    - 文件名（D8）：产物 ``MediaBlock.name`` 必填；填充链 = 显式
-      ``name`` > ``path`` 文件名 > 合成 ``<sha256(data)[:12]>.<ext>``
-      （ext 由 MIME 反推，MIME 未知 → ``.bin``）。
-    - 载体 → 块的 I/O 转换只发生在 `normalize_output`（async）。
+    - ``data`` 与 ``path`` 至少给其一，都没有 → ``ValueError``；
+      ``path`` 必须是绝对路径，相对路径 → ``ValueError`` （作者笔误，
+      直接上抛，不包成工具结果）。
+    - MIME 推断链：显式 ``mime_type`` > path 后缀（``mimetypes``）>
+      bytes 魔数；``image/*`` → ``ImageBlock``、``audio/*`` →
+      ``AudioBlock``、``video/*`` → ``VideoBlock``、其余或推不出 →
+      ``FileBlock`` （宁文件勿图）。显式载体声明永远压过推断。
+    - 文件名填充链：显式 ``name`` > ``path`` 文件名 > 合成
+      ``<sha256(data)[:12]>.<ext>`` （ext 由 MIME 反推，MIME 未知 →
+      ``.bin``）。
 
     .. seealso::
 
@@ -303,13 +304,13 @@ class Image:
     """
 
     data: bytes | str | None = None
-    """bytes 原始数据 / str base64；与 ``path`` 至少其一。"""
+    """bytes 原始数据或 str base64；与 ``path`` 至少其一。"""
     path: str | os.PathLike | None = None
-    """绝对路径（收 ``pathlib.Path``）；相对路径 → ``ValueError``。"""
+    """绝对路径（接受 ``pathlib.Path``）；相对路径 → ``ValueError``。"""
     mime_type: str | None = None
-    """显式 MIME；缺省走推断链（D7），显式声明永远压过推断。"""
+    """显式 MIME；缺省走推断链（见类 docstring 行为要点）。"""
     name: str | None = None
-    """文件名；缺省 = path 文件名 > hash.ext 合成（D8）。"""
+    """文件名；缺省 = path 文件名 > hash.ext 合成（见类 docstring）。"""
 
     def __post_init__(self) -> None:
         _validate_carrier(self)
@@ -317,7 +318,7 @@ class Image:
 
 @dataclass
 class File:
-    """执行层媒体载体（文件）——与 `Image` 同构（D6）。
+    """工具返回文件时使用的媒体载体——与 `Image` 同构。
 
     显式推翻推断的通道：``File(path="x.png")`` 强制产 ``FileBlock``
     而非 ``ImageBlock``。字段语义与校验规则见 `Image`。
@@ -334,7 +335,9 @@ class File:
 
 @dataclass
 class Audio:
-    """执行层媒体载体（音频）——与 `Image` 同构（D6），产物 ``AudioBlock``。"""
+    """工具返回音频时使用的媒体载体——与 `Image` 同构，产物
+    ``AudioBlock``。字段语义与校验规则见 `Image`。
+    """
 
     data: bytes | str | None = None
     path: str | os.PathLike | None = None
@@ -347,7 +350,9 @@ class Audio:
 
 @dataclass
 class Video:
-    """执行层媒体载体（视频）——与 `Image` 同构（D6），产物 ``VideoBlock``。"""
+    """工具返回视频时使用的媒体载体——与 `Image` 同构，产物
+    ``VideoBlock``。字段语义与校验规则见 `Image`。
+    """
 
     data: bytes | str | None = None
     path: str | os.PathLike | None = None
@@ -360,17 +365,22 @@ class Video:
 
 @dataclass
 class MediaConverter:
-    """第三方库对象 → 执行层载体的转换注册表条目（D10）。
+    """第三方库对象 → 媒体载体的转换器注册条目（由
+    :func:`register_media_converter` 写入模块级注册表）。
 
-    .. rubric:: 行为规约
+    .. rubric:: 功能介绍
 
-    - 条目统一为 ``(module, qualname, convert)`` 三元组；匹配算法
-      ``any(f"{c.__module__}.{c.__qualname__}" == target
-      for c in type(obj).__mro__)``——沿 MRO 查全名，**子类命中**。
-    - 天然惰性：下游任何时候 import 的库下一次判别即生效，无初始化
-      快照问题；模块 reload 后旧类对象仍命中。
-    - 非行为：ABC 虚拟子类（``__subclasshook__``）不命中；同模块同名
-      伪造不防。
+    条目固定为 ``(module, qualname, convert)`` 三元组：前两者是第三方
+    库对象的类全名（``模块名.类限定名``），``convert`` 是把该对象转为
+    `Image` / `File` / `Audio` / `Video` 四类载体之一的函数。匹配时沿
+    对象的类 MRO 逐级比对全名——子类实例同样命中（注册的是基类、返回
+    的是子类实例也能转换）。注册表天然惰性：库在任何时候被 import，
+    下一次判别即生效，没有初始化快照问题。
+
+    .. seealso::
+
+        - :func:`flowing.tool.register_media_converter` —— 注册入口。
+        - :func:`flowing.tool.normalize_output` —— 匹配与转换的消费点。
     """
 
     module: str
@@ -382,10 +392,11 @@ class MediaConverter:
 
 
 def _pil_image_convert(img: Any) -> "Image":
-    """内置 Pillow 转换器（D10）：``PIL.Image.Image`` → PNG bytes 的 `Image` 载体。
+    """内置 Pillow 转换器：``PIL.Image.Image`` → PNG bytes 的 `Image` 载体。
 
     PIL 未安装不影响本定义的存在——匹配走 MRO 全名字符串，不 import PIL；
     convert 被调用时 ``PIL.Image.Image`` 实例已存在，PIL 必然已装入。
+    内部 API。
     """
     import io
 
@@ -395,11 +406,12 @@ def _pil_image_convert(img: Any) -> "Image":
 
 
 _MEDIA_CONVERTERS: list[MediaConverter] = [
-    # 内置条目（D10）：Pillow——PIL.Image.Image 实例（含子类）经 MRO 全名
+    # 内置条目：Pillow——PIL.Image.Image 实例（含子类）经 MRO 全名
     # 匹配命中，convert 取 PNG bytes 包 Image 载体（mime_type="image/png"）
     MediaConverter("PIL.Image", "Image", convert=_pil_image_convert),
 ]
-"""媒体转换注册表（模块级）。匹配算法与语义见 `MediaConverter`（D10）。"""
+"""媒体转换注册表（模块级，进程内共享）。匹配算法与语义见
+`MediaConverter`；写入入口为 :func:`register_media_converter`。"""
 
 
 def register_media_converter(
@@ -407,22 +419,40 @@ def register_media_converter(
     qualname: str | None = None,
     convert: Callable[[Any], "Image | File | Audio | Video"] | None = None,
 ) -> None:
-    """注册第三方库对象 → 媒体载体的转换器（D10）。
+    """注册第三方库对象 → 媒体载体的转换器（进程内全局生效）。
 
-    .. rubric:: 行为规约
+    .. rubric:: 功能介绍
 
-    - 直传 ``type`` 对象时降级存名字（``tp.__module__`` /
-      ``tp.__qualname__``）——全库只有 MRO 全名一种匹配机制。
-    - :raises ValueError: 同 ``(module, qualname)`` 重复注册。
+    让 `normalize_output` 认识第三方库返回的对象：注册后，工具返回该库
+    的实例（或它的子类实例）时，框架会调用 ``convert`` 把它转为
+    `Image` / `File` / `Audio` / `Video` 载体之一，再走载体通道转块。
+    直传 ``type`` 对象时降级存名字（``tp.__module__`` /
+    ``tp.__qualname__``）——全库只有 MRO 全名一种匹配机制。
+
+    .. rubric:: 行为要点
+
+    - 同 ``(module, qualname)`` 重复注册 → ``ValueError``。
+    - ``tp_or_module`` 为 ``type`` 时 ``qualname`` 必须省略；
+      module / qualname / convert 三要素缺一 → ``ValueError``。
+    - 注册表是进程内模块级状态，跨测试或跨 Runtime 共享；测试如需
+      隔离应自行清理。
 
     .. rubric:: 使用示例
 
     .. code-block:: python
 
+        from flowing.tool import Image, register_media_converter
+
+        class MyPlot:
+            \"\"\"第三方绘图库返回的对象类型。\"\"\"
+
+        # 库全名 + 类限定名 + 转换函数
         register_media_converter(
-            "PIL.Image", "Image",
-            lambda img: Image(data=_png_bytes(img), mime_type="image/png"))
-        register_media_converter(pydub.AudioSegment, convert=...)  # 直传 type
+            "mylib.charts", "MyPlot",
+            convert=lambda plot: Image(
+                data=plot.render_png(), mime_type="image/png"))
+        # 或直传 type 对象（降级存名字）
+        register_media_converter(MyPlot, convert=my_plot_to_carrier)
 
     :param tp_or_module: ``type`` 对象（降级存名字）或模块全名字符串。
     :param qualname: 类限定名；``tp_or_module`` 为 ``type`` 时省略。
@@ -449,7 +479,7 @@ def register_media_converter(
 
 def _sniff_mime(data: bytes) -> str | None:
     """bytes 魔数嗅探：只内置常见魔数，推不出返回 ``None``
-    （调用方按「宁文件勿图」落 ``FileBlock``）。"""
+    （调用方按「宁文件勿图」落 ``FileBlock``）。内部 API。"""
     if data.startswith(b"\x89PNG\r\n\x1a\n"):
         return "image/png"
     if data.startswith(b"\xff\xd8\xff"):
@@ -470,8 +500,8 @@ def _sniff_mime(data: bytes) -> str | None:
 
 
 def _route_block(mime: str | None) -> "type[MediaBlock]":
-    """D7 MIME 路由：``image/*`` / ``audio/*`` / ``video/*`` → 对应块；
-    其余 / 推不出 → ``FileBlock``（宁文件勿图）。"""
+    """MIME 路由：``image/*`` / ``audio/*`` / ``video/*`` → 对应块；
+    其余 / 推不出 → ``FileBlock`` （宁文件勿图）。内部 API。"""
     if mime is not None:
         category = mime.split("/", 1)[0]
         if category == "image":
@@ -484,7 +514,8 @@ def _route_block(mime: str | None) -> "type[MediaBlock]":
 
 
 def _synth_name(data: bytes, mime: str | None) -> str:
-    """D8 文件名合成：``<sha256(data)[:12]>.<ext>``（ext 由 MIME 反推，未知 → ``.bin``）。"""
+    """文件名合成：``<sha256(data)[:12]>.<ext>`` （ext 由 MIME 反推，
+    未知 → ``.bin``）。内部 API。"""
     ext = mimetypes.guess_extension(mime) if mime else None
     return f"{hashlib.sha256(data).hexdigest()[:12]}{ext or '.bin'}"
 
@@ -499,9 +530,11 @@ async def _media_to_block(
 ) -> MediaBlock:
     """载体 / 裸 bytes / 裸 Path → 媒体块（I/O 唯一发生点，async）。
 
-    - MIME 推断链（D7）：显式 ``mime_type`` > path 后缀（``mimetypes``）>
-      bytes 魔数；``forced`` 非 None（显式载体声明）时块类别不再经路由。
-    - 文件名填充链（D8）：显式 ``name`` > path 文件名 > hash.ext 合成。
+    - MIME 推断链：显式 ``mime_type`` > path 后缀（``mimetypes``）>
+      bytes 魔数；``forced`` 非 ``None`` （显式载体声明）时块类别不再
+      经路由。
+    - 文件名填充链：显式 ``name`` > path 文件名 > hash.ext 合成。
+    内部 API。
     """
     if isinstance(data, str):
         # data str = base64 形态（见 Image.data 字段注释）；解码为 raw 统一处理
@@ -531,11 +564,12 @@ _CARRIER_BLOCK: "dict[type, type[MediaBlock]]" = {
     Audio: AudioBlock,
     Video: VideoBlock,
 }
-"""显式载体四类 → 强制块类别（显式声明永远压过推断，D7）。"""
+"""显式载体四类 → 强制块类别（显式声明永远压过推断）。内部 API。"""
 
 
 def _find_media_converter(obj: Any) -> MediaConverter | None:
-    """D10 注册表匹配：沿 ``type(obj).__mro__`` 查 ``module.qualname`` 全名，子类命中。"""
+    """注册表匹配：沿 ``type(obj).__mro__`` 查 ``module.qualname`` 全名，
+    子类命中。内部 API。"""
     mro_names = {f"{c.__module__}.{c.__qualname__}" for c in type(obj).__mro__}
     for converter in _MEDIA_CONVERTERS:
         if f"{converter.module}.{converter.qualname}" in mro_names:
@@ -544,46 +578,40 @@ def _find_media_converter(obj: Any) -> MediaConverter | None:
 
 
 async def normalize_output(value: Any) -> Any:
-    """把 ``execute`` 返回值 / ``ToolResult.output`` 原料归一化（浅层判别，D5）。
+    """把 ``execute`` 返回值 / ``ToolResult.output`` 原料归一化为五形态之一。
 
     .. rubric:: 功能介绍
 
-    产出**五形态**（D4）：``None`` | 基础值原样 | 单块 | 纯基础 list |
-    混合 list（基础成员原样保留 + 非基础成员已转块）。**幂等**——已归一
-    的值再跑一遍结果不变（块原样放行、基础保留），这是 D19 双调用点
-    （`Tool.__call__` + ``Agent.tool_call`` 收尾）安全的前提。内部 API。
+    工具结果的统一归一入口：`Tool.__call__` 与 ``Agent.tool_call`` 收尾
+    各调一次（两次都安全，见行为要点）。产物为五形态之一：``None`` /
+    基础值原样 / 单块 / 纯基础 list / 混合 list（基础成员原样保留 +
+    非基础成员已转块）。「基础类型」指 ``None`` / ``bool`` / ``int`` /
+    ``float`` / ``str`` / ``dict`` / ``list`` / ``tuple`` / dataclass
+    实例 / pydantic ``BaseModel`` 实例（JSON 兼容及其常见载体）。
 
-    「基础类型」：``None`` / ``bool`` / ``int`` / ``float`` / ``str`` /
-    ``dict`` / ``list`` / ``tuple`` / dataclass 实例 / pydantic
-    ``BaseModel`` 实例（JSON 兼容及其常见载体）。
+    .. rubric:: 行为要点
 
-    .. rubric:: 行为规约
-
-    1. ``value`` 是 ``list`` / ``tuple``（顶层；tuple 归一为 list）——
-       浅层检查每个成员（**不递归**）：全基础 → 原样返回（JSON 形态）；
-       有非基础成员 → 逐成员：基础成员原样保留、非基础成员单独转块
-       （D9 混排不报错）。
-    2. ``value`` 非 list/tuple：基础类型 → 原样返回；非基础 → 合法块
-       原样 / 可转化转单块 / 违禁块 ``ValueError`` / 不可转化
-       ``ValueError``（同 D12 通道）。
-
-    - 合法块 = ``TextBlock`` / ``StructBlock`` / ``MediaBlock`` → 原样
-      放行。
-    - 载体四类 / 裸 ``bytes`` / ``Path`` / 注册表命中对象 → 转对应块
-      （async，可读盘；MIME 路由 D7、文件名合成 D8）。
-    - 违禁块（D12）：``ToolCallBlock`` / ``ThinkingBlock`` 出现在结果中
-      （任何层级、任何路径）→ ``ValueError``（框架错误通道，作者 bug）。
-    - 不可转换对象 → ``ValueError``（框架错误通道，作者 bug——返回值形态
-      由工具编写方决定，不可能由 LLM 调用产生；D11）。
-    - 媒体 → 块的 I/O 转换只发生在本方法（async）；塑形（五形态 →
+    - ``value`` 是 ``list`` / ``tuple`` （顶层；tuple 归一为 list）：浅层
+      检查每个成员，不递归。全为基础 → 原样返回（JSON 形态）；含非基础
+      成员 → 逐成员转换，基础成员原样保留、非基础成员单独转块（混排
+      不报错）。
+    - ``value`` 非 list / tuple：基础类型 → 原样返回；合法块
+      （``TextBlock`` / ``StructBlock`` / ``MediaBlock``）→ 原样放行；
+      载体四类 / 裸 ``bytes`` / 绝对路径 ``Path`` / 注册表命中对象 →
+      转对应媒体块（async，可读盘）；违禁块（``ToolCallBlock`` /
+      ``ThinkingBlock``，任何层级、任何路径）→ ``ValueError``；不可
+      转换对象 → ``ValueError``。裸 ``Path`` 相对路径 → ``ValueError``。
+    - 幂等：已归一的值再跑一遍结果不变（块原样放行、基础保留）——这是
+      `Tool.__call__` 与 ``Agent.tool_call`` 收尾双调用点安全的前提。
+    - 媒体 → 块的 I/O 转换只发生在本函数（async）；塑形（五形态 →
       content 块列表）是纯同步，见 `output_to_blocks`。
-    - 边缘情况：深层埋藏的非 JSON 对象（``[{"a": pil_image}]``）归一化期
-      放行，`as_message` 塑形时 ``StructBlock`` 构造校验失败 →
-      ``ValueError``（诚实失败点，不追求早发现）。
+    - 边缘情况：深层埋藏的非 JSON 对象（如 ``[{"a": pil_image}]``）
+      归一化期放行，`as_message` 塑形时 ``StructBlock`` 构造校验失败 →
+      ``ValueError`` （诚实失败点，不追求早发现）。
 
     .. seealso::
 
-        - :func:`flowing.tool.output_to_blocks` —— 下游塑形统一出口（D22）。
+        - :func:`flowing.tool.output_to_blocks` —— 下游塑形统一出口。
         - :class:`flowing.tool.ToolResult` —— 五形态的承载字段 ``output``。
     """
     def _is_basic(v: Any) -> bool:
@@ -605,17 +633,17 @@ async def normalize_output(value: Any) -> Any:
         if _is_basic(v):
             return v
         if isinstance(v, (ToolCallBlock, ThinkingBlock)):
-            # 违禁块（D12）：浅层出现 -> 框架错误通道（作者 bug）；深层埋藏
-            # 的块由塑形期 StructBlock 构造校验同通道兜住（D5 诚实失败点）
+            # 违禁块：浅层出现 -> 框架错误通道（作者 bug）；深层埋藏
+            # 的块由塑形期 StructBlock 构造校验同通道兜住
             raise ValueError(f"工具结果中出现违禁块类型: {type(v).__name__}")
         if isinstance(v, ContentBlock):
             # 合法块（TextBlock/StructBlock/MediaBlock）原样放行；其余块类型
-            # 按违禁同通道处理（D12 兜底）
+            # 按违禁同通道处理
             if isinstance(v, (TextBlock, StructBlock, MediaBlock)):
                 return v
             raise ValueError(f"工具结果中出现违禁块类型: {type(v).__name__}")
         if isinstance(v, (Image, File, Audio, Video)):
-            # 载体四类：显式声明压过推断（D7），块类别由载体类型强制
+            # 载体四类：显式声明压过推断，块类别由载体类型强制
             return await _media_to_block(
                 data=v.data, path=v.path, mime_type=v.mime_type, name=v.name,
                 forced=_CARRIER_BLOCK[type(v)])
@@ -631,17 +659,17 @@ async def normalize_output(value: Any) -> Any:
                 data=None, path=v, mime_type=None, name=None, forced=None)
         converter = _find_media_converter(v)
         if converter is not None:
-            # 注册表命中（D10）：先转载体四类之一，再走载体通道
+            # 注册表命中：先转载体四类之一，再走载体通道
             carrier = converter.convert(v)
             return await _media_to_block(
                 data=carrier.data, path=carrier.path, mime_type=carrier.mime_type,
                 name=carrier.name, forced=_CARRIER_BLOCK[type(carrier)])
         raise ValueError(
-            f"工具结果类型不可转换: {type(v).__name__}")   # D11：作者 bug
+            f"工具结果类型不可转换: {type(v).__name__}")   # 作者 bug
 
     if isinstance(value, (list, tuple)):
         # 顶层序列：浅层判别（不递归）——全基础原样（tuple 归一为 list）；
-        # 有非基础成员则基础保留、非基础逐成员转块（D9 混排不报错）
+        # 有非基础成员则基础保留、非基础逐成员转块（混排不报错）
         items = list(value)
         if all(_is_basic(v) for v in items):
             return items
@@ -650,27 +678,32 @@ async def normalize_output(value: Any) -> Any:
 
 
 def output_to_blocks(output: Any, *, error: str | None = None) -> list[ContentBlock]:
-    """五形态 ``output`` → 消息 ``content`` 块列表（同步塑形统一出口，D22）。
+    """把五形态 ``output`` 塑形为消息 ``content`` 块列表（同步统一出口）。
 
     .. rubric:: 功能介绍
 
-    塑形只有这一处实现。消费方三处，永远走同一条代码路径：
-    `ToolResult.as_message`（内部调本函数）、异步任务完成回调
-    （``add_done_callback`` 固定 watcher，D13）、cron
-    ``default_tool_executor``（D14）——后两处自行加标注块（D15）后产
-    EVENT 消息。
+    塑形只有这一处实现，全部消费方走同一条代码路径：`ToolResult.as_message`
+    （内部调本函数）、异步工具完成回调（``add_done_callback`` 固定
+    watcher）、cron 的 ``default_tool_executor``——后两处自行加标注块后
+    产 EVENT 消息。
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
     - 纯同步、无 I/O——原料 → 块的转换已在 `normalize_output` 完成。
-    - ``error`` 非 ``None`` 时末尾追加 ``TextBlock(error)``。
-    - 前置：``output`` 已是五形态之一（出 ``Agent.tool_call`` 恒成立，
-      D19）；深层埋藏的非 JSON 对象在本函数内 ``StructBlock`` 构造校验
-      失败 → ``ValueError``（框架错误通道）。
+    - 形态映射：``None`` → 空列表；``str`` → ``[TextBlock(v)]``；标量
+      （``bool`` / ``int`` / ``float``）→ ``[TextBlock(json.dumps(v))]``
+      （可解析回）；``dict`` / dataclass / ``BaseModel`` / 纯基础
+      ``list`` / ``tuple`` → ``[StructBlock(data)]``；单块 → ``[block]``；
+      混合 list → 逐成员保序（``str`` 原样、标量 dumps、``dict`` /
+      ``list`` 转 ``StructBlock``、块透传）。
+    - ``error`` 非 ``None`` 时在末尾追加 ``TextBlock(error)``。
+    - 前置：``output`` 已是五形态之一（出 ``Agent.tool_call`` 恒成立）；
+      深层埋藏的非 JSON 对象在本函数内 ``StructBlock`` 构造校验失败 →
+      ``ValueError`` （框架错误通道，直接上抛）。
 
     .. seealso::
 
-        - :func:`flowing.tool.normalize_output` —— 上游归一化（D5）。
+        - :func:`flowing.tool.normalize_output` —— 上游归一化。
         - :meth:`flowing.tool.ToolResult.as_message` —— 消费方一。
     """
     # output 五形态 → content 块列表（纯同步，无 I/O）：
@@ -695,7 +728,7 @@ def output_to_blocks(output: Any, *, error: str | None = None) -> list[ContentBl
         if is_dataclass(v) and not isinstance(v, type):
             return StructBlock(data=asdict(v))   # dataclass 此刻序列化
         # dict / 纯基础 list / tuple → StructBlock（JSON 校验在 StructBlock 构造点，
-        # 深层埋藏非 JSON 对象在此诚实失败，D5）
+        # 深层埋藏非 JSON 对象在此诚实失败）
         return StructBlock(data=v)
 
     blocks: list[ContentBlock] = []
@@ -2015,7 +2048,7 @@ class Tool:
 
 def _has_forbidden_block(value: Any) -> bool:
     """浅层违禁块检测（与 `normalize_output` 的浅层判别同口径——顶层值或
-    list/tuple 成员；深层埋藏由塑形期 ``StructBlock`` 构造校验兜底，D5）。
+    list/tuple 成员；深层埋藏由塑形期 ``StructBlock`` 构造校验兜底）。
     内部 API，不属稳定契约。"""
     if isinstance(value, (ToolCallBlock, ThinkingBlock)):
         return True
