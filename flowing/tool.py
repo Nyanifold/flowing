@@ -785,7 +785,7 @@ class ToolCall:
       `ToolResult` 放进 ``shortcut`` 字段短路 / ``raise Intercepted``
       硬阻断；普通异常直接上抛，无兜底钩子。
     - `ToolCall` 不做参数校验、不认识 specified——参数聚合全部发生在
-      其后的 ``_normalize()``（见 :mod:`flowing.agent`）。
+      其后的 ``_normalize()`` （见 :mod:`flowing.agent`）。
     - ``args`` 只包含 LLM 原始传入值（键可能是别名）；hook 改写后出现的
       同名键会在 ``resolve()`` 中被 specified 覆盖（优先级见模块
       docstring 的参数优先级约定）。
@@ -806,7 +806,7 @@ class ToolCall:
     接受无语义的 uuid；仅作追踪，不参与配对。
     """
     name: str
-    """LLM 看到的工具名——即 `ToolEntry.name_alias`（别名），不是规范名。
+    """LLM 看到的工具名——即 `ToolEntry.name_alias` （别名），不是规范名。
     ``Agent.tool_call()`` 仅按此名查找工具绑定表，不回退规范名。
     """
     args: dict[str, Any]
@@ -827,7 +827,7 @@ class ToolCall:
 
     @classmethod
     def from_block(cls, block: ToolCallBlock) -> "ToolCall":
-        """从消息层 `ToolCallBlock` 解析为 `ToolCall`（唯一官方转换点）。
+        """从消息层 `ToolCallBlock` 解析为 `ToolCall` （唯一官方转换点）。
 
         .. rubric:: 功能介绍
 
@@ -838,7 +838,7 @@ class ToolCall:
         .. rubric:: 行为要点
 
         - 纯函数：不修改入参 block，不产生副作用。
-        - 返回值的 ``shortcut`` 恒为 ``None``（短路是钩子链运行期状态，
+        - 返回值的 ``shortcut`` 恒为 ``None`` （短路是钩子链运行期状态，
           不来自消息）。
 
         .. seealso::
@@ -880,13 +880,13 @@ class ToolResult:
 
     - ``status="error"`` 是正常产物而非异常：LLM 应当看到工具失败并自行
       决策（重表述、换工具、向用户报告），因此 error 结果不触发任何错误
-      钩子——核心错误钩子仅 ``on_provider_error``（机制 vs 策略）。
+      钩子——核心错误钩子仅 ``on_provider_error`` （机制 vs 策略）。
     - ``status="blocked"`` 与 ``"error"`` 区分：blocked 表示工具根本没
       执行（被审批 / 守卫阻断），error 表示执行了但失败；二者对 LLM 的
       语义与审计含义不同，不可合并。``status == "blocked"`` 的实例只能
       经 `ToolResult.blocked` 工厂产生——来源：``before_tool_call`` /
       ``after_tool_call`` 拦截（工具未执行或结果被丢弃），或 ``execute``
-      内主动抛出 ``Intercepted``（执行被硬阻断于中途）。
+      内主动抛出 ``Intercepted`` （执行被硬阻断于中途）。
     - ``pending`` 承载异步边界（三种形态：返回 ``asyncio.Task`` /
       async generator 首 yield / ``background`` 标记）：框架只回收据，
       不阻塞逻辑 Turn 等待异步任务。
@@ -900,7 +900,7 @@ class ToolResult:
       LLM 可见结构。例外：``duration`` 由调度层写入，但不进入
       ``as_message`` 产物（LLM 不可见）。
     - 边缘情况：深层埋藏的非 JSON 对象归一化期放行，`as_message` 塑形时
-      ``StructBlock`` 构造校验失败 → ``ValueError``（诚实失败点）。
+      ``StructBlock`` 构造校验失败 → ``ValueError`` （诚实失败点）。
 
     .. seealso::
 
@@ -917,7 +917,7 @@ class ToolResult:
     output: Any = None
     """唯一结果字段。构造期收原料；经 `normalize_output` 归一后、出
     ``Agent.tool_call`` 恒为五形态之一。``completed`` 时承载返回值；
-    ``pending`` 时为 ``None``（收据）；``error`` 时可为 ``None``；
+    ``pending`` 时为 ``None`` （收据）；``error`` 时可为 ``None``；
     ``blocked`` 时为 ``None`` 或阻断原因 str。
     """
     error: str | None = None
@@ -954,7 +954,7 @@ class ToolResult:
         .. rubric:: 行为要点
 
         - 后置条件：返回实例满足 ``status == "blocked"`` 且 ``error is
-          None``；``reason`` 非空时作为 ``output``（str 基础值），
+          None``；``reason`` 非空时作为 ``output`` （str 基础值），
           ``as_message`` 塑形为 ``[TextBlock(reason)]``——LLM 可见形态即
           文本块。
         - 本工厂不记录审计日志——审计由 handler 或快照层负责。
@@ -996,14 +996,14 @@ class ToolResult:
 
         - 前置：``self.output`` 已是五形态之一（出 ``Agent.tool_call`` 恒
           成立）；深层埋藏的非 JSON 对象在塑形时 ``StructBlock`` 构造
-          校验失败 → ``ValueError``（框架错误通道）。
+          校验失败 → ``ValueError`` （框架错误通道）。
         - ``ToolResult.error`` 仅 ``status="error"`` 时非 ``None``，本方法
-          无需自行判断，直接透传给 `output_to_blocks`（末尾追加
+          无需自行判断，直接透传给 `output_to_blocks` （末尾追加
           ``TextBlock(error)``）。
         - 本方法不负责 append 落盘与 ``parent_id`` 接线——那是
           ``Agent._append_message`` 的职责；本方法只产出未接线的 `Message`。
         - 边缘情况：``status="pending"`` 也产生消息（收据消息）——返回
-          Task 路径 ``output=None`` → ``content=[]``（空 tool_result 的
+          Task 路径 ``output=None`` → ``content=[]`` （空 tool_result 的
           API 层兜底属 adapter 职责）；async gen 路径 ``output=首 yield``
           → content 带内容，并（注册键非 ``None`` 时）末尾附加「后台任务
           ID」文本块（不动作者 yield 的内容）；异步任务真正完成时的结果
@@ -1041,19 +1041,17 @@ class ToolDefinition:
 
     .. rubric:: 功能介绍
 
-    三正交中的「LLM 可见声明」层：``name`` / ``description`` / ``params`` /
-    ``output_schema`` / ``strict``。它出现在 `Context.tools` 中；
-    ``llm_definition()`` 产物**携带** ``output_schema`` 等非直发字段，
-    adapter 组装请求为**白名单语义**——只取 ``name`` / ``description`` /
-    ``params`` 等已知字段构造各家 function-calling schema，多带的字段
-    天然不会被映射（D21）。
+    三正交中的「LLM 可见声明」层：字段为 ``name`` / ``description`` /
+    ``params_schema`` / ``output_schema`` / ``strict``。它出现在
+    ``Context.tools`` 中，是 Provider adapter 组装各家 function-calling
+    schema 的唯一来源（adapter 为白名单语义——只取 ``name`` /
+    ``description`` / ``params`` 等已知字段构造，多带的字段天然不会被
+    映射）。
 
-    .. rubric:: 设计动机
-
-    工具作者**不直接构造** `ToolDefinition`（`ScriptTool` 类属性声明 +
-    框架自动生成是主路径）；本类独立存在的理由是：同一 Tool 在不同 Agent 上
-    需要不同 LLM 视图（见 `ToolEntry`），视图必须是可自由复制、覆写的纯
-    数据，不能与执行对象纠缠。
+    工具作者通常不直接构造本类（`ScriptTool` 类属性声明 + 框架自动生成
+    是主路径）；本类独立存在的理由是：同一工具在不同 Agent 上需要不同
+    LLM 视图（见 `ToolEntry`），视图必须是可自由复制、覆写的纯数据，
+    不能与执行对象纠缠。
 
     .. rubric:: 使用示例
 
@@ -1068,24 +1066,16 @@ class ToolDefinition:
             },
         )
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
     - 不变量：可 JSON 序列化（``params_schema`` 即 JSON Schema
       properties dict）；不得持有 callable、连接等运行时对象。
-    - 非行为：不做参数校验——LLM 视角校验在 ``_normalize()``、内部校验
-      在 `Tool.__call__`（S-33 裁决，模型于创建时编译为 ``_args_model``）。
-    - ``strict`` 语义：``True``（默认）时 Provider 层按 ``params`` 严格约束
-      LLM 入参；``False`` 时工具层不限制参数（用于「参数由下游自行校验」
-      的工具）。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``flowing.tool.ToolDefinition.clone_with_overrides()``
-      （每次覆写生成新声明）；``flowing.context.Context.tools`` 消费
-      （Provider adapter 翻译时机：未见规约）
-    - 实例化方：``flowing.tool.ScriptTool.__init__()`` （script 工具
-      实例化时自动生成）；``flowing.tool._auto_generate_tool()`` （裸
-      函数包装路径）
+    - 本类不做参数校验——LLM 视角校验在 ``Agent._normalize``、内部校验
+      在 `Tool.__call__` （校验模型于工具创建时编译）。
+    - ``strict`` 语义：``True`` （默认）时工具层按 ``params_schema``
+      严格约束 LLM 入参——LLM 传出未定义参数即校验失败；``False`` 时
+      工具层不限制参数（未知键原样放行，用于「参数由下游自行校验」的
+      工具）。
 
     .. seealso::
 
@@ -1103,23 +1093,24 @@ class ToolDefinition:
     """给 LLM 的工具说明（已是 Parsable 渲染后的文本）。
     """
     params_schema: dict[str, dict[str, Any]] = field(default_factory=dict)
-    """参数声明表，键为规范参数名、值为 JSON Schema property dict
-    （B1 裁决：声明层即 schema；required 由 ``default`` 有无派生）。
-    来源两条：Python 层 BaseModel 子类经 ``model_json_schema()`` 派生，
-    fya 层展开式声明经 :func:`flowing.params.expand_args_schema` 归一化。
-    执行层校验模型经 :func:`flowing.params.schema_to_model` 桥接。
-    ``default`` 只接受 JSON 兼容类型——复杂对象（DB 连接、HTTP 客户端）
-    走标识符引用 + ``caller`` 获取。
+    """参数声明表，键为规范参数名、值为 JSON Schema property dict；
+    参数是否必填由有无 ``default`` 派生（有 ``default`` → 可选）。
+    来源两条：Python 层 ``BaseModel`` 子类经 ``model_json_schema()``
+    派生，``.fya`` 层展开式声明经 :func:`flowing.params.expand_args_schema`
+    归一化；执行层校验模型经 :func:`flowing.params.schema_to_model`
+    桥接。``default`` 只接受 JSON 兼容类型——复杂对象（DB 连接、HTTP
+    客户端）走标识符引用 + ``caller`` 获取。
     """
     output_schema: dict[str, Any] | None = None
-    """返回值结构声明（JSON Schema 片段）。``.fya`` 的 ``output:`` 字段与
-    Agent 侧 ``output:`` 通用覆写最终都落在这里；``None`` 表示不约束。
+    """返回值结构声明（JSON Schema 片段）；``None`` 表示不约束。
 
-    校验语义（D16）：仅约束 JSON 形态结果——**归一化前**对原料校验，
-    原料含非基础成员（媒体等）则跳过；MCP ``outputSchema`` 自动填入
-    本字段、仅作运行时校验（不喂模型）；媒体能力归模型 capability 层，
-    不进工具声明。随 ``llm_definition()`` 产物携带（D21），adapter
-    白名单取用、天然不被映射。
+    来源：工具 ``.fya`` 的 ``output:`` 字段；MCP 服务器的
+    ``outputSchema`` 自动填入本字段。用途：随 ``llm_definition()`` 产物
+    携带（adapter 白名单取用，不映射进各家 function-calling schema）；
+    `RequestTool` 执行时按 ``properties`` 从 JSON 响应提取字段。当前
+    实现不据此做结果校验（MCP 的 ``outputSchema`` 同样只存储不校验）。
+    Agent 侧 ``output:`` 覆写并入 `ToolEntry.override_params` （以字段名为
+    键进 LLM 视图的参数表），不落本字段。
     """
     strict: bool = True
     """是否在工具层严格约束 LLM 入参；``False`` 用于「参数由下游自行校验」
@@ -1134,57 +1125,39 @@ class ToolDefinition:
         *,
         specified_params: set[str] | None = None,
     ) -> "ToolDefinition":
-        """生成覆写后的**新** `ToolDefinition`，原始对象不变。
+        """生成覆写后的新 `ToolDefinition`，原始对象不变。
 
         .. rubric:: 功能介绍
 
         `ToolEntry.llm_definition()` 的唯一覆写机制：别名、参数局部覆写、
-        描述覆写、隐藏参数移除，全部经本方法一次性完成。
-
-        .. rubric:: 设计动机
-
-        「返回新对象，原始不变」是绑定层不污染全局注册表的结构性保证——
-        `ToolRegistry` 中的定义永不被 Agent 级覆写修改。
+        描述覆写、隐藏参数移除，全部经本方法一次性完成。「返回新对象，
+        原始不变」是绑定层不污染全局注册表的结构性保证——`ToolRegistry`
+        中的定义永不被 Agent 级覆写修改。
 
         :param name: 新名字（通常传 `ToolEntry.name_alias`）；``None`` 保持
           原名。
         :param override_params: ``{规范参数名: {JSON Schema 关键字: 新值}}``
-          稀疏补丁（B1 裁决：覆写端零糖，类型必须写 ``type:``）——只覆写
-          出现的关键字，未出现的参数与关键字保持原值（深合并回填）。
-          补丁应用委托 :func:`flowing.params.apply_param_overrides`——
-          关键字超出桥接子集时抛 :class:`flowing.errors.FormatError`
-          （笔误 fail-fast；「理解推迟」模型的最后一站校验）。requiredness
-          不主动推断：没写 ``default`` 沿用基底；显式给 ``default`` 变可选。
+          稀疏补丁——只覆写出现的关键字，未出现的参数与关键字保持原值
+          （深合并回填）。补丁应用委托
+          :func:`flowing.params.apply_param_overrides`——关键字超出桥接
+          子集时抛 :class:`flowing.errors.FormatError` （声明笔误
+          fail-fast）。requiredness 不主动推断：没写 ``default`` 沿用
+          基底；显式给 ``default`` 变可选。
         :param override_description: 描述覆写；``None`` 保持原描述。
-        :param specified_params: 要从 LLM 视图中**移除**的参数名集合
-          （调用方传入 ``set(specified.keys())``——注入表达式也是 specified
-          的一种值形态，R-4 裁决后不再有独立 inject 通道）。
+        :param specified_params: 要从 LLM 视图中移除的参数名集合（调用方
+          传入 ``set(specified.keys())``——注入表达式也是 specified 的
+          一种值形态）。
         :return: 新的 `ToolDefinition`；``self`` 不被修改。
 
-        .. rubric:: 行为规约
+        .. rubric:: 行为要点
 
-        - 后置条件：返回值与 ``self`` 是不同对象；``self.params_schema`` 内容不变。
-        - 边缘情况：``override_params`` 中出现 ``params`` 不存在的键 →
-          视为**新增参数**（`FinishTool` 动态 schema 即依赖此语义）；
+        - 后置条件：返回值与 ``self`` 是不同对象；``self.params_schema``
+          内容不变。
+        - 边缘情况：``override_params`` 中出现 ``params_schema`` 不存在
+          的键 → 视为新增参数（`FinishTool` 动态 schema 即依赖此语义）；
           ``specified_params`` 中出现不存在的键 → 静默忽略。
-        - 非行为：不做参数别名应用（``param_aliases`` 的改名由
-          `ToolEntry.llm_definition()` 第四步在返回值上完成）。
-
-        .. rubric:: 测试案例
-
-        - 前置：``params_schema = {"amount": {type: number, default: 0,
-          description: 金额}}`` → 操作：``clone_with_overrides(
-          override_params={"amount": {"description": "支付金额"}})`` →
-          期望：新定义中 ``type``/``default`` 原样、description 被替换，
-          原定义不变。
-        - 前置：同上 → 操作：``specified_params={"amount"}`` → 期望：新定义
-          ``params_schema`` 中无 ``"amount"`` 键（required 同步重算）。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``无`` （纯数据变换，返回新对象）
-        - 被调：``flowing.tool.ToolEntry.llm_definition()`` 第 3 步（每次
-          ``Agent._assemble_context()`` 现场求值）
+        - 本方法不做参数别名应用（``param_aliases`` 的改名由
+          `ToolEntry.llm_definition()` 第 4 步在返回值上完成）。
 
         .. seealso::
 
@@ -1194,23 +1167,23 @@ class ToolDefinition:
         params: dict[str, dict[str, Any]] = {k: dict(v) for k, v in self.params_schema.items()}
         if specified_params:
             for key in specified_params:
-                params.pop(key, None)  # 不存在的键静默忽略（行为规约）；
+                params.pop(key, None)  # 不存在的键静默忽略（行为要点）；
             # specified 参数由 specified 值兜底，requiredness 无需维护
         if override_params:
             params = apply_param_overrides(params, override_params)
-            # 非法关键字 fail-fast / 未知键新增参数 / 稀疏回填,语义见该函数
+            # 非法关键字 fail-fast / 未知键新增参数 / 稀疏回填，语义见该函数
         return ToolDefinition(
             name=name or self.name,
             description=override_description or self.description,
             params_schema=params,
-            output_schema=self.output_schema,  # 透传：随 llm_definition 产物携带（D21），覆写不触及
+            output_schema=self.output_schema,  # 透传：覆写不触及
             strict=self.strict,
         )
 
 
 def _first_paragraph(doc: str | None) -> str | None:
-    """docstring 首段提取（T6 三级回退链的「首段」口径）：cleandoc 后按
-    空行切首段，段内换行折叠为空格；无内容 → ``None``。内部 API。"""
+    """docstring 首段提取（description 三级回退链的「首段」口径）：cleandoc
+    后按空行切首段，段内换行折叠为空格；无内容 → ``None``。内部 API。"""
     if not doc:
         return None
     paragraph = inspect.cleandoc(doc).split("\n\n", 1)[0].strip()
@@ -1224,13 +1197,13 @@ def _apply_param_aliases(
     """把 LLM 可见 schema 的参数名从规范名改为别名（`ToolEntry.llm_definition`
     第 4 步的唯一可调用物）。内部 API，不属稳定契约。
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
     - ``param_aliases`` 方向为 ``LLM 别名 → 规范名``；本函数对
-      ``params_schema`` 键做反向改名——**仅改名**，property 内容原样，
+      ``params_schema`` 键做反向改名——仅改名，property 内容原样，
       其余字段（name/description/output_schema/strict）透传。
     - 撞名（改名结果与既有键撞车，含两个规范名经别名映射到同一名称）→
-      :class:`flowing.errors.FormatError`（绑定声明笔误，fail-fast）；
+      :class:`flowing.errors.FormatError` （绑定声明笔误，fail-fast）；
       不反向查重（``param_aliases`` 自身的别名重复不在此校验）。
     - 映射到 schema 中不存在的规范名 → 静默跳过；``param_aliases`` 为空
       时原样返回入参（不复制）。
@@ -1260,28 +1233,28 @@ class ToolEntry:
 
     .. rubric:: 功能介绍
 
-    `ToolEntry` 回答「这个 Agent 如何使用这个 Tool」：LLM 看到的别名、参数
-    覆写、注入参数、指定值、参数别名。每个 Agent 实例的
-    ``agent._tool_entries`` 持有自己的 entry 集合，互不共享。
-
-    .. rubric:: 设计动机
-
-    核心动机是 `FinishTool` 案例：同一工具在不同 Agent 上 LLM 应看到不同
-    schema——覆写必须发生在 Agent 级绑定层，而不是全局注册表。
+    `ToolEntry` 回答「这个 Agent 如何使用这个 Tool」：LLM 看到的别名、
+    参数覆写、指定值、参数别名。每个 Agent 实例持有自己的 entry 集合，
+    互不共享——同一工具在不同 Agent 上可以呈现不同的 LLM 视图（如
+    ``FinishTool`` 在不同 Agent 上的不同 schema），覆写发生在 Agent 级
+    绑定层，而不是全局注册表。
 
     .. rubric:: 使用示例
 
     .. code-block:: python
 
+        from flowing import ToolEntry
+        from flowing.parsable import Parsable
+
         entry = ToolEntry(
             name_alias="pay",
             name_ori="make-payment",
-            override_params={                       # JSON Schema 稀疏补丁（零糖）
+            override_params={            # JSON Schema 稀疏补丁（只写要改的字段）
                 "amount": {"description": "支付金额（元），上限 50000"},
                 "currency": {"default": "USD"},
             },
             specified={
-                # 固定值与注入表达式都是 specified（R-4：inject 键已删除）
+                # 固定值与注入表达式都是 specified
                 "currency": Parsable("USD"),
                 "user_id": Parsable("{{ self.inject('user_id') }}"),
             },
@@ -1295,120 +1268,95 @@ class ToolEntry:
           - make-payment as pay:
               description: "发起支付"
               args:
-                amount: {description: "支付金额（元），上限 50000"}   # 稀疏补丁（覆写端零糖）
+                amount: {description: "支付金额（元），上限 50000"}  # 稀疏补丁
                 currency: USD                  # 裸值 → specified（固定值）
                 user_id: "{{ self.inject('user_id') }}"   # 注入表达式 → specified
-                working_dir as cwd: _          # as 改名 + 空补丁(_ 语义见下)
+                working_dir as cwd: _          # as 改名 + 空补丁（_ 语义见下）
         ---
-        $tools.pay.args.cwd.description:       # 深层块:向空补丁逐字段写入
-        本订单的工作目录
+        $tools.pay.args.cwd.description:      # 深层块：向空补丁逐字段写入
+          本订单的工作目录
 
-    .. rubric:: 行为规约
+    .. rubric:: 行为要点
 
-    - ``agent.fya`` 覆写 ``args:`` 的判别（框架按键与值自动区分；``as``
-      切分唯一实现为 :func:`flowing.parser.split_as`；**判别执行点 =
-      :meth:`flowing.agent.Agent.add_tool`**——``.fya`` 装配层透传
-      ``EntryRef``，程序化调用收同构 ``body`` dict，两者经同一判别代码）：
-
-      - 值是 Dict → ``override_params`` 稀疏补丁（JSON Schema 关键字，
-        零糖——类型必须写 ``type:``；合成时经
-        :func:`flowing.params.apply_param_overrides` 应用，未出现的关键字
-        从基底回填）；
-      - 键含 ``<name> as <alias>`` → ``param_aliases``；**允许带值**——
-        值部分按本表其它行照常判别（改名与补丁/延迟可叠加）；
-      - 其它值（Parsable 源，含 ``{{ self.inject('key') }}`` 注入表达式）→
-        ``specified``（LLM 不可见，调用时以求值上下文现场求值——注入
-        表达式在此沿 provide 链上溯）；
-      - 值是 ``_``（``PENDING``）→ **空补丁**：装配时解析为空；深层块
-        （如示例 ``$tools.pay.args.cwd.description:``）可逐字段填充
-        （导航规则见 :class:`flowing.subagents.SubagentEntry` 行为规约——
-        只认别名：有别名的条目/参数键，规范名段不再可寻址）；未被填充
-        则合成时从基底定义全量回填，
-        **不报错**（与字段位 ``_`` 的「必须兑现」语义不同）。
-    - ``enabled=False`` 时条目在 ``_assemble_context()`` 中被跳过（不进
-      `Context.tools`，LLM 不可见），但编程式路径仍可经注册表访问——
-      「可见性」与「可执行性」分离。
-    - 非行为：entry 不持有 Tool 实例引用——执行时按 ``name_ori`` 现场查
+    - 装配判别（``.fya`` ``tools:`` 条目与 ``Agent.add_tool`` 的程序化
+      body 走同一判别代码，执行点 = :meth:`flowing.agent.Agent.add_tool`）。
+      ``args:`` 下每个参数：值是 dict → ``override_params`` 稀疏补丁
+      （JSON Schema 关键字，只写要改的字段，未出现的字段从基底回填）；
+      键含 ``<name> as <alias>`` → ``param_aliases`` （改名可与补丁 /
+      指定值叠加）；其它值（含 ``{{ self.inject('key') }}`` 注入表达式）
+      → ``specified`` （LLM 不可见，调用时以调用方 Agent 为上下文现场
+      求值，注入表达式在此沿 provide 链上溯）；值是 ``_`` （``PENDING``）
+      → 空补丁：装配时解析为空，深层块（如示例 ``$tools.pay.args.cwd.
+      description:``）可逐字段填充，未被填充则合成时从基底定义全量回填，
+      不报错。
+    - ``enabled=False`` 时条目不进 ``Context.tools`` （LLM 不可见），但
+      编程式路径仍可经注册表访问——可见性与可执行性分离。
+    - entry 不持有 Tool 实例引用——执行时按 ``name_ori`` 现场查
       `ToolRegistry`。
     - 不变量：``specified`` 中的参数（固定值与注入表达式）对 LLM 不可见；
       其值优先级最高（防 LLM 篡改通道）。
-
-    .. rubric:: 测试案例
-
-    - 前置：同一 `FinishTool` 注册在 `ToolRegistry`；两个 Agent 的 entry
-      分别带不同 ``override_params`` → 操作：各自 ``llm_definition()`` →
-      期望：产出两个不同 schema 的 `ToolDefinition`，注册表原定义不变。
-
-    .. rubric:: 调用关系（审计）
-
-    - 被调：``flowing.agent.Agent.tool_call()`` （仅按别名在
-      ``_tool_entries`` 查找，每次工具调用）；
-      ``flowing.agent.Agent._normalize()`` （每次工具调用参数聚合）；
-      ``flowing.agent.Agent._visible_tools()`` （每次上下文组装）
-    - 实例化方：:meth:`flowing.agent.Agent.add_tool`（``.fya`` ``tools:``
-      条目装配与程序化调用的**统一入口**，逐条目各一次）
 
     .. seealso::
 
         - :class:`flowing.tool.ToolRegistry` —— 规范名 → Tool 的全局表。
         - :class:`flowing.tool.ToolDefinition` —— 覆写产物类型。
+        - :meth:`flowing.agent.Agent.add_tool` —— 条目装配入口。
     """
 
+
     name_alias: str
-    """LLM 看到的工具名（别名）。工具调用**仅按别名查找**，不回退规范名——
-    不同 Agent 对同一工具注册了不同别名/覆写，回退会绕开 Agent 级绑定。
+    """LLM 看到的工具名（别名）。工具调用仅按别名查找，不回退规范名——
+    不同 Agent 对同一工具注册了不同别名 / 覆写，回退会绕开 Agent 级绑定。
     """
     name_ori: str
     """规范名——`ToolRegistry` 中的 key，查找可执行对象的唯一依据。
     """
     override_description: Parsable | None = None
-    """覆写 LLM 看到的描述；``None`` 使用注册表原描述。**是 Parsable**
-    （用户裁决，取代 M-99 的「普通 str」）：``llm_definition()`` 时以
-    调用方 Agent 为上下文**自动求值**（求值面内，与 SubagentEntry 的
-    description 覆写同律）——声明期可写模板/表达式，组装时拿到渲染后
-    字符串。
+    """覆写 LLM 看到的描述；``None`` 使用注册表原描述。是 `Parsable`：
+    ``llm_definition()`` 时以调用方 Agent 为上下文自动求值（声明期可写
+    模板 / 表达式，组装时拿到渲染后字符串；与 SubagentEntry 的
+    description 覆写同律）。
     """
     override_params: dict[str, dict[str, Any]] | None = None
     """参数局部覆写：``{规范参数名: {子属性: 新值}}``，只写与默认不同的
-    字段；含 ``output`` 通用覆写（``.fya`` 的 ``output:`` 与 ``args:``
-    覆写合并进同一 ``override_params``，对 ``llm_definition()`` 与
-    ``resolve()`` 完全透明）。
+    字段。Agent 侧 ``output:`` 覆写也并入本字典（以字段名为键），对
+    ``llm_definition()`` 与 ``resolve()`` 完全透明。
     """
     specified: dict[str, Parsable] = field(default_factory=dict)
     """指定值参数（LLM 不可见）。默认空 dict。值为 `Parsable`，在
-    ``resolve()`` 时以调用方 Agent 局部变量为上下文惰性求值。两种值形态
-    （R-4 裁决，``inject`` 字段已删除）：固定值（``Parsable("USD")``）
-    与**注入表达式**（``Parsable("{{ self.inject('user_id') }}")``——
-    求值时沿 provide 链上溯，链断裂抛 ``MissingProvideError``）。
+    ``resolve()`` 时以调用方 Agent 局部变量为上下文惰性求值。两种值形态：
+    固定值（``Parsable("USD")``）与注入表达式
+    （``Parsable("{{ self.inject('user_id') }}")``——求值时沿 provide
+    链上溯，链断裂抛 ``MissingProvideError``）。
     """
     param_aliases: dict[str, str] = field(default_factory=dict)
     """LLM 参数名 → 规范参数名。默认空 dict。LLM 看到别名，``resolve()``
     第一步映射回规范名。
     """
     enabled: bool = True
-    """是否对 LLM 可见；``False`` 时不进 `Context.tools`，但仍可编程式调用。
+    """是否对 LLM 可见；``False`` 时不进 ``Context.tools``，但仍可编程式调用。
     """
 
     def llm_definition(self, runtime: Runtime, agent: Agent) -> ToolDefinition:
-        """生成本 Agent 视角下 LLM 可见的 `ToolDefinition`（四步）。
+        """生成本 Agent 视角下 LLM 可见的 `ToolDefinition` （四步，顺序为不变量）。
 
         .. rubric:: 功能介绍
 
         上下文组装（``Agent._assemble_context()``）时对每个 ``enabled``
-        entry 调用本方法，产物进入 `Context.tools`。每次现场求值，无缓存。
+        entry 调用本方法，产物进入 ``Context.tools``。每次现场求值，无
+        缓存。
 
-        .. rubric:: 行为规约（四步，顺序不变量）
+        .. rubric:: 行为要点（四步，顺序为不变量）
 
-        1. 从 ``runtime.tool_registry`` 按 ``name_ori`` 取规范 Tool 的默认
-           ``definition``；
+        1. 从 ``runtime.tool_registry`` 按 ``name_ori`` 取规范 Tool 的
+           默认 ``definition``；
         2. 计算 ``hidden = set(self.specified.keys())``——specified 参数
            （固定值与注入表达式）对 LLM 不可见；
         3. ``override_description`` 非 ``None`` 时以 ``agent`` 为上下文
-           **现场 resolve**（Parsable 自动求值，求值面内——用户裁决，
-           取代 M-99 的「普通 str」），随后
+           现场求值（Parsable 自动求值），随后
            ``definition.clone_with_overrides(self.name_alias,
-           self.override_params, <渲染后描述>,
-           specified_params=hidden)`` 生成新定义（原始定义不变）；
+           self.override_params, <渲染后描述>, specified_params=hidden)``
+           生成新定义（原始定义不变）；
         4. 应用参数别名：把 LLM 可见 schema 中的参数名从规范名改为
            ``param_aliases`` 中的别名。
 
@@ -1416,26 +1364,9 @@ class ToolEntry:
         :param agent: 调用方 Agent（``override_description`` 的 Parsable
           渲染上下文）。
         :return: 覆写后的新 `ToolDefinition`；注册表中的原始定义不变。
-        :raises ToolNotFoundError: ``name_ori`` 不在注册表中（创建管线应已
-          保证不触发；运行时出现即注册表被外部改动的信号）。
-
-        .. rubric:: 测试案例
-
-        - 前置：注册表含 ``make-payment``（params_schema:
-          amount/currency/user_id），entry 为 ``specified={"user_id":
-          Parsable("{{ self.inject('user_id') }}")},
-          param_aliases={"sum": "amount"}`` → 操作：
-          ``llm_definition(runtime, agent)`` → 期望：产物无 ``user_id``、
-          有 ``sum`` 无 ``amount``、名字为别名。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.tool.ToolRegistry.get()`` （第 1 步，经
-          ``runtime.tool_registry`` 按 ``name_ori`` 取规范定义）；
-          ``flowing.tool.ToolDefinition.clone_with_overrides()``
-          （第 3 步）
-        - 被调：``flowing.agent.Agent._visible_tools()`` （每次
-          ``Agent._assemble_context()``，无缓存现场求值）
+        :raises flowing.errors.ToolNotFoundError: ``name_ori`` 不在注册
+          表中（创建管线应已保证不触发；运行时出现即注册表被外部改动的
+          信号）。
 
         .. seealso::
 
@@ -1461,68 +1392,44 @@ class ToolEntry:
         args: dict[str, Any],
         params_schema: dict[str, dict[str, Any]],
     ) -> dict[str, Any]:
-        """把 LLM args + specified（含注入表达式）聚合为 `execute()` 的完整参数（两步）。
+        """把 LLM args 与 specified（含注入表达式）聚合为 ``execute()`` 的完整参数。
 
         .. rubric:: 功能介绍
 
-        本方法在 ``Agent._normalize()`` 内部被调用（钩子 ``before_tool_call``
-        **之后**），产出按规范名组织的最终参数字典。
+        本方法在 ``Agent._normalize()`` 内部被调用（``before_tool_call``
+        钩子之后），产出按规范名组织的最终参数字典。只收参数声明表
+        ``params_schema`` （``tool.definition.params_schema``），不持有
+        `Tool` 引用——`ToolEntry` 保持在「绑定 / 声明」层，不依赖「执行」
+        层；调用方（``Agent._normalize``）已持有 Tool 实例，顺手传入
+        声明表即可。
 
-        .. rubric:: 设计动机
+        .. rubric:: 行为要点（两步，后写覆盖先写 = 优先级递增）
 
-        只收参数声明表 ``params_schema``（``tool.definition.params_schema``），
-        不持有 `Tool` 引用——`ToolEntry` 保持在「绑定/声明」层，不依赖
-        「执行」层（S-33 裁决）。调用方（``Agent._normalize``）已持有 Tool
-        实例，顺手传入声明表即可。
-
-        .. rubric:: 行为规约（两步，后写覆盖先写 = 优先级递增）
-
-        1. **LLM args**：逐键经 ``param_aliases`` 映射回规范名；
-        2. **specified**：`Parsable` 以 ``agent`` 局部变量为上下文惰性求值
+        1. LLM args：逐键经 ``param_aliases`` 映射回规范名；
+        2. specified：`Parsable` 以 ``agent`` 局部变量为上下文惰性求值
            （固定值直给；注入表达式 ``{{ self.inject('key') }}`` 在此沿
-           provide 链上溯——R-4：不再有独立 inject 步骤），并按
-           ``params_schema`` 中对应 property 做 `_coerce` 兼容转换后覆盖
-           同名字段；声明表无此键时跳过转换、保留原值（最终由
-           `Tool.__call__` 的内部校验兜底报错）。
+           provide 链上溯），并按 ``params_schema`` 中对应 property 做
+           `_coerce` 兼容转换后覆盖同名字段；声明表无此键时跳过转换、
+           保留原值（最终由 `Tool.__call__` 的内部校验兜底报错）。
 
         schema 默认值不在本方法填充——由 ``_normalize()`` 第 3 步填充。
 
         :param agent: 调用方 Agent（provide 链上溯与 Parsable 渲染上下文）。
         :param args: LLM 原始参数（键可能是别名）。
         :param params_schema: 规范参数名 → JSON Schema property 的声明表，
-            取 ``tool.definition.params_schema``（覆写后的 LLM 视图不
-            适用——本方法一律按注册表规范定义）。
-        :return: 规范名 → 值的完整参数字典，供 `Tool.__call__` 按 ``execute()``
-          签名匹配分发。
+          取 ``tool.definition.params_schema`` （覆写后的 LLM 视图不适用
+          ——本方法一律按注册表规范定义）。
+        :return: 规范名 → 值的完整参数字典，供 `Tool.__call__` 按
+          ``execute()`` 签名匹配分发。
         :raises flowing.errors.MissingProvideError: 注入表达式中的 key
           沿 provide 链上溯不到任何提供者（调用时求值抛出）。
-
-        .. rubric:: 测试案例
-
-        - 前置：``args={"sum": 100}``、``specified={"currency":
-          Parsable("CNY"), "user_id": Parsable("{{ self.inject('user_id')
-          }}")}``、``param_aliases={"sum": "amount"}``、
-          ``params_schema={"amount": ..., "currency": ..., "user_id":
-          ...}``、provide 链可提供 ``user_id="alice"`` → 操作：
-          ``resolve(agent, args, params_schema)`` → 期望：``{"amount":
-          100, "currency": "CNY", "user_id": "alice"}``。
-
-        .. rubric:: 调用关系（审计）
-
-        - 调用：``flowing.parsable.Parsable.resolve()`` （第 2 步
-          specified 惰性求值——注入表达式在此触发
-          ``flowing.agent.Agent.inject()`` 的 provide 链上溯）；
-          ``flowing.params._coerce()`` （第 2 步兼容转换）
-        - 被调：``flowing.agent.Agent._normalize()`` 第 2 步（每次工具
-          调用，``before_tool_call`` 钩子之后）
 
         .. seealso::
 
             - :meth:`flowing.agent.Agent.inject` —— 注入表达式的
               provide 链上溯执行点。
             - :meth:`flowing.parsable.Parsable.resolve` —— 惰性求值。
-            - :func:`flowing.params._coerce` —— 兼容类型转换（C-08 裁决：
-              唯一声明在 params 模块）。
+            - :func:`flowing.params._coerce` —— 兼容类型转换。
         """
         resolved: dict[str, Any] = {}
         for key, value in args.items():  # 第 1 步：LLM args 逐键别名 → 规范名
@@ -1596,7 +1503,7 @@ class Tool:
     registry_key: str | None = None
     """注册表全键（``ns::name``），``ToolRegistry.register`` 时回写；未注册
     实例为 ``None``。Entry 装配对**文件派生工具**落账本字段为
-    ``name_ori``（含目录派生命名空间的限定键，热路径精确命中）；注册表
+    ``name_ori`` （含目录派生命名空间的限定键，热路径精确命中）；注册表
     命中（``default::``/``builtin::``）的条目仍记裸名。内部 API。
     """
     _has_caller: bool
@@ -1649,7 +1556,7 @@ class Tool:
         .. rubric:: 行为规约
 
         - 返回值由 `__call__` 自动包装：普通值 → ``completed``；抛异常 →
-          ``error``；返回 ``asyncio.Task`` → ``pending``（fire-and-forget
+          ``error``；返回 ``asyncio.Task`` → ``pending`` （fire-and-forget
           收据，框架不等待）。
         - 非行为：不自行构造 `ToolResult`；不处理 specified（固定值/注入
           表达式，已由调度层聚合进参数）；复杂对象（连接池、客户端）不进
@@ -1683,15 +1590,15 @@ class Tool:
         ``Agent.tool_call()`` 在 ``_normalize()`` 之后经本方法执行工具。
         职责固定五项：
 
-        1. **形态检测**：``inspect.isasyncgen``（async generator 后台形态
+        1. **形态检测**：``inspect.isasyncgen`` （async generator 后台形态
            ——首 yield 收据 + 后台驱动，B1）→ ``inspect.isawaitable``——
            同步 ``execute`` 直接调用，异步 ``execute`` await；
         2. **Task 包装**：异步执行包装为 ``asyncio.Task`` 并关联
-           ``execution``（cancel 注入的落点——置 abort 信号而非强杀协程）；
-        3. **caller 自动传入**：依 ``_has_caller``（注册时 inspect 检测）决定
+           ``execution`` （cancel 注入的落点——置 abort 信号而非强杀协程）；
+        3. **caller 自动传入**：依 ``_has_caller`` （注册时 inspect 检测）决定
            是否传 ``caller=``；
         4. **内部校验**（S-33 裁决，自 ``_normalize`` 迁入）：caller 注入
-           之后、``execute`` 之前，聚合终值按 ``self._args_model``（创建时
+           之后、``execute`` 之前，聚合终值按 ``self._args_model`` （创建时
            编译的 Pydantic 产物）校验。specified（固定值/注入表达式求值
            结果）/ 默认值属可信来源，本步失败是**框架/宿主配置错误**——异常**在 ``try`` 之外
            上抛**框架错误通道并记日志，**不**被 ``except Exception`` 吞成
@@ -1709,8 +1616,8 @@ class Tool:
            LLM 可见通道）；三种后台形态 → ``ToolResult(pending)``：①
            ``execute`` 是 async generator（首 yield = 收据内容，剩余部分
            后台驱动逐段投递 EVENT——B1/B3/B4/B7/B8）；② 普通 async
-           ``execute`` + ``background = True``（仅 script 型，B6/B13——
-           不 await，直接落 Task 分支）；③ 返回 ``asyncio.Task``（挂
+           ``execute`` + ``background = True`` （仅 script 型，B6/B13——
+           不 await，直接落 Task 分支）；③ 返回 ``asyncio.Task`` （挂
            ``add_done_callback`` 固定 watcher，D13——完成回调取终值 →
            `normalize_output` → `output_to_blocks` → 标注块 + 结果块的
            多块 EVENT 入队；任务异常 → 标注块 + 错误文本块，与同步
@@ -1749,7 +1656,7 @@ class Tool:
 
         - 调用：``flowing.tool.Tool.execute()`` （每次调度；awaitable
           检测后调用或 await）；
-          :func:`flowing.tool.normalize_output`（职责 5，每次同步完成
+          :func:`flowing.tool.normalize_output` （职责 5，每次同步完成
           路径的归一化）
         - 被调：``flowing.agent.Agent.tool_call()`` （``_normalize()``
           之后，每次工具调用）
@@ -2029,7 +1936,7 @@ class ScriptTool(Tool):
     投递 EVENT 消息（LLM 可见）；**首 yield 前只允许轻量准备**（长任务
     必须放在首 yield 之后；违反的后果是收据延迟——作者责任）。「只要
     后台、不要中间报告」的普通 async ``execute`` 可声明类属性
-    ``background = True``（**仅 script 型生效**，B13）走同一 pending 通道。
+    ``background = True`` （**仅 script 型生效**，B13）走同一 pending 通道。
 
     .. code-block:: python
 
@@ -2080,7 +1987,7 @@ class ScriptTool(Tool):
       同一份用户代码不应实例化多次。
     - 打标函数元信息提取：``name`` ← 文件名去 ``.py`` 并 snake → kebab
       规范化（``TOOL.py`` / ``tool.py`` 通用名时取目录名）——机制本体
-      :func:`flowing.paths.infer_name`（规则表 :data:`TOOL_NAMING`）；
+      :func:`flowing.paths.infer_name` （规则表 :data:`TOOL_NAMING`）；
       装饰器参数若给出仅作一致性断言（不符抛 ``NameMismatchError``）；
       ``description`` ← 显式声明 > 类 docstring 首段 > ``execute()`` docstring
       首段（三级回退链，T6 裁决）；``args_model`` ← 从签名构建
@@ -2135,7 +2042,7 @@ class ScriptTool(Tool):
     """
 
     def __init__(self) -> None:
-        """自动生成 ``self.definition``（同步构造，不触网、不注册）。
+        """自动生成 ``self.definition`` （同步构造，不触网、不注册）。
 
         .. rubric:: 行为规约
 
@@ -2217,7 +2124,7 @@ def _render_env_templates(values: "dict[str, str] | None") -> "dict[str, str] | 
     """把映射的每个字符串值按 ``{{ env.X }}`` 模板一次性渲染。内部 API。
 
     求值时点：装配期（工具实例构造，连接/请求之前一次完成）。缺失变量 →
-    :class:`flowing.errors.FormatError`（fail fast，与 providers 条目加载
+    :class:`flowing.errors.FormatError` （fail fast，与 providers 条目加载
     的 ``MissingEnvironmentVariableError`` 同立场，不共用异常类——该类的
     构造契约绑定 providers.yaml 语境）。
     """
@@ -2236,7 +2143,7 @@ def _render_env_templates(values: "dict[str, str] | None") -> "dict[str, str] | 
 def _auth_headers(auth: dict[str, Any]) -> dict[str, str]:
     """``auth`` 语法糖 → 请求头 dict（``basic`` / ``bearer`` / ``api_key``）。
 
-    内部 API。未知类型 → ``FormatError``（声明期 fail fast）。
+    内部 API。未知类型 → ``FormatError`` （声明期 fail fast）。
     """
     auth_type = auth.get("type")
     if auth_type == "basic":
@@ -2278,7 +2185,7 @@ _CLI_JINJA.filters["raw"] = _shell_raw_filter
 _ENV_URL_JINJA = jinja2.Environment(autoescape=False, undefined=jinja2.DebugUndefined)
 """RequestTool URL 的装配期 env 渲染环境（spec 未写清处落实）。
 
-URL 是**两阶段模板**：装配期先渲染 ``{{ env.X }}``（DebugUndefined 把
+URL 是**两阶段模板**：装配期先渲染 ``{{ env.X }}`` （DebugUndefined 把
 非 env 的占位原样保留为 ``{{ name }}`` 文本），执行期再以 args 渲染路径
 参数（StrictUndefined）。env 引用缺失时在执行期暴露为渲染错误（error
 结果）——headers/auth 的 env 引用才是装配期 fail fast（`_ENV_JINJA`）。
@@ -2300,7 +2207,7 @@ PowerShell 7 的 ``pwsh``。可执行文件不存在 → 子进程启动失败�
 
 
 def _mcp_input_schema_to_params(input_schema: "dict[str, Any] | None") -> dict[str, dict[str, Any]]:
-    """MCP ``inputSchema``（完整 JSON Schema object）→ 框架 properties 映射。
+    """MCP ``inputSchema`` （完整 JSON Schema object）→ 框架 properties 映射。
 
     内部 API。两点归一：
 
@@ -2331,12 +2238,12 @@ class McpTool(Tool):
 
     .. rubric:: 功能介绍
 
-    ``type: mcp`` 的实例类。两种来源互斥：``command``（本地 stdio 进程）
-    或 ``url``（远程 HTTP/SSE 端点）。默认 `ToolDefinition` 来自 MCP 服务器
+    ``type: mcp`` 的实例类。两种来源互斥：``command`` （本地 stdio 进程）
+    或 ``url`` （远程 HTTP/SSE 端点）。默认 `ToolDefinition` 来自 MCP 服务器
     ``list_tools()`` 返回的 schema，可经 ``overrides`` 局部覆写。
 
     **命名规则**：MCP 声明块代理的是一组服务端工具，注册/解析时每个实际
-    工具的规范名 = ``<fya 声明名>-<server 暴露工具名>``（如声明
+    工具的规范名 = ``<fya 声明名>-<server 暴露工具名>`` （如声明
     ``name: github``、服务端暴露 ``create-issue`` → 注册规范名
     ``github-create-issue``）——服务端工具名空间天然带声明名前缀，
     不同 MCP 来源的同名工具不撞名。Agent 侧引用（``tools:`` 条目 /
@@ -2474,7 +2381,7 @@ class McpTool(Tool):
 
         url 形态的传输判别（spec 未写清处落实）：URL 路径以 ``/sse`` 结尾
         → SSE；其余 → streamable HTTP。stdio 的 ``env`` 直传
-        ``StdioServerParameters``（SDK 内与默认环境合并）。
+        ``StdioServerParameters`` （SDK 内与默认环境合并）。
         """
         from mcp import ClientSession, StdioServerParameters   # 函数内 import：mcp SDK 重，非 MCP 用户不付 import 成本
 
@@ -2549,7 +2456,7 @@ class McpTool(Tool):
 
         .. rubric:: 调用关系（审计）
 
-        - 调用：``_connect()``（一次性会话）；``apply_param_overrides``
+        - 调用：``_connect()`` （一次性会话）；``apply_param_overrides``
         - 被调：``.fya`` 装配层（时机：``ToolRegistry.get`` 命中 mcp 型
           之后、Agent 装配 ``tools:`` 条目之前）
         """
@@ -2591,7 +2498,7 @@ class McpTool(Tool):
 
         .. rubric:: 调用关系（审计）
 
-        - 调用：``_connect()``（每次执行一次会话）
+        - 调用：``_connect()`` （每次执行一次会话）
         - 被调：``Tool.__call__`` 调度链
         """
         if self._server_tool_name is None:
@@ -2622,7 +2529,7 @@ class CliTool(Tool):
 
     .. rubric:: 功能介绍
 
-    ``type: cli`` 的实例类。``args``（参数 schema）**必填**，无自动推断来源；
+    ``type: cli`` 的实例类。``args`` （参数 schema）**必填**，无自动推断来源；
     命令体 ``command`` 为 Jinja2 模板，渲染上下文为 LLM 传入的 args。
 
     .. rubric:: 设计动机
@@ -2661,7 +2568,7 @@ class CliTool(Tool):
 
     .. rubric:: 行为规约
 
-    - ``shell`` 可选值：``sh``（默认）/ ``bash`` / ``ps`` / ``powershell`` /
+    - ``shell`` 可选值：``sh`` （默认）/ ``bash`` / ``ps`` / ``powershell`` /
       ``cmd``。
     - 不声明 ``output`` 时默认返回 ``{exit_code, stdout, stderr}``。
     - 非零退出码**不等于** ``status="error"``——exit_code 是正常输出数据；
@@ -2695,7 +2602,7 @@ class CliTool(Tool):
         :param command: Jinja2 命令模板；插入值自动转义，``| raw`` 旁路并
           告警。
         :param shell: 执行 shell，默认 ``sh``；非法值构造期
-            :class:`flowing.errors.FormatError`（fail fast，不留到执行期）。
+            :class:`flowing.errors.FormatError` （fail fast，不留到执行期）。
 
         .. rubric:: 调用关系（审计）
 
@@ -2735,7 +2642,7 @@ class CliTool(Tool):
 
         .. rubric:: 调用关系（审计）
 
-        - 调用：``asyncio.create_subprocess_shell``（每次执行）
+        - 调用：``asyncio.create_subprocess_shell`` （每次执行）
         - 被调：``Tool.__call__`` 调度链
         """
         command = self._template.render(**kwargs)   # 渲染上下文 = LLM args
@@ -2907,13 +2814,13 @@ class RequestTool(Tool):
         - 响应状态码不在 ``expected_status`` 内 → 抛异常（含状态码与响应
           摘要），由 ``__call__`` 包装为 ``status="error"`` 结果，
           不向调用方抛；
-        - 响应默认按 JSON 解析；声明了 ``output``（``definition.
+        - 响应默认按 JSON 解析；声明了 ``output`` （``definition.
           output_schema``）时按 schema 的 properties 提取字段，无关字段
           忽略；非 JSON 响应回退为文本（spec 未写清处落实）。
 
         .. rubric:: 调用关系（审计）
 
-        - 调用：``httpx.AsyncClient.request``（每次执行；httpx 为项目
+        - 调用：``httpx.AsyncClient.request`` （每次执行；httpx 为项目
           既有依赖，函数内 import 不付非 request 用户的 import 成本）
         - 被调：``Tool.__call__`` 调度链
         """
@@ -2968,7 +2875,7 @@ TOOL_NAMING = NamingRules(
 ``TOOL.fya`` / ``TOOL.py`` / ``tool.fya`` / ``tool.py`` 通用文件名命中时
 身份名取**目录名**；其余按后缀剥离取文件名（``.tool.fya`` 先于
 ``.fya``），结果经 snake→kebab 规范化。使用方：
-:func:`flowing.parser.normalize_entries`（``naming=TOOL_NAMING``）与
+:func:`flowing.parser.normalize_entries` （``naming=TOOL_NAMING``）与
 name 断言的推断侧（`ToolRegistry.get` 行为规约）。
 
 .. seealso:: :data:`flowing.runtime.AGENT_NAMING`、
@@ -3019,14 +2926,14 @@ def _tool_from_fya(path: Path, identity: str) -> Tool:
       `McpTool` 装配链，本层只落声明字段）；
     - ``output:`` → ``ToolDefinition.output_schema``；
     - ``type`` 缺失或非法 → ``FormatError``；各类型必填字段缺失 →
-      ``FormatError``（``cli`` 缺 ``args`` / ``request`` 缺 ``args`` 由
+      ``FormatError`` （``cli`` 缺 ``args`` / ``request`` 缺 ``args`` 由
       构造器的 ``MissingSchemaError`` 承载）。
 
     .. rubric:: 调用关系（审计）
 
-    - 调用：:func:`flowing.parser.load_fya_yaml`（字面解析）；
-      :func:`_script_tool_from_fya`（``type: script``）
-    - 被调：``ToolRegistry._resolve_hit``（.fya 命中时）
+    - 调用：:func:`flowing.parser.load_fya_yaml` （字面解析）；
+      :func:`_script_tool_from_fya` （``type: script``）
+    - 被调：``ToolRegistry._resolve_hit`` （.fya 命中时）
     """
     from flowing.parser import load_fya_yaml   # 模块头依赖图保持单向（parser 不 import tool）
 
@@ -3096,7 +3003,7 @@ def _script_tool_from_fya(
 
     .. rubric:: 行为规约
 
-    - ``callable:`` 指向**已打标**函数 → ``FormatError``（通道互斥：
+    - ``callable:`` 指向**已打标**函数 → ``FormatError`` （通道互斥：
       显式指针通道与自动提升通道二选一）；
     - fya ``args`` 声明存在时经 :func:`flowing.params.schema_to_model`
       桥接为校验模型（声明即模型，B1）；缺省从 callable 签名构建
@@ -3175,7 +3082,7 @@ class ToolRegistry:
     空间内重名 → 后注册者抛 ``ToolNameConflictError``；**不同命名空间的
     同名工具允许共存**。需要同一 MCP 服务器不同配置时用不同命名空间或
     规范名，需要相同实例时复用已有注册。裸名引用的注册表视图依次查
-    ``default::``、``builtin::``（``default`` 优先 = 插件覆盖原生行为的
+    ``default::``、``builtin::`` （``default`` 优先 = 插件覆盖原生行为的
     通道）；自定义命名空间的资源只能以 ``ns::name`` 全限定名引用
     （见 ``flowing.runtime`` 模块 docstring §7a）。别名冲突不存在——
     别名是 `ToolEntry` 层（Agent 本地）的概念。
@@ -3226,7 +3133,7 @@ class ToolRegistry:
         :param name: 规范名覆写；``None`` 时取 ``tool.definition.name``。
         :param namespace: 命名空间；``None`` → ``"default"``。注册表 key 为
             ``ns::name``——核心内置工具归 ``builtin::``；裸名引用的注册表
-            视图依次查 ``default::``、``builtin::``（``default`` 优先 =
+            视图依次查 ``default::``、``builtin::`` （``default`` 优先 =
             插件覆盖原生行为的通道），自定义命名空间只能以 ``ns::name``
             全限定名引用（见 ``flowing.runtime`` 模块 docstring §7a）。
         :raises ToolNameConflictError: ``ns::name`` 全键已存在（不同命名
@@ -3234,7 +3141,7 @@ class ToolRegistry:
 
         .. rubric:: 测试案例
 
-        - 前置：已注册 ``"default::github"``（某 MCP 配置）→ 操作：以同名
+        - 前置：已注册 ``"default::github"`` （某 MCP 配置）→ 操作：以同名
           同命名空间注册另一 MCP 配置 → 期望：抛 `ToolNameConflictError`，
           原条目不变。
         - 前置：内置 ``builtin::web-search`` 已存在 → 操作：插件注册同名
@@ -3263,7 +3170,7 @@ class ToolRegistry:
 
         .. rubric:: 功能介绍
 
-        形态判别委托 :func:`flowing.paths.classify_ref`（词法唯一来源），
+        形态判别委托 :func:`flowing.paths.classify_ref` （词法唯一来源），
         三分语义：
 
         - **限定名**（含 ``::``，如 ``myplugin::web-search``）：**只查注册表**
@@ -3273,7 +3180,7 @@ class ToolRegistry:
           目录派生键（``@/`` 下相对、根外绝对、文件夹式取上层目录，仅作
           内部身份标识）**短路复用**已注册实例，未注册才实例化并注册；
           ``source_dir`` 缺省时跳过文件链。之后查注册表裸名视图——
-          ``default::`` 优先于 ``builtin::``（插件覆盖原生行为的通道）；
+          ``default::`` 优先于 ``builtin::`` （插件覆盖原生行为的通道）；
         - **路径形态**：``@/`` 经 ``project_root`` 定位（无需
           ``source_dir``）；``./`` / ``../`` 需 ``source_dir``，缺省时
           报错（``resolve_path`` 现有口径）。跳过注册表，定位后走候选链；
@@ -3302,8 +3209,8 @@ class ToolRegistry:
         - **fail-fast 口径**：裸名未注册时，``source_dir`` 提供则先走
           文件查找链、均不命中才报「注册表与查找链均不命中」；
           ``source_dir`` 缺省则只查注册表、不命中即报错，不做文件探测；
-          纯存在性检查用 ``__contains__``（仅认全限定键，P3-07）；
-        - **热路径口径**：``ToolEntry.llm_definition()``（每轮上下文
+          纯存在性检查用 ``__contains__`` （仅认全限定键，P3-07）；
+        - **热路径口径**：``ToolEntry.llm_definition()`` （每轮上下文
           组装）与 ``before_tool_call`` 审批路径调本方法时**必命中
           注册表快路径**——Entry 在装配期已解析落账（文件命中的落账
           派生限定键，注册表命中的落账裸名），文件解析是声明期行为，
@@ -3326,7 +3233,7 @@ class ToolRegistry:
         - ``name`` 断言：命中对象的显式 ``name`` 声明（``.fya`` 字段 /
           类属性 / 装饰器参数）必须与 ``<name>`` 一致，不符抛
           :class:`flowing.errors.NameMismatchError`；``<name>`` 的推断
-          本体为 :func:`flowing.paths.infer_name`（规则表
+          本体为 :func:`flowing.paths.infer_name` （规则表
           :data:`TOOL_NAMING`，紧邻本链声明）。
         - 非行为：不做 glob 展开（``tools:`` 条目的 glob 在装配层
           展开后逐条进本方法）。装配层遵循「显式优先、glob 跳过同规范名」
@@ -3357,16 +3264,16 @@ class ToolRegistry:
           ``default::``/``builtin::``，不命中即 ``ToolNotFoundError``，
           不做文件探测。
         - 前置：``- ./tools/payment`` 指向空目录 → 期望：
-          ``FormatError``（显式路径不继续向下）。
+          ``FormatError`` （显式路径不继续向下）。
 
         .. rubric:: 调用关系（审计）
 
-        - 调用：:func:`flowing.paths.classify_ref`（形态判别，入口）；
-          ``flowing.runtime.Runtime.resolve_path()``（路径形态定位）；
-          :func:`flowing.paths.probe_candidates`（候选链探测）；
-          ``flowing.tool._auto_generate_tool()``（打标函数提升）；
-          ``self.register()``（命中后落账）
-        - 被调：``flowing.agent.Agent.add_tool()``（``name`` 未注册
+        - 调用：:func:`flowing.paths.classify_ref` （形态判别，入口）；
+          ``flowing.runtime.Runtime.resolve_path()`` （路径形态定位）；
+          :func:`flowing.paths.probe_candidates` （候选链探测）；
+          ``flowing.tool._auto_generate_tool()`` （打标函数提升）；
+          ``self.register()`` （命中后落账）
+        - 被调：``flowing.agent.Agent.add_tool()`` （``name`` 未注册
           的边缘情况，每次添加条目）；``.fya`` ``tools:`` 条目解析（声明
           期，每条目一次）；``flowing.tool.ToolEntry.llm_definition()``
           第 1 步（每次上下文组装，必命中快路径）；``before_tool_call``
@@ -3447,8 +3354,8 @@ class ToolRegistry:
 
         .. rubric:: 调用关系（审计）
 
-        - 调用：:func:`flowing.paths.probe_candidates`（候选链探测）
-        - 被调：:meth:`get`（裸名且 ``source_dir`` 提供时）
+        - 调用：:func:`flowing.paths.probe_candidates` （候选链探测）
+        - 被调：:meth:`get` （裸名且 ``source_dir`` 提供时）
         """
         directory = source_dir / name
         if directory.is_dir():
@@ -3468,7 +3375,7 @@ class ToolRegistry:
                      candidates: list[str], *, ref: str) -> Tool:
         """候选命中 → 派生键短路 / 实例化注册（**内部 API**）。
 
-        派生键 = ``<所在目录派生命名空间>::<身份名>``（文件夹式资源取上层
+        派生键 = ``<所在目录派生命名空间>::<身份名>`` （文件夹式资源取上层
         目录；``@/`` 下根相对、根外绝对，仅作内部身份标识，§7a）——已注册
         则**短路复用**（不重复实例化）；未注册则按后缀分派实例化（``.fya``
         → :func:`_tool_from_fya`；``.py`` → :meth:`_tool_from_py`）并落账、
@@ -3476,9 +3383,9 @@ class ToolRegistry:
 
         .. rubric:: 调用关系（审计）
 
-        - 调用：:func:`flowing.paths.infer_name`（身份名推断）；
-          :func:`_tool_from_fya` / :meth:`_tool_from_py`（实例化分派）
-        - 被调：:meth:`get`（文件链/路径形态命中后）
+        - 调用：:func:`flowing.paths.infer_name` （身份名推断）；
+          :func:`_tool_from_fya` / :meth:`_tool_from_py` （实例化分派）
+        - 被调：:meth:`get` （文件链/路径形态命中后）
         """
         identity = infer_name(hit, naming=TOOL_NAMING)
         if hit.name.endswith(".fya"):
@@ -3524,7 +3431,7 @@ class ToolRegistry:
 
         - 调用：``importlib.util`` 文件加载；:func:`_auto_generate_tool`
           （打标函数提升）
-        - 被调：:meth:`_resolve_hit`（.py 命中时）
+        - 被调：:meth:`_resolve_hit` （.py 命中时）
         """
         import importlib.util
 
@@ -3581,7 +3488,7 @@ class ToolRegistry:
 
         .. rubric:: 行为规约
 
-        - 解析 / 注册 / 缓存语义全部继承 :meth:`get`（含限定名只查
+        - 解析 / 注册 / 缓存语义全部继承 :meth:`get` （含限定名只查
           注册表、命名空间派生、fail-fast 口径）。
         - 非行为：不绕过注册表直接加载文件；不实例化新对象（取的是
           已注册单例的类）。
@@ -3598,7 +3505,7 @@ class ToolRegistry:
 
         .. rubric:: 调用关系（审计）
 
-        - 调用：``self.get()``（每次调用，唯一解析路径）
+        - 调用：``self.get()`` （每次调用，唯一解析路径）
         - 被调：编译/测试/子类化场景（用户代码）
 
         .. seealso:: :meth:`get` —— 唯一解析入口；
@@ -3670,8 +3577,8 @@ def flowing_tool(fn: Callable[..., Any] | None = None, *,
     :meth:`flowing.tool.ToolRegistry.get` 完成——import 期
     不需要 Runtime 存在，多 Runtime 安全。
 
-    两种用法：``@flowing_tool``（名字由文件名/目录名推断）或
-    ``@flowing_tool("make-payment")``（参数仅作**一致性断言**——必须与
+    两种用法：``@flowing_tool`` （名字由文件名/目录名推断）或
+    ``@flowing_tool("make-payment")`` （参数仅作**一致性断言**——必须与
     推断名一致，不符抛 :class:`flowing.errors.NameMismatchError`）。
 
     .. rubric:: 设计动机
@@ -3702,7 +3609,7 @@ def flowing_tool(fn: Callable[..., Any] | None = None, *,
 
     .. rubric:: 调用关系（审计）
 
-    - 调用：``无``（仅打标与登记打标表）
+    - 调用：``无`` （仅打标与登记打标表）
     - 被调：用户工具定义文件（import 期）；产物由
       ``flowing.tool.ToolRegistry.get`` 消费（时机：引用触发
       的惰性解析）
@@ -3738,7 +3645,7 @@ def _infer_from_execute(execute: Callable[..., Any]) -> "type[BaseModel]":
       Pydantic）；``Field`` 语义的默认值 → 字段 default（有默认 →
       可选，无 → 必填）；``caller`` 参数跳过（框架注入，不是 LLM
       参数）；``*args``/``**kwargs`` 形态跳过（不进 schema）。
-    - 构建经 ``pydantic.create_model``（与 fya 桥接
+    - 构建经 ``pydantic.create_model`` （与 fya 桥接
       :func:`flowing.params.schema_to_model` 同一建模入口）。
     - :raises MissingSchemaError: 任一业务参数缺类型标注（构建不出
       字段类型）。
