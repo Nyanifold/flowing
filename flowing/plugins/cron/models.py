@@ -6,8 +6,8 @@
 :class:`CronTrigger` （``on_cron_trigger`` 钩子点的 value）。
 
 四个对象的关系：:class:`CronJob` 是任务定义，含 :class:`CronAction`；
-调度器每次到点触发时构造 :class:`CronFireContext`（本次交付的事实）与
-:class:`CronTrigger`（本次触发的可改写视图，含动作拷贝与触发上下文），
+调度器每次到点触发时构造 :class:`CronFireContext` （本次交付的事实）与
+:class:`CronTrigger` （本次触发的可改写视图，含动作拷贝与触发上下文），
 把后者交给 ``on_cron_trigger`` 钩子 dispatch。
 
 .. seealso:: :mod:`flowing.plugins.cron` （扩展的启用方式与整体契约）、
@@ -250,7 +250,7 @@ class CronJob:
 
         .. rubric:: 行为要点
 
-        - ``action`` 委托 :meth:`CronAction.from_dict`（形状损坏 →
+        - ``action`` 委托 :meth:`CronAction.from_dict` （形状损坏 →
           ``ValueError`` fail-fast）；时间字段从 ISO 8601 解析回 naive
           UTC ``datetime``。
         - 缺 ``recurring`` / ``last_fired_at`` 键按默认值（``True`` /

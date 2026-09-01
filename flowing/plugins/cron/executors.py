@@ -27,7 +27,7 @@ CronExecutor = Callable[[Agent, "CronJob", "CronAction", "CronFireContext"], Awa
 后的版本，``job.action`` 始终是落盘的原始定义，执行器应消费前者。
 ``ctx`` 是只读触发上下文（合并计数、理想 / 实际时刻）。
 
-.. seealso:: :class:`CronPlugin`（``executors`` 参数）、
+.. seealso:: :class:`CronPlugin` （``executors`` 参数）、
     :class:`CronFireContext`、:func:`default_message_executor`
 """
 
