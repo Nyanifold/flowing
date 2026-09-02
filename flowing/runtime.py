@@ -167,7 +167,6 @@ from flowing.tool import Tool, ToolRegistry
 if TYPE_CHECKING:
     from flowing.agent import Agent
     from flowing.plugins import Plugin
-    from flowing.plugins.workflow import Workflow
 
 __all__ = [
     "AGENT_NAMING",
@@ -784,13 +783,14 @@ class Runtime:
         agent_id: str | None = None,
         **kwargs: Any,
     ) -> ProvideNode:
-        """挂载根节点（文件 → 根）：创建或恢复 ``parent_id=None`` 的根节点。
+        """挂载根节点（文件 → 根）：创建或恢复 ``parent_id=None`` 的 Agent 根。
 
         .. rubric:: 功能介绍
 
-        ``node`` 统一为路径字符串：``.fya`` 路径（如 ``"@/root.fya"``）
-        创建 Agent 根，Workflow 定义文件路径创建 Workflow 根（文件内需
-        恰好一个 ``Workflow`` 子类，见 :mod:`flowing.plugins.workflow`）。
+        ``node`` 统一为 ``.fya`` 路径字符串（如 ``"@/root.fya"``）——mount
+        仅处理 Agent 根；Workflow 根由
+        :meth:`flowing.plugins.workflow.WorkflowPlugin.launch` 创建（文件内
+        需恰好一个 ``Workflow`` 子类，见 :mod:`flowing.plugins.workflow`）。
         可多次调用（多根并存，如多项目宿主）；不调用也合法（嵌入大程序，
         按需 ``create_agent()``）。
 
@@ -811,10 +811,9 @@ class Runtime:
         生成 id）——多根并存 / 临时根的形态。根节点的类型只由 ``node``
         解析决定；``agent_id`` 只是身份指定，不改变类型。
 
-        ``**kwargs`` 透传给节点初始化（Agent 形态进 ``setup(**kwargs)``；
-        Workflow 形态进其实例化），与 :meth:`create_agent` 的 ``**kwargs``
-        同一契约：写入池元数据持久化、是节点身份的一部分、应可 JSON
-        序列化。
+        ``**kwargs`` 透传给节点初始化（进 ``setup(**kwargs)``），与
+        :meth:`create_agent` 的 ``**kwargs`` 同一契约：写入池元数据
+        持久化、是节点身份的一部分、应可 JSON 序列化。
 
         .. rubric:: 使用示例
 
@@ -823,62 +822,52 @@ class Runtime:
             await runtime.mount("@/root.fya")                      # Agent 根（每次新建）
             await runtime.mount("@/root.fya",
                                 agent_id="agent-main")             # 固定 id：第二次启动恢复同一根
-            await runtime.mount("@/pipelines/release.py",
-                                repo="flowing")                    # Workflow 根
             await runtime.mount("@/root.fya", locale="zh")         # 第二个根（不同 id）
 
         .. rubric:: 行为要点
 
         - 内部顺序：``agent_id`` 非空且在池中 → 委托 ``recover_agent``；
-          否则 → 创建管线（委托 ``create_agent`` / Workflow 等价路径）。
-          mount 不承担插件依赖校验（校验在 ``use()`` 时增量执行）。
+          否则 → 创建管线（委托 ``create_agent``）。mount 不承担插件
+          依赖校验（校验在 ``use()`` 时增量执行）。
         - 返回后：节点已注册进 ``_nodes``、工作循环已启动、队列为空
           （挂起在 ``await queue.get()``）。返回不代表有活干。
-        - Workflow 根：无 Turn 循环、不调 LLM；其子 Agent 的 ``parent_id``
-          指向 Workflow，provide 链经 Workflow 上溯到 Runtime。
-        - ``agent_id`` 仅适用于 ``.fya`` Agent 根；Workflow 根不支持指定
-          （Workflow 的 ``node_id`` 由 Workflow 自身分配），传了抛
-          :class:`ValueError`。
         - 不接受已构造的实例（实例形态统一走 ``create_agent`` 等价管线，
           mount 只做文件 → 节点）；不读取消息、不启动网络服务、不等待
           任何回合结果。
 
-        :param node: ``.fya`` 路径或 Workflow 定义文件路径（支持路径前缀
-            规则）。
+        :param node: ``.fya`` 路径（支持路径前缀规则）。
         :param agent_id: 可选，Agent 根的固定 ``node_id``。已存在于池中 →
             恢复而非新建（幂等挂载）；不存在 → 以该 id 新建；``None`` →
             每次新建（自动生成 id）。类型由 ``node`` 解析决定，本参数不
             指定类型。
         :param kwargs: 节点初始化参数（身份的一部分，见上文）。
-        :return: 创建或恢复的根节点（``Agent`` 或 ``Workflow``）。
+        :return: 创建或恢复的根节点（``Agent``）。
         :raises FileNotFoundError: 路径不存在时。
+        :raises ValueError: ``node`` 不是 ``.fya`` 文件时（``.py`` Agent
+            根经 :meth:`create_agent`；Workflow 根经
+            :meth:`flowing.plugins.workflow.WorkflowPlugin.launch`）。
 
         .. seealso:: :meth:`flowing.runtime.Runtime.create_agent`、
             :meth:`flowing.runtime.Runtime.recover_agent`、
-            :class:`flowing.plugins.workflow.Workflow`
+            :meth:`flowing.plugins.workflow.WorkflowPlugin.launch`
         """
         resolved = self.resolve_path(node)   # 统一为路径字符串
         if not resolved.exists():
             raise FileNotFoundError(f"mount 路径不存在：{resolved}")
         self._ensure_persist_ready()   # 首个 mount 前的持久化就位（persist 目录 + 插件清单 + 兜底引导）
-        if resolved.suffix == ".fya":
-            # Agent 根：与子 Agent 走同一条唯一创建入口，仅 parent_id=None 不同；
-            # 幂等挂载：agent_id 指定且已在池中 -> 恢复而非新建（手动 mount 的
-            # 根是特殊节点，固定 id 使第二次启动「同一个根回来了」）；
-            # 类型仍由 node 解析决定
-            if agent_id is not None and agent_id in self._agent_pool:
-                return await self.recover_agent(agent_id, **kwargs)
-            return await self.create_agent(node, parent_id=None, agent_id=agent_id, **kwargs)
-        if agent_id is not None:
-            raise ValueError("agent_id 仅适用于 .fya Agent 根；Workflow 根不支持指定 agent_id")
-        # Workflow 根（等价路径）：定义文件内需恰好一个 Workflow 子类
-        # 函数体内局部 import 刻意为之：TYPE_CHECKING 化后这是
-        # runtime → plugins.workflow 的唯一运行时边；mount 被调用时两模块
-        # 均已加载完毕，局部 import 无循环风险，且使模块头依赖图保持单向。
-        from flowing.plugins.workflow import resolve_workflow
-        workflow_class = resolve_workflow(node)
-        workflow: Workflow = workflow_class()   # 实例化 + 绑定 runtime（等价管线细节见 flowing.plugins.workflow）
-        return workflow
+        if resolved.suffix != ".fya":
+            # mount 仅接受 .fya Agent 根：.py Agent 根经 create_agent 的路径
+            # 形态，Workflow 根经 WorkflowPlugin.launch（mount 不再承载 Workflow）
+            raise ValueError(
+                f"mount 仅接受 .fya Agent 根：{node}——"
+                ".py Agent 根经 create_agent；Workflow 根经 WorkflowPlugin.launch")
+        # Agent 根：与子 Agent 走同一条唯一创建入口，仅 parent_id=None 不同；
+        # 幂等挂载：agent_id 指定且已在池中 -> 恢复而非新建（手动 mount 的
+        # 根是特殊节点，固定 id 使第二次启动「同一个根回来了」）；
+        # 类型仍由 node 解析决定
+        if agent_id is not None and agent_id in self._agent_pool:
+            return await self.recover_agent(agent_id, **kwargs)
+        return await self.create_agent(node, parent_id=None, agent_id=agent_id, **kwargs)
 
     async def create_agent(self, agent_type: str, *, parent_id: str | None = None,
                            agent_id: str | None = None,

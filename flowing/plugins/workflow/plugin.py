@@ -107,32 +107,41 @@ class RunWorkflowTool(ScriptTool):
 
 
 class WorkflowPlugin(Plugin):
-    """Workflow 扩展插件——阶段一入口：把 ``run-workflow`` 工具注册进全局工具注册表。
+    """Workflow 扩展插件——阶段一入口：注册 ``run-workflow`` 工具并提供 Workflow 根创建入口。
 
     .. rubric:: 功能介绍
 
     ``runtime.use(WorkflowPlugin())`` 时框架调用 ``install(runtime)``：
-    向 ``runtime.tool_registry`` 注册 :class:`RunWorkflowTool`。之后 Agent
-    经 ``add_tool("run-workflow")`` 绑定该工具，即可让 LLM 按路径拉起
-    任意 workflow 定义。
+    向 ``runtime.tool_registry`` 注册 :class:`RunWorkflowTool`，并保存
+    runtime 引用（供 :meth:`launch` 使用）。之后 Agent 经
+    ``add_tool("run-workflow")`` 绑定该工具，即可让 LLM 按路径拉起
+    任意 workflow 定义；宿主 / 应用代码经 ``runtime.get_plugin("workflow")
+    .launch(path)`` 创建 Workflow 根。
 
     Workflow 的能力本体是 :class:`Workflow` 基类（import 即用，不需要
-    实例级启用）；本插件只负责把 LLM 触发入口接上。不需要 LLM 入口（纯
-    代码直接驱动）的应用可以不安装本插件，``Workflow`` 基类与
-    :func:`resolve_workflow` 照常可用。
+    实例级启用）；本插件负责两件事：把 LLM 触发入口接上（``run-workflow``
+    工具），以及提供 Workflow 根创建入口（``launch``，需注册以取得
+    runtime）。不需要 LLM 入口、也不建根（纯代码驱动子节点）的应用可以
+    不安装本插件，``Workflow`` 基类与 :func:`resolve_workflow` 照常可用。
 
     .. rubric:: 使用示例
 
     .. code-block:: python
 
-        runtime.use(WorkflowPlugin())          # 阶段一：注册 run-workflow 工具
+        runtime.use(WorkflowPlugin())          # 阶段一：注册工具 + 保存 runtime
         agent = await runtime.create_agent("main-agent")
         agent.add_tool("run-workflow")         # 绑定到具体 Agent（LLM 可见）
 
+        # Workflow 根（等价旧 mount 的 Workflow 路径）：
+        wf = runtime.get_plugin("workflow").launch("@/pipelines/release.py")
+
     .. rubric:: 行为要点
 
-    - ``install()`` 同步完成注册，只注册工具：不创建任何 workflow 实例、
-      不扫描任何目录（资源发现发生在 :func:`resolve_workflow` 被调用时）。
+    - ``install()`` 同步完成：注册工具 + 保存 runtime；不创建任何
+      workflow 实例、不扫描任何目录（资源发现发生在
+      :func:`resolve_workflow` 被调用时）。
+    - :meth:`launch` 依赖 install 保存的 runtime——未注册（未
+      ``runtime.use(WorkflowPlugin())``）时调用抛 ``ValueError``。
     - 本插件不声明钩子点、不挂任何 handler；不注册 provide 值、不声明
       Agent 状态键。
     - 重复安装同名插件（再次 ``runtime.use(WorkflowPlugin())``）抛
@@ -161,15 +170,76 @@ class WorkflowPlugin(Plugin):
         方法内执行。
     """
 
+    _runtime: Runtime | None = None
+    """注册时保存的 Runtime 实例（``install`` 赋值，:meth:`launch` 使用）。
+
+    未注册（``runtime.use(WorkflowPlugin())`` 未调用）时为 ``None``——
+    :meth:`launch` 据此拒绝未注册使用。保存 runtime 供 launch 是用户显式
+    调用的工厂路径，非运行期回调，与插件约定「不保存 runtime 用于运行期
+    回调」不冲突。
+    """
+
     def install(self, runtime: Runtime) -> None:
-        """阶段一：把 ``run-workflow`` 工具注册进全局工具注册表。
+        """阶段一：注册 ``run-workflow`` 工具并保存 runtime（供 ``launch`` 使用）。
 
         .. rubric:: 行为要点
 
         - ``runtime.register_tool(RunWorkflowTool())``，同步返回；不创建
           任何 workflow 实例、不扫描任何目录（资源发现发生在
           :func:`resolve_workflow` 被调用时）。
+        - 保存 ``runtime`` 到 :attr:`_runtime`——:meth:`launch` 创建
+          Workflow 根时以此构造（root：``caller=None``）。
 
-        .. seealso:: :class:`RunWorkflowTool`
+        .. seealso:: :class:`RunWorkflowTool`、:meth:`launch`
         """
+        self._runtime = runtime
         runtime.register_tool(RunWorkflowTool())
+
+    def launch(self, path: str) -> Workflow:
+        """按 Workflow 定义文件创建 Workflow 根（``caller=None`` 的根节点）。
+
+        .. rubric:: 功能介绍
+
+        Workflow 根的创建入口（原 ``Runtime.mount`` 的 Workflow 等价路径
+        迁移至此）：``resolve_workflow(path)`` 解析定义文件（文件内需恰好
+        一个 ``Workflow`` 子类），以 ``caller=None``（根节点语义）与注册
+        时保存的 runtime 实例化。返回的 Workflow 已就位于节点树与 provide
+        链（构造即完成，见 :class:`Workflow`）。
+
+        .. rubric:: 使用示例
+
+        .. code-block:: python
+
+            runtime.use(WorkflowPlugin())
+            wf = runtime.get_plugin("workflow").launch(
+                "@/pipelines/release.py")
+
+        .. rubric:: 行为要点
+
+        - 前置条件：本插件已注册（``runtime.use(WorkflowPlugin())``）——
+          未注册时抛 :class:`ValueError`（launch 依赖 install 保存的
+          runtime）。
+        - ``caller=None``：Workflow 是根节点（``_parent_id`` 指向
+          Runtime）；经 ``run-workflow`` 工具拉起的 Workflow 由调用方
+          Agent 作 ``caller``，走 :class:`RunWorkflowTool` 的构造路径
+          （与 launch 同为 ``workflow_class(caller, runtime)`` 形态）。
+        - 同步方法：Workflow 构造是同步的（分配 ``node_id``、就位节点树
+          与 provide 链）；不传额外构造参数（``Workflow.__init__`` 固定
+          ``(caller, runtime)`` 两参，子类初始化参数由定义文件 / 默认值
+          承载）。
+
+        :param path: Workflow 定义文件路径（支持 ``@/`` 前缀规则）。
+        :return: 已就位的 ``Workflow`` 根实例。
+        :raises ValueError: 本插件未注册（``runtime.use(WorkflowPlugin())``
+            未调用）时。
+        :raises flowing.errors.FlowingError: 路径缺失或文件形态不合法时
+            （经 :func:`resolve_workflow`）。
+
+        .. seealso:: :func:`resolve_workflow`、:class:`Workflow`、
+            :class:`RunWorkflowTool`
+        """
+        if self._runtime is None:
+            raise ValueError(
+                "WorkflowPlugin 未注册：请先 runtime.use(WorkflowPlugin()) 再调用 launch")
+        workflow_class = resolve_workflow(path)
+        return workflow_class(caller=None, runtime=self._runtime)

@@ -19,8 +19,7 @@
 启用。框架核心发布时不预装任何内置扩展；未启用的扩展对 Agent 而言
 从没存在过（零开销，不是被跳过）。``Plugin`` 基类定义在扩展包而非
 ``flowing.runtime``：核心只经 :meth:`flowing.runtime.Runtime.use` 消费
-插件接口，不认识任何具体插件——唯一的例外是 ``Runtime.mount()`` 挂载
-Workflow 根时局部解析 :func:`flowing.plugins.workflow.resolve_workflow`。
+插件接口，不认识任何具体插件。
 
 .. rubric:: 全局约定（跨符号、影响使用的约定）
 

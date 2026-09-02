@@ -167,3 +167,31 @@ async def test_t90_resolve_failure_wrapped_run_failure_contained(
                    for r in caplog.records)
     finally:
         await runtime.shutdown()
+
+
+async def test_workflow_plugin_launch_root(project):
+    """launch：注册后按定义文件创建 Workflow 根。
+
+    断言根形态：``caller is None``、``runtime`` 正确绑定、``node_id`` 为
+    ``workflow-*`` 前缀、``_parent_id`` 指向 Runtime（provide 链终点）。
+    """
+    import pytest
+    runtime = make_runtime(project)
+    try:
+        plugin = WorkflowPlugin()
+        runtime.use(plugin)
+        wf = plugin.launch("@/verify_fix.py")
+        assert wf.caller is None
+        assert wf.runtime is runtime
+        assert wf.node_id.startswith("workflow-")
+        assert wf._parent_id == runtime.node_id
+    finally:
+        await runtime.shutdown()
+
+
+def test_workflow_plugin_launch_unregistered():
+    """launch：未注册（未 ``runtime.use(WorkflowPlugin())``）→ ValueError。"""
+    import pytest
+    plugin = WorkflowPlugin()
+    with pytest.raises(ValueError):
+        plugin.launch("@/verify_fix.py")
