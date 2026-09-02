@@ -70,6 +70,14 @@ _DEFAULT_TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 _NOTICE_TIME_FORMAT = "%Y-%m-%d %H:%M"
 """补发模板 ``{last_fired_at}`` 的展示格式（系统本地墙钟）。"""
 
+_STRFTIME_DIRECTIVES = frozenset(
+    "aAwdbBmYHIpMSfzZjUWcxXGuV%")   # %a/%A/... 标准指令集 + %% 转义
+"""``{{current_time}}`` 格式串允许的指令集（Python strftime 标准指令 +
+``%%``）。白名单校验的原因：glibc 的 ``strftime`` 对未知指令（如
+``%Q``）不报错、原样输出——只有白名单能可靠区分「合法格式」与
+「笔误」。
+"""
+
 _COALESCE_GUARD = 100_000
 """合并计数逐点迭代防护上限：区间理想点超过该值时换解析式计数。"""
 
@@ -197,19 +205,25 @@ def substitute_current_time(text: str, now: datetime) -> str:
 
 
 def validate_placeholders(content: str) -> None:
-    """注册期探针：content 内全部占位符格式用当前时间试渲染一次。
+    """注册期探针：content 内全部占位符格式做指令集白名单校验。
 
-    格式非法 → ``ValueError``（配置错误在注册边界暴露）。
+    格式含白名单外指令（或孤立 ``%``）→ ``ValueError``（配置错误在注册
+    边界暴露；``strftime`` 本身对未知指令不报错，故须显式校验）。
     """
-    now = _now()
     for match in _CURRENT_TIME_PATTERN.finditer(content):
         fmt = match.group(1)
-        if fmt:
-            try:
-                now.strftime(fmt)
-            except (ValueError, TypeError) as exc:
+        if not fmt:
+            continue
+        i = 0
+        while i < len(fmt):
+            if fmt[i] != "%":
+                i += 1
+                continue
+            if (i + 1 >= len(fmt)
+                    or fmt[i + 1] not in _STRFTIME_DIRECTIVES):
                 raise ValueError(
-                    f"{{{{current_time}}}} 占位符格式非法: {fmt!r}") from exc
+                    f"{{{{current_time}}}} 占位符格式非法: {fmt!r}")
+            i += 2
 
 
 def _render_notice(cron: str, count: int,

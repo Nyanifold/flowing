@@ -1,2 +1,2 @@
 {"type": "meta", "format_version": 1}
-{"op": "set", "key": "cron_jobs", "value": [{"id": "fixture-minutely", "node_id": "agent-fixture", "cron": "* * * * *", "action": {"kind": "message", "prompt": "整点回顾", "tool": "", "args": {}}, "source": "fixture_tick", "created_at": "2026-08-30T00:00:00", "recurring": true, "last_fired_at": "2026-08-30T00:00:00"}]}
+{"op": "set", "key": "cron_jobs", "value": [{"id": "fixture-minutely", "cron": "* * * * *", "content": "整点回顾", "source": "fixture_tick", "recurring": true, "created_at": "2026-08-30T00:00:00", "last_fired_at": "2026-08-30T00:00:00"}]}
