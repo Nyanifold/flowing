@@ -115,10 +115,8 @@ class RootAgent(Agent):
 
 
 async def main(persist: str | None = None, scenario: str = "ok") -> Runtime:
-    runtime = Runtime()
-    if persist:
-        # 测试不得污染 cwd（默认 <cwd>/.flowing）：持久化根一律经 kwarg 指到 tmp
-        runtime.set_persist_dir(persist)
+    # 测试不得污染 cwd（默认 <cwd>/.flowing）：持久化根一律经构造参数指到 tmp
+    runtime = Runtime(persist_dir=persist)
     runtime.set_models(flowing.resolve("@/models.yaml"))
     runtime.set_model_tags(flowing.resolve("@/model-tags.yaml"))
     runtime.provider_registry._instances["fake-a"] = _make_provider("alpha-reply", scenario)

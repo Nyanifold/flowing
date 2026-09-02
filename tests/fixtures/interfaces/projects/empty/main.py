@@ -10,7 +10,5 @@ from flowing import Runtime
 
 
 async def main(persist: str | None = None) -> Runtime:
-    runtime = Runtime()
-    if persist:
-        runtime.set_persist_dir(persist)
+    runtime = Runtime(persist_dir=persist)
     return runtime

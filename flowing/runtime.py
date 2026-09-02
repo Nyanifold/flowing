@@ -500,8 +500,10 @@ class Runtime:
     内部 API，不属稳定契约。
     """
     _persist_dir: Path
-    """持久化根目录；默认 ``<cwd>/.flowing``，
-    ``set_persist_dir`` 覆写（``mount()`` 前）。内部 API，不属稳定契约。
+    """持久化根目录；构造时固化（``Runtime(persist_dir=...)`` 指定，显式
+    指定即建目录；缺省 ``<cwd>/.flowing`` 推迟到首个持久化动作才建）。
+    构造后不可更改；只读访问经 :attr:`persist_dir`。内部 API，不属稳定
+    契约。
     """
     _model_tags_path: Path | None
     """模型标签文件路径（默认 ``~/.flowing/model-tags.yaml``，``FLOWING_MODEL_TAGS``
@@ -540,15 +542,16 @@ class Runtime:
     引用对象进渲染上下文）。构造期建立，是 ``os.environ`` 的活视图。
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, persist_dir: str | Path | None = None) -> None:
         """构造 Runtime（同步）；``@`` 由 launch 上下文自动绑定到 ``project_root``。
 
         .. rubric:: 功能介绍
 
         必须在 ``flowing.launch`` 登记的 ``@`` 上下文内调用（通常由子项目
-        ``@/main.py`` 的 ``main()`` 调用）。构造时固化 ``project_root``、
-        初始化全部空存储、执行 Provider 候选清单与 agent 池的扫描（不
-        实例化——懒加载原则，重量级初始化推迟到首次使用）。
+        ``@/main.py`` 的 ``main()`` 调用）。构造时固化 ``project_root``
+        与持久化根（``persist_dir`` 参数）、初始化全部空存储、执行
+        Provider 候选清单与 agent 池的扫描（不实例化——懒加载原则，
+        重量级初始化推迟到首次使用）。
 
         .. rubric:: 使用示例
 
@@ -564,14 +567,19 @@ class Runtime:
 
         - 前置条件：``_current_project_root`` 已登记（即在 ``launch`` 的
           调用栈内）；违反抛 ``RuntimeError``。
-        - 构造期副作用仅限：固化 ``project_root``、初始化空存储、核心
-          内置工具注册（``subagent-invoke`` / ``finish``）、扫描
-          providers.yaml 构建 Provider 候选清单、扫描持久化目录构建
-          agent 池注册表。不实例化任何 Provider 或 Agent。
+        - 构造期副作用仅限：固化 ``project_root`` 与持久化根（``persist_dir``
+          显式指定时即建目录）、初始化空存储、核心内置工具注册
+          （``subagent-invoke`` / ``finish``）、扫描 providers.yaml 构建
+          Provider 候选清单、扫描持久化目录构建 agent 池注册表。不
+          实例化任何 Provider 或 Agent。
         - 一进程可构造多个实例（各自 Task 的 contextvar 隔离），互不
           共享存储。
         - 不启动工作循环（没有 Agent 时没有 Task）、不打开端口。
 
+        :param persist_dir: 持久化根目录（可选）。``None`` → 默认
+            ``<cwd>/.flowing``，目录推迟到首个持久化动作才建（零持久化
+            场景不落盘）；显式指定 → 构造时固化并立即建目录。路径支持
+            ``@/`` 前缀规则（经 :meth:`resolve_path`）。构造后不可更改。
         :raises RuntimeError: 未经 ``flowing.launch`` 登记 ``@`` 上下文
             （绕过唯一入口）时抛出。
 
@@ -604,7 +612,12 @@ class Runtime:
         self._resources = {}
         self._agent_pool = {}
         self._states = {}
-        self._persist_dir = Path.cwd() / ".flowing"   # 默认持久化根：启动路径即 flowing 启动处；set_persist_dir 覆写（mount 前）
+        if persist_dir is not None:
+            # 构造时固化：显式指定即建目录（@/ 前缀规则经 resolve_path）
+            self._persist_dir = self.resolve_path(str(persist_dir))
+            self._persist_dir.mkdir(parents=True, exist_ok=True)
+        else:
+            self._persist_dir = Path.cwd() / ".flowing"   # 默认持久化根：推迟到首个持久化动作才建（零持久化不落盘）
         config_home = Path(os.environ.get(
             "FLOWING_CONFIG_HOME", os.path.expanduser("~/.flowing")))
         self._model_tags_path = Path(os.environ.get(
@@ -639,6 +652,22 @@ class Runtime:
         self.register_state("core")
         self.register_state("default")
         self._scan_agent_pool()
+
+    @property
+    def persist_dir(self) -> Path:
+        """持久化根目录（只读）：构造时固化的值，构造后不可更改。
+
+        .. rubric:: 行为要点
+
+        - 与 :attr:`project_root` 同为构造固化字段；目录是否已建取决于
+          构造参数：显式指定即建，缺省（``None``）推迟到首个持久化动作。
+        - 供宿主 / 插件 / 子类读取（如向持久化根写入自己的文件）——
+          ``FileRecordStore`` 不自建父目录，写入前目录须已存在。
+
+        .. seealso:: :meth:`flowing.runtime.Runtime.create_agent`
+            （``session_dir`` 参数）、:attr:`_persist_dir`
+        """
+        return self._persist_dir
 
     def use(self, *plugins: Plugin) -> None:
         """安装插件（阶段一启用）：按实参顺序执行各插件的 ``install(runtime)``。
@@ -1987,51 +2016,6 @@ class Runtime:
         # provider 实例化，重建不丢任何已实例化条目——安全）
         self.provider_registry = ProviderRegistry(load_provider_candidates(resolved))
 
-    def set_persist_dir(self, path: str | Path) -> None:
-        """设置持久化目录（可选初始化步骤，``mount()`` 之前调用）。
-
-        .. rubric:: 功能介绍
-
-        目录内两类条目并列：① 每 agent 一个 session 目录
-        （``agent_id == session_id``），内含 ``tree.jsonl`` （一行一个
-        Message 及 tombstone 等变更记录行——tombstone 即删除标记，
-        历史记录里代表这条消息已被删除）、``core.jsonl`` （核心袋，
-        框架私有）+ ``state.jsonl`` （默认袋 set/delete 行）与
-        ``meta.json`` （身份四键，JSON 整写）；② 全局命名空间文件：
-        ``<namespace>.jsonl`` 一空间一文件（Runtime / 插件级状态，
-        ``core`` 含已注册 agent id 名录——池 key 的唯一权威来源）。
-        本方法只设定全局目录——文件的物理读写由各持有者的
-        :class:`flowing.persistence.FileRecordStore` 实例执行
-        （:mod:`flowing.persistence`），不经 Runtime 中转。
-
-        .. rubric:: 行为要点
-
-        - 路径支持 ``@/`` 前缀规则；显式设定即建目录。
-        - 调用后、池扫描 / 首个 ``mount()`` 之前，框架重放全部全局命名
-          空间文件（恢复持久值进内存）。
-        - 运行时切换目录不受支持：在 ``mount()`` / ``create_agent()``
-          之后调用的行为未定义，属用法错误。
-
-        :param path: 持久化根目录路径。
-
-        .. seealso:: :meth:`flowing.runtime.Runtime.recover_agent`、
-            :meth:`flowing.runtime.Runtime.register_state`、
-            :meth:`flowing.agent.Agent.register_state`
-        """
-        self._persist_dir = self.resolve_path(str(path))   # 覆写默认 <cwd>/.flowing；路径支持 @/ 前缀规则
-        self._persist_dir.mkdir(parents=True, exist_ok=True)   # 显式设定即建目录（默认路径则推迟到首个 mount/create 才建，见 _ensure_persist_ready）
-        # 重指全部已注册命名空间的存储后端到新目录（__init__ 已对默认路径
-        # 做过一次注册即 replay，本方法须让既有视图改读新目录——重建 store、
-        # 清内存持久值，随后 _bootstrap_persistence 全量重放）。
-        # 前置约定：mount()/create_agent() 之前调用（之后调用行为未定义）；
-        # 此刻各命名空间尚无业务写入（框架自身尚未写 core），重建安全
-        for namespace, view in self._states.items():
-            object.__setattr__(view, "_store", FileRecordStore(
-                self._persist_dir / f"{namespace}.jsonl", merge_last_line=True))
-            object.__setattr__(view, "_persisted", {})
-        # 全量重放（重建后无内存写，无需幂等保护）+ 池扫描
-        self._bootstrap_persistence()
-
     def register_state(self, namespace: str, backend: str = "file") -> StateView:
         """开启 / 注册一个全局持久化状态命名空间（Runtime / 插件级）。
 
@@ -2064,7 +2048,7 @@ class Runtime:
         :param backend: 后端（当前仅 ``'file'``）。
         :return: 全局 :class:`flowing.persistence.StateView`。
 
-        .. seealso:: :attr:`states`、:attr:`state`、:meth:`set_persist_dir`、
+        .. seealso:: :attr:`states`、:attr:`state`、
             :meth:`flowing.agent.Agent.register_state`
         """
         if backend != "file":
@@ -2072,8 +2056,7 @@ class Runtime:
         existing = self._states.get(namespace)
         if existing is not None:
             return existing   # 幂等：同 ns → 同视图
-        # 路径基 = _persist_dir（默认 <cwd>/.flowing；开空间即恢复，
-        # 不依赖 set_persist_dir 之后的引导重放）
+        # 路径基 = _persist_dir（构造固化；开空间即恢复）
         view = StateView(FileRecordStore(
             self._persist_dir / f"{namespace}.jsonl", merge_last_line=True))
         # 创建即 replay（开空间即恢复）
@@ -2152,30 +2135,6 @@ class Runtime:
         ):
             merged.update(self._flatten_config(layer))
         return merged
-
-    def _bootstrap_persistence(self) -> None:
-        """全局持久化全量重放（内部 API）：重放全部已注册命名空间 →
-        压缩时点① → agent 池扫描。
-
-        调用点仅 ``set_persist_dir`` （重指存储后——重建 store、清
-        ``_persisted`` 后统一重放；重建前约定无业务写，无需幂等保护）。
-        ``register_state`` 已创建即 replay，``use()`` 后引导与
-        ``_ensure_persist_ready`` 兜底不再需要。
-        """
-        for view in self._states.values():
-            persisted = view._persisted
-            for record in list(view._store.replay()):   # replay 是惰性生成器，须显式消费
-                op = record.get("op")
-                if op == "set":
-                    persisted[record["key"]] = record["value"]
-                elif op == "delete":
-                    persisted.pop(record["key"], None)
-                # 未知行形态（meta 已被 replay 吸收）静默跳过——与 Agent._restore 同口径
-            if persisted:
-                # 压缩时点①的 Runtime 侧落点（空袋跳过：无内容可压，
-                # 避免引导即在磁盘建出仅有 meta 首行的空文件）
-                view._maybe_compact(force=True)
-        self._scan_agent_pool()
 
     def _scan_agent_pool(self) -> None:
         """agent 池扫描（内部 API）：以全局 ``core`` 名录为池 key 唯一

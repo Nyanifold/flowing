@@ -100,9 +100,7 @@ class RootAgent(Agent):
 
 
 async def main(persist: str | None = None, scenario: str = "ok") -> Runtime:
-    runtime = Runtime()
-    if persist:
-        runtime.set_persist_dir(persist)
+    runtime = Runtime(persist_dir=persist)
     runtime.set_models(flowing.resolve("@/models.yaml"))
     runtime.set_model_tags(flowing.resolve("@/model-tags.yaml"))
     runtime.provider_registry._instances["fake-a"] = _make_provider("alpha-reply", scenario)

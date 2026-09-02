@@ -13,9 +13,7 @@ from flowing import Runtime
 
 async def main(scenario: str = "raise", persist: str | None = None) -> Runtime:
     if scenario == "mount-missing":
-        runtime = Runtime()
-        if persist:
-            runtime.set_persist_dir(persist)
+        runtime = Runtime(persist_dir=persist)
         await runtime.mount("@/missing.fya")
         return runtime
     raise ValueError("main boom")

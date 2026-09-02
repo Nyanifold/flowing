@@ -95,8 +95,7 @@ async def test_t125_full_chain(tmp_path):
                 self.state.register("marker", "init")
 
         async def main(flag=None, **kwargs):
-            runtime = Runtime()
-            runtime.set_persist_dir("@/sessions")
+            runtime = Runtime(persist_dir="@/sessions")
             runtime.set_models("@/models.yaml")
             runtime.set_model_tags("@/model-tags.yaml")
             runtime.register_agent_type("main-agent", MainAgent)
@@ -577,12 +576,11 @@ async def test_pool_scan_meta_missing_fails(tmp_path):
     agent = await runtime.create_agent("test-agent")
     await agent.destroy()
     (agent._session_dir / "meta.json").unlink()   # 模拟历史 session（无 meta.json）
-    # 新 Runtime 同持久化根：set_persist_dir 引导重放 core 名录 → 池扫描 →
+    # 新 Runtime 同持久化根：构造时固化 persist_dir → 池扫描 →
     # 身份读取失败（fail fast）
-    runtime2 = make_runtime(tmp_path / "p2", persist=False, models=False)
     with pytest.raises(FileNotFoundError):
-        runtime2.set_persist_dir(tmp_path / ".flowing")
-    await runtime2.shutdown()
+        make_runtime(tmp_path / "p2", persist=False, models=False,
+                     persist_dir=tmp_path / ".flowing")
 
 
 async def test_head_persisted_and_recovered_bag_authority(tmp_path):

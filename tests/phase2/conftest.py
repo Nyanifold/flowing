@@ -242,13 +242,15 @@ def make_runtime(
     persist: bool = True,
     models: bool = True,
     register_default_type: bool = True,
+    persist_dir: str | Path | None = None,
 ) -> Runtime:
     """构造真 ``Runtime``（``launch`` 的 contextvar 登记机制的测试级直连）。
 
     ``launch`` 本体（import main.py + kwargs 透传 + reset）由 T93/T94 端到端
     覆盖；其余测试只需要「``@`` 上下文已登记」这一机制事实，故直接对同一
     contextvar set/reset。``persist=True`` 时把持久化根指到项目内
-    ``.flowing/``（默认路径是 ``<cwd>/.flowing``，测试不得污染工作目录）。
+    ``.flowing/``（默认路径是 ``<cwd>/.flowing``，测试不得污染工作目录）；
+    ``persist_dir`` 显式给出时优先使用（构造参数，测试专用通道）。
     ``models=True`` 时写入最小 ``models.yaml`` / ``model-tags.yaml``
     （provider 名为 ``"fake"`` 的条目）并登记——创建管线的模型初始解析
     （``model_tag`` → ``ModelConfig``，fail fast）依赖它们。
@@ -256,11 +258,11 @@ def make_runtime(
     root = Path(project_root).resolve()
     token = _current_project_root.set(root)
     try:
-        rt = Runtime()
+        rt = Runtime(persist_dir=(
+            persist_dir if persist_dir is not None
+            else (root / ".flowing" if persist else None)))
     finally:
         _current_project_root.reset(token)
-    if persist:
-        rt.set_persist_dir(root / ".flowing")
     if models:
         (root / "models.yaml").write_text(
             "fake:\n  provider: fake\n  model: fake-model\n"

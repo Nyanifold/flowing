@@ -331,16 +331,14 @@ async def test_t103_global_state(tmp_path):
     """T103：全局状态写透 + 进程重启重放；开启即 replay（D13）；幂等同视图；
     default 袋（runtime.state）。"""
     persist = tmp_path / "persist"
-    runtime = make_runtime(tmp_path, persist=False)
+    runtime = make_runtime(tmp_path, persist=False, persist_dir=persist)
     runtime.register_state("x")   # 创建即 replay（开空间即恢复）
-    runtime.set_persist_dir(persist)   # 重指存储后全量重放
     runtime.states["x"].k = 1
     # 幂等：同命名空间重复开启返回同一视图（无定义可比——defaults 已消除）
     assert runtime.register_state("x") is runtime.states["x"]
     await runtime.shutdown()
     # 进程重启（新 Runtime 同 persist_dir）：开启即 replay，持久值立即可见
-    runtime2 = make_runtime(tmp_path, persist=False)
-    runtime2.set_persist_dir(persist)
+    runtime2 = make_runtime(tmp_path, persist=False, persist_dir=persist)
     runtime2.register_state("x")
     assert runtime2.states["x"].k == 1
     # Mapping 语义（S13）：["ns"] / in / .get()
