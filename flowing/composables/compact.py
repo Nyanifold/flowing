@@ -23,7 +23,7 @@
 .. rubric:: 注册面清单
 
 - 启用方式：仅阶段二——``setup()`` 中调用 ``use_compact(self)`` （恢复
-  管线在新实例上重跑 ``setup()``，天然不叠加）。未启用时零开销：
+  时 ``setup()`` 在新实例上执行，天然不叠加）。未启用时零开销：
   ``after_provider_gen`` 链上无任何 ``by="compact"`` handler，
   ``use_compact`` 不会为 Agent 绑定 ``compact_prompt`` 属性，
   ``on_compact`` 钩子点不存在（访问抛
@@ -175,7 +175,7 @@ def use_compact(agent: Agent, threshold: float = 0.8) -> None:
 
     重复调用：不做幂等去重——每次调用按注册语义各自叠加一个检测 handler
     （各自闭包持有独立的 ``threshold``），允许以不同参数多次启用。恢复
-    管线在新实例上重跑 ``setup()``，钩子注册表随实例重建，天然不叠加。
+    时 ``setup()`` 在新实例上执行，钩子注册表随实例重建，天然不叠加。
 
     并发：同一 Agent 的回合串行执行（单工作循环 Task），handler 在回合
     内同步段执行，无并发读写。

@@ -25,7 +25,7 @@ Agent 存活）。
 .. rubric:: 注册面清单
 
 - 启用方式：仅阶段二——``setup()`` 中调用 ``use_retry(self)`` （恢复
-  管线在新实例上重跑 ``setup()``，天然不叠加）。未启用时零开销：
+  时 ``setup()`` 在新实例上执行，天然不叠加）。未启用时零开销：
   ``on_provider_error`` / ``before_turn`` 链上无任何 ``by="retry"``
   handler，``on_retry`` 钩子点不存在（访问抛
   :class:`flowing.errors.UnknownHookPointError`）。
@@ -261,8 +261,7 @@ def use_retry(
     异常被记录为警告，不影响重试决策。
 
     重复调用：不做幂等去重——每次调用按注册语义各自叠加一组独立的
-    handler（各自持有独立的计数闭包），允许以不同参数多次启用。恢复管线
-    在新实例上重跑 ``setup()``，钩子注册表随实例重建，天然不叠加。
+    handler（各自持有独立的计数闭包），允许以不同参数多次启用。恢复时 ``setup()`` 在新实例上执行，钩子注册表随实例重建，天然不叠加。
 
     回合中止：等待期间用户 ``cancel()`` 当前执行——等待本身不可
     中断，本次等待结束后 ``can_continue=True`` 放行，回合层面在下一次

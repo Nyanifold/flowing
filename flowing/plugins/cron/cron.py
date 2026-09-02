@@ -31,7 +31,7 @@ handler、没有 ``cron_jobs`` 状态键。
     ``runtime.use(CronPlugin())``）抛 ``ValueError`` （一个 Runtime
     同时只装一个同名插件，见 :meth:`flowing.runtime.Runtime.use`）；
   - 阶段二：``setup()`` 中 ``use_cron(self)`` —— 声明钩子点、状态键并
-    挂载恢复回顾 handler；recover 在新实例重跑 ``setup()`` 时安全（新
+    挂载恢复回顾 handler；恢复时 ``setup()`` 在新实例上执行安全（新
     实例自带全新注册表）；未安装 ``CronPlugin`` 时调用抛
     :class:`flowing.errors.MissingProvideError`。
 
@@ -372,8 +372,9 @@ def use_cron(agent: Agent) -> None:
 
     .. rubric:: 功能介绍
 
-    在 ``setup()`` 中调用，完成四件事（全部幂等——统一 setup 契约下
-    recover 管线会重跑 ``setup()``，本函数必须可重入）：
+    在 ``setup()`` 中调用（每个实例恰好执行一次——恢复时 ``setup()`` 在
+    新建实例上执行，本函数以新实例的钩子注册表与状态袋为起点展开），
+    完成四件事：
 
     1. ``agent.inject(cron_scheduler_key)`` 校验调度器可用（未安装
        ``CronPlugin`` → :class:`flowing.errors.MissingProvideError`）。
@@ -386,7 +387,8 @@ def use_cron(agent: Agent) -> None:
        ``state.jsonl``；恢复重放后由第 4 步的 ``after_recover`` handler
        经 ``_load_jobs`` 重建进中央调度器）。
     4. 在 ``after_recover`` 上注册恢复回顾 handler（``by="cron"``；
-       recover 在新实例重跑 setup、注册表随实例重建，天然不撞）：实体
+       恢复时 setup 在新实例执行、钩子注册表随实例重建，各实例互不
+       冲突）：实体
        回到 ``_nodes`` 且状态恢复完成后，先
        ``scheduler._load_jobs(agent.node_id, agent.state.cron_jobs)`` 重建
        任务与定时器，再 ``scheduler._sweep(agent.node_id)`` 对该 Agent 的
@@ -477,9 +479,10 @@ def use_cron(agent: Agent) -> None:
       XML）。
     - 不注册任何任务（按需注册）；不修改 prompt；不创建端点（cron 不经
       通信总线）；不在 ``destroy()`` 时清理任务。
-    - recover 重跑 setup → 天然幂等（新实例、新注册表，无需去重机制）；
-      同一实例手写重复调用 ``use_cron`` 属编程错误——hooks 总则「同一
-      handler 可重复注册、不去重」，回顾 handler 会重复挂载，后果自负。
+    - 恢复时 setup 在新实例执行——声明与注册以新实例的钩子注册表为
+      起点，各实例互不叠加；同一实例上重复调用 ``use_cron`` 属编程错误
+      （hooks 总则「同一 handler 可重复注册、不去重」，回顾 handler 会
+      重复挂载），后果自负。
     - 前置条件：``CronPlugin`` 已经 ``runtime.use()`` 安装；应在
       ``setup()`` 中调用（钩子点声明属 setup 阶段契约）。
     - 后置条件：``on_cron_trigger`` 钩子点存在；``after_recover`` 上有

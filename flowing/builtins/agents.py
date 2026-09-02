@@ -73,9 +73,9 @@ class ExploreAgent(Agent):
     async def setup(self) -> None:
         """把只读工具集（``read`` / ``grep`` / ``glob``）绑定到本实例。
 
-        创建 / 恢复管线各自在新实例上运行一次本方法（可重入契约见
-        :meth:`flowing.agent.Agent.setup`）；每次运行都从空条目表开始，
-        重复运行互不干扰。
+        创建 / 恢复管线各自在一个新建实例上运行一次本方法（实例级单次
+        契约见 :meth:`flowing.agent.Agent.setup`）；每次运行都从空条目
+        表开始，各实例装配互不干扰。
         """
         for name in ("read", "grep", "glob"):
             self.add_tool(name)

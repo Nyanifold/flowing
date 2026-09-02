@@ -26,8 +26,8 @@ Turn 引擎中有硬编码调用点，Skill 完全复用 Tool 机制）。
   - 阶段一：``runtime.use(SkillPlugin(...))``——``install()`` 同步完成
     全部注册（重复 ``use()`` 同一插件实例属编程错误，见
     :class:`SkillPlugin`）；
-  - 阶段二：``setup()`` 中 ``use_skill(self)``——recover 重跑
-    ``setup()`` 时作用于新实例，安全；对同一实例重复调用本
+  - 阶段二：``setup()`` 中 ``use_skill(self)``——恢复时 ``setup()``
+    在新实例上执行，安全；对同一实例重复调用本
     函数会在条目装配处抛 ``EntryNameConflictError`` （钩子点声明幂等、
     绑定函数「检查后跳过」，但条目别名不重复登记，见
     :func:`use_skill` 行为要点）。
@@ -652,7 +652,7 @@ def use_skill(
     实例重复调用是安全的（幂等 / 检查后跳过）；但对同一实例第二次
     完整调用本函数会在第 4 步因别名已存在抛
     :class:`flowing.errors.EntryNameConflictError` （``skill_add`` 的
-    fail-fast）。recover 重跑 ``setup()`` 时 ``setup`` 作用于新实例，
+    fail-fast）。恢复时 ``setup()`` 在新实例上执行，
     不触发此路径。
 
     skill_load 契约（``async def skill_load(name: str) ->

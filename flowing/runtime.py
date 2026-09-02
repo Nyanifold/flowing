@@ -77,8 +77,8 @@ provide 值 / 配置命名空间 / Agent 类型 / Resource / 全局状态命名�
 ``after_recover`` （仅恢复管线触发）。恢复管线时序：``_restore()`` （重放
 session 目录日志）→ ``before_recover`` → ``setup`` → PENDING 检查 →
 ``_nodes`` 注册 → ``after_recover`` → 常驻工作循环 Task 启动。两条管线在
-各自的新实例上各跑一次 ``setup()``，因此 ``setup()`` 必须可重入。钩子点
-全集与触发时机见 :mod:`flowing.hooks`。
+各自的一个新建实例上执行一次 ``setup()``——装配语义与执行它的实例
+无关。钩子点全集与触发时机见 :mod:`flowing.hooks`。
 
 观测：``Runtime.snapshot()`` 返回一致性只读快照（拉取通道；推送通道由
 钩子系统承载）——节点表、agent 池、插件清单等一次性只读视图，全部字段

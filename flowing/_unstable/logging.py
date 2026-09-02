@@ -305,8 +305,8 @@ def use_logging(agent: Agent) -> None:
     # state.jsonl 所在目录），不在本插件重写路径拼接
     log_path = agent._session_dir / "logging.jsonl"
     # per-agent 闭包状态：写盘降级标记 + 已挂点名集（use_logging 随
-    # setup 在每实例上跑一次，天然按实例隔离；recover 换新实例后
-    # setup 重跑，闭包随之重建）
+    # setup 在每实例上跑一次，天然按实例隔离；恢复换新实例后
+    # setup 在新实例上执行，闭包随之重建）
     state: dict[str, bool] = {"write_failed": False}
     attached: set[str] = set()
 

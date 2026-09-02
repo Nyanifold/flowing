@@ -26,9 +26,9 @@
     ``ValueError`` （一个 Runtime 同时只装一个同名插件，见
     :meth:`flowing.runtime.Runtime.use`）；
   - 阶段二：``setup()`` 中 ``use_comm(self)`` —— 为该实例注册端点、
-    声明钩子点、挂载清理 handler；recover 在新实例重跑 ``setup()``
-    时安全（进程重启则总线随插件重新安装而新建；同进程内先
-    ``destroy()`` 再重跑则旧端点已注销，不会重名报错）；同一实例
+    声明钩子点、挂载清理 handler；恢复时 ``setup()`` 在新实例上执行
+    安全（进程重启则总线随插件重新安装而新建；同进程内先
+    ``destroy()`` 再恢复则旧端点已注销，不会重名报错）；同一实例
     重复调用（端点 ID 相同）复用已有句柄，见
     :func:`use_comm` 行为要点。
 
@@ -1156,9 +1156,9 @@ def use_comm(agent: Agent, *, name: str | None = None) -> None:
 
     .. rubric:: 行为要点
 
-    - 钩子点声明（同名且同 ``by``）幂等：recover 在新实例重跑
-      ``setup()`` 时重复声明不报错（进程重启或同进程先 ``destroy()``
-      再重跑，均无残留声明）；声明后任何代码都可向 ``on_signal`` /
+    - 钩子点声明（同名且同 ``by``）幂等：恢复时 ``setup()`` 在新实例
+      上执行、重复声明不报错（进程重启或同进程先 ``destroy()`` 再
+      恢复，均无残留声明）；声明后任何代码都可向 ``on_signal`` /
       ``on_event`` 挂 handler，无需再声明（注册开放）。
     - handler 按 ``envelope.type`` / ``envelope.topic`` 经 ``fnmatch``
       规则过滤注册（``@agent.hooks.on_signal["<pattern>"]`` 装饰器

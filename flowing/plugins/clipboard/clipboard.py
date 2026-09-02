@@ -21,9 +21,9 @@
     三件全局工具（注册不等于可见：Agent 仍需 ``add_tool`` 才对 LLM
     可见）；
   - 阶段二：``setup()`` 中 ``use_clipboard(self)``——登记缓冲状态键并
-    设定阈值实例属性。``use_clipboard`` 可重入：``state.register``
+    设定阈值实例属性。``use_clipboard`` 可重复调用：``state.register``
     幂等（键已持久化时跳过并返回持久值），重复调用不报错，阈值以
-    最后一次调用为准；recover 在新实例重跑 ``setup()`` 同样安全。
+    最后一次调用为准；恢复时 ``setup()`` 在新实例上执行同样安全。
 
 - 注册的资源：
 
@@ -169,9 +169,9 @@ def use_clipboard(agent: Agent, *, max_lines: int = 500,
       ``agent.add_tool("clipboard-cut")`` 等显式声明。
     - 参数校验：``max_lines`` / ``max_chars`` 必须为正整数，否则
       ``ValueError`` （不产生任何注册副作用——先校验后注册）。
-    - 可重入：``state.register`` 幂等（键未持久化时写入默认值、已
+    - 可重复调用：``state.register`` 幂等（键未持久化时写入默认值、已
       持久化时跳过并返回持久值），对同一实例重复调用不报错，阈值
-      以最后一次调用为准；recover 在新实例重跑 setup 同样安全。
+      以最后一次调用为准；恢复时 setup 在新实例上执行同样安全。
     - 不自动 ``add_tool`` （可见性是 Agent 开发者的显式决策）；不注册
       钩子点（剪贴板无事件面）。
 

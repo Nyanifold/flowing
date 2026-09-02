@@ -749,7 +749,8 @@ class Agent:
     :meth:`flowing.runtime.Runtime.create_agent` （``Agent.create_subagent``
     / ``Workflow.create_agent`` / ``Runtime.mount`` 全部委托它）；恢复路径
     是 :meth:`flowing.runtime.Runtime.recover_agent`。两条管线都会执行
-    ``setup()`` （可重入契约见 :meth:`setup`）。
+    ``setup()``——每个实例上恰好执行一次（实例级单次契约见
+    :meth:`setup`）。
 
     .. rubric:: 使用示例
 
@@ -1487,13 +1488,13 @@ class Agent:
 
         .. rubric:: 行为要点
 
-        - 可重入：``setup()`` 在 create 与 recover 两条管线各跑一次——
-          两次一定是不同实例（recover 管线是新建实例上重跑），因此契约
-          是「不同实例上每次调用作用相同」而非「同一实例上重复执行不出
-          错」：重建一切运行期结构（declare 钩子点、注册 handler、
-          provide、Composable）都幂等；普通实例属性赋值是运行期配置，
-          不落盘、不加限制；持久化 state 经 ``agent.state.register`` 键
-          登记、setup 中写 state 合法（recover 先重放后 setup，写入不被
+        - 实例级单次：``setup()`` 的语义效果与执行它的实例无关——create
+          与 recover 两条管线各自在一个新建实例上执行同一份装配代码，
+          每个实例恰好执行一次。装配以新实例的钩子注册表与状态袋为
+          起点展开（declare 钩子点、注册 handler、provide、Composable），
+          各实例装配结果一致；普通实例属性赋值是运行期配置，不落盘、
+          不加限制；持久化 state 经 ``agent.state.register`` 键登记、
+          setup 中写 state 合法（recover 先重放后 setup，写入不被
           覆盖）。
         - 期待行为：状态赋值、钩子注册、inject 读取、Composable 调用。
         - 轻量约束：网络请求 / 文件 I/O / 大量计算移到工具调用或按需
@@ -1505,12 +1506,12 @@ class Agent:
         .. seealso::
 
             - :meth:`flowing.runtime.Runtime.recover_agent` —— 恢复管线
-              宿主（重跑本方法）。
+              宿主（恢复时在新实例上执行本方法）。
             - :meth:`destroy` —— 对等销毁入口。
         """
         # 基类空实现（契约注释）：子类覆写承载装配逻辑——状态赋值、钩子注册、
-        # inject 读取、Composable 调用；setup 中写 state 合法（D5）；可重入
-        # 语义见上文 docstring（create 与 recover 各跑一次、必为不同实例）。
+        # inject 读取、Composable 调用；setup 中写 state 合法（D5）；实例级
+        # 单次语义见上文 docstring（每个实例恰好执行一次）。
         ...
 
     async def destroy(self) -> None:
