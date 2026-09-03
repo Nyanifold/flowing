@@ -88,13 +88,13 @@ def _fields_with_pay() -> dict:
 
 def test_t57_list_segment_alias_miss():
     """57 规则 1：列表段按别名精确匹配，未命中 → FormatError。"""
-    with pytest.raises(FormatError, match="未命中任何条目别名"):
+    with pytest.raises(FormatError, match="does not match any entry alias"):
         _merge_named_blocks(_fields_with_pay(), {"tools.nope.description": "x"})
 
 
 def test_t57_as_key_only_alias_addressable():
     """57 规则 2：含 as 的键仅以别名段寻址——规范名段不命中（中间段缺失）。"""
-    with pytest.raises(FormatError, match="中间段"):
+    with pytest.raises(FormatError, match="middle segment"):
         _merge_named_blocks(
             _fields_with_pay(), {"tools.pay.args.working_dir.description": "x"})
     # 对照：别名段命中
@@ -108,13 +108,13 @@ def test_t57_pending_terminal_write_and_conflict():
     fields = _fields_with_pay()
     _merge_named_blocks(fields, {"tools.pay.args.cwd": "/srv/order\n"})
     assert fields["tools"][0].body["args"]["working_dir as cwd"] == "/srv/order"
-    with pytest.raises(FormatError, match="冲突"):
+    with pytest.raises(FormatError, match="conflict"):
         _merge_named_blocks(_fields_with_pay(), {"tools.pay.args.currency": "CNY"})
 
 
 def test_t57_terminal_on_entry_alias_rejected():
     """57 边界：路径在条目别名处耗尽（块不能整体替换条目）→ FormatError。"""
-    with pytest.raises(FormatError, match="末端落在条目"):
+    with pytest.raises(FormatError, match="last segment lands on entry"):
         _merge_named_blocks(_fields_with_pay(), {"tools.pay": "x"})
 
 
@@ -305,7 +305,7 @@ def test_t63b_args_derived_from_setup_signature(tmp_path):
         async def setup(self, count):
             pass
         """), encoding="utf-8")
-    with pytest.raises(ValueError, match="缺类型标注"):
+    with pytest.raises(ValueError, match="lacks a type annotation"):
         compile_fya_class(bad)
 
 

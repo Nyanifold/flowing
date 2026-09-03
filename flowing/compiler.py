@@ -182,24 +182,24 @@ def _merge_named_blocks(fields: dict[str, Any], blocks: Mapping[str, str]) -> No
                     None)
                 if ref is None:
                     raise FormatError(
-                        f"具名块 ${block_path}: 段 {segment!r} 未命中任何条目别名")
+                        f"named block ${block_path}: segment {segment!r} does not match any entry alias")
                 if last:
                     raise FormatError(
-                        f"具名块 ${block_path}: 末端落在条目 {segment!r} 上"
-                        "——块只能写进映射键，不能整体替换条目")
+                        f"named block ${block_path}: the last segment lands on entry {segment!r}"
+                        " — blocks can only be written into mapping keys, not replace whole entries")
                 node = ref.body
                 continue
             if not isinstance(node, dict):
                 raise FormatError(
-                    f"具名块 ${block_path}: 段 {segment!r} 的容器不是映射/条目列表")
+                    f"named block ${block_path}: container of segment {segment!r} is not a mapping/entry list")
             key = _find_mapping_key(node, segment)
             if key is None:
                 if last:
                     node[segment] = body.rstrip("\r\n")   # 规则 4：末端缺失 → 写入
                     break
                 raise FormatError(   # 规则 2：中间段缺失（非 PENDING 槽）→ 不命中
-                    f"具名块 ${block_path}: 中间段 {segment!r} 未命中"
-                    "（含 as 的键仅以别名段寻址；PENDING 槽之外的缺失不物化）")
+                    f"named block ${block_path}: middle segment {segment!r} did not match"
+                    " (keys with as are addressed by alias segment only; missing outside PENDING slots is not materialized)")
             value = node[key]
             if last:
                 # 规则 4：末端为 PENDING → 写入；已有实际值 → 冲突
@@ -207,7 +207,7 @@ def _merge_named_blocks(fields: dict[str, Any], blocks: Mapping[str, str]) -> No
                     node[key] = body.rstrip("\r\n")
                 else:
                     raise FormatError(
-                        f"具名块 ${block_path}: 末端 {segment!r} 已有实际值，冲突")
+                        f"named block ${block_path}: last segment {segment!r} already has a concrete value; conflict")
                 break
             if value is PENDING:
                 value = {}   # 规则 3：PENDING 槽物化为空映射继续深入
@@ -250,7 +250,7 @@ def _script_setup_fn(script: str, name: str, fya_path: Path) -> Any:
     try:
         exec(compile(script, str(fya_path), "exec"), ns)
     except Exception as exc:
-        raise CompileError(f"{fya_path} 的 $script 执行失败: {exc}") from exc
+        raise CompileError(f"$script of {fya_path} failed: {exc}") from exc
     return ns.get(name)
 
 
@@ -268,7 +268,7 @@ def _annotation_to_schema_type(annotation: Any, *, context: str) -> Any:
         try:
             annotation = eval(annotation, vars(builtins), {})  # noqa: S307
         except Exception as exc:
-            raise FormatError(f"{context}: 无法求值的类型注解 {annotation!r}") from exc
+            raise FormatError(f"{context}: cannot evaluate type annotation {annotation!r}") from exc
     type_map = {str: "string", int: "integer", float: "number",
                 bool: "boolean", list: "array", dict: "object"}
     if annotation in type_map:
@@ -279,7 +279,7 @@ def _annotation_to_schema_type(annotation: Any, *, context: str) -> Any:
         if len(members) == 2 and len(non_none) == 1 and non_none[0] in type_map:
             return [type_map[non_none[0]], "null"]
     raise FormatError(
-        f"{context}: 不支持的类型注解 {annotation!r}（支持内建六型与 Optional）")
+        f"{context}: unsupported type annotation {annotation!r} (builtin six types and Optional supported)")
 
 
 def _setup_signature(setup_fn: Any, *, class_name: str) -> tuple[dict[str, Any] | None, frozenset[str] | None]:
@@ -306,18 +306,18 @@ def _setup_signature(setup_fn: Any, *, class_name: str) -> tuple[dict[str, Any] 
     for p in params:
         if p.annotation is p.empty:
             raise ValueError(
-                f"{class_name}.setup 参数 {p.name!r} 缺类型标注——"
-                "无法推导 args_model（补标注或在 .fya 写 args:）")
+                f"setup parameter {p.name!r} of {class_name} lacks a type annotation — "
+                "cannot derive args_model (add an annotation or declare args: in the .fya)")
         prop: dict[str, Any] = {
             "type": _annotation_to_schema_type(
-                p.annotation, context=f"{class_name}.setup 参数 {p.name!r}")}
+                p.annotation, context=f"setup parameter {p.name!r} of {class_name}")}
         if p.default is not p.empty:
             try:
                 json.dumps(p.default)
             except TypeError as exc:
                 raise FormatError(
-                    f"{class_name}.setup 参数 {p.name!r} 的默认值不可 JSON 序列化"
-                    "（要桥接进 args schema）") from exc
+                    f"default value of setup parameter {p.name!r} of {class_name} is not JSON-serializable"
+                    " (it must be bridged into the args schema)") from exc
             prop["default"] = p.default
         props[p.name] = prop
     return props, frozenset(props)
@@ -419,7 +419,7 @@ def _build(fya_path: Path) -> _Assembly:
     except FormatError:
         raise
     except Exception as exc:
-        raise CompileError(f"解析 {fya_path} 失败: {exc}") from exc
+        raise CompileError(f"failed to parse {fya_path}: {exc}") from exc
     fya_hash = _fya_hash(doc)
     fields = doc.fields
 
@@ -429,7 +429,7 @@ def _build(fya_path: Path) -> _Assembly:
         if field_name in fields:
             items = fields[field_name]
             if not isinstance(items, list):
-                raise FormatError(f"资源列表字段 {field_name!r} 必须是 YAML 列表")
+                raise FormatError(f"resource list field {field_name!r} must be a YAML list")
             fields[field_name] = _expand_glob_entries(
                 items, naming=_agent_naming(), source_dir=fya_path.parent,
                 project_root=_project_root())
@@ -454,12 +454,12 @@ def _build(fya_path: Path) -> _Assembly:
     model_tag = fields.pop("model_tag", _MISSING)
     metadata = fields.pop("metadata", _MISSING)
     if metadata is not _MISSING and not isinstance(metadata, Mapping):
-        raise FormatError(f"{fya_path} 的 metadata 字段必须是映射")
+        raise FormatError(f"metadata field of {fya_path} must be a mapping")
     tools_refs: list[EntryRef] = fields.pop("tools", None) or []
     subagent_refs: list[EntryRef] = fields.pop("subagents", None) or []
     args_field = fields.pop("args", _MISSING)
     if args_field is not _MISSING and not isinstance(args_field, Mapping):
-        raise FormatError(f"{fya_path} 的 args 字段必须是映射")
+        raise FormatError(f"args field of {fya_path} must be a mapping")
     extra = fields   # 其余字段全部落 _extra（框架不解释，扩展自行 resolve）
 
     # $script：有装配工作（_extra / 条目绑定）时改名用户 setup 并生成包装
@@ -484,7 +484,7 @@ def _build(fya_path: Path) -> _Assembly:
                 for pname in derived_props:
                     if pname not in args_props:
                         raise FormatError(
-                            f"{fya_path}: setup 参数 {pname!r} 在 args: 声明中无对应字段")
+                            f"{fya_path}: setup parameter {pname!r} has no corresponding field in the args: declaration")
     elif user_setup_fn is not None:
         args_props, setup_params = _setup_signature(user_setup_fn, class_name=class_name)
     else:
@@ -543,7 +543,7 @@ def _emit_source(
         elif isinstance(value, str):
             body_lines.append(f"{attr} = Parsable({_emit_value(value)})")
         else:
-            raise FormatError(f"{fya_path} 的 {attr} 字段必须是字符串/_/null")
+            raise FormatError(f"{attr} field of {fya_path} must be a string/_/null")
     if model_tag is not _MISSING:
         body_lines.append(f"model_tag = {_emit_value(model_tag)}")
     if metadata is not _MISSING:
@@ -724,10 +724,10 @@ def compile_fya_class(fya_path: Path) -> type:
     try:
         exec(compile(assembly.source, str(fya_path), "exec"), module.__dict__)
     except Exception as exc:
-        raise CompileError(f"合成 {fya_path} 的 Agent 类失败: {exc}") from exc
+        raise CompileError(f"failed to synthesize the Agent class of {fya_path}: {exc}") from exc
     cls = module.__dict__.get(assembly.class_name)
     if not isinstance(cls, type):
-        raise CompileError(f"合成 {fya_path} 失败：{assembly.class_name} 不是类")
+        raise CompileError(f"synthesis failed for {fya_path}: {assembly.class_name} is not a class")
     return cls
 
 
