@@ -468,7 +468,7 @@ def _default_agent(runtime: Runtime) -> Agent | None:
     .. seealso:: :func:`cmd_repl`、:meth:`flowing.runtime.Runtime.get_agent`
     """
     # 直扫活体表：isinstance 过滤使 Workflow 根天然不参与；
-    # _parent_id 存翻译后实际值，根 = 父是 Runtime（create_agent 管线不变量）
+    # _parent_id 存翻译后实际值，根 = 亲节点是 Runtime（create_agent 管线不变量）
     roots = [
         n for n in runtime._nodes.values()
         if isinstance(n, Agent) and n._parent_id == runtime.node_id
