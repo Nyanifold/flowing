@@ -266,7 +266,7 @@ async def test_t121_shutdown_plugin_order_and_resilience(tmp_path, caplog):
     with caplog.at_level(logging.ERROR, logger="flowing.runtime"):
         await runtime.shutdown()
     assert events == ["p1", "bad", "p2"]   # 按 install 顺序逐个收尾，异常后继续
-    assert "收尾异常" in caplog.text   # 单插件异常记日志
+    assert "raised during shutdown" in caplog.text   # 单插件异常记日志
     assert runtime.states["p1"].done is True   # 收尾中的全局状态写生效
     # 持久化验证：p1.jsonl 落盘含 done=true
     text = (runtime._persist_dir / "p1.jsonl").read_text(encoding="utf-8")

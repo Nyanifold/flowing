@@ -344,7 +344,7 @@ def resolve(path: str) -> Path:
     """
     root = _current_project_root.get()
     if root is None:
-        raise RuntimeError("未经 flowing.launch 登记 @ 上下文，resolve() 不可用")
+        raise RuntimeError("@ context not registered via flowing.launch; resolve() unavailable")
     if path.startswith("@/"):
         return root / path[2:]
     return Path(path)   # 非 @/ 路径：普通 Path 语义（完整前缀规则是 Runtime.resolve_path 的职责）
@@ -374,11 +374,11 @@ def _check_pending(instance: "Agent", agent_type: str) -> None:
                 raise MissingFieldError(field, agent_type)
     # 同帧结算 @on 暂记：目标钩子点未被 declare 即视为未消费
     if instance.hooks._pending_on:
-        unclaimed = [f"{hook_name}（方法 {getattr(bound, '__name__', bound)}）"
+        unclaimed = [f"{hook_name} (method {getattr(bound, '__name__', bound)})"
                      for bound, hook_name, _, _, _ in instance.hooks._pending_on]
         raise UnknownHookPointError(
-            f"@on 标记未找到归属钩子点：{'; '.join(unclaimed)}"
-            "——钩子点名拼写错误，或对应插件/Composable 未在 setup() 中启用")
+            f"@on markers found no owning hook point: {'; '.join(unclaimed)}"
+            " — hook point name misspelled, or the corresponding plugin/Composable is not enabled in setup()")
 
 
 # ``ProvideNode`` 协议与 ``inject_from`` 统一上溯算法的定义在
@@ -586,7 +586,7 @@ class Runtime:
         """
         root = _current_project_root.get()
         if root is None:
-            raise RuntimeError("必须经 flowing.launch 登记 @ 上下文（绕过唯一入口）")
+            raise RuntimeError("must register the @ context via flowing.launch (bypassing the single entry point)")
         self.project_root = root   # 固化 @ 上下文（构造后不改）
         self.node_id = "runtime-0"
         self.runtime = self   # ProvideNode 协议成员：链终点的 runtime 自指
@@ -716,8 +716,8 @@ class Runtime:
         for plugin in plugins:   # 按实参顺序执行 install；可分批调用
             if plugin.name in self._plugins:
                 raise ValueError(
-                    f"插件重复安装：{plugin.name}——同名插件已安装"
-                    "（后安装者报错；spec 未具名异常类型，属编程错误，用内置 ValueError）")
+                    f"plugin installed twice: {plugin.name} — a plugin with the same name is already installed"
+                    " (the later installer errors; the spec names no exception type — a programming error, so the builtin ValueError is used)")
             plugin.install(self)
             self._plugins[plugin.name] = plugin
         self._check_dependencies()   # 增量校验已装子图：成环抛 DependencyError；缺失 warnings.warn 不抛
@@ -853,14 +853,14 @@ class Runtime:
         """
         resolved = self.resolve_path(node)   # 统一为路径字符串
         if not resolved.exists():
-            raise FileNotFoundError(f"mount 路径不存在：{resolved}")
+            raise FileNotFoundError(f"mount path does not exist: {resolved}")
         self._ensure_persist_ready()   # 首个 mount 前的持久化就位（persist 目录 + 插件清单 + 兜底引导）
         if resolved.suffix != ".fya":
             # mount 仅接受 .fya Agent 根：.py Agent 根经 create_agent 的路径
             # 形态，Workflow 根经 WorkflowPlugin.launch（mount 不再承载 Workflow）
             raise ValueError(
-                f"mount 仅接受 .fya Agent 根：{node}——"
-                ".py Agent 根经 create_agent；Workflow 根经 WorkflowPlugin.launch")
+                f"mount only accepts .fya agent roots: {node} — "
+                ".py agent roots go through create_agent; Workflow roots go through WorkflowPlugin.launch")
         # Agent 根：与子 Agent 走同一条唯一创建入口，仅 parent_id=None 不同；
         # 幂等挂载：agent_id 指定且已在池中 -> 恢复而非新建（手动 mount 的
         # 根是特殊节点，固定 id 使第二次启动「同一个根回来了」）；
@@ -986,8 +986,8 @@ class Runtime:
             # recover_agent 的「要求已存在」对称；_nodes 含 Workflow 节点，一并防撞）
             if agent_id in self._agent_pool or agent_id in self._nodes:
                 raise ValueError(
-                    f"agent_id 已存在：{agent_id}——重复创建不允许"
-                    "（create 要求不存在，恢复请用 recover_agent）")
+                    f"agent_id already exists: {agent_id} — duplicate creation is not allowed"
+                    " (create requires the id to be absent; use recover_agent to restore)")
             node_id = agent_id
             resolved_session = self._resolve_session_dir(session_dir, node_id)
             # 目录存在性检查（create 侧严格）：id 不在池/活体表但目录
@@ -995,9 +995,9 @@ class Runtime:
             # session_dir / agent_id；runtime 不销毁任何内容，由调用方决定）
             if resolved_session.exists():
                 raise FileExistsError(
-                    f"session 目录已存在：{resolved_session}——可能是已 archive "
-                    "的留档（archive_agent）或指定错了 session_dir / agent_id；"
-                    "请改 id / 先删目录 / 运维恢复")
+                    f"session directory already exists: {resolved_session} — possibly an archived "
+                    "record (archive_agent) or a wrong session_dir / agent_id; "
+                    "change the id, delete the directory, or recover via ops")
         else:
             # 缺省自动生成：撞目录不报错，重新生成随机 id（uuid 碰撞概率为零，
             # 此为防御性兜底；session_dir 显式指定时目录即定点，撞了只能报错）
@@ -1008,8 +1008,8 @@ class Runtime:
                     break
                 if session_dir is not None:
                     raise FileExistsError(
-                        f"session 目录已存在：{resolved_session}——指定了已存在的"
-                        " session_dir；请检查路径或先删目录")
+                        f"session directory already exists: {resolved_session} — the specified "
+                        " session_dir already exists; check the path or delete the directory first")
         instance.node_id = node_id
         instance.runtime = self
         # None 翻译为 Runtime 的 node_id：「根」由「亲节点是 Runtime」表达，
@@ -1030,7 +1030,7 @@ class Runtime:
             json.dumps(kwargs)   # args 应可 JSON 序列化；不可序列化值不被持久化（恢复时缺失）
             persisted_args = kwargs
         except TypeError:
-            _logger.warning("agent %s 的 args 不可 JSON 序列化，meta.json 按空 args 持久化", node_id)
+            _logger.warning("agent %s: args are not JSON-serializable; persisting meta.json with empty args", node_id)
             persisted_args = {}
         (resolved_session / "meta.json").write_text(json.dumps({
             "agent_type": agent_type,
@@ -1171,18 +1171,18 @@ class Runtime:
                 await self.recover_agent(recover_parent)
             else:
                 warnings.warn(
-                    f"recover_agent：{agent_id} 的亲节点 {recover_parent} 悬空"
-                    "（不在 _nodes 也不在池）——按孤儿继续恢复本节点，inject "
-                    "上溯将在断裂处以 MissingProvideError 告终；请经 "
-                    "archive_orphans() 清理")
+                    f"recover_agent: parent node {recover_parent} of {agent_id} is dangling"
+                    " (not in _nodes nor in the pool) — continuing to restore this node as an orphan; inject "
+                    "lookup will end with MissingProvideError at the break; clean up via "
+                    "archive_orphans()")
         instance._session_dir = self._load_session_dir(meta.get("session_dir"), agent_id)   # 自定义 session 目录回绑（缺省 persist_dir/agent_id，兼容旧数据）
         if not instance._session_dir.exists():
             # 名录在案但目录缺失：可诊断告警 + 按空 session 容忍（与
             # Agent._restore 的「按空 session 处理并报出可诊断错误」同裁）；
             # mkdir 使 _restore 的压缩 sync 有落点（FileRecordStore 不建上级目录）
             warnings.warn(
-                f"recover_agent：{agent_id} 的 session 目录缺失"
-                f"（{instance._session_dir}）——按空 session 恢复")
+                f"recover_agent: session directory of {agent_id} is missing"
+                f" ({instance._session_dir}) — restoring with an empty session")
             instance._session_dir.mkdir(parents=True, exist_ok=True)
         instance.__init__()   # 同步骨架
         # _restore 前移到 setup 前：双袋重放先做完，setup 中写 state 不再被
@@ -2041,7 +2041,7 @@ class Runtime:
             :meth:`flowing.agent.Agent.register_state`
         """
         if backend != "file":
-            raise ValueError(f"register_state backend 仅支持 'file': {backend!r}")
+            raise ValueError(f"register_state backend only supports 'file': {backend!r}")
         existing = self._states.get(namespace)
         if existing is not None:
             return existing   # 幂等：同 ns → 同视图
@@ -2152,11 +2152,11 @@ class Runtime:
         path = session_dir / "meta.json"
         if not path.exists():
             raise FileNotFoundError(
-                f"池扫描：名录中 {agent_id} 对应的 meta.json 缺失（{path}）"
-                "——身份元数据不兼容（决策 7：历史 session 无效，不回退读旧 state.jsonl）")
+                f"pool scan: meta.json for registered {agent_id} is missing ({path})"
+                " — identity metadata incompatible (decision 7: the historical session is invalid; no fallback read of the old state.jsonl)")
         meta = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(meta, dict) or not isinstance(meta.get("args"), dict):
-            raise ValueError(f"池扫描：{agent_id} 的 meta.json 形态损坏: {path}")
+            raise ValueError(f"pool scan: meta.json of {agent_id} is malformed: {path}")
         meta["session_dir"] = self._store_session_dir(session_dir)   # 目录在 core 名录平行映射，meta.json 不含
         return meta
 
@@ -2312,7 +2312,7 @@ class Runtime:
                 await plugin.shutdown()
             except Exception:
                 _logger.exception(
-                    "插件 %s 收尾异常，继续后续收尾", getattr(plugin, "name", "?"))
+                    "plugin %s raised during shutdown; continuing with remaining shutdown", getattr(plugin, "name", "?"))
         # 关闭全部全局状态视图（drain 排空 + 停写任务——排空屏障点；在插件
         # 收尾之后，插件 shutdown() 中仍可写全局状态）
         for view in self._states.values():
@@ -2473,7 +2473,7 @@ class Runtime:
         if fya_file.exists():
             if py_file.exists():
                 warnings.warn(
-                    f"同名 .fya 与手写 .py 并存，.fya 优先：{fya_file} / {py_file}")
+                    f"a same-name .fya and a handwritten .py coexist; the .fya wins: {fya_file} / {py_file}")
             return self._load_agent_from_fya(fya_file, ref=name)
         if py_file.exists():
             return self._load_agent_from_py(py_file, None, ref=name)
@@ -2527,14 +2527,14 @@ class Runtime:
             # 短路同样过 class_name 一致性断言——不得静默返回不符的已注册类
             if class_name is not None and cls.__name__ != class_name:
                 raise FormatError(
-                    f"{path} 已注册的合成类为 {cls.__name__}，与 {class_name!r} 不符"
-                    "（.fya 单文件只合成一个类，:: 消歧是手写 .py 多类文件的机制）")
+                    f"registered synthesized class of {path} is {cls.__name__}, not {class_name!r}"
+                    " (.fya files synthesize exactly one class per file; :: disambiguation is the mechanism for handwritten .py multi-class files)")
             return cls
         cls = compile_fya_class(path)
         if class_name is not None and cls.__name__ != class_name:
             raise FormatError(
-                f"{path} 合成的类为 {cls.__name__}，与 {class_name!r} 不符"
-                "（.fya 单文件只合成一个类，:: 消歧是手写 .py 多类文件的机制）")
+                f"synthesized class of {path} is {cls.__name__}, not {class_name!r}"
+                " (.fya files synthesize exactly one class per file; :: disambiguation is the mechanism for handwritten .py multi-class files)")
         cls.registry_key = derived_key   # 回写（与 _load_agent_from_py 同构）
         self._agent_types[derived_key] = cls
         return cls
@@ -2575,7 +2575,7 @@ class Runtime:
             cls = getattr(module, class_name, None)
             if not (isinstance(cls, type) and issubclass(cls, Agent)):
                 raise FormatError(
-                    f"{path} 内不存在 Agent 子类 {class_name}（文件::类名 消歧失败）")
+                    f"no Agent subclass {class_name} in {path} (file::ClassName disambiguation failed)")
         else:
             candidates = [
                 obj for obj in vars(module).values()
@@ -2584,18 +2584,18 @@ class Runtime:
             ]
             if not candidates:
                 raise FormatError(
-                    f"{path} 内没有 Agent 子类——手写 .py 需恰好定义一个")
+                    f"no Agent subclass in {path} — handwritten .py files must define exactly one")
             if len(candidates) > 1:
                 raise FormatError(
-                    f"{path} 内有多个 Agent 子类"
+                    f"{path} contains multiple Agent subclasses"
                     f"（{', '.join(c.__name__ for c in candidates)}）——"
-                    "用 路径::ClassName 形态消歧")
+                    " — disambiguate with the path::ClassName form")
             cls = candidates[0]
         explicit_name = cls.__dict__.get("name")   # name 非机制字段：写了仅作一致性断言
         if explicit_name is not None and explicit_name != name:
             raise NameMismatchError(
-                f"{path} 中 {cls.__name__} 声明 name={explicit_name!r}，"
-                f"与推断身份名 {name!r} 不符")
+                f"{cls.__name__} in {path} declares name={explicit_name!r}, "
+                f"which does not match the inferred identity name {name!r}")
         cls.registry_key = derived_key   # 回写（与 register_agent_type 同构）
         self._agent_types[derived_key] = cls
         return cls
@@ -2658,7 +2658,7 @@ class Runtime:
         for plugin in self._plugins.values():
             for dep in plugin.dependencies:   # 插件只声明 dependencies: list[str]
                 if dep not in self._plugins:
-                    warnings.warn(f"插件依赖缺失：{plugin.name} 依赖未安装的 {dep}")   # 警告不抛
+                    warnings.warn(f"missing plugin dependency: {plugin.name} depends on the uninstalled {dep}")   # 警告不抛
         # DAG 无环校验（DFS 三色标记；只走已装集合内的边——缺依赖已在上方警告，
         # 不成环）：已装子图成环 → DependencyError（报错现场 = 引入环的那次 use()）
         color = dict.fromkeys(self._plugins, 0)   # 0=未访问 1=在栈 2=完成

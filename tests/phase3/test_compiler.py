@@ -337,7 +337,7 @@ def test_t64_file_colon_class_disambiguation(tmp_path):
     with pytest.raises(FormatError, match="ClassName"):
         runtime.get_agent_class("@/multi/agents.py")
     # :: 指向不存在的类 → FormatError
-    with pytest.raises(FormatError, match="消歧失败"):
+    with pytest.raises(FormatError, match="disambiguation failed"):
         runtime.get_agent_class("@/multi/agents.py::GhostAgent")
     # ::ClassName 精确取类；先 A 后 B 互不串扰（B 不得误命中 A 的短路）
     cls_a = runtime.get_agent_class("@/multi/agents.py::PaymentAgent")

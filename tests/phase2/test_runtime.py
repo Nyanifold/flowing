@@ -212,7 +212,7 @@ async def test_t96_init_lazy_zero_providers(tmp_path):
 async def test_t97_use_dependency_warn_and_cycle(tmp_path):
     """T97：依赖缺失警告不抛；成环在引入环的那次 use() 抛 DependencyError。"""
     runtime = make_runtime(tmp_path)
-    with pytest.warns(UserWarning, match="依赖缺失"):
+    with pytest.warns(UserWarning, match="missing plugin dependency"):
         runtime.use(PluginStub("a", dependencies=["b"]))
     with pytest.raises(DependencyError):
         runtime.use(PluginStub("b", dependencies=["a"]))   # a↔b 成环
@@ -229,7 +229,7 @@ async def test_t98_get_plugin_strict_forms(tmp_path):
         runtime.get_plugin("missing")
     assert runtime.get_plugin("missing", strict=False) is None
     # 重复安装同名插件 → 后安装者报错
-    with pytest.raises(ValueError, match="重复安装"):
+    with pytest.raises(ValueError, match="installed twice"):
         runtime.use(PluginStub("cron"))
     await runtime.shutdown()
 
@@ -432,7 +432,7 @@ async def test_t108_agent_id_allocation(tmp_path):
     assert a3.node_id == "agent-xxx"
     pool_before = dict(runtime._agent_pool)
     nodes_before = set(runtime._nodes)
-    with pytest.raises(ValueError, match="已存在"):
+    with pytest.raises(ValueError, match="already exists"):
         await runtime.create_agent("test-agent", agent_id="agent-xxx")
     assert runtime._agent_pool == pool_before   # 无任何注册
     assert set(runtime._nodes) == nodes_before
@@ -569,7 +569,7 @@ async def test_t113_recover_parent_chain(tmp_path):
     # 亲节点悬空（不在 _nodes 也不在池、非 runtime-0）→ 孤儿警告，继续恢复本节点
     ghost_child = await runtime.create_agent("test-agent", parent_id="ghost-parent")
     await ghost_child.destroy()
-    with pytest.warns(UserWarning, match="悬空"):
+    with pytest.warns(UserWarning, match="dangling"):
         orphan = await runtime.recover_agent(ghost_child.node_id)
     assert orphan.node_id == ghost_child.node_id
     await runtime.shutdown()
@@ -653,7 +653,7 @@ async def test_t124b_get_agent_class_py_path_form(tmp_path):
     assert picked.__name__ == "SecondAgent"
     # 零子类 → FormatError
     (tmp_path / "empty_agent.py").write_text("X = 1\n", encoding="utf-8")
-    with pytest.raises(FormatError, match="没有 Agent 子类"):
+    with pytest.raises(FormatError, match="no Agent subclass"):
         runtime.get_agent_class("@/empty_agent.py")
     # .fya 命中 → 编译装配（阶段 3 接缝已接通：compile_fya_class 现场合成）
     (tmp_path / "x.fya").write_text("", encoding="utf-8")
