@@ -414,8 +414,8 @@ class PromptBlockList(ManagedList[PromptBlock]):
         .. rubric:: 功能介绍
 
         以零散参数构造 :class:`PromptBlock` 并追加到列表尾部（注册顺序末尾）。
-        这是对父类 ``ManagedList.append`` 的工厂式特化：父类的元素式
-        ``append(item)`` 接口在本类不可用（父类 docstring 已声明不对子类 append
+        这是对基类 ``ManagedList.append`` 的工厂式特化：基类的元素式
+        ``append(item)`` 接口在本类不可用（基类 docstring 已声明不对子类 append
         形态做约束）。
 
         .. rubric:: 使用示例
@@ -485,7 +485,7 @@ class PromptBlockList(ManagedList[PromptBlock]):
         - 只翻 ``enabled`` 字段（置为 ``False``）：块保留原位、原注册顺序不变；
           之后调用 :meth:`enable_by_tag` 可恢复。
         - 已处于停用状态的匹配块不产生任何变化，但仍计入返回值：重复调用同一
-          个 ``tag`` 返回相同数值（本类的计数口径是「命中数」，与父类
+          个 ``tag`` 返回相同数值（本类的计数口径是「命中数」，与基类
           ``ManagedList`` 的「本次实际变化数」口径不同）。
         - 无匹配块时不报错、返回 0。
         - 不删除元素、不求值、不触发任何钩子。
