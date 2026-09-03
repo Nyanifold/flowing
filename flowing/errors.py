@@ -357,7 +357,7 @@ class ProvideError(FlowingError):
 
     .. rubric:: 功能介绍
 
-    provide-inject 链相关异常的公共基类。inject 沿父链（Agent 子树 → Workflow
+    provide-inject 链相关异常的公共基类。inject 沿亲代链（Agent 子树 → Workflow
     → Runtime，Runtime 为链终点）逐级上溯查找，命中即返回；当前唯一子类是链
     上溯到终点仍未命中时抛出的 ``MissingProvideError``。
 
@@ -377,11 +377,11 @@ class ProvideError(FlowingError):
 
 
 class MissingProvideError(ProvideError):
-    """inject 沿父链上溯到终点（Runtime）仍未找到 key 时抛出。
+    """inject 沿亲代链上溯到终点（Runtime）仍未找到 key 时抛出。
 
     .. rubric:: 功能介绍
 
-    ``inject(key)`` 查找失败时抛出的唯一异常：沿父链从当前节点逐级向根查找，
+    ``inject(key)`` 查找失败时抛出的唯一异常：沿亲代链从当前节点逐级向根查找，
     到 Runtime 终点仍未命中即抛出。查找是实时的（不缓存），运行期 ``provide``
     更新后再次 inject 可得新值。
 
