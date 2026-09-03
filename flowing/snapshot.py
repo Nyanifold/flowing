@@ -128,7 +128,7 @@ class NodeInfo:
     .. rubric:: 功能介绍
 
     ``RuntimeSnapshot.nodes`` 的值类型：一个节点在共享 ID 空间
-    （``runtime-*`` / ``workflow-*`` / ``agent-*``）中的类型与父指针。快照
+    （``runtime-*`` / ``workflow-*`` / ``agent-*``）中的类型与亲节点指针。快照
     只投影节点身份的两个标量，不暴露节点对象本身（节点实例是可变内部对象，
     经快照暴露会破坏只读隔离）。
 
@@ -136,8 +136,8 @@ class NodeInfo:
 
     - 两个字段均为创建后不变的标量拷贝；修改本视图不影响框架。
     - ``parent_id`` 为 ``None`` 当且仅当该条目是 Runtime 自身（链终点无
-      父）；Agent / Workflow 的根条目父指针指向其 Runtime 的 ``node_id``
-      ——「根」由「父是 Runtime」表达，不由 ``None`` 表达。
+      亲节点）；Agent / Workflow 的根条目亲节点指针指向其 Runtime 的 ``node_id``
+      ——「根」由「亲节点是 Runtime」表达，不由 ``None`` 表达。
     - 不暴露节点的 hooks / provided / children 等任何可变结构。
     - 节点在快照生成后被 ``destroy()``，本视图仍保留生成时刻的值（快照不
       追踪后续变化；需要新鲜状态请重新调用 ``snapshot()``）。
@@ -152,7 +152,7 @@ class NodeInfo:
     """节点类型名（``"runtime"`` / ``"agent"`` / ``"workflow"``），取自节点
     id 的前缀；快照生成时刻固定。"""
     parent_id: str | None
-    """父节点 id；Runtime 自身（链终点）为 ``None``。仅作标识用，不可经它
+    """亲节点 id；Runtime 自身（链终点）为 ``None``。仅作标识用，不可经它
     反查对象（反查走 ``Runtime.get_agent`` 等正式 API）。"""
 
 
@@ -187,8 +187,8 @@ class AgentInfo:
     agent_type: str
     """字符串类型名（恢复重建实例的依据）；非类对象、非模块路径。"""
     parent_agent_id: str
-    """父 Agent 的 id；根 Agent 的值为其 Runtime 的 ``node_id``。类型为
-    ``str``，不会出现 ``None``。父子在持久化目录上平级，父子关系仅逻辑记录。"""
+    """亲代 Agent 的 id；根 Agent 的值为其 Runtime 的 ``node_id``。类型为
+    ``str``，不会出现 ``None``。亲子在持久化目录上平级，亲子关系仅逻辑记录。"""
     created_at: datetime
     """创建时间戳（注册表元数据原值，恢复后不改变）。"""
     loaded: bool
@@ -563,8 +563,8 @@ class AgentSnapshot:
     node_id: str
     """节点 id（``== agent_id == session_id``，身份连续、可重现）。"""
     parent_id: str | None
-    """父节点 id。``None`` 当且仅当该节点是 Runtime 自身（链终点无父）；根
-    Agent 的父指针指向其 Runtime 的 ``node_id``——「根」由「父是 Runtime」
+    """亲节点 id。``None`` 当且仅当该节点是 Runtime 自身（链终点无亲节点）；根
+    Agent 的亲节点指针指向其 Runtime 的 ``node_id``——「根」由「亲节点是 Runtime」
     表达，不由 ``None`` 表达。"""
     agent_type: str
     """字符串类型名（与池注册表元数据一致）。"""
