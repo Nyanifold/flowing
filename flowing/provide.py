@@ -4,14 +4,14 @@
 
 本模块定义框架依赖注入（provide / inject）机制的两个基础符号：
 :class:`ProvideNode` 是链上节点的协议，:func:`inject_from` 是从任一节点
-沿父链向根查找注入值的统一算法。框架内 Runtime（链终点）、Workflow、
+沿亲代链向根查找注入值的统一算法。框架内 Runtime（链终点）、Workflow、
 Agent 三类节点都实现 :class:`ProvideNode`；使用者一般经节点方法提供与
 取值（``node.provide(key, value)`` / ``node.inject(key)``），不需要直接
 调用 :func:`inject_from`。
 
 .. rubric:: 行为要点
 
-- 查找顺序：从当前节点沿父链逐级向根查找，先近后远，本节点命中即
+- 查找顺序：从当前节点沿亲代链逐级向根查找，先近后远，本节点命中即
   返回；查找到根（Runtime）仍未命中抛
   :exc:`flowing.errors.MissingProvideError`。
 - 同 key 重复 ``provide`` 是覆盖更新：查找实时进行、不缓存，更新
@@ -58,7 +58,7 @@ class ProvideNode(Protocol):
 
     - ``provide``：在本节点注册注入值；同 key 重复注册是覆盖更新
       （后者生效），对 ``inject`` 立即可见（查找实时、不缓存）。
-    - ``inject``：沿父链向根查找注入值，语义由 :func:`inject_from`
+    - ``inject``：沿亲代链向根查找注入值，语义由 :func:`inject_from`
       实现；未命中抛 :exc:`flowing.errors.MissingProvideError`。
     - 协议面不包含生命周期方法（如 ``destroy``）：那些属于各实现类。
 
@@ -103,7 +103,7 @@ class ProvideNode(Protocol):
         ...
 
     def inject(self, key: str) -> Any:
-        """沿父链向根查找 ``key`` 对应的注入值，找到即返回。
+        """沿亲代链向根查找 ``key`` 对应的注入值，找到即返回。
 
         :param key: 注入值的键（字符串）。
         :return: 找到的注入值。
@@ -112,7 +112,7 @@ class ProvideNode(Protocol):
 
         .. rubric:: 行为要点
 
-        查找委托 :func:`inject_from` 实现：从本节点开始逐级向父节点
+        查找委托 :func:`inject_from` 实现：从本节点开始逐级向亲节点
         查找，先近后远，本节点命中即返回。运行期动态取值未命中由本
         异常兜底；启动期插件的静态依赖校验走
         :exc:`flowing.errors.DependencyError`，两者互补。
@@ -123,12 +123,12 @@ class ProvideNode(Protocol):
 
 
 def inject_from(runtime: "Runtime", node: ProvideNode, key: str) -> Any:
-    """从 ``node`` 开始沿父链向根查找注入值，找到即返回。
+    """从 ``node`` 开始沿亲代链向根查找注入值，找到即返回。
 
     .. rubric:: 功能介绍
 
     统一的链式查找算法，供 :class:`ProvideNode` 的实现类共用：从
-    ``node`` 出发逐级沿父链检查每个节点的注入存储，本节点命中即返回；
+    ``node`` 出发逐级沿亲代链检查每个节点的注入存储，本节点命中即返回；
     Runtime 是链终点，查找到终点仍未命中则抛
     :exc:`flowing.errors.MissingProvideError`。框架内 ``Agent.inject`` /
     ``Workflow.inject`` / ``Runtime.inject`` 都委托本函数实现；应用代码
@@ -145,7 +145,7 @@ def inject_from(runtime: "Runtime", node: ProvideNode, key: str) -> Any:
     - 先近后远：本节点命中即返回，不再上溯；同一 key 在近处与根都有
       值时，取近处的值。
     - 查找实时进行、不做缓存：``provide`` 更新后，下一次查找立即可见。
-    - 父链断裂按未命中处理：中间节点的父节点已销毁、无法继续上溯时，
+    - 亲代链断裂按未命中处理：中间节点的亲节点已销毁、无法继续上溯时，
       最终抛 :exc:`flowing.errors.MissingProvideError`；即使上方链断裂，
       本节点自身已注册的值仍可命中。
 
@@ -163,5 +163,5 @@ def inject_from(runtime: "Runtime", node: ProvideNode, key: str) -> Any:
         try:
             current = runtime.get_node(parent_id)
         except KeyError:
-            break   # 父已销毁：按链断裂处理，视为未命中路径
+            break   # 亲节点已销毁：按链断裂处理，视为未命中路径
     raise MissingProvideError(key)
