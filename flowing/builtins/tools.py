@@ -98,12 +98,12 @@ def _resolve_under_cwd(path: str, cwd: str | None) -> Path:
     ``ToolResult`` （LLM 可见、可自纠正），不向调用方抛。
     """
     if cwd is not None and not Path(cwd).is_absolute():
-        raise ValueError(f"cwd 必须是绝对路径: {cwd!r}")
+        raise ValueError(f"cwd must be an absolute path: {cwd!r}")
     p = Path(path)
     if p.is_absolute():
         return p
     if cwd is None:
-        raise ValueError(f"相对路径需要显式 cwd 基准（cwd=None 时仅收绝对路径）: {path!r}")
+        raise ValueError(f"relative paths require an explicit cwd baseline (only absolute paths are accepted when cwd=None): {path!r}")
     return Path(cwd) / p
 
 
@@ -135,7 +135,7 @@ class ReadTool(Tool):
         """构造工具定义与内部校验模型（无参数，框架实例化时调用）。"""
         self.definition = ToolDefinition(
             name="read",
-            description="读取 UTF-8 文本文件，支持行号窗口（offset/limit）。",
+            description="Read a UTF-8 text file, with line-window support (offset/limit).",
             params_schema={
                 "path": {"type": "string"},
                 "cwd": {"type": ["string", "null"], "default": None},
@@ -161,13 +161,13 @@ class ReadTool(Tool):
         """
         p = _resolve_under_cwd(path, cwd)
         if p.is_dir():
-            raise ValueError(f"路径是目录，不是文本文件: {p}")
+            raise ValueError(f"path is a directory, not a text file: {p}")
         if not p.exists():
-            raise ValueError(f"文件不存在: {p}")
+            raise ValueError(f"file does not exist: {p}")
         try:
             text = p.read_text(encoding="utf-8")
         except UnicodeDecodeError as exc:
-            raise ValueError(f"非 UTF-8 文本文件（不做编码猜测）: {p}") from exc
+            raise ValueError(f"not a UTF-8 text file (no encoding guessing): {p}") from exc
         lines = text.splitlines()
         window = lines[offset:] if limit is None else lines[offset:offset + limit]
         return "\n".join(
@@ -198,7 +198,7 @@ class WriteTool(Tool):
         """构造工具定义与内部校验模型（无参数，框架实例化时调用）。"""
         self.definition = ToolDefinition(
             name="write",
-            description="覆盖写入 UTF-8 文本文件（上级目录自动创建）。",
+            description="Overwrite a UTF-8 text file (parent directories are created automatically).",
             params_schema={
                 "path": {"type": "string"},
                 "cwd": {"type": ["string", "null"], "default": None},
@@ -220,10 +220,10 @@ class WriteTool(Tool):
         """
         p = _resolve_under_cwd(path, cwd)
         if p.is_dir():
-            raise ValueError(f"路径是目录，不能覆盖写: {p}")
+            raise ValueError(f"path is a directory; cannot overwrite: {p}")
         p.parent.mkdir(parents=True, exist_ok=True)   # 上级目录自动创建
         p.write_text(content, encoding="utf-8")       # 整文件覆盖（非追加）
-        return f"已写入 {p}（{len(content)} 字符）"
+        return f"written {p} ({len(content)} chars)"
 
 
 class BashTool(Tool):
@@ -255,7 +255,7 @@ class BashTool(Tool):
         """构造工具定义与内部校验模型（无参数，框架实例化时调用）。"""
         self.definition = ToolDefinition(
             name="bash",
-            description="经 /bin/bash 执行 shell 命令，返回 stdout/stderr/exit_code。",
+            description="Run a shell command via /bin/bash and return stdout/stderr/exit_code.",
             params_schema={
                 "command": {"type": "string"},
                 "timeout": {"type": "integer", "default": 120},
@@ -277,7 +277,7 @@ class BashTool(Tool):
           ``status="error"`` （LLM 可见，可自纠正）。
         """
         if cwd is not None and not Path(cwd).is_absolute():
-            raise ValueError(f"cwd 必须是绝对路径: {cwd!r}")
+            raise ValueError(f"cwd must be an absolute path: {cwd!r}")
         proc = await asyncio.create_subprocess_exec(
             "bash", "-c", command,
             stdin=asyncio.subprocess.DEVNULL,   # 不做交互式命令
@@ -294,7 +294,7 @@ class BashTool(Tool):
             except (ProcessLookupError, PermissionError):
                 pass   # 进程已自行退出
             await proc.wait()   # 回收僵尸
-            raise ValueError(f"命令超时（{timeout}s），进程组已终止") from None
+            raise ValueError(f"command timed out ({timeout}s); process group terminated") from None
         out = stdout.decode("utf-8", errors="replace")
         err = stderr.decode("utf-8", errors="replace")
         # 非零退出码不是异常——照常在 output 里返回（LLM 应看到）
@@ -329,7 +329,7 @@ class EditTool(Tool):
         """构造工具定义与内部校验模型（无参数，框架实例化时调用）。"""
         self.definition = ToolDefinition(
             name="edit",
-            description="精确字符串替换编辑文件（默认要求唯一命中）。",
+            description="Edit a file with exact string replacement (unique match required by default).",
             params_schema={
                 "path": {"type": "string"},
                 "cwd": {"type": ["string", "null"], "default": None},
@@ -355,22 +355,22 @@ class EditTool(Tool):
         """
         p = _resolve_under_cwd(path, cwd)
         if p.is_dir():
-            raise ValueError(f"路径是目录，不能编辑: {p}")
+            raise ValueError(f"path is a directory; cannot edit: {p}")
         if not p.exists():
-            raise ValueError(f"文件不存在: {p}")
+            raise ValueError(f"file does not exist: {p}")
         text = p.read_text(encoding="utf-8")
         count = text.count(old_string)
         if count == 0:
-            raise ValueError(f"未找到要替换的字符串（0 次命中）: {p}")
+            raise ValueError(f"string to replace not found (0 matches): {p}")
         if count > 1 and not replace_all:
             raise ValueError(
-                f"old_string 命中 {count} 处（歧义，文件未改）——"
-                "精确化 old_string 或显式 replace_all=True")
+                f"old_string matched {count} places (ambiguous; file unchanged) —"
+                "make old_string more specific or pass replace_all=True")
         replaced = text.replace(old_string, new_string) if replace_all \
             else text.replace(old_string, new_string, 1)
         p.write_text(replaced, encoding="utf-8")
         n = count if replace_all else 1
-        return f"已编辑 {p}：替换 {n} 处"
+        return f"edited {p}: {n} replacement(s)"
 
 
 class GrepTool(Tool):
@@ -399,7 +399,7 @@ class GrepTool(Tool):
         """构造工具定义与内部校验模型（无参数，框架实例化时调用）。"""
         self.definition = ToolDefinition(
             name="grep",
-            description="内容搜索（ripgrep 正则），带行号输出。",
+            description="Content search (ripgrep regex) with line numbers in the output.",
             params_schema={
                 "pattern": {"type": "string"},
                 "path": {"type": "string"},
@@ -427,8 +427,8 @@ class GrepTool(Tool):
         rg = shutil.which("rg")
         if rg is None:
             raise RuntimeError(
-                "rg（ripgrep）未安装——grep 工具委托 rg 执行，"
-                "请先安装 ripgrep（不做 Python 兜底扫描）")
+                "rg (ripgrep) is not installed — this tool delegates to rg; "
+                "install ripgrep first (no Python fallback scanning)")
         cmd = [rg, "--line-number", "--with-filename"]
         if glob is not None:
             cmd += ["--glob", glob]
@@ -442,14 +442,14 @@ class GrepTool(Tool):
         stdout, stderr = await proc.communicate()
         if proc.returncode not in (0, 1):   # 0=有匹配；1=无匹配（非错误）
             raise RuntimeError(
-                f"rg 执行失败（exit {proc.returncode}）: "
+                f"rg failed (exit {proc.returncode}): "
                 f"{stderr.decode('utf-8', errors='replace').strip()}")
         lines = stdout.decode("utf-8", errors="replace").splitlines()
         if not lines:
-            return "（无匹配）"
+            return "(no matches)"
         if len(lines) > _GREP_MAX_LINES:
             lines = lines[:_GREP_MAX_LINES] + [
-                f"…（已截断：共 {len(lines)} 行匹配，仅显示前 {_GREP_MAX_LINES} 行）"]
+                f"…(truncated: {len(lines)} matching lines total, showing first {_GREP_MAX_LINES})"]
         return "\n".join(lines)
 
 
@@ -479,7 +479,7 @@ class GlobTool(Tool):
         """构造工具定义与内部校验模型（无参数，框架实例化时调用）。"""
         self.definition = ToolDefinition(
             name="glob",
-            description="按 glob 模式枚举文件（** 递归），按 mtime 倒序。",
+            description="Enumerate files by glob pattern (** recursive), newest mtime first.",
             params_schema={
                 "pattern": {"type": "string"},
                 "path": {"type": "string"},
@@ -502,15 +502,15 @@ class GlobTool(Tool):
         """
         p = _resolve_under_cwd(path, cwd)
         if not p.is_dir():
-            raise ValueError(f"基准目录不存在或不是目录: {p}")
+            raise ValueError(f"base directory does not exist or is not a directory: {p}")
         matches = [f for f in p.glob(pattern) if f.is_file()]   # 只列文件不列目录
         matches.sort(key=lambda f: f.stat().st_mtime, reverse=True)   # mtime 倒序
         truncated = len(matches) > _GLOB_MAX_RESULTS
         lines = [str(f) for f in matches[:_GLOB_MAX_RESULTS]]
         if truncated:
             lines.append(
-                f"…（已截断：共 {len(matches)} 个匹配，仅显示前 {_GLOB_MAX_RESULTS} 个）")
-        return "\n".join(lines) if lines else "（无匹配）"
+                f"…(truncated: {len(matches)} matches total, showing first {_GLOB_MAX_RESULTS})")
+        return "\n".join(lines) if lines else "(no matches)"
 
 
 class FinishTool(Tool):
@@ -578,8 +578,8 @@ class FinishTool(Tool):
         """构造骨架定义并编译内部校验模型（无参数，框架实例化时调用）。"""
         self.definition = ToolDefinition(
             name="finish",
-            description="结束当前任务并返回结构化结果。调用后子 Agent 的"
-                        "当前逻辑执行阶段结束。",
+            description="End the current task and return a structured result. After the call, the "
+                        "subagent's current logical execution phase ends.",
             params_schema={"summary": {"type": "string", "default": ""}})
         self._has_caller = True   # execute 声明 caller: Agent
         self._execution = None
@@ -674,10 +674,10 @@ class SubagentInvokeTool(Tool):
         """构造骨架定义并编译内部校验模型（无参数，框架实例化时调用）。"""
         self.definition = ToolDefinition(
             name="subagent-invoke",
-            description="唤起一个子 Agent：新建（agent_type + 可选 name）或"
-                        "续接（resume 实例名）。返回确认收据；子 Agent 产出"
-                        "以消息形式后续到达。asynchronized=True 时不等待完成，"
-                        "立即返回收据。",
+            description="Invoke a subagent: create one (agent_type + optional name) or resume one "
+                        "(resume instance name). Returns an acknowledgement receipt; the subagent's "
+                        "output arrives later as a message. With asynchronized=True it does not wait "
+                        "for completion and returns a receipt immediately.",
             params_schema={
                 "name": {"type": "string", "default": ""},
                 "agent_type": {"type": "string", "default": ""},
@@ -721,7 +721,7 @@ class SubagentInvokeTool(Tool):
           SUBAGENT 消息。
         """
         if bool(agent_type) == bool(resume):  # 互斥且至少其一
-            raise ValueError("agent_type 与 resume 必须二选一")
+            raise ValueError("agent_type and resume are mutually exclusive; provide exactly one")
         if asynchronized:
             # 嵌套形态：execute 保持 async def（同步路径须带值 return，
             # async generator 内禁止），asynchronized 分支返回本对象的
