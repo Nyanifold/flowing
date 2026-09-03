@@ -180,14 +180,14 @@ class WriteTool(Tool):
 
     .. rubric:: 功能介绍
 
-    LLM 写入文件内容的工具：整文件覆盖（父目录自动创建），不是追加。
+    LLM 写入文件内容的工具：整文件覆盖（上级目录自动创建），不是追加。
     可写工具，危险面见行为要点。
 
     .. rubric:: 行为要点
 
     - 参数：``path`` / ``content`` （均必填；``path`` 遵循 ``cwd`` 基准
       口径——见模块 docstring）；``cwd`` （路径基准，默认 ``None``）。
-    - 语义：整文件覆盖（父目录自动创建），不是追加。
+    - 语义：整文件覆盖（上级目录自动创建），不是追加。
     - 危险面：任意路径覆盖写。审批 / 路径白名单属策略层
       （``before_tool_call`` 钩子），本工具不做。
     - 边缘情况：路径是目录 / 相对路径且无 ``cwd`` → ``status="error"``
@@ -198,7 +198,7 @@ class WriteTool(Tool):
         """构造工具定义与内部校验模型（无参数，框架实例化时调用）。"""
         self.definition = ToolDefinition(
             name="write",
-            description="覆盖写入 UTF-8 文本文件（父目录自动创建）。",
+            description="覆盖写入 UTF-8 文本文件（上级目录自动创建）。",
             params_schema={
                 "path": {"type": "string"},
                 "cwd": {"type": ["string", "null"], "default": None},
@@ -221,7 +221,7 @@ class WriteTool(Tool):
         p = _resolve_under_cwd(path, cwd)
         if p.is_dir():
             raise ValueError(f"路径是目录，不能覆盖写: {p}")
-        p.parent.mkdir(parents=True, exist_ok=True)   # 父目录自动创建
+        p.parent.mkdir(parents=True, exist_ok=True)   # 上级目录自动创建
         p.write_text(content, encoding="utf-8")       # 整文件覆盖（非追加）
         return f"已写入 {p}（{len(content)} 字符）"
 
@@ -524,7 +524,7 @@ class FinishTool(Tool):
     展开为 ``finish`` 的额外参数（见使用示例）。
 
     不调用 ``finish`` 是子 Agent 的最常用法：回合自然结束时，其 plain
-    文本回复（``last_result``）即作为结果回传父 Agent——``finish`` 只是
+    文本回复（``last_result``）即作为结果回传亲代 Agent——``finish`` 只是
     给想结构化提前交卷的子 Agent 一个可选出口，不是必备能力。
 
     .. rubric:: 使用示例
@@ -564,7 +564,7 @@ class FinishTool(Tool):
     - 可见性走通用通道：``finish`` 对 LLM 可见只经 ``.fya`` ``tools:``
       声明或显式 ``add_tool("finish")``。
     - 结束机制：调用后，本回合在其余并行工具调用照常执行完后自然结束，
-      返回载荷写入 ``Agent.last_result`` 并作为结果回传父 Agent；配对
+      返回载荷写入 ``Agent.last_result`` 并作为结果回传亲代 Agent；配对
       TOOL 消息正常挂树，本回合的回合结束标记（``turn_end=True``）落在
       该消息上。
 
@@ -597,7 +597,7 @@ class FinishTool(Tool):
         - 结束机制：同一载荷置位 ``caller.current_turn.finish_output``
           ——置位即请求本回合自然结束（视同 ``finish=True``，工具段照常
           执行完），载荷由子 Agent 收尾段写入 ``Agent.last_result`` 并
-          作为结果回传父 Agent。
+          作为结果回传亲代 Agent。
         - 前置：``caller.current_turn`` 非 ``None`` （工具只在回合内执行）。
 
         .. seealso:: :class:`flowing.agent.TurnContext` —— 逻辑 Turn
@@ -653,7 +653,7 @@ class SubagentInvokeTool(Tool):
       同步 await（失败照常产 ``status="error"`` 结果，LLM 可见），随后
       立即返回 ``{"invoked": ..., "status": "started"}`` 收据（pending
       状态）；运行段在后台执行，子 Agent 真实产出以
-      ``Message(kind=SUBAGENT)`` 在完成时推入父队列，LLM 在后续回合
+      ``Message(kind=SUBAGENT)`` 在完成时推入亲代队列，LLM 在后续回合
       感知。
     - 校验：``agent_type`` 与 ``resume`` 互斥且至少其一；违反 →
       ``status="error"`` 结果（LLM 可见的自我修正反馈）。
@@ -714,7 +714,7 @@ class SubagentInvokeTool(Tool):
           （失败即上抛，经 ``Tool.__call__`` 的 except 顺序分派为
           ``status="error"`` / ``blocked``，LLM 可见），随后立即返回
           ``{"invoked": ..., "status": "started"}`` 收据；运行段在后台
-          执行，结局以 ``Message(kind=SUBAGENT)`` 推入父队列。
+          执行，结局以 ``Message(kind=SUBAGENT)`` 推入亲代队列。
         - 缺省 ``False``：同步等待子 Agent 完成——``invoke_subagent``
           同步交付结果、不 enqueue SUBAGENT 消息；随后把返回的
           ``SubagentResult`` 全字段平铺进本工具返回 dict，不再另发
