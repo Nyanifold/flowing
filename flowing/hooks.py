@@ -114,12 +114,12 @@ dispatch 点为准）：
      - 子 Agent 唤起时、参数 resolve 校验之后
      - :class:`flowing.agent.SubagentInvocation`
      - 可改写 ``args`` / ``prompt``；``raise Intercepted`` 硬阻断唤起
-       （同步上抛，未创建实例）；挂在父 Agent 的 hooks 上
+       （同步上抛，未创建实例）；挂在亲代 Agent 的 hooks 上
    * - ``after_subagent_invoke``
      - 子 Agent 结果构造之后、交付之前
      - :class:`flowing.agent.SubagentInvocation`
      - 可改写 ``result`` （改写后的结果用于构造交付消息）；不接
-       ``Intercepted`` （其异常按普通异常上抛）；挂在父 Agent 的 hooks 上
+       ``Intercepted`` （其异常按普通异常上抛）；挂在亲代 Agent 的 hooks 上
    * - ``before_turn_abort``
      - 回合被 abort 时触发一次（abort 判定收口处）
      - :class:`flowing.agent.TurnContext`
