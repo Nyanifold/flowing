@@ -280,7 +280,7 @@ async def test_t32_skill_add_normalization_errors(tmp_path):
         agent.skill_add(EntryRef(raw="sum", alias="s"), alias="x")
     with pytest.raises(FormatError):
         agent.skill_add(EntryRef(raw="sum", alias="s"), body={"args": {}})
-    with pytest.raises(FormatError, match="未知键"):
+    with pytest.raises(FormatError, match="unknown key"):
         agent.skill_add("with-args", alias="w1", body={"bogus": 1})
     with pytest.raises(FormatError, match="as"):
         agent.skill_add("with-args", alias="w2",

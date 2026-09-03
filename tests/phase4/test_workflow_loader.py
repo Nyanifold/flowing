@@ -53,9 +53,9 @@ async def test_t86_missing_ambiguous_absent_and_class_priority(project):
     既无子类又无顶层 run → 缺失；类形态与顶层 run 并存 → 类优先。"""
     with pytest.raises(FlowingError, match="ghost"):
         resolve_workflow("@/ghost.py")
-    with pytest.raises(FlowingError, match="歧义"):
+    with pytest.raises(FlowingError, match="ambiguous"):
         resolve_workflow("@/two_classes.py")
-    with pytest.raises(FlowingError, match="缺失"):
+    with pytest.raises(FlowingError, match="missing"):
         resolve_workflow("@/no_run.py")
     cls = resolve_workflow("@/both.py")
     assert cls.__name__ == "BothWorkflow"   # 类形态优先（顶层 run 被忽略）
@@ -76,7 +76,7 @@ async def test_t87_kebab_double_candidates_and_bare_process(project, tmp_path):
     (tmp_path / "flows" / "verify-fix.py").write_text(
         (project / "verify_fix.py").read_text(encoding="utf-8"),
         encoding="utf-8")
-    with pytest.raises(FlowingError, match="歧义"):
+    with pytest.raises(FlowingError, match="ambiguous"):
         resolve_workflow("@/flows/verify-fix")
 
 

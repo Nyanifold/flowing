@@ -105,7 +105,7 @@ def test_t11_fya_priority_with_coexistence_warning(registry):
         warnings.simplefilter("always")
         skill = registry.get("dup", FIXTURES_SKILLS)
     assert "DUP_FYA_BODY" in skill.content.source
-    assert any(".fya" in str(w.message) and "并存" in str(w.message) for w in caught)
+    assert any(".fya" in str(w.message) and "coexist" in str(w.message) for w in caught)
 
 
 # ---------------------------------------------------------------------------
