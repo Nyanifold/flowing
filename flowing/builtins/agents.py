@@ -6,7 +6,7 @@
 （注册名 ``explore-agent``，只读代码库探索），注册在 ``builtin::``
 命名空间下。
 
-注册不等于可唤起：与工具同一「声明为准」原则——父 Agent 须在 ``.fya``
+注册不等于可唤起：与工具同一「声明为准」原则——亲代 Agent 须在 ``.fya``
 的 ``subagents:`` 声明或 ``add_agent`` 显式绑定后，该类型才会出现在其
 catalog（LLM 可见）中。
 
@@ -14,7 +14,7 @@ catalog（LLM 可见）中。
 
 .. code-block:: yaml
 
-    # 父 Agent 的 .fya
+    # 亲代 Agent 的 .fya
     subagents:
       - explore-agent
 
@@ -45,7 +45,7 @@ class ExploreAgent(Agent):
 
     .. code-block:: yaml
 
-        # 父 Agent 的 .fya
+        # 亲代 Agent 的 .fya
         subagents:
           - explore-agent
 
@@ -54,7 +54,7 @@ class ExploreAgent(Agent):
     - 工具集固定为 ``read`` / ``grep`` / ``glob`` （全部只读）；子类想
       加可写工具须显式覆写 :meth:`setup`——此时它不再是「只读探索」，
       安全语义自负。
-    - 交卷：默认以 plain 文本回复作为结果回传父 Agent（不绑
+    - 交卷：默认以 plain 文本回复作为结果回传亲代 Agent（不绑
       ``finish``——不调用 ``finish`` 是子 Agent 的最常用法，见
       :class:`flowing.builtins.FinishTool`）。
     - ``setup()`` 不接受任何初始化参数；子 Agent 条目无需（也不应）为
