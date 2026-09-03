@@ -49,7 +49,7 @@ def test_t68_broken_chain_treated_as_missing():
     agent = FakeAgent(rt)
     mid = FakeAgent(rt, node_id="agent-mid")
     leaf = FakeAgent(rt, node_id="agent-leaf", parent_id="agent-mid")
-    # 中间父已销毁：get_node 抛 KeyError → 链断裂按未命中处理
+    # 中间亲节点已销毁：get_node 抛 KeyError → 链断裂按未命中处理
     del rt._nodes["agent-mid"]
     with pytest.raises(MissingProvideError):
         inject_from(rt, leaf, "locale")
