@@ -238,7 +238,7 @@ class LoggingPlugin(Plugin):
     def level(self, value: LogLevel) -> None:
         if value not in _LEVELS:
             raise FlowingError(
-                f"非法日志等级：{value!r}（合法值：{', '.join(_LEVELS)}）")
+                f"invalid log level: {value!r} (valid values: {', '.join(_LEVELS)})")
         self._level = value
 
     def install(self, runtime: Runtime) -> None:
@@ -360,13 +360,13 @@ def use_logging(agent: Agent) -> None:
                     # stderr 警告后该 Agent 后续不再尝试写盘
                     state["write_failed"] = True
                     print(f"[flowing._unstable.logging] agent {host.node_id} "
-                          f"写盘失败，后续不再尝试 {log_path}：{exc!r}",
+                          f"failed to write log, will not retry {log_path}: {exc!r}",
                           file=sys.stderr)
             except Exception as exc:
                 # handler 自身异常：stderr 警告，不传播（日志插件绝不能
                 # 打断业务管线）
                 print(f"[flowing._unstable.logging] agent {host.node_id} "
-                      f"观察 handler 异常（hook={hook_name}，已吞掉）：{exc!r}",
+                      f"observer handler raised (hook={hook_name}, swallowed): {exc!r}",
                       file=sys.stderr)
             return value
 

@@ -46,20 +46,22 @@ class ScheduleCronTool(Tool):
     definition: ToolDefinition = ToolDefinition(
         name="schedule-cron",
         description=(
-            "为自己注册一条 cron 定时消息任务（五字段表达式：分 时 日 月 周），"
-            "到点给自己推送 content 文本。"
+            "Register a recurring cron message task for yourself (five-field expression: "
+            "minute hour day month weekday); when due, push the content text to yourself."
         ),
         params_schema={
             "cron": {"type": "string",
-                     "description": "五字段 cron 表达式（分 时 日 月 周）"},
+                     "description": "five-field cron expression (minute hour day month weekday)"},
             "content": {"type": "string",
-                        "description": "到点推送的消息文本；可用 {{current_time}} 或 {{current_time:格式}} 引用当前时间"},
+                        "description": "message text to push when due; may reference the current time "
+                                       "with {{current_time}} or {{current_time:format}}"},
             "source": {"type": "string",
-                       "description": "可选语义标签（on_cron_trigger 按 source 过滤）"},
+                       "description": "optional semantic tag (on_cron_trigger filters by source)"},
             "recurring": {"type": "boolean", "default": True,
-                          "description": "False 为一次性任务（成功交付一次后自删）"},
+                          "description": "False makes it a one-shot task (self-removes after one "
+                                         "successful delivery)"},
             "job_id": {"type": "string",
-                       "description": "可选任务 id（不传则自动生成）"},
+                       "description": "optional task id (auto-generated when omitted)"},
         },
     )
 
@@ -118,14 +120,14 @@ class ManageCronTool(Tool):
     definition: ToolDefinition = ToolDefinition(
         name="manage-cron",
         description=(
-            "查询或取消自己的 cron 定时任务（action=\"list\" 列出，"
-            "action=\"cancel\" 按 job_id 取消）。"
+            "Query or cancel your own cron tasks (action=\"list\" lists them; "
+            "action=\"cancel\" cancels one by job_id)."
         ),
         params_schema={
             "action": {"type": "string", "enum": ["list", "cancel"],
-                       "description": "管理动作：list 列出任务，cancel 取消任务"},
+                       "description": "management action: list lists tasks, cancel cancels a task"},
             "job_id": {"type": "string",
-                       "description": "要取消的任务 id（action=\"cancel\" 时必填）"},
+                       "description": "job id of the task to cancel (required when action=\"cancel\")"},
         },
     )
 
@@ -148,5 +150,5 @@ class ManageCronTool(Tool):
         if action == "list":
             return {"jobs": [job.to_dict() for job in jobs(caller)]}
         if not job_id:
-            raise ValueError("action='cancel' 需提供 job_id")
+            raise ValueError("action='cancel' requires job_id")
         return {"cancelled": unschedule(caller, job_id)}

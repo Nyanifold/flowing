@@ -73,8 +73,8 @@ async def test_missed_multiple_uses_notice_template(tmp_path):
         events = _events()
         assert len(events) == 1
         text = events[0].content[0].text
-        assert text.startswith("定时任务 * * * * * 错过了 3 次触发")
-        assert "上次成功交付：从未交付" in text              # 从未交付的游标
+        assert text.startswith("Scheduled job * * * * * missed 3 trigger(s)")
+        assert "last successful delivery: never delivered" in text   # 从未交付的游标
         assert text.endswith("请执行每日沉淀 07:03")          # content 先替换后拼入
         assert agent.state.cron_jobs[0]["last_fired_at"] == "2026-09-03T07:03:00"
     finally:
@@ -93,7 +93,7 @@ async def test_notice_with_previous_delivery(tmp_path):
         await agent._cron._fire(jid)
         events = _events()
         assert len(events) == 2
-        assert "错过了 3 次触发（上次成功交付：2026-09-03 07:01）" in \
+        assert "missed 3 trigger(s) (last successful delivery: 2026-09-03 07:01)" in \
             events[1].content[0].text
     finally:
         await agent.destroy()

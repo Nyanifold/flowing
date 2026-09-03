@@ -161,7 +161,7 @@ class OpenAICompletionsProvider(Provider):
         base_url = self.config.get("base_url") or self.default_base_url
         if not base_url:
             raise FlowingError(
-                f"provider 条目缺少 base_url（adapter {self.name!r} 无官方默认端点）")
+                f"provider entry is missing base_url (adapter {self.name!r} has no official default endpoint)")
         headers = {"Content-Type": "application/json"}
         credential = self.get_credential()   # 每次发起请求前读取（凭证唯一入口）
         if credential:
@@ -171,9 +171,9 @@ class OpenAICompletionsProvider(Provider):
                 resp = await client.post(
                     f"{str(base_url).rstrip('/')}{path}", json=body, headers=headers)
         except httpx.TimeoutException as exc:
-            raise ProviderTimeoutError(f"provider 请求超时：{exc}") from exc
+            raise ProviderTimeoutError(f"provider request timed out: {exc}") from exc
         except httpx.TransportError as exc:
-            raise NetworkError(f"provider 网络层失败：{exc}") from exc
+            raise NetworkError(f"provider network failure: {exc}") from exc
         if resp.status_code >= 400:
             try:
                 err_body: Any = resp.json()
@@ -278,7 +278,7 @@ class OpenAICompletionsProvider(Provider):
                 return [tool_msg]
             follow_up = {"role": "user", "content": [
                 {"type": "text",
-                 "text": "[上述工具结果包含以下媒体内容]"},
+                 "text": "[The tool results above include the following media content]"},
                 *[{"type": "image_url", "image_url": {
                     "url": f"data:{m.mime_type or 'application/octet-stream'};base64,{m.data}"}}
                   for m in media],
@@ -319,7 +319,7 @@ class OpenAICompletionsProvider(Provider):
                 args = json.loads(tc["function"].get("arguments") or "{}")
             except json.JSONDecodeError as exc:
                 raise InvalidRequestError(
-                    f"tool_call arguments 非法 JSON：{exc}") from exc
+                    f"tool_call arguments are not valid JSON: {exc}") from exc
             blocks.append(ToolCallBlock(
                 id=tc["id"], name=tc["function"]["name"], args=args))
         msg = Message(kind=MessageKind.PROVIDER, content=blocks)

@@ -806,7 +806,7 @@ class FakeProvider(Provider):
         if self.generate_fn is None:
             from flowing.errors import FlowingError
             raise FlowingError(
-                "FakeProvider.generate_fn 未注入（实例属性赋值后再调用 generate()）"
+                "FakeProvider.generate_fn not injected (assign the instance attribute before calling generate())"
             )
         return await self.generate_fn(context, model)
 
@@ -1078,12 +1078,12 @@ def register_provider(
         # 前置条件：Provider 子类且定义非空 name 类属性，否则 ValueError
         if not (isinstance(cls, type) and issubclass(cls, Provider)):
             raise ValueError(
-                "register_provider: 被装饰对象必须是 Provider 子类"
-                f"（got {cls!r}）")
+                "register_provider: decorated object must be a Provider subclass"
+                f" (got {cls!r})")
         if not getattr(cls, "name", None):
             raise ValueError(
-                "register_provider: Provider 子类必须定义非空 name 类属性"
-                f"（{cls.__qualname__}）")
+                "register_provider: Provider subclass must define a non-empty name class attribute"
+                f" ({cls.__qualname__})")
         existing = _provider_adapters.get(cls.name)
         if existing is not None and existing is not cls:
             # 同名冲突：override=False -> 具名报错；override=True -> 覆盖并产生警告
@@ -1092,8 +1092,8 @@ def register_provider(
             import warnings
 
             warnings.warn(
-                f"register_provider: adapter {cls.name!r} 被 "
-                f"{existing.__qualname__} → {cls.__qualname__} 覆盖（override=True）",
+                f"register_provider: adapter {cls.name!r} is being overridden: "
+                f"{existing.__qualname__} → {cls.__qualname__} (override=True)",
                 stacklevel=2)  # 每次覆盖均警告；多个 override 按 import 顺序后者胜出
         _provider_adapters[cls.name] = cls  # 登记进进程级注册表
         return cls  # 原样返回被装饰类（不包装、不子类化）

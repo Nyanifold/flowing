@@ -75,7 +75,7 @@ async def test_shortcut_skips_and_accumulates(tmp_path):
         await agent._cron._fire(jid)                       # count==2 → 放行
         events = _events()
         assert len(events) == 1
-        assert "错过了 2 次触发" in events[0].content[0].text
+        assert "missed 2 trigger(s)" in events[0].content[0].text
         assert agent.state.cron_jobs[0]["last_fired_at"] == "2026-09-03T07:02:00"
     finally:
         await agent.destroy()

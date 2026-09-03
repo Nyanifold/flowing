@@ -45,7 +45,7 @@ from .models import CronFireContext, CronJob
 
 _logger = logging.getLogger(__name__)
 
-MISSED_NOTICE = "定时任务 {cron} 错过了 {count} 次触发（上次成功交付：{last_fired_at}），现补发一次：\n{content}"
+MISSED_NOTICE = "Scheduled job {cron} missed {count} trigger(s) (last successful delivery: {last_fired_at}); delivering once now:\n{content}"
 """唯一补发模板（模块常量，无注入面）：错过多次（``coalesced_count >= 2``）
 时渲染的完整消息，自含内容。
 
@@ -101,7 +101,7 @@ def _next_ideal_fire(cron: str, after: datetime) -> datetime:
     fields = cron.split()
     if len(fields) != 5:
         raise ValueError(
-            f"cron 表达式须为五字段（分 时 日 月 周）: {cron!r}")
+            f"cron expression must have five fields (minute hour day month weekday): {cron!r}")
     return croniter(cron, after).get_next(datetime)
 
 
@@ -222,7 +222,7 @@ def validate_placeholders(content: str) -> None:
             if (i + 1 >= len(fmt)
                     or fmt[i + 1] not in _STRFTIME_DIRECTIVES):
                 raise ValueError(
-                    f"{{{{current_time}}}} 占位符格式非法: {fmt!r}")
+                    f"{{{{current_time}}}} placeholder format is invalid: {fmt!r}")
             i += 2
 
 
@@ -230,7 +230,7 @@ def _render_notice(cron: str, count: int,
                    last_fired_at: datetime | None, content: str) -> str:
     """渲染唯一补发模板（token 顺序替换：count → cron → last_fired_at → content）。"""
     last_txt = (last_fired_at.strftime(_NOTICE_TIME_FORMAT)
-                if last_fired_at is not None else "从未交付")
+                if last_fired_at is not None else "never delivered")
     return (MISSED_NOTICE
             .replace("{count}", str(count))
             .replace("{cron}", cron)
@@ -274,13 +274,13 @@ class _CronRuntime:
         """
         agent = self._agent
         if not content:
-            raise ValueError("content 非空")
+            raise ValueError("content must not be empty")
         _next_ideal_fire(cron, _now())      # 五字段 + 可解析校验
         validate_placeholders(content)
         if job_id is None:
             job_id = str(uuid4())
         if any(d.get("id") == job_id for d in agent.state.cron_jobs):
-            raise ValueError(f"job_id 冲突: {job_id}")
+            raise ValueError(f"job_id conflict: {job_id}")
         record = CronJob(
             id=job_id, cron=cron, content=content, source=source or "",
             recurring=bool(recurring), created_at=_now(),
@@ -379,7 +379,7 @@ class _CronRuntime:
         except Intercepted:
             return   # 硬阻断：跳过本次，游标不推进
         except Exception:
-            _logger.exception("cron job %s: on_cron_trigger 分发异常，跳过本次",
+            _logger.exception("cron job %s: on_cron_trigger dispatch failed; skipping this fire",
                               job_id)
             return
         if ctx.shortcut:
@@ -400,7 +400,7 @@ class _CronRuntime:
         except Exception:
             # 入队异常不逃逸进事件循环（fire-and-forget 无人 await）：
             # 游标不推进，任务保留，miss 累积到下一次交付
-            _logger.exception("cron job %s: 消息入队异常，跳过本次", job_id)
+            _logger.exception("cron job %s: message enqueue failed; skipping this fire", job_id)
             return
         # 写回：重读当前总表，只替换/移除本记录（防并发交错覆盖）
         new_jobs = []
@@ -434,7 +434,7 @@ def _ensure(agent: Agent) -> _CronRuntime:
     """取 Agent 的任务运行时；未 ``use_cron`` → ``ValueError``。"""
     runtime = getattr(agent, "_cron", None)
     if not isinstance(runtime, _CronRuntime):
-        raise ValueError("agent 未调用 use_cron（无 cron 任务运行时）")
+        raise ValueError("agent has not called use_cron (no cron runtime attached)")
     return runtime
 
 

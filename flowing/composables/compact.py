@@ -86,10 +86,12 @@ from flowing.providers import ProviderResponse
 __all__ = ["use_compact", "DEFAULT_COMPACT_PROMPT"]
 
 DEFAULT_COMPACT_PROMPT: str = (
-    "你即将耗尽上下文。请将以上对话压缩为一份结构化的交接摘要，"
-    "供你在历史被清空后无缝继续当前任务。必须使用如下结构：\n"
-    "## 目标\n## 进展\n## 关键决策\n## 后续步骤\n## 关键上下文\n"
-    "直接输出摘要本体；不要继续对话，不要输出任何其它内容。"
+    "You are about to run out of context. Compress the conversation above into a "
+    "structured handover summary so you can seamlessly continue the current task "
+    "after the history is cleared. Use exactly this structure:\n"
+    "## Goal\n## Progress\n## Key decisions\n## Next steps\n## Key context\n"
+    "Output only the summary itself; do not continue the conversation and do not "
+    "output anything else."
 )
 """默认压缩指令（``compact_prompt`` 的缺省值）。
 
@@ -197,7 +199,7 @@ def use_compact(agent: Agent, threshold: float = 0.8) -> None:
     """
     # 先校验后注册：非法参数抛 ValueError，不产生任何注册副作用
     if not 0 < threshold <= 1.0:
-        raise ValueError("threshold 必须在 (0, 1.0] 区间")
+        raise ValueError("threshold must be in (0, 1.0]")
 
     # 声明压缩观测/拦截钩子点（同名同 by 幂等）
     agent.hooks.declare("on_compact", by="compact")

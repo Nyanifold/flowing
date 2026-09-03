@@ -62,7 +62,7 @@ async def test_restart_recover_sweep(tmp_path):
         assert jid in agent2._cron._timers      # 定时器已重新武装
         events = _events()
         assert len(events) == 1                 # 合并补发一次
-        assert "错过了 5 次触发" in events[0].content[0].text
+        assert "missed 5 trigger(s)" in events[0].content[0].text
         assert agent2.state.cron_jobs[0]["last_fired_at"] == \
             "2026-09-03T07:00:30"               # 游标推进到恢复时刻
     finally:
@@ -101,7 +101,7 @@ async def test_recover_coalesced_from_fixture(tmp_path):
         agent2 = await rt2.recover_agent(aid)
         events = _events()
         assert len(events) == 1
-        assert "错过了 60 次触发" in events[0].content[0].text
+        assert "missed 60 trigger(s)" in events[0].content[0].text
         assert agent2.state.cron_jobs[0]["id"] == "fixture-minutely"
         assert agent2.state.cron_jobs[0]["last_fired_at"] == \
             "2026-08-30T01:00:30"

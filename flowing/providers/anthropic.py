@@ -147,7 +147,7 @@ class AnthropicMessagesProvider(Provider):
         base_url = self.config.get("base_url") or self.default_base_url
         if not base_url:
             raise FlowingError(
-                f"provider 条目缺少 base_url（adapter {self.name!r} 无官方默认端点）")
+                f"provider entry is missing base_url (adapter {self.name!r} has no official default endpoint)")
         headers = {
             "Content-Type": "application/json",
             "anthropic-version": self.anthropic_version,
@@ -160,9 +160,9 @@ class AnthropicMessagesProvider(Provider):
                 resp = await client.post(
                     f"{str(base_url).rstrip('/')}{path}", json=body, headers=headers)
         except httpx.TimeoutException as exc:
-            raise ProviderTimeoutError(f"provider 请求超时：{exc}") from exc
+            raise ProviderTimeoutError(f"provider request timed out: {exc}") from exc
         except httpx.TransportError as exc:
-            raise NetworkError(f"provider 网络层失败：{exc}") from exc
+            raise NetworkError(f"provider network failure: {exc}") from exc
         if resp.status_code >= 400:
             try:
                 err_body: Any = resp.json()

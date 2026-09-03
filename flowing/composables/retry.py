@@ -293,11 +293,11 @@ def use_retry(
 
     # 先校验后注册：非法参数抛 ValueError，不产生任何注册副作用
     if max_retries < 0:
-        raise ValueError("max_retries 必须 >= 0")
+        raise ValueError("max_retries must be >= 0")
     if base_delay < 0:
-        raise ValueError("base_delay 必须 >= 0")
+        raise ValueError("base_delay must be >= 0")
     if backoff not in ("exponential", "fixed"):
-        raise ValueError("backoff 仅接受 'exponential' / 'fixed'")
+        raise ValueError("backoff must be 'exponential' or 'fixed'")
 
     # 声明本 Agent 实例的重试观测钩子点（同名同 by 幂等）
     agent.hooks.declare("on_retry", by="retry")
@@ -349,7 +349,7 @@ def use_retry(
             def _observe(done: asyncio.Task) -> None:
                 pending.discard(done)
                 if not done.cancelled() and done.exception() is not None:
-                    _logger.warning("on_retry 订阅者异常（观测通道，不影响重试决策）",
+                    _logger.warning("on_retry subscriber raised (observation channel; does not affect retry decisions)",
                                     exc_info=done.exception())
 
             task.add_done_callback(_observe)

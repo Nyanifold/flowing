@@ -365,7 +365,7 @@ async def test_t133_write_failure_degrades_and_handler_errors(tmp_path, capsys):
 
         await agent.hooks.before_turn.dispatch(agent, _Hostile())
         err = capsys.readouterr().err
-        assert "handler 异常" in err and "before_turn" in err
+        assert "handler raised" in err and "before_turn" in err
 
         # 模拟 IO 错误：把 logging.jsonl 替换为同名目录（open 必 OSError），
         # 不影响 tree.jsonl / state.jsonl 的落盘
@@ -378,13 +378,13 @@ async def test_t133_write_failure_degrades_and_handler_errors(tmp_path, capsys):
         result = await agent.query("one")
         assert result.status == "completed"         # 业务管线不被打断
         err = capsys.readouterr().err
-        assert err.count("写盘失败") == 1           # 一次性警告
+        assert err.count("failed to write log") == 1   # 一次性警告
 
         script_provider(provider, text_response("ok"))
         result = await agent.query("two")
         assert result.status == "completed"
         err = capsys.readouterr().err
-        assert "写盘失败" not in err                # 后续静默降级
+        assert "failed to write log" not in err     # 后续静默降级
     finally:
         await runtime.shutdown()
 
