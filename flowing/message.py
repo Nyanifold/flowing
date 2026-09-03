@@ -613,7 +613,7 @@ class StructBlock(ContentBlock):
         try:
             json.dumps(self.data)
         except TypeError as e:
-            raise ValueError(f"StructBlock.data 必须是 JSON 兼容结构: {e}") from e
+            raise ValueError(f"StructBlock.data must be JSON-compatible: {e}") from e
 
 
 @dataclass(kw_only=True)
@@ -936,11 +936,11 @@ class Message:
         if self.kind is MessageKind.TOOL:
             if self.tool_call_id is None or self.tool_status is None:
                 raise ValueError(
-                    "kind=TOOL 的消息必须携带 tool_call_id 与 tool_status"
+                    "kind=TOOL messages must carry both tool_call_id and tool_status"
                 )
         elif self.tool_call_id is not None or self.tool_status is not None:
             raise ValueError(
-                "tool_call_id / tool_status 仅 kind=TOOL 的消息可携带"
+                "tool_call_id / tool_status may only be carried by kind=TOOL messages"
             )
 
 
@@ -971,7 +971,7 @@ def _block_from_record(data: dict) -> ContentBlock:
     try:
         cls = _BLOCK_TYPES[data["type"]]
     except KeyError:
-        raise ValueError(f"未知的 content block type: {data.get('type')!r}") from None
+        raise ValueError(f"unknown content block type: {data.get('type')!r}") from None
     return cls(**data)
 
 
@@ -1067,7 +1067,7 @@ def from_record(record: dict) -> Message:
        :func:`to_record`、:meth:`flowing.agent.Agent._restore`。
     """
     if record.get("type") != "message":
-        raise ValueError(f"不是消息行: type={record.get('type')!r}")
+        raise ValueError(f"not a message record: type={record.get('type')!r}")
     raw_usage = record.get("usage")
     usage = None
     if raw_usage is not None:

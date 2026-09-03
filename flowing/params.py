@@ -148,7 +148,7 @@ def _parse_type_expr(expr: str) -> dict:
     # - 未知裸名同样 fail-fast（typo 必须死在装配期，不静默降级 Any）。
     text = expr.strip()
     if not text:
-        raise FormatError("类型表达式为空")
+        raise FormatError("type expression is empty")
     members = _split_top_level(text, "|")
     if len(members) > 1:
         names: list[str] = []
@@ -156,12 +156,12 @@ def _parse_type_expr(expr: str) -> dict:
             frag = _parse_type_expr(member)
             t = frag.get("type")
             if not isinstance(t, str):  # 泛型成员不能进 JSON Schema type 数组
-                raise FormatError(f"联合类型成员必须是裸类型名，收到: {member!r}")
+                raise FormatError(f"union members must be bare type names, got: {member!r}")
             names.append(t)
         return {"type": names}
     m = re.fullmatch(r"([A-Za-z_][A-Za-z0-9_]*)(?:\[(.*)\])?", text, flags=re.S)
     if not m:
-        raise FormatError(f"无法解析类型表达式: {expr!r}")
+        raise FormatError(f"cannot parse type expression: {expr!r}")
     base, args_src = m.group(1), m.group(2)
     if base in ("None", "null"):
         return {"type": "null"}
@@ -169,19 +169,19 @@ def _parse_type_expr(expr: str) -> dict:
     if args_src is None:
         if base_norm in ("string", "integer", "number", "boolean", "array", "object"):
             return {"type": base_norm}
-        raise FormatError(f"未知类型名: {base!r}")
+        raise FormatError(f"unknown type name: {base!r}")
     args = _split_top_level(args_src, ",")
     if base_norm == "array":
         if len(args) != 1:
-            raise FormatError(f"list 泛型需恰好一个参数: {expr!r}")
+            raise FormatError(f"list generic requires exactly one argument: {expr!r}")
         return {"type": "array", "items": _parse_type_expr(args[0])}
     if base_norm == "object":
         if len(args) != 2:
-            raise FormatError(f"dict 泛型需恰好两个参数: {expr!r}")
+            raise FormatError(f"dict generic requires exactly two arguments: {expr!r}")
         _parse_type_expr(args[0])  # 键值类型只校验可解析性，不进入 schema
         _parse_type_expr(args[1])
         return {"type": "object"}
-    raise FormatError(f"类型 {base!r} 不支持泛型参数: {expr!r}")
+    raise FormatError(f"type {base!r} does not support generic arguments: {expr!r}")
 
 
 def _split_top_level(text: str, sep: str) -> list[str]:
@@ -195,17 +195,17 @@ def _split_top_level(text: str, sep: str) -> list[str]:
         elif ch == "]":
             depth -= 1
             if depth < 0:
-                raise FormatError(f"类型表达式方括号不配对: {text!r}")
+                raise FormatError(f"unbalanced brackets in type expression: {text!r}")
         if ch == sep and depth == 0:
             parts.append("".join(current))
             current = []
         else:
             current.append(ch)
     if depth != 0:
-        raise FormatError(f"类型表达式方括号不配对: {text!r}")
+        raise FormatError(f"unbalanced brackets in type expression: {text!r}")
     parts.append("".join(current))
     if any(not p.strip() for p in parts):
-        raise FormatError(f"类型表达式含空段: {text!r}")
+        raise FormatError(f"type expression contains an empty segment: {text!r}")
     return parts
 
 # 桥接子集：本表之外的关键字出现在 property 中 → schema_to_model fail-fast
@@ -253,7 +253,7 @@ def expand_args_schema(args: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
         elif isinstance(raw, dict):
             props[name] = dict(raw)                      # 完整 property（原样，子集校验推迟到桥接）
         elif raw is None:
-            raise FormatError(f"参数 {name!r} 空声明（None）——须给出完整 property、字面量默认值或裸类型字符串")
+            raise FormatError(f"parameter {name!r} has an empty declaration (None) — give a full property, a literal default, or a bare type string")
         else:
             inferred = type(raw).__name__                # 糖二：YAML 字面量 → 类型 + 默认值
             props[name] = {"type": {"int": "integer", "float": "number", "bool": "boolean",
@@ -328,7 +328,7 @@ def schema_to_model(name: str, properties: Mapping[str, dict[str, Any]]) -> type
             normalized = [TYPE_ALIASES.get(str(x), x) for x in t]
             for x in normalized:
                 if x != "null" and x not in type_map:
-                    raise FormatError(f"未知类型名: {x!r}")
+                    raise FormatError(f"unknown type name: {x!r}")
             rest = [x for x in normalized if x != "null"]
             # 多成员非 null 联合（如 [string, integer]）超出 Python 侧
             # 表达精度 → Any（子集只承诺 [T, "null"] 形态）
@@ -349,7 +349,7 @@ def schema_to_model(name: str, properties: Mapping[str, dict[str, Any]]) -> type
     for pname, prop in properties.items():
         invalid = set(prop) - set(SCHEMA_KEYWORDS)
         if invalid:   # 超子集 fail-fast（声明块与覆写补丁共用检查点）
-            raise FormatError(f"参数 {pname!r} 含超出桥接子集的关键字: {sorted(invalid)}")
+            raise FormatError(f"parameter {pname!r} contains keywords outside the bridge subset: {sorted(invalid)}")
         raw_type = prop.get("type")
         if raw_type is None:
             py_type: Any = Any   # {} 空 property → Any（匹配一切）
@@ -432,7 +432,7 @@ def apply_param_overrides(
     for key, patch in overrides.items():
         invalid = set(patch) - set(SCHEMA_KEYWORDS)
         if invalid:   # 非法关键字 fail-fast（覆写端零糖：只认 JSON Schema 关键字）
-            raise FormatError(f"参数 {key!r} 的覆写含非法关键字: {sorted(invalid)}")
+            raise FormatError(f"override for parameter {key!r} contains invalid keywords: {sorted(invalid)}")
         if key in result:   # 稀疏合并：未出现关键字从基底回填
             merged: dict[str, Any] = dict(result[key])
             merged.update(patch)

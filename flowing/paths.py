@@ -246,7 +246,7 @@ def resolve_path(
         # POSIX 前导 /（含归一后 // 的 UNC）与 Windows 盘符均按绝对路径原样接受
         return Path(s)
     if source_dir is None:
-        raise ValueError("相对路径需要 source_dir（./ ../ 或含 / 反斜杠字符的普通相对路径）")
+        raise ValueError("relative paths require source_dir (./ ../ or a plain relative path with / or backslash chars)")
     base = source_dir
     rest = s
     while rest.startswith("../"):
@@ -396,10 +396,10 @@ def infer_name(path: str | Path, *, naming: NamingRules) -> str:
                 stem = stem[: -len(suffix)]
                 break
     if not stem:
-        raise FormatError(f"无法从路径推断身份名: {path}")
+        raise FormatError(f"cannot infer an identity name from the path: {path}")
     kebab = stem.replace("_", "-")
     if not _KEBAB_RE.match(kebab):
-        raise FormatError(f"路径推断结果不是合法身份名: {path}")
+        raise FormatError(f"path-inferred name is not a valid identity name: {path}")
     return kebab
 
 
@@ -426,7 +426,7 @@ def kebab_to_snake(name: str) -> str:
     .. seealso:: :func:`snake_to_kebab` —— 逆转换。
     """
     if not _KEBAB_RE.match(name):
-        raise FormatError(f"非法 kebab-case 名: {name!r}")
+        raise FormatError(f"invalid kebab-case name: {name!r}")
     return name.replace("-", "_")
 
 
@@ -445,7 +445,7 @@ def snake_to_kebab(name: str) -> str:
     .. seealso:: :func:`kebab_to_snake` —— 逆转换。
     """
     if not re.match(r"^[a-z0-9]+(_[a-z0-9]+)*$", name):
-        raise FormatError(f"非法 snake_case 名: {name!r}")
+        raise FormatError(f"invalid snake_case name: {name!r}")
     return name.replace("_", "-")
 
 
@@ -467,7 +467,7 @@ def kebab_to_pascal(name: str) -> str:
     .. seealso:: :func:`pascal_to_kebab` —— 逆转换。
     """
     if not _KEBAB_RE.match(name):
-        raise FormatError(f"非法 kebab-case 名: {name!r}")
+        raise FormatError(f"invalid kebab-case name: {name!r}")
     return "".join(part.capitalize() for part in name.split("-"))
 
 
@@ -490,6 +490,6 @@ def pascal_to_kebab(name: str) -> str:
     .. seealso:: :func:`kebab_to_pascal` —— 逆转换。
     """
     if not re.match(r"^[A-Z][A-Za-z0-9]*$", name):
-        raise FormatError(f"非法 PascalCase 名: {name!r}")
+        raise FormatError(f"invalid PascalCase name: {name!r}")
     kebab = re.sub(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])", "-", name)
     return kebab.lower()
