@@ -1870,7 +1870,7 @@ class ArtifactModifiedError(CompileError):
         :param path: 冲突的编译产物路径；与 ``path`` 字段一致。
         """
         self.path = path
-        super().__init__(f"编译产物被外部修改，拒绝覆盖：{path}")
+        super().__init__(f"compiled artifact was modified externally; refusing to overwrite: {path}")
 
 
 # ---------------------------------------------------------------------------

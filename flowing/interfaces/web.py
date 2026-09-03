@@ -456,7 +456,7 @@ async def cmd_web(
     try:
         runtime = await launch(path, main_file=main_file, **kwargs)
     except Exception as exc:
-        print(f"launch 阶段失败：{exc}", file=sys.stderr)
+        print(f"launch failed: {exc}", file=sys.stderr)
         return EXIT_RUNTIME_ERROR
     _install_signal_handlers(runtime)
     assets = get_frontend_assets()
