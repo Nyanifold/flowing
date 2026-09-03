@@ -29,7 +29,7 @@
 
 - 注册的资源：provide key ``logging_plugin_key`` （字符串
   ``"logging:plugin"``），provide 到 Runtime 根，消费方式为
-  ``agent.inject(logging_plugin_key)`` 沿父链上溯查找；未安装时抛
+  ``agent.inject(logging_plugin_key)`` 沿亲代链上溯查找；未安装时抛
   :class:`flowing.errors.MissingProvideError`。
 
 - 声明的钩子点：无——本插件不声明任何新钩子点，只向既有钩子点挂
