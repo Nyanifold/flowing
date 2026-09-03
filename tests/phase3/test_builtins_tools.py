@@ -66,7 +66,7 @@ async def test_t66_read_cwd_baseline(tmp_path):
 # ---------------------------------------------------------------------------
 
 async def test_t67_write_creates_parents_and_overwrites(tmp_path):
-    """67：目标与父目录均不存在 → 父目录创建、内容精确写入；再写 → 整体覆盖。"""
+    """67：目标与上级目录均不存在 → 上级目录创建、内容精确写入；再写 → 整体覆盖。"""
     target = tmp_path / "deep" / "nested" / "out.txt"
     result = await WriteTool()({"path": str(target), "cwd": None, "content": "第一版\n"})
     assert result.status == "completed"
