@@ -105,7 +105,7 @@
      - 与 ``$`` 相同的前缀规则
 
 路径解析是字符串前缀判断，不引入专门的路径类型：``./`` = 当前文件所在
-目录，``../`` = 父目录，``@/`` = 项目根，多级 ``../../`` 按层级向上。
+目录，``../`` = 上级目录，``@/`` = 项目根，多级 ``../../`` 按层级向上。
 前缀集合的唯一权威表是 :data:`flowing.paths.PATH_PREFIXES`；实际解析
 委托 ``Runtime.resolve_path(path, *, source_dir)``，``source_dir`` 基准
 由 ``Agent.source_dir`` 统一供给。裸名（如 ``payment``）不是路径形态，
@@ -220,7 +220,7 @@
    * - ``SubagentEntry.override_system_prompt``
      - 子 Agent 创建时
    * - Tool / Skill / Subagent 的 description 覆盖
-     - ``ToolEntry.llm_definition()`` / catalog 渲染 / 父 Agent 路由
+     - ``ToolEntry.llm_definition()`` / catalog 渲染 / 亲代 Agent 路由
        决策时
    * - ``_extra`` 中的任意字段
      - 框架不自动 resolve——由声明该字段的插件在 ``use_xxx()`` 中接管
