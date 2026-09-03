@@ -105,7 +105,7 @@ async def test_t68_bash_timeout_kills_process_group(tmp_path):
         # 孙进程（后台子 shell）预定 2 秒后写标记；主进程睡死
         "command": f"(sleep 2; touch {marker}) & sleep 999",
         "timeout": 1, "cwd": None})
-    assert result.status == "error" and "超时" in result.error
+    assert result.status == "error" and "timed out" in result.error
     await asyncio.sleep(1.5)   # 越过孙进程预定的写时点（共 2.5s > 2s）
     assert not marker.exists()   # 进程组被整组杀掉，孙进程未能落盘
 
@@ -129,7 +129,7 @@ async def test_t69_edit_ambiguity_and_replace_all(tmp_path):
     ambiguous = await tool({
         "path": str(f), "cwd": None,
         "old_string": "foo", "new_string": "bar", "replace_all": False})
-    assert ambiguous.status == "error" and "歧义" in ambiguous.error
+    assert ambiguous.status == "error" and "ambiguous" in ambiguous.error
     assert f.read_text(encoding="utf-8") == "foo 一\nfoo 二\n"   # 文件不变
     replaced = await tool({
         "path": str(f), "cwd": None,

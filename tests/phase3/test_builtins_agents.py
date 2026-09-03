@@ -174,7 +174,7 @@ async def test_t73_subagent_invoke_mutex_validation(runtime, args):
     tool = SubagentInvokeTool()
     result = await tool({"name": "", "prompt": "p", "asynchronized": False, **args},
                         caller=agent)
-    assert result.status == "error" and "二选一" in result.error
+    assert result.status == "error" and "mutually exclusive" in result.error
 
 
 # ---------------------------------------------------------------------------
@@ -250,7 +250,7 @@ async def test_t75_explore_agent_readonly(runtime, provider):
     child_contexts = []
 
     async def gen(context, model):
-        if "只读代码探索助手" in _sys_text(context):
+        if "read-only code-exploration assistant" in _sys_text(context):
             child_contexts.append(context)
             return text_response("src 下有 main.py 与 util.py 两个文件。")
         if not hasattr(gen, "called"):
