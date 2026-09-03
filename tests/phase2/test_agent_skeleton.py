@@ -242,7 +242,7 @@ async def test_provide_inject_chain(runtime, provider):
 
     assert child.inject("locale") == "zh"   # 穿透中间层命中 Runtime
     parent.provide("locale", "en")
-    assert child.inject("locale") == "en"   # 就近命中父层
+    assert child.inject("locale") == "en"   # 就近命中亲节点层
     with pytest.raises(MissingProvideError):
         child.inject("ghost")
 
