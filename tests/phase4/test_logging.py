@@ -117,7 +117,7 @@ async def test_t128_info_key_nodes(tmp_path):
         result = await agent.query("报错")
         assert result.status == "error"
 
-        # 子 Agent 边界（父 Agent 钩子）
+        # 子 Agent 边界（亲代 Agent 钩子）
         agent.add_agent("test-agent", alias="kid")
         script_provider(provider, text_response("子回复"))
         sub = await agent.invoke_subagent("kid", prompt="审查", name="reviewer")
