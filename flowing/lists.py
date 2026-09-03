@@ -177,7 +177,7 @@ class ManagedList(Generic[Tg]):
           中产生一个位置，迭代与批量操作各处理一次。
         - 本方法对子类形态不做约束：子类可把 append 特化为「构造并
           追加」的工厂式签名（如 :class:`flowing.context.PromptBlockList`
-          的 ``append(name, content, ...)``）；此时父类的元素式
+          的 ``append(name, content, ...)``）；此时基类的元素式
           ``append(item)`` 在该子类上不可用，属有意为之。
 
         .. seealso:: :class:`flowing.hooks.HookList`、
