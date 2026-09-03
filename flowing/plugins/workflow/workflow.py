@@ -47,7 +47,7 @@ Workflow 实例同时占据两个位置：
   指向 Runtime——代码直接拉起的顶层编排），也可作 Agent 的子节点
   （``_parent_id = caller.node_id``——LLM 经 ``run-workflow`` 工具
   拉起）。本 workflow 创建的 Agent 的 ``parent_id`` 指向本 workflow 的
-  ``node_id``：生命周期上 Workflow 是它们的父节点，``destroy()`` 时
+  ``node_id``：生命周期上 Workflow 是它们的亲节点，``destroy()`` 时
   级联归档（从池与名录移除、session 文件保留）。
 - provide/inject 链：本 workflow ``provide()`` 的值对它创建的全部
   Agent 及后代可见；``inject()`` 沿 ``_parent_id`` 链上溯（workflow →
@@ -268,7 +268,7 @@ class Workflow(ABC):
         self._provided = {}
         self._agents = {}
         self._parent_id = caller.node_id if caller is not None else runtime.node_id  # 根节点 workflow 指向 Runtime
-        runtime._nodes[self.node_id] = self  # 创建即注册（_nodes: dict[str, ProvideNode]——Workflow 可作父节点/根节点）
+        runtime._nodes[self.node_id] = self  # 创建即注册（_nodes: dict[str, ProvideNode]——Workflow 可作亲节点/根节点）
 
     @abstractmethod
     async def run(self, prompt: str | None = None, **kwargs: Any) -> dict[str, Any] | None:
@@ -459,7 +459,7 @@ class Workflow(ABC):
 
         .. rubric:: 行为要点
 
-        - 先查本 workflow 的 provide 表，未命中沿父链逐级上溯（根节点
+        - 先查本 workflow 的 provide 表，未命中沿亲代链逐级上溯（根节点
           workflow 上溯一步即达 Runtime 层）；全链未命中抛
           :class:`flowing.errors.MissingProvideError`。
         - ``InjectionKey`` 跨节点退化为按 ``name`` 匹配（类型信息不跨
