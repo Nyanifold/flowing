@@ -73,7 +73,7 @@ async def runtime(tmp_path):
 
 @pytest.fixture
 async def parent(runtime):
-    """已注册 ``payment`` 子类型、并已启动的父 Agent。"""
+    """已注册 ``payment`` 子类型、并已启动的亲代 Agent。"""
     runtime.register_agent_type("payment", PaymentAgent)
     runtime.provide("user_id", "alice")   # provide 链（inject 上溯终点）
     return await runtime.create_agent("test-agent")
