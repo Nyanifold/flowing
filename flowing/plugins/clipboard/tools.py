@@ -123,7 +123,7 @@ def _read_source(path: Path, *, what: str = "path") -> str:
 
 
 def _write_file(path: Path, content: str) -> None:
-    """覆盖写目标文件；父目录自动创建。"""
+    """覆盖写目标文件；上级目录自动创建。"""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
 
@@ -131,7 +131,7 @@ def _write_file(path: Path, content: str) -> None:
 def _emit_segment(caller: Agent, segment: str, origin: Path,
                   output: str, cwd: str | None, *, verb: str) -> str:
     """cut/copy 共用的「区段落目标」步骤：剪贴板（阈值双限，先校验后
-    落盘）或文件（无阈值、覆盖写、父目录自动创建），返回收据文本。"""
+    落盘）或文件（无阈值、覆盖写、上级目录自动创建），返回收据文本。"""
     lines = len(segment.splitlines())
     chars = len(segment)
     if output == "clipboard":
@@ -170,7 +170,7 @@ class ClipboardCutTool(Tool):
       行数超过 ``clipboard_max_lines`` （默认 500）或字符数超过
       ``clipboard_max_chars`` （默认 10k）→ error ``ToolResult``，
       提示改用文件输出。
-    - ``output`` 为文件：绝对路径、覆盖写、父目录自动创建；无阈值
+    - ``output`` 为文件：绝对路径、覆盖写、上级目录自动创建；无阈值
       限制（大段内容走文件正是阈值的存在理由）。
     - 边缘情况：相对路径且无 ``cwd`` / ``cwd`` 非绝对 / 两形态混用 /
       行号或 offset 越界（行号超文件行数、offset 超行尾）/ 路径是目录
