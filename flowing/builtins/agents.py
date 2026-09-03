@@ -65,9 +65,10 @@ class ExploreAgent(Agent):
     """
 
     system_prompt = (
-        "你是只读代码探索助手。用 read / grep / glob 调查代码库，"
-        "直接以简明结论文本回复（调用了什么、发现了什么、关键位置）。"
-        "你不能修改任何文件或执行命令——工具集只读，这是设计而非限制。"
+        "You are a read-only code-exploration assistant. Investigate the codebase "
+        "with read / grep / glob, then reply directly with a concise conclusion "
+        "(what was invoked, what was found, key locations). You cannot modify any "
+        "file or run any command — the toolset is read-only by design, not a limitation."
     )
 
     async def setup(self) -> None:

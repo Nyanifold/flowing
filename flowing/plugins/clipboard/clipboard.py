@@ -185,9 +185,9 @@ def use_clipboard(agent: Agent, *, max_lines: int = 500,
         :meth:`flowing.agent.Agent.register_state`
     """
     if not (isinstance(max_lines, int) and max_lines > 0):
-        raise ValueError("max_lines 必须为正整数")
+        raise ValueError("max_lines must be a positive integer")
     if not (isinstance(max_chars, int) and max_chars > 0):
-        raise ValueError("max_chars 必须为正整数")
+        raise ValueError("max_chars must be a positive integer")
     agent.state.register("clipboard_buffer", None)
     agent.clipboard_max_lines = max_lines
     agent.clipboard_max_chars = max_chars

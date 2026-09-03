@@ -419,7 +419,7 @@ async def test_t54_e2e_name_conflict_via_file_chain(tmp_path):
 def test_glob_at_prefix_requires_project_root(tmp_path):
     """``_expand_glob_entries`` 无 launch 上下文时 ``@/`` glob 显式
     ValueError（不静默退回 cwd——与 ToolRegistry.get 的 @/ 失败姿态一致）。"""
-    with pytest.raises(ValueError, match="launch 上下文"):
+    with pytest.raises(ValueError, match="launch context"):
         _expand_glob_entries(["@/agents/*/"], naming=AGENT_NAMING,
                              source_dir=tmp_path)
 

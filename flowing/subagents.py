@@ -477,7 +477,7 @@ def _entry_params_xml(entry: SubagentEntry, cls: "type[Agent]") -> str:
             new_key = inverse.get(key, key)
             if new_key in renamed:   # 改名撞名 fail-fast（与 tool 侧同口径）
                 raise FormatError(
-                    f"参数别名应用后撞名: {new_key!r}（子 Agent {entry.name_alias}）")
+                    f"parameter alias collision after mapping: {new_key!r} (subagent {entry.name_alias})")
             renamed[new_key] = prop
         props = renamed
         required = {inverse.get(k, k) for k in required}
@@ -545,7 +545,7 @@ def _expand_glob_entries(
                 continue   # 形态错误（含空映射）留给下游 normalize_entries 统一报
             if raw_str.startswith("@/"):
                 raise ValueError(
-                    "@/ 条目展开需要 launch 上下文（project_root 未提供）")
+                    "@/ entry expansion requires a launch context (project_root not provided)")
     root = project_root if project_root is not None else Path.cwd()   # 哑根：@/ 已在上方拒绝
     explicit_items: list[Any] = []
     glob_items: list[tuple[str, dict[str, Any]]] = []   # (模式, body)
