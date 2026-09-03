@@ -68,7 +68,7 @@ async def cmd_run(
     try:
         runtime = await launch(path, main_file=main_file, **kwargs)
     except Exception as exc:
-        print(f"launch 阶段失败：{exc}", file=sys.stderr)
+        print(f"launch failed: {exc}", file=sys.stderr)
         return EXIT_RUNTIME_ERROR
     _install_signal_handlers(runtime)
     await runtime
@@ -146,7 +146,7 @@ async def cmd_test(
     except Exception as exc:
         # main 抛异常 / 项目不可 import / PENDING 检查失败等：stderr 指明
         # 失败发生在 launch 阶段，返回 EXIT_RUNTIME_ERROR
-        print(f"launch 阶段失败：{exc}", file=sys.stderr)
+        print(f"launch failed: {exc}", file=sys.stderr)
         return EXIT_RUNTIME_ERROR
     try:
         snap = runtime.snapshot()
@@ -155,12 +155,12 @@ async def cmd_test(
         # 展开嵌套快照结构，datetime 等经 default=str 兜底
         json.dumps(dataclasses.asdict(snap), default=str)
     except Exception as exc:
-        print(f"快照冒烟断言失败：{exc}", file=sys.stderr)
+        print(f"snapshot smoke-assertion failed: {exc}", file=sys.stderr)
         # 失败路径仍尝试完整 shutdown 后再退出
         try:
             await runtime.shutdown()
         except Exception as shutdown_exc:
-            print(f"shutdown 失败：{shutdown_exc}", file=sys.stderr)
+            print(f"shutdown failed: {shutdown_exc}", file=sys.stderr)
         return EXIT_RUNTIME_ERROR
     await runtime.shutdown()
     return EXIT_OK

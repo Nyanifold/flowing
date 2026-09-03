@@ -62,10 +62,11 @@ class RunWorkflowTool(ScriptTool):
 
     definition: ToolDefinition = ToolDefinition(
         name="run-workflow",
-        description="启动一个编排工作流。参数 path 为 workflow 定义文件路径"
-                    "（@/ 项目根相对），其余参数透传给 Workflow.run()。",
+        description="Launch an orchestration workflow. The path parameter is the workflow "
+                    "definition file path (relative to the @/ project root); remaining "
+                    "arguments are passed through to Workflow.run().",
         params_schema={"path": {"type": "string",
-                                "description": "workflow 定义文件路径"}},
+                                "description": "path of the workflow definition file"}},
         strict=False,   # 其余参数透传给 Workflow.run()
     )
     """类级默认声明：规范名 ``run-workflow``、参数表只含 ``path``、
@@ -240,6 +241,6 @@ class WorkflowPlugin(Plugin):
         """
         if self._runtime is None:
             raise ValueError(
-                "WorkflowPlugin 未注册：请先 runtime.use(WorkflowPlugin()) 再调用 launch")
+                "WorkflowPlugin not registered: call runtime.use(WorkflowPlugin()) before launch")
         workflow_class = resolve_workflow(path)
         return workflow_class(caller=None, runtime=self._runtime)
