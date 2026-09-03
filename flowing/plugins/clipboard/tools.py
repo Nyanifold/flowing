@@ -30,7 +30,7 @@ def _check_enabled(caller: Agent) -> None:
             or not hasattr(caller, "clipboard_max_lines")
             or not hasattr(caller, "clipboard_max_chars")):
         raise ValueError(
-            "剪贴板未启用：请在该 Agent 的 setup() 中调用 use_clipboard(self)")
+            "clipboard is not enabled: call use_clipboard(self) in this Agent's setup()")
 
 
 def _resolve_path(path: str, cwd: str | None, *, what: str) -> Path:
@@ -38,11 +38,11 @@ def _resolve_path(path: str, cwd: str | None, *, what: str) -> Path:
     绝对，相对路径相对它解析。违规抛 ``ValueError`` （经
     ``Tool.__call__`` 包装为 error ``ToolResult``，LLM 可见）。"""
     if cwd is not None and not Path(cwd).is_absolute():
-        raise ValueError(f"cwd 必须是绝对路径: {cwd!r}")
+        raise ValueError(f"cwd must be an absolute path: {cwd!r}")
     p = Path(path)
     if not p.is_absolute():
         if cwd is None:
-            raise ValueError(f"{what} 为相对路径且未提供 cwd 基准: {path!r}")
+            raise ValueError(f"{what} is a relative path and no cwd baseline was provided: {path!r}")
         p = Path(cwd) / p
     return p
 
@@ -64,20 +64,20 @@ def _parse_line_offset(value: str, lines: list[str], offsets: list[int],
     """
     parts = value.split(",")
     if len(parts) != 2:
-        raise ValueError(f"{what} 的 \"line,offset\" 形态非法: {value!r}")
+        raise ValueError(f"invalid \"line,offset\" form for {what}: {value!r}")
     try:
         line_no, offset = int(parts[0]), int(parts[1])
     except ValueError:
         raise ValueError(
-            f"{what} 的 \"line,offset\" 形态非法: {value!r}") from None
+            f"invalid \"line,offset\" form for {what}: {value!r}") from None
     if not 1 <= line_no <= len(lines):
         raise ValueError(
-            f"{what} 行号越界: {line_no}（文件共 {len(lines)} 行）")
+            f"line number out of range for {what}: {line_no} (file has {len(lines)} lines)")
     line_text = lines[line_no - 1].rstrip("\r\n")
     if not 0 <= offset <= len(line_text):
         raise ValueError(
-            f"{what} offset 超行尾: {offset}（第 {line_no} 行长 "
-            f"{len(line_text)} 字符）")
+            f"offset past end of line for {what}: {offset} (line {line_no} has "
+            f"{len(line_text)} chars)")
     return offsets[line_no - 1] + offset
 
 
@@ -95,30 +95,30 @@ def _segment_range(text: str, start: int | str, end: int | str) -> tuple[int, in
         # 合法上限为 行数+1（与 paste 的 pos=行数+1 追加语义同口径）
         if not 1 <= start <= len(lines):
             raise ValueError(
-                f"start 行号越界: {start}（文件共 {len(lines)} 行）")
+                f"start line number out of range: {start} (file has {len(lines)} lines)")
         if not start <= end <= len(lines) + 1:
             raise ValueError(
-                f"end 行号越界或区间倒置: end={end}（start={start}，"
-                f"文件共 {len(lines)} 行）")
+                f"end line number out of range or range reversed: end={end} (start={start}, "
+                f"file has {len(lines)} lines)")
         return offsets[start - 1], offsets[end - 1]
     if isinstance(start, str) and isinstance(end, str):
         abs_start = _parse_line_offset(start, lines, offsets, what="start")
         abs_end = _parse_line_offset(end, lines, offsets, what="end")
         if abs_start > abs_end:
             raise ValueError(
-                f"字符区间倒置: start={start!r} 在 end={end!r} 之后")
+                f"character range reversed: start={start!r} is after end={end!r}")
         return abs_start, abs_end
     raise ValueError(
-        f"start/end 两形态不得混用（int 行号 或 \"line,offset\" 字符串）: "
+        f"start/end must use the same form (either int line numbers or \"line,offset\" strings): "
         f"start={start!r}, end={end!r}")
 
 
 def _read_source(path: Path, *, what: str = "path") -> str:
     """读源文件文本；不存在 / 是目录 → ``ValueError`` （LLM 可自纠正）。"""
     if path.is_dir():
-        raise ValueError(f"{what} 是目录而非文件: {path}")
+        raise ValueError(f"{what} is a directory, not a file: {path}")
     if not path.exists():
-        raise ValueError(f"{what} 不存在: {path}")
+        raise ValueError(f"{what} does not exist: {path}")
     return path.read_text(encoding="utf-8")
 
 
@@ -138,17 +138,17 @@ def _emit_segment(caller: Agent, segment: str, origin: Path,
         # 阈值双限：先校验后落盘——超限时源文件与缓冲均不变
         if lines > caller.clipboard_max_lines or chars > caller.clipboard_max_chars:
             raise ValueError(
-                f"区段过大（{lines} 行 / {chars} 字符，超过剪贴板上限 "
-                f"{caller.clipboard_max_lines} 行 / {caller.clipboard_max_chars} "
-                f"字符）：请改用 output 文件输出")
+                f"segment too large ({lines} lines / {chars} chars, exceeding the clipboard limit of "
+                f"{caller.clipboard_max_lines} lines / {caller.clipboard_max_chars} "
+                f"chars): use file output instead")
         caller.state.clipboard_buffer = {
             "content": segment, "origin_path": str(origin),
             "lines": lines, "chars": chars,
         }
-        return f"已{verb} {lines} 行 / {chars} 字符到剪贴板（来源：{origin}）"
+        return f"{verb} {lines} lines / {chars} chars to clipboard (source: {origin})"
     target = _resolve_path(output, cwd, what="output")
     _write_file(target, segment)
-    return f"已{verb} {lines} 行 / {chars} 字符到文件 {target}"
+    return f"{verb} {lines} lines / {chars} chars to file {target}"
 
 
 class ClipboardCutTool(Tool):
@@ -185,7 +185,7 @@ class ClipboardCutTool(Tool):
         """构造工具定义与内部校验模型（无参数，框架实例化时调用）。"""
         self.definition = ToolDefinition(
             name="clipboard-cut",
-            description="剪切文件区段到剪贴板或文件（源文件删除该段）。",
+            description="Cut a file segment to the clipboard or a file (the segment is removed from the source).",
             params_schema={
                 "path": {"type": "string"},
                 "cwd": {"type": ["string", "null"], "default": None},
@@ -227,7 +227,7 @@ class ClipboardCutTool(Tool):
         segment = text[abs_start:abs_end]
         # 写目标（剪贴板阈值先校验后落盘 / 文件覆盖写）→ 源文件删段
         # （标准剪切语义：写入目标后源文件立即删除该段）
-        receipt = _emit_segment(caller, segment, src, output, cwd, verb="剪切")
+        receipt = _emit_segment(caller, segment, src, output, cwd, verb="cut")
         _write_file(src, text[:abs_start] + text[abs_end:])
         return receipt
 
@@ -247,7 +247,7 @@ class ClipboardCopyTool(Tool):
         """构造工具定义与内部校验模型（无参数，框架实例化时调用）。"""
         self.definition = ToolDefinition(
             name="clipboard-copy",
-            description="复制文件区段到剪贴板或文件（源文件不变）。",
+            description="Copy a file segment to the clipboard or a file (the source file is unchanged).",
             params_schema={
                 "path": {"type": "string"},
                 "cwd": {"type": ["string", "null"], "default": None},
@@ -288,7 +288,7 @@ class ClipboardCopyTool(Tool):
         text = _read_source(src)
         abs_start, abs_end = _segment_range(text, start, end)
         segment = text[abs_start:abs_end]
-        return _emit_segment(caller, segment, src, output, cwd, verb="复制")
+        return _emit_segment(caller, segment, src, output, cwd, verb="copied")
 
 
 class ClipboardPasteTool(Tool):
@@ -318,7 +318,7 @@ class ClipboardPasteTool(Tool):
         """构造工具定义与内部校验模型（无参数，框架实例化时调用）。"""
         self.definition = ToolDefinition(
             name="clipboard-paste",
-            description="把剪贴板或文件内容插入目标文件指定位置。",
+            description="Insert clipboard or file content at a given position in the target file.",
             params_schema={
                 "path": {"type": "string"},
                 "cwd": {"type": ["string", "null"], "default": None},
@@ -359,7 +359,7 @@ class ClipboardPasteTool(Tool):
         if source == "clipboard":
             buffer = caller.state.clipboard_buffer
             if buffer is None:
-                raise ValueError("剪贴板为空：请先 cut/copy 再 paste")
+                raise ValueError("clipboard is empty: run cut/copy before paste")
             content = buffer["content"]
         else:
             content = _read_source(
@@ -372,8 +372,8 @@ class ClipboardPasteTool(Tool):
             # 保持「整行块」语义
             if not 1 <= pos <= len(lines) + 1:
                 raise ValueError(
-                    f"pos 行号越界: {pos}（文件共 {len(lines)} 行，"
-                    f"合法区间 1..{len(lines) + 1}）")
+                    f"pos line number out of range: {pos} (file has {len(lines)} lines, "
+                    f"valid range 1..{len(lines) + 1})")
             block = content if content.endswith("\n") else content + "\n"
             abs_pos = offsets[pos - 1]
             if abs_pos == len(text) and text and not text.endswith("\n"):
@@ -386,9 +386,9 @@ class ClipboardPasteTool(Tool):
             new_text = text[:abs_pos] + content + text[abs_pos:]
         else:
             raise ValueError(
-                f"pos 形态非法（int 行号 或 \"line,offset\" 字符串）: {pos!r}")
+                f"invalid pos form (either an int line number or a \"line,offset\" string): {pos!r}")
         _write_file(target, new_text)
         if source == "clipboard":
             # 一次性语义：仅成功且来源为剪贴板才清空
             caller.state.clipboard_buffer = None
-        return f"已粘贴 {len(content.splitlines())} 行 / {len(content)} 字符到 {target}"
+        return f"pasted {len(content.splitlines())} lines / {len(content)} chars into {target}"

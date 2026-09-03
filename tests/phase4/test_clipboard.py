@@ -68,7 +68,7 @@ async def test_t94_threshold_and_file_output(tmp_path):
         src = write_lines(tmp_path / "big.txt", 600)
         before = src.read_text(encoding="utf-8")
         r = await cut({"path": str(src), "start": 1, "end": 601}, caller=agent)
-        assert r.status == "error" and "剪贴板上限" in r.error
+        assert r.status == "error" and "clipboard limit" in r.error
         assert src.read_text(encoding="utf-8") == before   # 源文件不变
         assert agent.state.clipboard_buffer is None        # 缓冲未写
 
@@ -86,7 +86,7 @@ async def test_t94_threshold_and_file_output(tmp_path):
             small = write_lines(tmp_path / "small.txt", 3)
             r3 = await cut({"path": str(small), "start": 1, "end": 3},
                            caller=agent2)
-            assert r3.status == "error" and "剪贴板上限" in r3.error
+            assert r3.status == "error" and "clipboard limit" in r3.error
             assert small.read_text(encoding="utf-8") == "line1\nline2\nline3\n"
         finally:
             ClipboardAgent.clipboard_kwargs = {}
@@ -131,7 +131,7 @@ async def test_t96_paste_once_semantics(tmp_path):
         assert agent.state.clipboard_buffer is None        # 一次性语义：成功清空
 
         r2 = await paste({"path": str(target), "pos": 1}, caller=agent)
-        assert r2.status == "error" and "剪贴板为空" in r2.error
+        assert r2.status == "error" and "clipboard is empty" in r2.error
 
         # 行内 offset 插入：不改动行结构
         agent.state.clipboard_buffer = {
@@ -161,7 +161,7 @@ async def test_t97_error_paths_no_raise(tmp_path):
 
         # 粘贴 pos 越界 → error，缓冲保留（LLM 可修正重试）
         r = await paste({"path": str(src), "pos": 99}, caller=agent)
-        assert r.status == "error" and "越界" in r.error
+        assert r.status == "error" and "out of range" in r.error
         assert agent.state.clipboard_buffer is not None
         assert src.read_text(encoding="utf-8") == "line1\nline2\nline3\nline4\nline5\n"
 
@@ -238,11 +238,11 @@ async def test_t99_validation_and_disabled_agent(tmp_path):
         for name, args in calls:
             result = await runtime.tool_registry.get(name)(args, caller=plain)
             assert result.status == "error", (name, result)
-            assert "剪贴板未启用" in result.error
+            assert "clipboard is not enabled" in result.error
         # 文件形态 output 同样被启用门拦截（三件工具整体要求启用）
         result = await runtime.tool_registry.get("clipboard-cut")(
             {"path": str(src), "start": 1, "end": 2,
              "output": str(tmp_path / "o.txt")}, caller=plain)
-        assert result.status == "error" and "剪贴板未启用" in result.error
+        assert result.status == "error" and "clipboard is not enabled" in result.error
     finally:
         await plain.destroy()
