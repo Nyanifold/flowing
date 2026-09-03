@@ -59,7 +59,7 @@ async def test_t93_cut_line_and_char_modes(tmp_path):
 
 async def test_t94_threshold_and_file_output(tmp_path):
     """T94：600 行区段 cut 进剪贴板 → 阈值 error 且源文件不变（先校验后
-    落盘）；同内容 output=<文件路径> → 成功（文件输出无阈值），父目录
+    落盘）；同内容 output=<文件路径> → 成功（文件输出无阈值），上级目录
     自动创建。"""
     runtime = make_clipboard_harness(tmp_path)
     agent = await _make_agent(runtime)
@@ -72,7 +72,7 @@ async def test_t94_threshold_and_file_output(tmp_path):
         assert src.read_text(encoding="utf-8") == before   # 源文件不变
         assert agent.state.clipboard_buffer is None        # 缓冲未写
 
-        out = tmp_path / "out" / "seg.txt"   # 父目录不存在 → 自动创建
+        out = tmp_path / "out" / "seg.txt"   # 上级目录不存在 → 自动创建
         r2 = await cut({"path": str(src), "start": 1, "end": 601,
                         "output": str(out)}, caller=agent)
         assert r2.status == "completed", r2
