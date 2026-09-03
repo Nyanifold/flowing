@@ -145,7 +145,7 @@ async def test_t73_subagent_invoke_sync(runtime, provider):
     step1, calls = tool_call_response(
         ("subagent-invoke", {"agent_type": "worker", "prompt": "干活",
                              "name": "w1"}))
-    # 调用序：父（工具调用）→ 子（文本交卷）→ 父（收尾文本）
+    # 调用序：亲节点（工具调用）→ 子（文本交卷）→ 亲节点（收尾文本）
     script_provider(provider, step1, text_response("子结果文本"),
                     text_response("父收尾"))
     result = await agent.query("唤起子代理")
@@ -190,14 +190,14 @@ async def test_t74_subagent_invoke_async(runtime, provider):
         if "工人助手" in _sys_text(context):
             await child_gate.wait()   # 子 Agent 运行段受门控
             return text_response("后台完成")
-        # 父 Agent：第一步唤起（异步），第二步收尾
+        # 亲代 Agent：第一步唤起（异步），第二步收尾
         if not hasattr(gen, "called"):
             gen.called = True
             resp, _ = tool_call_response(
                 ("subagent-invoke", {"agent_type": "worker", "prompt": "后台跑",
                                      "name": "bg", "asynchronized": True}))
             return resp
-        return text_response("父收尾")
+        return text_response("亲代收尾")
 
     provider.generate_fn = gen
     agent = await runtime.create_agent("test-agent")
@@ -245,7 +245,7 @@ async def test_t74_async_creation_failure_is_sync_error(runtime):
 # ---------------------------------------------------------------------------
 
 async def test_t75_explore_agent_readonly(runtime, provider):
-    """75：父 Agent 声明 explore-agent 并经 subagent-invoke 唤起；子 Agent
+    """75：亲代 Agent 声明 explore-agent 并经 subagent-invoke 唤起；子 Agent
     工具目录仅含 read/grep/glob 三个只读工具，结果以 plain 文本回传。"""
     child_contexts = []
 
@@ -259,7 +259,7 @@ async def test_t75_explore_agent_readonly(runtime, provider):
                 ("subagent-invoke", {"agent_type": "explore-agent",
                                      "prompt": "列出 src 下文件", "name": "exp"}))
             return resp
-        return text_response("父收尾")
+        return text_response("亲代收尾")
 
     provider.generate_fn = gen
     agent = await runtime.create_agent("test-agent")
