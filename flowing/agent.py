@@ -58,7 +58,7 @@ state.jsonl）与池 key 保留——「有 key 无 value」可现场恢复。
 Turn 只是逻辑执行阶段：``TurnContext`` 不落盘、不进树、进程崩溃后
 不恢复；恢复 = 重放 ``tree.jsonl`` / ``state.jsonl`` 日志现场重建。
 
-持久化布局：每 Agent 一个 session 目录（``agent_id`` 命名，父子
+持久化布局：每 Agent 一个 session 目录（``agent_id`` 命名，亲子
 平级），内含 ``tree.jsonl`` （消息树）/ ``core.jsonl`` （框架私有核心
 状态）/ ``state.jsonl`` （默认状态袋）与 ``meta.json`` （身份四键，
 Runtime 属主）。物理读写由 :class:`flowing.persistence.FileRecordStore`
@@ -68,7 +68,7 @@ Runtime 属主）。物理读写由 :class:`flowing.persistence.FileRecordStore`
 空间经 ``register_state(name)`` 开启（命名袋，独立文件）。
 
 provide-inject 链：``provide(key, value)`` 在本节点注册值；``inject``
-从当前节点沿父链逐级向根查找（先近后远，终点是 Runtime）；同 key 重复
+从当前节点沿亲代链逐级向根查找（先近后远，终点是 Runtime）；同 key 重复
 ``provide`` 是覆盖更新，查找实时、不缓存；找到根仍未命中抛
 ``MissingProvideError``。敏感信息（API key / 凭证）走本通道——不进消息
 流、不进 LLM 上下文、不落盘。
@@ -318,7 +318,7 @@ class TurnContext:
       追加即附加式注入（排在触发消息之后），清空即空 Turn；批次挂树
       完成后清空，此后读写没有意义。``before_turn`` 被 ``Intercepted``
       阻断时整个批次丢弃——不落盘、不留痕（显式丢失语义）。
-    - ``aborted`` 由 abort 标记路径置位（``abort_turn()`` / 取消 / 父级联
+    - ``aborted`` 由 abort 标记路径置位（``abort_turn()`` / 取消 / 亲节点级联
       / 钩子内直接置位走同一路径）；置位幂等，``before_turn_abort`` 随之
       每回合至多触发一次。``after_turn`` 钩子读 ``aborted`` 区分正常结束
       与取消。
@@ -835,7 +835,7 @@ class Agent:
       阶段。``setup()`` 第一个 ``await`` 之前的代码不被其它协程打断。
     - 不变量：``self.model`` 永远是 ``ModelConfig``；Agent 对模型结构体
       只做持有与机械传递，不解释字段。
-    - 不变量：创建即注册（``_nodes``）；父销毁 → 子递归销毁；destroy
+    - 不变量：创建即注册（``_nodes``）；亲节点销毁 → 子递归销毁；destroy
       后实例不再可用（从 ``_nodes`` 摘除、三正交结构均清空），但 session
       记录保留、可现场恢复。
 
@@ -874,8 +874,8 @@ class Agent:
     推断值 / 来源）；一致时无任何效果。
     """
     description: ClassVar[Parsable]
-    """Agent 的一句话介绍（Parsable），供父 Agent 路由决策与 catalog
-    渲染读取；渲染上下文为父 Agent 实例。可选：缺失 / ``null`` 落
+    """Agent 的一句话介绍（Parsable），供亲代 Agent 路由决策与 catalog
+    渲染读取；渲染上下文为亲代 Agent 实例。可选：缺失 / ``null`` 落
     ``None`` （消费方按空串处理）。普通字符串赋值同样可用（消费方原样
     取文本）。
     """
@@ -961,8 +961,8 @@ class Agent:
     遍历销毁子树。内部 API，不属稳定契约。
     """
     _parent_id: str
-    """父节点 ID 字符串（非对象引用）。双重用途：① 销毁时父 → 子定位；
-    ② provide 链子 → 父上溯（``inject_from``）。创建时绑定、终身不变的
+    """亲节点 ID 字符串（非对象引用）。双重用途：① 销毁时亲节点 → 子定位；
+    ② provide 链子 → 亲节点上溯（``inject_from``）。创建时绑定、终身不变的
     历史事实——根 Agent 指向 Runtime 的 ``node_id`` （``"runtime-0"``）；
     节点存活与否由 ``_nodes`` 在册与否表达，不由本字段。内部 API。
     """
@@ -973,7 +973,7 @@ class Agent:
     """
     child_ids: dict[str, str]
     """语义名 → agent_id 翻译表：``invoke_subagent(resume=...)`` 的按名
-    查找载体——语义名只存在于唤起方（父 Agent）的这张表里，子实例不自
+    查找载体——语义名只存在于唤起方（亲代 Agent）的这张表里，子实例不自
     持名字。只读 property（用户写 → ``AttributeError``）；框架内部写经
     ``_core_state["child_ids"]`` 整表写透落盘。未命名子 Agent（创建时
     ``name=None``）不入表。destroy 不删表项（记录保留，带记忆续接依赖
@@ -1024,7 +1024,7 @@ class Agent:
     消息）；快照投影只在执行期间可见。
     """
     last_result: Any
-    """最近一次逻辑 Turn 的最终产出（文本或 finish 结构化输出）；父
+    """最近一次逻辑 Turn 的最终产出（文本或 finish 结构化输出）；亲代
     Agent 侧由 ``invoke_subagent`` 读取它构造 ``SubagentResult.result``。
     未产生过结果为 ``None``。
 
@@ -1233,7 +1233,7 @@ class Agent:
           定义（子类覆写未标记的同名方法，基类的标记不生效——覆写即覆盖，
           与 Python 方法解析一致）。
         - 最终定义带 ``__flowing_hooks__`` 标记的成员：按绑定方法逐条记录
-          注册，顺序为基类 → 派生类（同名钩子点上父类 handler 先挂）。
+          注册，顺序为基类 → 派生类（同名钩子点上基类 handler 先挂）。
         - 两段式注册：钩子点已存在（核心预填点）→ 立即注册；尚未声明
           （插件点）→ 记入 ``self.hooks._pending_on``，待
           :meth:`flowing.hooks.HookRegistry.declare` 冲刷。``setup()`` 后
@@ -1557,7 +1557,7 @@ class Agent:
         # 幂等守卫（docstring 行为要点：重复调用安全，二次调用「直接返回」）：
         # **本实例**已摘除即二次调用，直接返回——按身份比较而非 id：本 id
         # 可能已被「有 key 无 value → 现场恢复」重建为新实例重新注册，
-        # 旧实例（如父级 _children 里的过期引用）不得再操作已关闭的后端
+        # 旧实例（如亲节点 _children 里的过期引用）不得再操作已关闭的后端
         if self.runtime._nodes.get(self.node_id) is not self:
             return
         for fut in list(self._pending_turns.values()):   # 1. resolve 所有 pending
@@ -2439,7 +2439,7 @@ class Agent:
 
     # ────────────────────────── 消息树手术便捷方法 ─────────────────────────
     # head 的维护收口在 Agent 层：MessageChain 五 op 不移动 current_head_id；
-    # 以下方法把「删除当前 head 时 head 回退到父节点」等策略固定在 Agent 上。
+    # 以下方法把「删除当前 head 时 head 回退到亲节点」等策略固定在 Agent 上。
 
     def remove(self, message_id: str) -> None:
         """删除一条消息；若删的是 ``current_head_id``，head 回退到其
@@ -2471,7 +2471,7 @@ class Agent:
         self.chain.remove(message_id)
 
     def pop(self) -> str | None:
-        """删除 ``current_head_id`` 指向的消息，head 回退到其父节点。
+        """删除 ``current_head_id`` 指向的消息，head 回退到其亲节点。
 
         .. rubric:: 功能介绍
 
@@ -2532,7 +2532,7 @@ class Agent:
         return msg.id
 
     def branch(self, msg: Message, parent_id: str | None = None) -> str:
-        """把一条消息挂到指定父节点下（``None`` = 新根），不移动 head。
+        """把一条消息挂到指定亲节点下（``None`` = 新根），不移动 head。
 
         .. rubric:: 功能介绍
 
@@ -2556,9 +2556,9 @@ class Agent:
 
         .. rubric:: 功能介绍
 
-        先记录当前 head 及其父节点，再透传 :meth:`MessageChain.remove_by_tags`
+        先记录当前 head 及其亲节点，再透传 :meth:`MessageChain.remove_by_tags`
         批量删除；若当前 head 被删除，则把 ``current_head_id`` 回退到它
-        删除前的父节点。其余被删消息不触发 head 变化。
+        删除前的亲节点。其余被删消息不触发 head 变化。
 
         .. rubric:: 行为要点
 
@@ -2784,7 +2784,7 @@ class Agent:
           接收所有返回，不因曾被 cancel 丢弃返回值。
         - cancel 是正常终止不是错误：工具返回部分输出作正常
           ``ToolResult``，Provider 返回空 ``ProviderResponse``——不抛异常。
-        - 级联取消：父只操作自己的执行注册表与回合退出信号，子 Agent 在
+        - 级联取消：亲节点只操作自己的执行注册表与回合退出信号，子 Agent 在
           检查点检测到自己的信号后自行清理——每层只负责自己的执行，无
           中央调度器。
         - 协程（dispatch 钩子）；不接受原因参数（无参）。
@@ -2816,7 +2816,7 @@ class Agent:
         .. rubric:: 行为要点
 
         - 置位 ``_executions`` 全部 abort；Turn 循环照常。
-        - 典型场景：父 Agent 推理到一半想调整方向——终止正在跑的子
+        - 典型场景：亲代 Agent 推理到一半想调整方向——终止正在跑的子
           Agent / 工具，更新提示词，重新发起。
         - 同步方法（不 dispatch 钩子）。
 
@@ -2894,7 +2894,7 @@ class Agent:
         ——不提供别的，只提供「自己
         的 ``node_id`` 作为 ``parent_id``」。可选 ``name`` 为子代起语义
         名（登记进 ``child_ids``，供 ``invoke_subagent(resume=...)`` 按名
-        续接；语义名只存在父侧表中，子实例不自持名字）。
+        续接；语义名只存在亲代侧表中，子实例不自持名字）。
 
         与 :meth:`invoke_subagent` 的分工：本方法不做
         ``SubagentEntry.resolve()``、不经过 ``before_subagent_invoke`` /
@@ -2919,8 +2919,8 @@ class Agent:
           并写透核心袋（整表覆写一行，末行合并防膨胀）；未命名子 Agent
           不入表。
         - 生命周期：调用方自行管理——默认存续（agent 池），显式
-          ``destroy()`` 或随父销毁。
-        - 异常（类型名解析失败 / PENDING 检查失败等）原样上抛，父 Agent
+          ``destroy()`` 或随亲节点销毁。
+        - 异常（类型名解析失败 / PENDING 检查失败等）原样上抛，亲代 Agent
           状态不变。
 
         .. seealso::
@@ -2932,7 +2932,7 @@ class Agent:
         child = await self.runtime.create_agent(
             agent_type, parent_id=self.node_id, **kwargs)   # 直接委托，仅提供 parent_id
         self._children[child.node_id] = child   # 进入生命周期子树（node_id 为 key；创建即注册由 create_agent 管线完成）
-        if name is not None:   # 语义名 -> agent_id 登记并写透（未命名子 Agent 不入表；语义名只存在父侧本表，子实例不自持）
+        if name is not None:   # 语义名 -> agent_id 登记并写透（未命名子 Agent 不入表；语义名只存在亲代侧本表，子实例不自持）
             ids = dict(self.child_ids)   # core 袋唯一真值（D7 property 透传）
             ids[name] = child.node_id
             self._core_state["child_ids"] = ids   # 写透整表进核心袋（末行合并防膨胀）
@@ -2957,7 +2957,7 @@ class Agent:
         - 准备段（同步 await）：按别名查 ``_subagent_entries`` →
           ``SubagentEntry.resolve()`` （LLM args → 完整 kwargs：别名映射 +
           specified 求值 + inject 注入）→ 构造
-          :class:`SubagentInvocation` 并 dispatch 父 Agent 的
+          :class:`SubagentInvocation` 并 dispatch 亲代 Agent 的
           ``before_subagent_invoke`` → 注册 ``Execution(kind="agent")`` →
           新建（内部调 :meth:`create_subagent`）或续接（``resume`` 按
           实例名找池中实例）。此段失败（``Intercepted`` / 校验 / 创建抛
@@ -2991,7 +2991,7 @@ class Agent:
           ``_children``。
         - 子 Agent 注册为 ``Execution(kind="agent")``——``cancel()`` /
           级联取消可命中；子 Agent 被 cancel 的已产出部分结果作为正常
-          产物返回父 Agent：``SubagentResult.subagent_status`` 标
+          产物返回亲代 Agent：``SubagentResult.subagent_status`` 标
           ``"cancelled"``，``result`` 按统一填充规则。
         - 唤起失败（创建 / 校验 / 运行抛异常）原样上抛调用方——无专属
           错误钩子；工具路径由 ``ToolResult(status="error")`` 承载。
@@ -3002,7 +3002,7 @@ class Agent:
           钩子不接 ``Intercepted``——阻断闸在 ``before_subagent_invoke``。
         - 同步交付语义：本方法等待子 Agent 完成后，把改写后的
           ``SubagentResult`` 作为返回值交给调用方；不再另发 SUBAGENT
-          消息入父队列。调用方（通常是同步工具路径）负责把结果放进自己
+          消息入亲代队列。调用方（通常是同步工具路径）负责把结果放进自己
           的返回值 / 树节点，避免同源结果二次入队。
         - 外部代码需要异步执行且不入队时，用
           ``asyncio.create_task(agent.invoke_subagent(...))``——本方法是
@@ -3079,7 +3079,7 @@ class Agent:
                     raise ValueError(invocation.resume)   # 按名未找到 -> 报错
                 child = await self.runtime.get_agent(
                     self.child_ids[invocation.resume])
-                self._children[child.node_id] = child   # 重新进入生命周期子树（父级联销毁恢复生效）
+                self._children[child.node_id] = child   # 重新进入生命周期子树（亲节点级联销毁恢复生效）
             else:
                 child = await self.create_subagent(
                     entry.name_ori, name=invocation.name, **invocation.args)   # 新建路径：规范类型名（别名只存在绑定层；name 登记 child_ids）
@@ -3115,7 +3115,7 @@ class Agent:
         """
         try:
             turn_result = await child.query(invocation.prompt or "")   # 等待产出（prompt 可为 None：纯参数唤起）
-            result = SubagentResult(name_alias=invocation.resume or invocation.name or invocation.alias,   # 语义名只存在父侧
+            result = SubagentResult(name_alias=invocation.resume or invocation.name or invocation.alias,   # 语义名只存在亲代侧
                                     subagent_id=child.node_id,
                                     result=child.last_result,   # 收尾段已写入（resolve waiters 之前，无时序竞争）；finish → dict，普通 → 文本，无产出 → None
                                     subagent_status=turn_result.status)   # 取消/异常信息载体（此前 turn_result 接住未用，自此启用）
@@ -3575,14 +3575,14 @@ class Agent:
           - ``system_prompt`` → ``override_system_prompt``；``str`` 包装为
             :class:`flowing.parsable.Parsable`，``Parsable`` 透传，``_``
             （PENDING）→ 空补丁（视为无覆写）。求值时机：子 Agent 创建时
-            一次，上下文为父 Agent 实例；
+            一次，上下文为亲代 Agent 实例；
           - ``description`` → ``override_description``，同上包装；求值
-            时机：父 Agent 路由决策 / catalog 渲染时，上下文为父 Agent
+            时机：亲代 Agent 路由决策 / catalog 渲染时，上下文为亲代 Agent
             实例；
           - ``args`` → 逐参数判别（规则同 ``add_tool``）：dict 值 →
             ``override_params``；键含 ``as`` → ``param_aliases``；``_`` →
             空补丁；其它值 → ``specified`` （包装 Parsable，
-            ``invoke_subagent()`` 内以父 Agent 实例上下文求值）。差异：
+            ``invoke_subagent()`` 内以亲代 Agent 实例上下文求值）。差异：
             ``inject`` 目标是子 Agent 初始化参数而非 ``execute()`` 参数；
           - ``enabled`` → 布尔原样。
         - 深层块（``$subagents.<alias>.xxx:``）填回先于本方法调用（装配层
@@ -3698,13 +3698,13 @@ class Agent:
         .. rubric:: 功能介绍
 
         统一算法见 :func:`flowing.provide.inject_from`：当前节点
-        ``_provided`` → 父节点 → … → ``Runtime._provided``；都找不到
+        ``_provided`` → 亲节点 → … → ``Runtime._provided``；都找不到
         → ``MissingProvideError(key)``。
 
         .. rubric:: 行为要点
 
         - 上溯沿 UID 链（``runtime.get_node(parent_id)``），节点间不持
-          对象引用；父已销毁 / 摘除时链断 → 按找不到处理。
+          对象引用；亲节点已销毁 / 摘除时链断 → 按找不到处理。
         - 跨层共享的正确机制（args 只向下传一层，inject 沿链自动穿透）。
         - 类型信息不跨节点：``InjectionKey[T]`` 的 ``T`` 是声明侧约定，
           框架不做运行时校验。
