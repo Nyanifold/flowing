@@ -35,7 +35,7 @@
 - 注册的资源：provide key ``communication_key``，其类型参数为
   ``InjectionKey["Communication"]``，键名 ``"communication"``；provide
   到 Runtime 根，消费方式为 ``agent.inject(communication_key)``，沿
-  父链上溯查找；未安装 ``CommPlugin`` 时 inject 抛
+  亲代链上溯查找；未安装 ``CommPlugin`` 时 inject 抛
   :class:`flowing.errors.MissingProvideError`。
 
 - 声明的钩子点：``on_signal`` （``by="comm"``，``match_on="type"``）/
@@ -181,7 +181,7 @@ communication_key: InjectionKey["Communication"] = InjectionKey("communication")
 """全局 ``Communication`` 总线实例在 provide 链上的注入键。
 
 ``CommPlugin.install()`` 以本键 provide 总线实例；``use_comm()`` 与
-应用层经 ``agent.inject(communication_key)`` 消费（沿父链上溯到
+应用层经 ``agent.inject(communication_key)`` 消费（沿亲代链上溯到
 Runtime 根）。
 
 行为要点：
