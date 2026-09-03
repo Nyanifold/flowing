@@ -287,7 +287,7 @@ class Communication:
                 return
             exc = done.exception()
             if exc is not None:
-                _logger.error("comm 后台回调任务异常", exc_info=exc)
+                _logger.error("comm background callback task failed", exc_info=exc)
 
         task.add_done_callback(_finalize)
 
@@ -298,7 +298,7 @@ class Communication:
         try:
             result = handler(envelope)
         except Exception:
-            _logger.exception("comm 端点 %r 的接收回调异常", target)
+            _logger.exception("comm: receive callback for endpoint %r raised", target)
             return
         if inspect.isawaitable(result):
             self._spawn(result)
@@ -552,8 +552,8 @@ class Communication:
             # 端点已注销 → 静默丢弃（回复路径不抛 SignalDeliveryError——
             # 发送方可能已不在，报错无人接收），但 warnings.warn 保持可观测
             warnings.warn(
-                f"comm: reply 目标端点 {target!r} 不存在，回复已丢弃"
-                f"（correlation_id={correlation_id}）",
+                f"comm: reply target endpoint {target!r} does not exist; reply dropped"
+                f" (correlation_id={correlation_id})",
                 stacklevel=2,
             )
             return
@@ -596,7 +596,7 @@ class Communication:
                 result = callback(envelope)
             except Exception:
                 # 容错：单个订阅者异常静默（记日志），不影响其余订阅者与发布者
-                _logger.exception("comm topic %r 的订阅回调异常", topic)
+                _logger.exception("comm: subscribe callback for topic %r raised", topic)
                 continue
             if inspect.isawaitable(result):
                 self._spawn(result)  # fire-and-forget：发布者不等待
@@ -815,8 +815,8 @@ class CommHandle:
             future = self._pending_replies.pop(envelope.correlation_id, None)
             if future is None or future.done():
                 warnings.warn(
-                    f"comm: 收到无匹配 pending future 的回复"
-                    f"（correlation_id={envelope.correlation_id}），已丢弃",
+                    f"comm: received a reply with no matching pending future"
+                    f" (correlation_id={envelope.correlation_id}); dropped",
                     stacklevel=2,
                 )
                 return None
@@ -1203,7 +1203,7 @@ def use_comm(agent: Agent, *, name: str | None = None) -> None:
                 return envelope  # 硬阻断信号：链已停，通信侧无后续动作（dispatch 已记日志）
             except Exception:
                 _logger.exception(  # 记日志不逃逸进事件循环（后台任务路径）
-                    "on_signal dispatch 异常（endpoint=%r, type=%r）",
+                    "on_signal dispatch raised (endpoint=%r, type=%r)",
                     endpoint_id, envelope.type)
                 return envelope
 
@@ -1214,7 +1214,7 @@ def use_comm(agent: Agent, *, name: str | None = None) -> None:
                 return envelope
             except Exception:
                 _logger.exception(
-                    "on_event dispatch 异常（endpoint=%r, topic=%r）",
+                    "on_event dispatch raised (endpoint=%r, topic=%r)",
                     endpoint_id, envelope.topic)
                 return envelope
 

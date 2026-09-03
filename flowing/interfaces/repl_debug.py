@@ -146,20 +146,20 @@ async def cmd_repl_debug(
 
     async def _print_eval_agent(arg: str, agent: Agent | None, runtime: Runtime) -> None:
         if arg == "":
-            print("用法：/eval <expr>")
+            print("usage: /eval <expr>")
             return
         if agent is None:
-            print("未绑定 Agent：无法解析表达式")
+            print("no agent bound: cannot evaluate expression")
             return
         ok, value = _eval_agent(agent, arg)
         print(value)
 
     async def _watch_agent(arg: str, agent: Agent | None, runtime: Runtime) -> None:
         if arg == "":
-            print("用法：/watch <expr>")
+            print("usage: /watch <expr>")
             return
         if agent is None:
-            print("未绑定 Agent：无法解析表达式")
+            print("no agent bound: cannot evaluate expression")
             return
         ok, value = _eval_agent(agent, arg)
         if not ok:
@@ -170,14 +170,14 @@ async def cmd_repl_debug(
 
     async def _print_eval_runtime(arg: str, agent: Agent | None, runtime: Runtime) -> None:
         if arg == "":
-            print("用法：/eval-runtime <expr>")
+            print("usage: /eval-runtime <expr>")
             return
         ok, value = _eval_runtime(runtime, arg)
         print(value)
 
     async def _watch_runtime(arg: str, agent: Agent | None, runtime: Runtime) -> None:
         if arg == "":
-            print("用法：/watch-runtime <expr>")
+            print("usage: /watch-runtime <expr>")
             return
         ok, value = _eval_runtime(runtime, arg)
         if not ok:
@@ -190,7 +190,7 @@ async def cmd_repl_debug(
         for w in watches:
             if w["ctx"] == "agent":
                 if agent is None:
-                    print("未绑定 Agent：无法解析表达式")
+                    print("no agent bound: cannot evaluate expression")
                     continue
                 ok, value = _eval_agent(agent, w["expr"])
             else:

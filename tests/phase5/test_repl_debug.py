@@ -40,12 +40,12 @@ async def test_t29_watch_reprint_on_change(project_ok, persist_dir, monkeypatch,
 
 
 async def test_t30_eval_unbound(project_empty, persist_dir, monkeypatch, capsys):
-    """未绑定，/eval model_tag → 打印「未绑定 Agent：无法解析表达式」。"""
+    """未绑定，/eval model_tag → 打印「no agent bound」。"""
     drive_input(monkeypatch, script_lines("debug-eval.txt"))
     rc = await cmd_repl_debug(str(project_empty), persist=str(persist_dir))
     assert rc == EXIT_OK
     out = capsys.readouterr().out
-    assert "未绑定 Agent：无法解析表达式" in out
+    assert "no agent bound: cannot evaluate expression" in out
     assert not re.search(r"(?m)^default$", out)
 
 
@@ -76,8 +76,8 @@ async def test_t33_empty_expr_usage(project_ok, persist_dir, monkeypatch, capsys
     rc = await cmd_repl_debug(str(project_ok), persist=str(persist_dir))
     assert rc == EXIT_OK
     out = capsys.readouterr().out
-    assert "用法：/eval <expr>" in out
-    assert "用法：/watch <expr>" in out
+    assert "usage: /eval <expr>" in out
+    assert "usage: /watch <expr>" in out
 
 
 async def test_t34_watch_error_retained(project_ok, persist_dir, monkeypatch, capsys):
