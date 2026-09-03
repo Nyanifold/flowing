@@ -440,7 +440,7 @@ class Runtime:
     node_id: str
     """固定为 ``"runtime-0"`` （共享 ID 空间的 ``runtime-`` 前缀；单 Runtime 的
     共享 ID 空间内唯一——一个 Runtime 下不可能有多个 Runtime）；本 Runtime 是
-    inject 链终点与 ``_nodes`` 中所有节点的最终父级，``__init__`` 时自注册为
+    inject 链终点与 ``_nodes`` 中所有节点的最终亲节点，``__init__`` 时自注册为
     ``_nodes`` 首条目。参见 :class:`ProvideNode`。
     """
     runtime: "Runtime"
@@ -661,7 +661,7 @@ class Runtime:
         - 与 :attr:`project_root` 同为构造固化字段；目录是否已建取决于
           构造参数：显式指定即建，缺省（``None``）推迟到首个持久化动作。
         - 供宿主 / 插件 / 子类读取（如向持久化根写入自己的文件）——
-          ``FileRecordStore`` 不自建父目录，写入前目录须已存在。
+          ``FileRecordStore`` 不自建上级目录，写入前目录须已存在。
 
         .. seealso:: :meth:`flowing.runtime.Runtime.create_agent`
             （``session_dir`` 参数）、:attr:`_persist_dir`
@@ -897,7 +897,7 @@ class Runtime:
            不在池注册表与活体表中，重复抛 ``ValueError``；缺省
            ``f"{_id_prefix}-{uuid4()}"``）、``runtime`` 与 ``_parent_id``
            （``parent_id=None`` 翻译为 Runtime 的 ``node_id``——「根」由
-           「父是 Runtime」表达）。目录存在性检查：该 id 不在池 / 活体表
+           「亲节点是 Runtime」表达）。目录存在性检查：该 id 不在池 / 活体表
            但 session 目录已存在 → 抛 ``FileExistsError`` （可能是已归档
            的留档（``archive_agent``）或指定错了 ``session_dir`` /
            ``agent_id``；框架不在此销毁任何内容，由调用方捕获决定——
@@ -943,7 +943,7 @@ class Runtime:
 
         :param agent_type: 字符串类型名（裸名或路径形态，经 ``get_agent_class``
             惰性解析）。
-        :param parent_id: 父节点 id（``None`` = 根节点，内部翻译为 Runtime 的
+        :param parent_id: 亲节点 id（``None`` = 根节点，内部翻译为 Runtime 的
             ``node_id``，inject 链直连链终点；API 层的 ``None`` 只是默认值，
             不落进实例字段与池元数据）。
         :param session_dir: 该 agent 的 session 持久化目录（``tree.jsonl`` /
@@ -1012,11 +1012,11 @@ class Runtime:
                         " session_dir；请检查路径或先删目录")
         instance.node_id = node_id
         instance.runtime = self
-        # None 翻译为 Runtime 的 node_id：「根」由「父是 Runtime」表达，
+        # None 翻译为 Runtime 的 node_id：「根」由「亲节点是 Runtime」表达，
         # _parent_id 字段内不出现 None（inject 链终点可达性的结构保证之一）
         instance._parent_id = parent_id if parent_id is not None else self.node_id
         instance._session_dir = resolved_session   # session 目录（Agent.__init__ 的 _open_stores 使用，骨架期即可知）
-        # 管线负责建 session 目录（FileRecordStore 惰性打开句柄时不建父目录；
+        # 管线负责建 session 目录（FileRecordStore 惰性打开句柄时不建上级目录；
         # 目录存在性检查已过，此处 mkdir 即「创建即注册」的物理侧）
         resolved_session.mkdir(parents=True, exist_ok=True)
         instance.__init__()   # 同步骨架
@@ -1111,10 +1111,10 @@ class Runtime:
            的是翻译后的实际值，直接回绑）、``_session_dir`` （
            ``meta["session_dir"]`` 回绑；缺省 ``persist_dir / agent_id``，
            兼容旧数据）。
-        5. 父链可达性：父在池但不在 ``_nodes`` → 逐级向上
+        5. 亲代链可达性：亲节点在池但不在 ``_nodes`` → 逐级向上
            ``recover_agent(parent_id)`` （到 Runtime 止——inject 上溯依赖
-           父链完整，父缺位会在子恢复后造成 ``MissingProvideError`` 假
-           故障）；父悬空（既不在 ``_nodes`` 也不在池、且非
+           亲代链完整，亲节点缺位会在子恢复后造成 ``MissingProvideError`` 假
+           故障）；亲节点悬空（既不在 ``_nodes`` 也不在池、且非
            ``runtime-0``）→ ``warnings.warn`` 孤儿警告，仍继续恢复本节点
            （运维应跑 ``archive_orphans()`` 清理）。
         6. ``__init__()`` —— 同步骨架，建立持久化后端与 ``_extra``。
@@ -1136,7 +1136,7 @@ class Runtime:
           逻辑 Turn 处理；进行中的逻辑 Turn 不恢复（未持久化消息丢弃，
           撕裂末行丢弃）。
         - 恢复不递归子 agent（子代经「有 key 无 value → 现场恢复」在
-          ``get_agent`` 时惰性重建）；但向上递归父链（见管线第 5 步）。
+          ``get_agent`` 时惰性重建）；但向上递归亲代链（见管线第 5 步）。
         - 不做「半截 Turn 精确续跑」；不校验 ``override_args`` 与创建时
           args 的一致性。
 
@@ -1159,10 +1159,10 @@ class Runtime:
         instance.node_id = agent_id
         instance.runtime = self
         instance._parent_id = meta["parent_agent_id"]   # meta 存的是翻译后实际值（根条目为 Runtime 的 node_id），直接回绑
-        # 父链可达性：父在池但不在 _nodes → 逐级向上 recover_agent(parent_id)
-        # （到 Runtime 止：根条目的父是 runtime-0，在 _nodes 中即终止；inject
-        # 上溯依赖父链完整，父缺位会在子恢复后造成 MissingProvideError 假
-        # 故障）；父悬空（既不在 _nodes 也不在池、且非 runtime-0）→
+        # 亲代链可达性：亲节点在池但不在 _nodes → 逐级向上 recover_agent(parent_id)
+        # （到 Runtime 止：根条目的亲节点是 runtime-0，在 _nodes 中即终止；inject
+        # 上溯依赖亲代链完整，亲节点缺位会在子恢复后造成 MissingProvideError 假
+        # 故障）；亲节点悬空（既不在 _nodes 也不在池、且非 runtime-0）→
         # warnings.warn 孤儿警告，仍继续恢复本节点（不抛错，保持可用性；
         # 运维应跑 archive_orphans() 清理）
         recover_parent = instance._parent_id
@@ -1171,7 +1171,7 @@ class Runtime:
                 await self.recover_agent(recover_parent)
             else:
                 warnings.warn(
-                    f"recover_agent：{agent_id} 的父节点 {recover_parent} 悬空"
+                    f"recover_agent：{agent_id} 的亲节点 {recover_parent} 悬空"
                     "（不在 _nodes 也不在池）——按孤儿继续恢复本节点，inject "
                     "上溯将在断裂处以 MissingProvideError 告终；请经 "
                     "archive_orphans() 清理")
@@ -1179,7 +1179,7 @@ class Runtime:
         if not instance._session_dir.exists():
             # 名录在案但目录缺失：可诊断告警 + 按空 session 容忍（与
             # Agent._restore 的「按空 session 处理并报出可诊断错误」同裁）；
-            # mkdir 使 _restore 的压缩 sync 有落点（FileRecordStore 不建父目录）
+            # mkdir 使 _restore 的压缩 sync 有落点（FileRecordStore 不建上级目录）
             warnings.warn(
                 f"recover_agent：{agent_id} 的 session 目录缺失"
                 f"（{instance._session_dir}）——按空 session 恢复")
@@ -1315,7 +1315,7 @@ class Runtime:
         - 流程：双来源收集子树（池 ``parent_agent_id`` 链——覆盖全部
           Agent 子代，含已 destroy 的池条目；``_nodes`` ``_parent_id``
           链——覆盖在 ``_nodes`` 但不在池的节点，两来源重叠去重）→ 清理
-          各被归档节点的父侧引用（父 Agent 的 ``child_ids`` 条目移除并
+          各被归档节点的亲代侧引用（亲代 Agent 的 ``child_ids`` 条目移除并
           写透）→ 对仍存活的节点 ``await destroy()`` （Agent / Workflow
           各自实现，Workflow 的 destroy 级联其子 Agent）→ 从
           ``_agent_pool`` 与 ``core`` 名录移除（写透；不在池的节点
@@ -1357,7 +1357,7 @@ class Runtime:
             for nid, node in self._nodes.items():
                 if nid not in to_archive and getattr(node, "_parent_id", None) == cur:
                     stack.append(nid)
-        # 2. 清理父侧 child_ids（父为活 Agent 时，写透整表）——archive 是显式
+        # 2. 清理亲代侧 child_ids（亲节点为活 Agent 时，写透整表）——archive 是显式
         #    遗忘通道，对「child_ids 只增不改」的受控例外；child_ids 核心键
         #    在 core 袋（property 透传），读经 parent.child_ids、写经
         #    _core_state 整表写
@@ -1394,29 +1394,29 @@ class Runtime:
         .. rubric:: 功能介绍
 
         框架核心层方法。枚举 ``_agent_pool`` 中 ``parent_agent_id`` 悬空
-        的 Agent 条目（父 id 既不在 ``_nodes`` 也不在 ``_agent_pool``），
+        的 Agent 条目（亲节点 id 既不在 ``_nodes`` 也不在 ``_agent_pool``），
         对每个经 :meth:`archive_agent` 递归归档（孤儿自身可能还有子树，
         一并清除）。返回全部被归档的 ``node_id`` 列表。
 
-        孤儿从何而来：父节点可能不持久化（如 Workflow 运行状态不落盘、
+        孤儿从何而来：亲节点可能不持久化（如 Workflow 运行状态不落盘、
         崩溃后节点消失），而子 Agent 走标准创建管线持久化入池——崩溃重启
-        后子条目 ``parent_agent_id`` 悬空。正常关闭路径由父节点自身的
+        后子条目 ``parent_agent_id`` 悬空。正常关闭路径由亲节点自身的
         ``destroy()`` 级联处理；崩溃路径无法执行级联，由本方法在恢复后
         运维清理。
 
         .. rubric:: 行为要点
 
         - 悬空判定：``parent_agent_id`` 非空，且不在 ``self._nodes`` 也
-          不在 ``self._agent_pool``。根节点（父为 ``runtime-0``，在
-          ``_nodes`` 中）、活 Workflow 子代（父在 ``_nodes``）、父在池的
+          不在 ``self._agent_pool``。根节点（亲节点为 ``runtime-0``，在
+          ``_nodes`` 中）、活 Workflow 子代（亲节点在 ``_nodes``）、亲节点在池的
           条目均不判定为孤儿。
         - 每个孤儿经 :meth:`archive_agent` 递归归档（含其子树）；孤儿之间
-          无父子重叠（子条目因父在池而不入选），归档安全。
+          无亲子重叠（子条目因亲节点在池而不入选），归档安全。
         - 无孤儿 → 返回空列表（可随时调用）。
-        - 不校验「parent 悬空」是否确由崩溃造成（也可能是父被归档后的
-          残留——归档父本就递归含子，正常路径不产生，但本方法不区分来源，
+        - 不校验「parent 悬空」是否确由崩溃造成（也可能是亲节点被归档后的
+          残留——归档亲节点本就递归含子，正常路径不产生，但本方法不区分来源，
           一律清理）。
-        - 与 ``recover_agent`` 的关系：恢复遇孤儿父只 ``warnings.warn``
+        - 与 ``recover_agent`` 的关系：恢复遇孤儿亲节点只 ``warnings.warn``
           警告、继续恢复本节点，不自动归档——归档是显式运维动作，由本
           方法承载。
 
@@ -1485,7 +1485,7 @@ class Runtime:
         .. rubric:: 功能介绍
 
         ``ProvideNode`` 协议实现，等价于 ``inject_from(self, self, key)``
-        ——Runtime 没有父节点，查找即终点，只查根级注入存储。
+        ——Runtime 没有亲节点，查找即终点，只查根级注入存储。
 
         .. rubric:: 使用示例
 
@@ -1507,7 +1507,7 @@ class Runtime:
         .. seealso:: :func:`flowing.runtime.inject_from`、
             :exc:`flowing.errors.MissingProvideError`
         """
-        result: T = inject_from(self, self, key)   # 链终点查找（Runtime 无父节点）
+        result: T = inject_from(self, self, key)   # 链终点查找（Runtime 无亲节点）
         return result
 
     def get_config(self, key: str | ConfigKey[T], default: T | None = None) -> T | None:
@@ -1865,7 +1865,7 @@ class Runtime:
             return keys is None or name in keys   # None 收集全部切面；指定时只收集指定字段（其余为 None）
 
         # nodes：_nodes 的 NodeInfo 只读投影（类型取共享 ID 空间前缀——
-        # runtime-/agent-/workflow-；parent_id 对 Runtime 自身为 None——链终点无父）
+        # runtime-/agent-/workflow-；parent_id 对 Runtime 自身为 None——链终点无亲节点）
         nodes: dict[str, NodeInfo] | None = None
         if _want("nodes"):
             nodes = {
@@ -2390,7 +2390,7 @@ class Runtime:
           目录组织走标准 Python 包机制 + ``register_agent_type``）。
         - 文件解析产物的命名空间从所在目录派生（``@/`` 下相对、根外绝对，
           文件夹式取上层目录），仅作内部身份标识，引用写法不变。
-        - 两级惰性：父 Agent 实例化时只记元信息，创建 / invoke 时才加载类。
+        - 两级惰性：亲代 Agent 实例化时只记元信息，创建 / invoke 时才加载类。
 
         .. rubric:: 行为要点
 
