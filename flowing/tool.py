@@ -2099,7 +2099,7 @@ def _mcp_input_schema_to_params(input_schema: "dict[str, Any] | None") -> dict[s
     内部 API。两点归一：
 
     - property 键裁剪到 :data:`flowing.params.SCHEMA_KEYWORDS` 子集——
-      FastMCP / pydantic 生成的 inputSchema 带 ``title`` 等超子集键，
+      MCPServer 等服务端生成的 inputSchema 带 ``title`` 等超子集键，
       不裁剪会在 ``schema_to_model`` 桥接时炸 ``FormatError``；
     - required 口径对齐（框架以 ``default`` 有无派生）：``required``
       列表之外的 property 若无 ``default`` 补 ``default=None``——否则
@@ -2271,24 +2271,26 @@ class McpTool(Tool):
                     await session.initialize()
                     yield session
         else:
-            import httpx
             from mcp.client import streamable_http as _streamable_http
 
-            # mcp 1.29 起更名 streamable_http_client 且 headers 改经
-            # http_client 传入（旧名 headers 形态 deprecated 告警）；兼容更早
-            # 的 1.x 回退旧名
-            client_fn = getattr(_streamable_http, "streamable_http_client", None)
-            if client_fn is not None:
-                async with httpx.AsyncClient(
-                        headers=self.headers) as http_client:
-                    async with client_fn(
-                            self.url, http_client=http_client) as (read, write, _get_sid):
+            # mcp 2.x：headers 不再作 transport 级参数，须配置在自建的
+            # httpx2.AsyncClient 上（SDK 文档口径：follow_redirects=True，
+            # 长活 GET 流需 Timeout(30, read=300)）；无 headers 时省略
+            # http_client，用 SDK 内置默认客户端（同口径超时）。
+            if self.headers:
+                import httpx2
+
+                async with httpx2.AsyncClient(
+                        headers=self.headers, follow_redirects=True,
+                        timeout=httpx2.Timeout(30, read=300)) as http_client:
+                    async with _streamable_http.streamable_http_client(
+                            self.url, http_client=http_client) as (read, write):
                         async with ClientSession(read, write) as session:
                             await session.initialize()
                             yield session
             else:
-                async with _streamable_http.streamablehttp_client(
-                        self.url, headers=self.headers) as (read, write, _get_sid):
+                async with _streamable_http.streamable_http_client(
+                        self.url) as (read, write):
                     async with ClientSession(read, write) as session:
                         await session.initialize()
                         yield session
@@ -2330,7 +2332,7 @@ class McpTool(Tool):
             if self.tools is not None and server_tool.name not in self.tools:
                 continue   # tools 子集之外的工具不暴露
             override = (self.overrides or {}).get(server_tool.name) or {}
-            params = _mcp_input_schema_to_params(server_tool.inputSchema)
+            params = _mcp_input_schema_to_params(server_tool.input_schema)
             if "args" in override:
                 params = apply_param_overrides(params, override["args"])
             definition = ToolDefinition(
@@ -2338,7 +2340,7 @@ class McpTool(Tool):
                 description=override.get("description",
                                          server_tool.description or ""),
                 params_schema=params,
-                output_schema=server_tool.outputSchema)   # 自动填入（存储、随声明携带）
+                output_schema=server_tool.output_schema)   # 自动填入（存储、随声明携带）
             tool = McpTool(
                 definition=definition, command=self.command, args=self.args,
                 env=self.env, url=self.url, headers=self.headers)
@@ -2366,12 +2368,12 @@ class McpTool(Tool):
         async with self._connect() as session:
             result = await session.call_tool(self._server_tool_name,
                                              arguments=kwargs)
-        if result.isError:
+        if result.is_error:
             text = "".join(getattr(block, "text", "") for block in result.content)
             raise RuntimeError(
                 f"MCP 工具 {self._server_tool_name} 服务端返回错误: {text}")
-        if result.structuredContent is not None:
-            return result.structuredContent
+        if result.structured_content is not None:
+            return result.structured_content
         texts = [block.text for block in result.content
                  if getattr(block, "text", None) is not None]
         if not texts:

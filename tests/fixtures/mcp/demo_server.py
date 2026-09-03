@@ -1,4 +1,4 @@
-"""自研 demo MCP server（官方 ``mcp`` SDK FastMCP）——McpTool 测试服务端。
+"""自研 demo MCP server（官方 ``mcp`` SDK MCPServer）——McpTool 测试服务端。
 
 阶段 3 边界：全部连接仅本地回环 / 本地子进程，不接外部真实 MCP 服务器。
 
@@ -8,7 +8,7 @@
     python demo_server.py sse <port>       # SSE @ 127.0.0.1:<port>/sse
     python demo_server.py http <port>      # streamable HTTP @ 127.0.0.1:<port>/mcp
 
-暴露两个工具（``create-issue`` 带结构化输出——FastMCP 自动生成
+暴露两个工具（``create-issue`` 带结构化输出——MCPServer 自动生成
 ``outputSchema``，供「自动填 output_schema」断言）：
 
 - ``create-issue(title, body="")`` → dict（issue_id/title/body/url）
@@ -19,10 +19,10 @@ from __future__ import annotations
 
 import sys
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 _port = int(sys.argv[2]) if len(sys.argv) > 2 else 0
-mcp = FastMCP("demo-github", host="127.0.0.1", port=_port)
+mcp = MCPServer("demo-github")
 
 
 @mcp.tool(name="create-issue")
@@ -41,4 +41,8 @@ def list_prs(state: str = "open") -> list[dict]:
 
 if __name__ == "__main__":
     mode = sys.argv[1] if len(sys.argv) > 1 else "stdio"
-    mcp.run(transport={"http": "streamable-http"}.get(mode, mode))
+    transport = {"http": "streamable-http"}.get(mode, mode)
+    if transport == "stdio":
+        mcp.run(transport="stdio")
+    else:
+        mcp.run(transport=transport, host="127.0.0.1", port=_port)
