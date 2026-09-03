@@ -594,7 +594,7 @@ async def test_g11_subagent_invoke_background_failure(tmp_path):
                 ("subagent-invoke", {"agent_type": "worker", "prompt": "干活",
                                      "name": "w1", "asynchronized": True}))
             return resp
-        return text_response("父收尾")
+        return text_response("亲代收尾")
 
     provider.generate_fn = gen
     try:
