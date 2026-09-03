@@ -287,7 +287,7 @@ async def test_t101_resources(tmp_path):
 
 
 async def test_t102_provide_inject_chain(tmp_path):
-    """T102：链终点兜底 / 覆盖即刻可见 / 祖父穿透中间层 / 链底无则 MissingProvideError。"""
+    """T102：链终点兜底 / 覆盖即刻可见 / 祖先穿透中间层 / 链底无则 MissingProvideError。"""
     runtime = make_runtime(tmp_path)
     add_fake_provider(runtime)
     runtime.provide("k", 1)
@@ -295,7 +295,7 @@ async def test_t102_provide_inject_chain(tmp_path):
     assert agent.inject("k") == 1   # 链终点兜底
     runtime.provide("k", 2)
     assert agent.inject("k") == 2   # 覆盖更新即刻可见
-    # 祖父 provide 穿透中间层命中
+    # 祖先 provide 穿透中间层命中
     child = await agent.create_subagent("test-agent", name="c")
     grandchild = await child.create_subagent("test-agent", name="g")
     runtime.provide("deep", "root-value")
@@ -555,18 +555,18 @@ async def test_t112_recover_hook_pairs_not_mixed(tmp_path):
 
 
 async def test_t113_recover_parent_chain(tmp_path):
-    """T113：父在池不在 _nodes → 逐级向上恢复到 Runtime 止；父悬空 → 孤儿警告不抛。"""
+    """T113：亲节点在池不在 _nodes → 逐级向上恢复到 Runtime 止；亲节点悬空 → 孤儿警告不抛。"""
     runtime = make_runtime(tmp_path)
     add_fake_provider(runtime)
     parent = await runtime.create_agent("test-agent")
     child = await parent.create_subagent("test-agent", name="c")
-    await parent.destroy()   # 级联销毁：父子实例均丢、池 key 保留
+    await parent.destroy()   # 级联销毁：亲子实例均丢、池 key 保留
     assert parent.node_id not in runtime._nodes
     assert child.node_id not in runtime._nodes
     recovered = await runtime.recover_agent(child.node_id)
-    assert parent.node_id in runtime._nodes   # 父链逐级恢复（R14）
+    assert parent.node_id in runtime._nodes   # 亲代链逐级恢复（R14）
     assert recovered._parent_id == parent.node_id
-    # 父悬空（不在 _nodes 也不在池、非 runtime-0）→ 孤儿警告，继续恢复本节点
+    # 亲节点悬空（不在 _nodes 也不在池、非 runtime-0）→ 孤儿警告，继续恢复本节点
     ghost_child = await runtime.create_agent("test-agent", parent_id="ghost-parent")
     await ghost_child.destroy()
     with pytest.warns(UserWarning, match="悬空"):
