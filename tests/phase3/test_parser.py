@@ -107,7 +107,7 @@ class TestSplitFya:
         """清单 5：下标段块头 ``$tools[0].x:`` → FormatError（取负例 3 切片）。"""
         marker = "$tools[0].x:"
         frag = bad_syntax_text[bad_syntax_text.index(marker):]
-        with pytest.raises(FormatError, match="非法块头"):
+        with pytest.raises(FormatError, match="invalid block header"):
             split_fya("---\n" + frag)
 
 

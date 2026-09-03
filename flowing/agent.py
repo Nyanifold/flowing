@@ -1358,17 +1358,17 @@ class Agent:
         .. seealso:: :attr:`state`、:class:`flowing.persistence.StateView`
         """
         if backend != "file":
-            raise ValueError(f"register_state backend 仅支持 'file': {backend!r}")
+            raise ValueError(f"register_state backend only supports 'file': {backend!r}")
         existing = self._state_bags.get(name)
         if existing is not None:
             return existing   # 幂等：同 name → 同视图
         # name 校验：合法文件名（无路径分隔符 / ..）；不与保留文件重名
         if not name or name in ("state", "core", "tree", "meta"):
             raise ValueError(
-                f"状态空间名不可用: {name!r}（空名 / 保留名 state/core/tree/meta）")
+                f"state namespace name is unavailable: {name!r} (empty or reserved name state/core/tree/meta)")
         if "/" in name or "\\" in name or ".." in Path(name).parts:
             raise ValueError(
-                f"状态空间名不得含路径分隔符或 ..: {name!r}")
+                f"state namespace name must not contain path separators or ..: {name!r}")
         view = StateView(FileRecordStore(
             self._session_dir / f"{name}.jsonl", merge_last_line=True))
         # 即时恢复：重放持久值进 _persisted（开空间即恢复）
@@ -1631,7 +1631,7 @@ class Agent:
         #    目标可缺失）跳过容忍——不当作 corruption）
         if not self._session_dir.exists():
             # 池元数据与目录不一致：按空 session 处理 + 可诊断告警
-            _logger.warning("agent %s: session 目录不存在，按空 session 恢复: %s",
+            _logger.warning("agent %s: session dir missing; restoring with an empty session: %s",
                             self.node_id, self._session_dir)
         order: list[str] = []   # 消息行序（head 推导：最后一条存活的已挂树消息）
         for record in list(self._tree_store.replay()):   # replay 是惰性生成器——显式消费
@@ -1692,8 +1692,8 @@ class Agent:
                 kind=MessageKind.TOOL, tool_call_id=call_id,
                 tool_status="error", synthetic=True,
                 content=[TextBlock(
-                    text=f"工具调用 {call_id} 的结果缺失（工具执行中崩溃），"
-                         "恢复时合成的占位消息。")])
+                    text=f"tool call {call_id} result is missing (the tool crashed mid-execution), "
+                         "placeholder message synthesized on restore.")])
             placeholder.parent_id = provider_id
             # insert 式挂树（纯内存，不落盘——下次恢复以同一确定性 id 重新
             # 合成，语义幂等且 parent 链自愈）：provider 消息的既有直接子消息
@@ -2183,18 +2183,18 @@ class Agent:
         models_path = getattr(self.runtime, "_models_path", None)
         if tags_path is None or models_path is None:
             raise FlowingError(
-                f"模型标签 {tag!r} 无法解析：Runtime 未登记 model-tags/models "
-                "来源路径（_model_tags_path / _models_path）")
+                f"model tag {tag!r} cannot be resolved: Runtime has no registered model-tags/models "
+                "source paths (_model_tags_path / _models_path)")
         tags = load_model_tags(Path(tags_path))
         entry_name = tags.get(tag) or tags.get("default")
         if entry_name is None:
             raise FlowingError(
-                f"模型标签 {tag!r} 未定义且 model-tags 缺 default 兜底")
+                f"model tag {tag!r} is undefined and model-tags has no default fallback")
         models = load_models(Path(models_path))
         config = models.get(entry_name)
         if config is None:
             raise FlowingError(
-                f"模型标签 {tag!r} 指向的模型条目 {entry_name!r} 不在 models 表中")
+                f"model tag {tag!r} points to model entry {entry_name!r} which is not in the models table")
         return config
 
     async def provider_gen(
@@ -3292,7 +3292,7 @@ class Agent:
             # strict=False 工具不施加本拒绝（工具层不限制参数，未知键
             # 原样放行进入下方聚合，由下游自行校验）
             raise _LlmViewValidationError(
-                f"工具 {entry.name_alias!r} 收到未定义参数: {unknown}")
+                f"tool {entry.name_alias!r} received undefined parameters: {unknown}")
         # 2. 别名映射 -> specified 求值覆盖（固定值/注入表达式；注入表达式
         #    求值时经 self.inject 沿 provide 链上溯）
         resolved = entry.resolve(self, tool_call.args, tool.definition.params_schema)
@@ -3465,7 +3465,7 @@ class Agent:
         # 第 0 步：归一为 EntryRef（唯一构造通道 = normalize_entries）
         if isinstance(name, EntryRef):
             if alias is not None or body is not None:   # 与 ref 自带字段重复 -> 笔误
-                raise FormatError("EntryRef 与 alias/body 不可同传")
+                raise FormatError("EntryRef and alias/body cannot be given together")
             ref = name
         else:
             item = {f"{name} as {alias}" if alias is not None else name: body or {}}
@@ -3493,7 +3493,7 @@ class Agent:
                 override_description = _as_parsable_patch(body_val)
             elif body_key == "args":
                 if not isinstance(body_val, Mapping):
-                    raise FormatError(f"工具覆写 args 必须是映射: {body_val!r}")
+                    raise FormatError(f"tool override args must be a mapping: {body_val!r}")
                 _classify_override_args(body_val, override_params, specified, param_aliases)
             elif body_key == "output":
                 # 独立判别分支（B 方案）：「字段名 -> JSON Schema 定义」映射
@@ -3503,13 +3503,13 @@ class Agent:
                 # apply_param_overrides 的 property->patch 形态不一致，按行为
                 # 规约正文「逐字段并入 override_params」落实（不套 schema 键）
                 if not isinstance(body_val, Mapping):
-                    raise FormatError(f"工具覆写 output 必须是映射: {body_val!r}")
+                    raise FormatError(f"tool override output must be a mapping: {body_val!r}")
                 for field_name, field_def in body_val.items():
                     override_params[field_name] = dict(field_def)
             elif body_key == "enabled":
                 enabled = bool(body_val)
             else:
-                raise FormatError(f"工具覆写体含未知键: {body_key!r}")
+                raise FormatError(f"tool override body contains unknown key: {body_key!r}")
         entry = ToolEntry(
             name_alias=key,
             name_ori=name_ori,
@@ -3610,7 +3610,7 @@ class Agent:
         # 第 0 步：归一为 EntryRef（唯一构造通道 = normalize_entries）
         if isinstance(name, EntryRef):
             if alias is not None or body is not None:
-                raise FormatError("EntryRef 与 alias/body 不可同传")
+                raise FormatError("EntryRef and alias/body cannot be given together")
             ref = name
         else:
             from flowing.runtime import AGENT_NAMING   # 局部 import 破环（agent ↔ runtime）
@@ -3641,12 +3641,12 @@ class Agent:
                 override_description = _as_parsable_patch(body_val)
             elif body_key == "args":
                 if not isinstance(body_val, Mapping):
-                    raise FormatError(f"子 Agent 覆写 args 必须是映射: {body_val!r}")
+                    raise FormatError(f"subagent override args must be a mapping: {body_val!r}")
                 _classify_override_args(body_val, override_params, specified, param_aliases)
             elif body_key == "enabled":
                 enabled = bool(body_val)
             else:
-                raise FormatError(f"子 Agent 覆写体含未知键: {body_key!r}")   # 含 Tool 面 output 键
+                raise FormatError(f"subagent override body contains unknown key: {body_key!r}")   # 含 Tool 面 output 键
         entry = SubagentEntry(
             name_alias=key,
             name_ori=name_ori,

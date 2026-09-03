@@ -227,7 +227,7 @@ def parse_fya(
         if name in fields:
             items = fields[name]
             if not isinstance(items, list):
-                raise FormatError(f"资源列表字段 {name!r} 必须是 YAML 列表")
+                raise FormatError(f"resource list field {name!r} must be a YAML list")
             fields[name] = normalize_entries(items, naming=naming)
     return FyaDocument(fields=fields, blocks=raw.blocks, script=raw.script)
 
@@ -292,23 +292,23 @@ def split_fya(text: str) -> RawFya:
     for idx, sep_i in enumerate(sep):
         body_start = sep_i + 2   # 块头行之后
         if sep_i + 1 >= len(lines):
-            raise FormatError(f"块分隔符 --- 后缺少块头（第 {sep_i + 1} 行）")
+            raise FormatError(f"block header missing after the --- separator (line {sep_i + 1})")
         header = lines[sep_i + 1].rstrip("\r\n")
         m = _BLOCK_HEADER_PATTERN.match(header)
         if m is None:
             raise FormatError(
-                f"非法块头（第 {sep_i + 2} 行）: {header!r}"
-                "——须为 $<点分路径>:（段字符集 [A-Za-z0-9_-]，无下标段）")
+                f"invalid block header (line {sep_i + 2}): {header!r}"
+                " — must be $<dotted path>: (segment charset [A-Za-z0-9_-], no index segments)")
         path = m.group(1)
         body_end = sep[idx + 1] if idx + 1 < len(sep) else len(lines)
         body = "".join(lines[body_start:body_end])   # 原文保留（不去缩进/尾部换行）
         if path == "script":
             if script is not None:
-                raise FormatError("$script 块出现多次")
+                raise FormatError("the $script block appears more than once")
             script = body
         else:
             if path in blocks:
-                raise FormatError(f"块路径重复: ${path}:")
+                raise FormatError(f"duplicate block path: ${path}:")
             blocks[path] = body
     return RawFya(yaml_text=yaml_text, blocks=blocks, script=script)
 
@@ -364,7 +364,7 @@ def load_fya_yaml(text: str) -> dict[str, Any]:
     try:
         data = YAML(typ="safe").load(text)
     except YAMLError as exc:
-        raise FormatError(f".fya 顶层 YAML 语法错误:\n{exc}") from exc
+        raise FormatError(f".fya top-level YAML syntax error:\n{exc}") from exc
     if data is None:
         return {}
     if not isinstance(data, dict):
@@ -375,8 +375,8 @@ def load_fya_yaml(text: str) -> dict[str, Any]:
             1,
         )
         raise FormatError(
-            f".fya 顶层必须是映射（mapping），实际为 "
-            f"{type(data).__name__}（第 {first} 行起）")
+            f".fya top level must be a mapping, got "
+            f"{type(data).__name__} (starting at line {first})")
     return _map_pending(data)
 
 
@@ -432,11 +432,11 @@ def split_as(s: str) -> tuple[str, str | None]:
     """
     parts = _AS_PATTERN.split(s)
     if len(parts) > 2:
-        raise FormatError(f"条目中出现多个 as: {s!r}")
+        raise FormatError(f"multiple as in one entry: {s!r}")
     ref = parts[0].strip()
     alias = parts[1].strip() if len(parts) == 2 else None
     if not ref or (alias is not None and not alias):
-        raise FormatError(f"as 两侧不能为空: {s!r}")
+        raise FormatError(f"both sides of as must be non-empty: {s!r}")
     return ref, alias
 
 
@@ -516,19 +516,19 @@ def normalize_entries(
             ref_str, body = item, {}
         elif isinstance(item, Mapping):
             if len(item) != 1:
-                raise FormatError(f"条目必须是单键映射: {item!r}")
+                raise FormatError(f"entry must be a single-key mapping: {item!r}")
             ref_str, body = next(iter(item.items()))
             if body is PENDING:
                 body = {}   # 覆写位 PENDING = 空补丁语义
             elif not isinstance(body, Mapping):
-                raise FormatError(f"覆写集合必须是映射或 _（PENDING）: {item!r}")
+                raise FormatError(f"override set must be a mapping or _ (PENDING): {item!r}")
         else:
             if item is PENDING:
                 # 列表项 PENDING：无别名无法被深层块寻址，永远无法兑现
-                raise FormatError("列表项不允许为 _（PENDING）")
-            raise FormatError(f"条目必须是字符串或单键映射: {item!r}")
+                raise FormatError("list items may not be _ (PENDING)")
+            raise FormatError(f"entry must be a string or a single-key mapping: {item!r}")
         if not isinstance(ref_str, str):
-            raise FormatError(f"条目引用必须是字符串: {ref_str!r}")
+            raise FormatError(f"entry reference must be a string: {ref_str!r}")
         # 2. as 切分
         raw, alias = split_as(ref_str)
         # 3. 形态判别（路径前缀优先；否则按第一个 :: 为限定名）
@@ -542,7 +542,7 @@ def normalize_entries(
             else:   # 路径形态：经 infer_name 推断（naming 必传）
                 if naming is None:
                     raise FormatError(
-                        f"路径形态条目的别名推断需要 naming 规则表: {raw!r}")
+                        f"alias inference for path-form entries requires a naming rule table: {raw!r}")
                 alias = infer_name(raw, naming=naming)
         refs.append(EntryRef(raw=raw, alias=alias, body=body))
     return refs
