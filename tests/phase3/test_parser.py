@@ -100,7 +100,7 @@ class TestSplitFya:
 
     def test_t04_duplicate_block_path(self, bad_syntax_text):
         """清单 4：两个同名 $x: 块 → FormatError。"""
-        with pytest.raises(FormatError, match="重复"):
+        with pytest.raises(FormatError, match="duplicate block path"):
             split_fya(bad_syntax_text)
 
     def test_t05_subscript_segment_forbidden(self, bad_syntax_text):
@@ -128,7 +128,7 @@ class TestLoadFyaYaml:
     def test_t08_top_level_list_rejected_with_line(self, bad_syntax_text):
         """清单 8：顶层为列表 → FormatError，报文含行号（取负例 1 的 YAML 段）。"""
         head = bad_syntax_text.split("\n---\n")[0]
-        with pytest.raises(FormatError, match="第 4 行"):
+        with pytest.raises(FormatError, match="line 4"):
             load_fya_yaml(head)
 
     def test_yaml_syntax_error_wraps_with_line(self):
