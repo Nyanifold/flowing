@@ -36,7 +36,7 @@ Turn 引擎中有硬编码调用点，Skill 完全复用 Tool 机制）。
 
   - provide key：:data:`skill_registry_key` （``InjectionKey["SkillRegistry"]``，
     键名 ``"skill_registry"``），provide 到 Runtime 根；消费方式
-    ``agent.inject(skill_registry_key)`` （沿父链上溯）；未安装
+    ``agent.inject(skill_registry_key)`` （沿亲代链上溯）；未安装
     ``SkillPlugin`` 时 inject 抛
     :class:`flowing.errors.MissingProvideError`。
   - 工具注册：:class:`SkillLoadTool` （``skill-load``）注册进 Runtime

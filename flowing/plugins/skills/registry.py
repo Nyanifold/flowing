@@ -33,7 +33,7 @@ skill_registry_key: InjectionKey["SkillRegistry"] = InjectionKey("skill_registry
 
 ``SkillPlugin.install()`` 以该键把注册表 provide 到 Runtime 根（键名
 为 ``"skill_registry"``）；``use_skill()`` 经
-``agent.inject(skill_registry_key)`` 消费（沿父链上溯，命中 Runtime
+``agent.inject(skill_registry_key)`` 消费（沿亲代链上溯，命中 Runtime
 根级存储）。
 
 .. rubric:: 行为要点
