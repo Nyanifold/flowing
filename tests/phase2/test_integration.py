@@ -328,7 +328,7 @@ async def test_t128_three_tier_forgetting(tmp_path):
 
 
 async def test_t129_provide_inject_chain_climbing(tmp_path):
-    """T129 / A6：Runtime → 根 → 子 → 孙逐层命中与穿透；父 destroy 后
+    """T129 / A6：Runtime → 根 → 子 → 孙逐层命中与穿透；亲节点 destroy 后
     链断处 MissingProvideError。"""
     runtime = make_runtime(tmp_path)
     add_fake_provider(runtime)
@@ -346,7 +346,7 @@ async def test_t129_provide_inject_chain_climbing(tmp_path):
     # 覆盖即刻可见
     runtime.provide("root_key", "root2")
     assert grandchild.inject("root_key") == "root2"
-    # 父 destroy（级联销毁子树）后链断：孙实例的上溯在断裂处 MissingProvideError
+    # 亲节点 destroy（级联销毁子树）后链断：孙实例的上溯在断裂处 MissingProvideError
     await child.destroy()
     assert child.node_id not in runtime._nodes
     with pytest.raises(MissingProvideError):
