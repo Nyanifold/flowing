@@ -11,7 +11,7 @@
 1. 消息的产生与表示：任意来源（用户、LLM、工具、外部 Agent、系统事件）
    产生的新信息统一表示为 :class:`Message`。
 2. 消息的组织结构：消息级树（允许多根的森林）——树节点 = 消息，
-   ``Message.id`` + ``Message.parent_id`` 构成父链；``parent_id=None``
+   ``Message.id`` + ``Message.parent_id`` 构成亲代链；``parent_id=None``
    是根标记，一棵树允许多个根（根集合 = 全部 ``parent_id=None`` 的
    消息），新根由 :meth:`MessageChain.branch` 以 ``parent_id=None``
    开启（典型场景：上下文压缩换链——摘要作为新根开新链，旧树完整保留）。
@@ -41,7 +41,7 @@ Message 字段规约总表：
    * - ``id``
      - 全局唯一消息 id（UUID），同时是消息级树的节点 id
    * - ``parent_id``
-     - 消息级父链；``None`` = 根标记（允许多根，森林模型）；树上溯与上下文组装的唯一依据
+     - 消息级亲代链；``None`` = 根标记（允许多根，森林模型）；树上溯与上下文组装的唯一依据
    * - ``kind``
      - 对象层唯一角色判别，八值枚举 :class:`MessageKind`；消息没有 ``role`` 属性
    * - ``content``
@@ -344,7 +344,7 @@ class MessagePriority(enum.IntEnum):
 
     .. code-block:: python
 
-        # 亲 Agent 引导子 Agent：目录已改动，请重新读取——
+        # 亲代 Agent 引导子 Agent：目录已改动，请重新读取——
         # 当轮 context 可见、不打断（Agent.steer 便捷封装即此形态）
         steer = Message(
             kind=MessageKind.PEER,
@@ -792,7 +792,7 @@ class Message:
 
     任意来源（用户、LLM、工具、外部 Agent、系统事件、扩展）产生的新信息
     统一表示为 ``Message``。它同时是消息级树的节点——``id`` 是节点 id，
-    ``parent_id`` 是父链；``Agent.current_head_id`` 指向某条消息的 id，
+    ``parent_id`` 是亲代链；``Agent.current_head_id`` 指向某条消息的 id，
     上下文组装沿 ``parent_id`` 上溯收集路径。
 
     消息没有 ``role`` 属性（kind 替代 API 层 role，与 Provider 解耦，
@@ -883,7 +883,7 @@ class Message:
     ``enqueue_message`` 的返回值。
     """
     parent_id: str | None = None
-    """消息级父链：``None`` = 根标记（森林模型，一棵树允许多个根——新根经
+    """消息级亲代链：``None`` = 根标记（森林模型，一棵树允许多个根——新根经
     :meth:`MessageChain.branch` 以 ``None`` 开启）；挂树时由
     ``Agent._append_message`` 设置（首条链到 ``current_head_id``，后续
     链到上一条）。fork 目标、上下文上溯、恢复重建的唯一依据。
@@ -1554,12 +1554,12 @@ class MessageChain:
     - 每个 op = 改内存链 + append 一条变更记录行（insert 为新消息行 +
       邻接调整记录；branch 仅新消息行；remove 为 tombstone
       ``{"type": "tombstone", "id": ...}``；update / reparent 为对应变更行）。
-    - 级联规则：``remove`` 不级联——删除带子树的消息会留下父链指向不存在
-      节点的孤儿子树；正确做法是先对子树逐条 :meth:`reparent` 到新父
+    - 级联规则：``remove`` 不级联——删除带子树的消息会留下亲代链指向不存在
+      节点的孤儿子树；正确做法是先对子树逐条 :meth:`reparent` 到新亲
       节点、再 ``remove`` （定式）。
     - 不自动移动 ``current_head_id``：手术目标是历史结构，head 切换是
       ``Agent.fork`` 的职责；删除 / 重连当前 head 或其上溯路径上的消息
-      属于调用方责任（需要「删除当前 head 并回退到父节点」的便捷语义用
+      属于调用方责任（需要「删除当前 head 并回退到亲节点」的便捷语义用
       ``Agent.remove`` / ``Agent.pop``）。
     - 不变量：op 完成后内存链与「文件重放结果」一致（重放变更记录必得
       同一权威链）。
@@ -1616,7 +1616,7 @@ class MessageChain:
         - 前置条件：``after_id`` 在树中存在；``msg.id`` 不与现有节点
           冲突（``msg.id`` 缺省时由框架分配）。
         - 后置条件：``msg`` 成为 ``after_id`` 的直接子消息且（若原有子
-          消息）成为它们的父消息；``msg`` 落盘（append 新消息行）+ 邻接
+          消息）成为它们的亲代消息；``msg`` 落盘（append 新消息行）+ 邻接
           调整记录 append。
         - 插入当前 head 之后不移动 ``current_head_id`` （head 切换是
           ``Agent.fork`` 的职责）。
@@ -1710,13 +1710,13 @@ class MessageChain:
 
         - 不级联：该消息的子消息不随之删除，其 ``parent_id`` 变为指向
           不存在节点的孤儿链——上下文上溯到断点即终止。删除带子树的消息
-          前，先对子树逐条 :meth:`reparent` 到新父节点、再 ``remove``
+          前，先对子树逐条 :meth:`reparent` 到新亲节点、再 ``remove``
           （定式）。
         - 删除尾部消息是纯截断语义；删除中间消息在「直接物理删除」模型
           下本需逐行重写，tombstone 将其降为运行期 O(1)。
         - 对不存在的 id 抛 ``KeyError`` （重复删除不是静默成功）。
         - 不移动 ``current_head_id``；删除 head 上溯路径上的消息属于调用
-          方责任。需要「删除当前 head 并回退到父节点」时，请使用
+          方责任。需要「删除当前 head 并回退到亲节点」时，请使用
           ``Agent.remove`` / ``Agent.pop`` （Agent 层负责 head 维护）。
 
         :raises KeyError: ``msg_id`` 不存在于消息树（或已被删除）。
