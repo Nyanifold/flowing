@@ -20,7 +20,7 @@
 ``tools:`` 或 ``add_tool`` 中显式声明的条目；可写文件、执行命令的危险
 工具（``write`` / ``bash`` / ``edit`` 等）必须由使用者显式声明才会被
 LLM 看到——框架不会因为注册就把它们暴露给 LLM，这是安全边界，不是疏忽。
-标准子智能体同理：``ExploreAgent`` 需父 Agent 在 ``subagents:`` 或
+标准子智能体同理：``ExploreAgent`` 需亲代 Agent 在 ``subagents:`` 或
 ``add_agent`` 中显式声明才会进入其 catalog。
 
 ``builtin::`` 是裸名查找的兜底层：裸名引用先查 ``default::`` 再查
