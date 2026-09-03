@@ -230,7 +230,7 @@ class FileRecordStore:
       （``submit`` / append）不做 fsync 策略承诺（机器级掉电耐受为演进位；
       ``sync`` 路径的文件 fsync 是原子性前提，不在此列）。
 
-    :param path: 目标文件路径（父目录由属主管线保证存在）。
+    :param path: 目标文件路径（上级目录由属主管线保证存在）。
     :param merge_last_line: 同 key 连续写时就地重写末行（state.jsonl 开、
         tree.jsonl 关）。
     :param tombstone_threshold: 墓碑计数触发压缩的阈值（默认 256；仅
@@ -267,7 +267,7 @@ class FileRecordStore:
         ``submit`` / ``sync`` / ``drain`` 调用——因此首次提交须在运行中的事件
         循环内。
 
-        :param path: 目标文件路径（父目录由属主管线保证存在）。
+        :param path: 目标文件路径（上级目录由属主管线保证存在）。
         :param merge_last_line: 同 key 连续写时就地重写末行（state.jsonl 开、
             tree.jsonl 关）。
         :param tombstone_threshold: 墓碑计数触发压缩的阈值（默认 256；仅
