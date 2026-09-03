@@ -189,7 +189,7 @@ class Plugin:
 
     @property
     def plugin_dir(self) -> Path:
-        """插件自身所在目录：插件类定义所在文件的父目录。插件随身携带
+        """插件自身所在目录：插件类定义所在文件的上级目录。插件随身携带
         资源文件（``.fya`` 工具 / 子 Agent 定义 / 模板等）时的路径基准
         ——这些文件不在项目 ``@/`` （指向 flowing 子项目目录的路径
         前缀）下、也不在任何 Agent 的 ``source_dir`` 链（该 Agent
