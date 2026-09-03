@@ -1087,7 +1087,7 @@ async def test_t83_head_maintenance(runtime, provider):
     assert agent2.current_head_id is None
     assert len(agent2._messages) == 0
 
-    # remove_by_tags 删到 head：head 回退其删除前父节点
+    # remove_by_tags 删到 head：head 回退其删除前亲节点
     a = Message(id="a", kind=MessageKind.USER, content=[TextBlock(text="a")])
     b = Message(id="b", kind=MessageKind.USER, content=[TextBlock(text="b")],
                 tags=["reminder"])
