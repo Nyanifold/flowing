@@ -1,7 +1,7 @@
 """阶段 2：agent 池 / 归档 / 关闭与观测测试（T114–T123）。
 
 覆盖：get_node/get_agent 的 strict 双形态与「有 key 无 value → 现场恢复」
-（T114/T115）、mount 幂等（T116）、archive_agent 三档遗忘与父侧 _child_ids
+（T114/T115）、mount 幂等（T116）、archive_agent 三档遗忘与亲代侧 _child_ids
 清理（T117/T118）、archive_orphans 孤儿清理（T119）、shutdown/__await__
 （T120/T121）、Runtime/Agent 快照（T122/T123）。
 """
@@ -145,7 +145,7 @@ async def test_t117_archive_agent_subtree(tmp_path):
 
 
 async def test_t118_archive_cleans_parent_child_ids(tmp_path):
-    """T118：归档后父存活 → 父侧 _child_ids 条目移除并写透。"""
+    """T118：归档后亲节点存活 → 亲代侧 _child_ids 条目移除并写透。"""
     runtime = make_runtime(tmp_path)
     add_fake_provider(runtime)
     parent = await runtime.create_agent("test-agent")
@@ -170,7 +170,7 @@ async def test_t119_archive_orphans(tmp_path):
     """T119：parent 悬空的池条目被递归归档（session 保留）；无孤儿 → [] 幂等。"""
     runtime = make_runtime(tmp_path)
     add_fake_provider(runtime)
-    root = await runtime.create_agent("test-agent")   # 正常根（父为 runtime-0）
+    root = await runtime.create_agent("test-agent")   # 正常根（亲节点为 runtime-0）
     orphan = await runtime.create_agent("test-agent", parent_id="workflow-ghost")
     orphan_child = await orphan.create_subagent("test-agent", name="oc")
     await orphan.destroy()
