@@ -22,15 +22,15 @@ catalog 渲染留在 :mod:`flowing.agent`——本模块只定义管线操作的
 
 - 子 Agent 唤起是两段式时序（见 :meth:`flowing.agent.Agent.invoke_subagent`）：
   准备段按别名查条目 → :meth:`SubagentEntry.resolve` 聚合参数 → 构造
-  :class:`SubagentInvocation` 并 dispatch 父 Agent 的
+  :class:`SubagentInvocation` 并 dispatch 亲代 Agent 的
   ``before_subagent_invoke`` → 新建 / 续接子 Agent（此段失败同步上抛）；
   运行段等待子 Agent 产出 → 构造 :class:`SubagentResult` → dispatch
   ``after_subagent_invoke`` （先于交付，handler 可改写 result）→ 交付。
-  两个钩子都挂在父 Agent 的 hooks 上。
+  两个钩子都挂在亲代 Agent 的 hooks 上。
 - 子 Agent 产出有两条载体：``invoke_subagent`` 同步返回
-  :class:`SubagentResult` （不入父队列，调用方自行处置）；后台唤起路径
+  :class:`SubagentResult` （不入亲代队列，调用方自行处置）；后台唤起路径
   （``subagent-invoke`` 工具的 ``asynchronized=True``）完成时以独立
-  ``Message(kind=SUBAGENT)`` 推入父 Agent 队列，LLM 在后续回合感知。
+  ``Message(kind=SUBAGENT)`` 推入亲代 Agent 队列，LLM 在后续回合感知。
   两条路径内容同源：都采用 ``after_subagent_invoke`` 改写后的 result。
 - 没有子 Agent 专属错误钩子：唤起 / 运行失败以异常原样上抛调用方；
   ``subagent-invoke`` 工具路径由 ``ToolResult(status="error")`` 承载。
@@ -105,7 +105,7 @@ class SubagentResult:
 
     name_alias: str
     """调用方可读标识：续接名（``resume``）/ 语义名（``name``）/ 唤起别名
-    （``alias``），按此优先序取。语义名只存在父 Agent 的
+    （``alias``），按此优先序取。语义名只存在亲代 Agent 的
     ``child_ids`` 表中，子实例不自持名字。
     """
     subagent_id: str
@@ -137,7 +137,7 @@ class SubagentInvocation:
 
     :meth:`flowing.agent.Agent.invoke_subagent` 在 ``SubagentEntry.resolve()``
     之后、创建 / 续接子 Agent 之前构造本对象并 dispatch
-    ``before_subagent_invoke`` （挂在父 Agent 的 hooks 上）；结果构造
+    ``before_subagent_invoke`` （挂在亲代 Agent 的 hooks 上）；结果构造
     后回填 ``result`` 并 dispatch ``after_subagent_invoke`` （先于交付：
     return 值与 SUBAGENT 消息均在其后）。
 
@@ -161,14 +161,14 @@ class SubagentInvocation:
     """
 
     alias: str
-    """唤起时使用的别名（父 Agent 条目表中本条目的 key）。"""
+    """唤起时使用的别名（亲代 Agent 条目表中本条目的 key）。"""
     agent_type: str | None
     """新建路径的 Agent 类型名；``resume`` 路径为 ``None``。取自
     ``SubagentEntry.name_ori``，可含命名空间前缀（``ns::name``，
     只查注册表）。
     """
     resume: str | None
-    """续接路径的实例名（登记在父 Agent ``child_ids`` 的语义名）；
+    """续接路径的实例名（登记在亲代 Agent ``child_ids`` 的语义名）；
     与 ``agent_type`` 互斥（续接保持原类型）。
     """
     prompt: str | None
@@ -179,7 +179,7 @@ class SubagentInvocation:
     规范名、specified（固定值 / 注入表达式）已注入）。
     """
     name: str | None = None
-    """新建路径的语义名（登记进父 Agent ``child_ids``，供 ``resume=...``
+    """新建路径的语义名（登记进亲代 Agent ``child_ids``，供 ``resume=...``
     按名续接）；``None`` = 匿名。子实例不自持名字。
     """
     result: SubagentResult | None = None
@@ -197,7 +197,7 @@ class SubagentEntry:
     这个子 Agent 类型」——LLM 看到的别名与描述、参数覆写 / 指定值 /
     注入。每个 Agent 实例的条目表（以别名为键）持有自己的 entry 集合。
 
-    绑定层的存在理由：同一子 Agent 类型在不同父 Agent 上 LLM 应看到
+    绑定层的存在理由：同一子 Agent 类型在不同亲代 Agent 上 LLM 应看到
     不同描述与参数默认值（如 ``currency`` 默认 ``USD`` vs ``CNY``）——
     通过 entry 覆写而不改子 Agent 类本身。子 Agent 的 LLM 可见声明不是
     独立 ``ToolDefinition``：工具只有一个 ``subagent-invoke``，各类型的
@@ -241,7 +241,7 @@ class SubagentEntry:
       等形态 → ``override_params`` / ``specified`` / ``param_aliases``
       的归属、``as`` 键允许带值、``_`` = 空补丁）与 Tool 条目同构，
       规则本体见 :class:`flowing.tool.ToolEntry`；差异仅两点：
-      ``specified`` 求值上下文为父 Agent 实例；注入表达式的求值结果
+      ``specified`` 求值上下文为亲代 Agent 实例；注入表达式的求值结果
       落子 Agent 初始化参数（上一条）。
     - 深层具名块（``$subagents.<别名>.<字段>:`` 等）由装配层在绑定前
       填回：条目列表按别名精确寻址（未命中报 ``FormatError``，
@@ -281,7 +281,7 @@ class SubagentEntry:
 
     name_alias: str
     """别名——LLM 在 catalog 中看到的名字，也是 ``invoke_subagent()``
-    引用本条目的名字（父 Agent 的条目表以别名为键）。多层具名块按
+    引用本条目的名字（亲代 Agent 的条目表以别名为键）。多层具名块按
     别名寻址。
     """
     name_ori: str
@@ -298,7 +298,7 @@ class SubagentEntry:
     """
     override_description: Parsable | None = None
     """覆写 LLM 看到的描述；``None`` 使用子类原描述。在
-    ``catalog_view()`` 渲染 catalog 时以父 Agent 实例为上下文求值。
+    ``catalog_view()`` 渲染 catalog 时以亲代 Agent 实例为上下文求值。
     """
     override_params: dict[str, dict[str, Any]] | None = None
     """参数局部覆写：``{规范参数名: {JSON Schema 关键字: 新值}}`` （如
@@ -308,7 +308,7 @@ class SubagentEntry:
     """
     specified: dict[str, Parsable] = field(default_factory=dict)
     """指定值初始化参数（LLM 不可见、不可被 LLM 覆盖）；``resolve()``
-    以父 Agent 实例为上下文求值后，作为子 Agent 的初始化参数传入。
+    以亲代 Agent 实例为上下文求值后，作为子 Agent 的初始化参数传入。
     两种值形态：固定值（``Parsable("USD")``）与注入表达式
     （``Parsable("{{ self.inject('key') }}")``——求值时沿 provide 链
     上溯，链断裂抛 ``MissingProvideError``）。默认空 dict。
@@ -331,7 +331,7 @@ class SubagentEntry:
 
         :meth:`flowing.agent.Agent.invoke_subagent` 内部调用：先把 LLM
         参数名经 ``param_aliases`` 映射回规范名，再以 ``specified``
-        覆盖（求值上下文为父 Agent 实例：固定值直给；注入表达式经
+        覆盖（求值上下文为亲代 Agent 实例：固定值直给；注入表达式经
         ``parent.inject(...)`` 沿 provide 链上溯）——``specified``
         优先级最高，可覆盖 LLM 传入的同名键。
 
@@ -357,7 +357,7 @@ class SubagentEntry:
                            "user_id": Parsable("{{ self.inject('user_id') }}")})
             resolved = entry.resolve(parent, {"sum": 100})
             # resolved == {"amount": 100, "currency": "CNY", "user_id": ...}
-            # user_id 取自 provide 链上溯到的值（parent 为父 Agent 实例）
+            # user_id 取自 provide 链上溯到的值（parent 为亲代 Agent 实例）
 
         .. seealso::
 
@@ -367,7 +367,7 @@ class SubagentEntry:
         for alias, value in args.items():
             mapped[self.param_aliases.get(alias, alias)] = value   # 别名映射回规范名
         for key, parsable in self.specified.items():
-            mapped[key] = parsable.resolve(parent)   # specified 以父 Agent 实例上下文惰性求值后覆盖（固定值/注入表达式同路——注入表达式求值即 provide 链上溯）
+            mapped[key] = parsable.resolve(parent)   # specified 以亲代 Agent 实例上下文惰性求值后覆盖（固定值/注入表达式同路——注入表达式求值即 provide 链上溯）
         # 聚合结果直接作为子 Agent 初始化参数（args_model 校验未接线——
         # 见 docstring「行为要点」；创建管线只透传 kwargs 到 setup）
         return mapped
@@ -411,10 +411,10 @@ class SubagentEntry:
         """
         cls = parent.get_agent_class(self.name_ori)   # 惰性解析 Agent 类（限定名只查注册表；路径形态走文件链，语义由 runtime 承载）
         if self.override_description is not None:
-            description = str(self.override_description.resolve(parent))   # 以父 Agent 实例为上下文求值
+            description = str(self.override_description.resolve(parent))   # 以亲代 Agent 实例为上下文求值
         else:
-            # 无覆写时回退子类原 description（Parsable，渲染上下文同样是父
-            # Agent 实例——Agent.description 字段契约「实例创建前由父 Agent
+            # 无覆写时回退子类原 description（Parsable，渲染上下文同样是亲代
+            # Agent 实例——Agent.description 字段契约「实例创建前由亲代 Agent
             # 读取」）；缺失 / None → 空串
             raw_desc = getattr(cls, "description", None)
             if raw_desc is None:
@@ -612,11 +612,11 @@ DEFAULT_SUBAGENT_CATALOG_TEMPLATE: str = (
   预计算在 Python 侧完成，模板只负责排布（不在模板内
   ``.resolve()``——与 skills 模板的「模板内求值」不同，本模板的求值
   已前移到 ``catalog_view``）。
-- ``agent``：父 Agent 实例。
+- ``agent``：亲代 Agent 实例。
 
 .. rubric:: 行为要点
 
-- 渲染经 Parsable TEMPLATE 语义（include 基准为父 Agent 的
+- 渲染经 Parsable TEMPLATE 语义（include 基准为亲代 Agent 的
   ``source_dir``）；渲染异常 fail-fast 上抛，不静默降级。
 - 空列表经 ``{% if entries %}`` 渲染为 ``""`` （整块不注入；
   ``Agent._render_subagent_catalog`` 在此之前也有短路，双保险）。
