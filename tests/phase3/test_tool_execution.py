@@ -118,7 +118,7 @@ class TestScriptToolInit:
 
         tool = BothTool()
         assert tool.definition is BothTool.definition
-        assert "互斥" in caplog.text
+        assert "mutually exclusive" in caplog.text
 
     def test_name_inferred_from_class_name(self):
         """name 缺省由类名 kebab 化推断；显式声明仅作一致性断言。"""
@@ -268,7 +268,7 @@ class TestInternalValidation:
         tool = PayTool()
         with pytest.raises(ValidationError):
             await tool({"amount": "not-a-float"})
-        assert "内部校验失败" in caplog.text
+        assert "failed internal validation" in caplog.text
 
     async def test_t34b_direct_subclass_lazy_model(self):
         """直接子类化 Tool 的逃生舱写法（无 __init__）：_args_model 就地

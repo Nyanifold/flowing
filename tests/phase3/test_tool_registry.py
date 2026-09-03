@@ -285,7 +285,7 @@ async def payment(x: int) -> int:
     return x
 ''')
         registry = ToolRegistry()
-        with pytest.warns(UserWarning, match=r"\.fya 优先"):
+        with pytest.warns(UserWarning, match=r"\.fya wins"):
             tool = registry.get("payment", source_dir=tmp_path)
         assert tool.definition.description == "fya 形态产物"
 

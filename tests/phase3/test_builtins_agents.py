@@ -211,12 +211,12 @@ async def test_t74_subagent_invoke_async(runtime, provider):
     # 立即返回 started 收据（子 Agent 已创建并在跑）；B14：pending + 注册键块
     assert payload == {"invoked": "bg", "status": "started"}
     assert tool_msg.tool_status == "pending"
-    assert any(isinstance(b, TextBlock) and "后台任务 ID" in b.text
+    assert any(isinstance(b, TextBlock) and "background task ID" in b.text
                for b in tool_msg.content)
-    task_id = next(t.split("：", 1)[1]
+    task_id = next(t.split(": ", 1)[1]
                    for t in (b.text for b in tool_msg.content
                              if isinstance(b, TextBlock))
-                   if t.startswith("后台任务 ID："))
+                   if t.startswith("background task ID: "))
     assert task_id in agent._background_tasks   # B14：注册表在册（强引用/取消/destroy 覆盖）
     # 运行段结局经 SUBAGENT 消息送达
     child_gate.set()

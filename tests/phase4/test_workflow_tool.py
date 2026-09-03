@@ -163,7 +163,7 @@ async def test_t90_resolve_failure_wrapped_run_failure_contained(
             assert tool_results[0].output == {"status": "started",
                                               "workflow": "@/quick.py"}
             await asyncio.sleep(0.2)   # 等后台任务失败落定
-        assert any("异步工具 run-workflow 后台运行失败" in r.message
+        assert any("async tool run-workflow failed in the background" in r.message
                    for r in caplog.records)
     finally:
         await runtime.shutdown()

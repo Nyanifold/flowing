@@ -929,7 +929,7 @@ async def test_t78_async_tool_pending_and_event(runtime, provider):
     # B10：pending 收据附加「后台任务 ID」块（Task 路径 output 仍 None——
     # 内容只有附加块，无结果块）
     assert [len(m.content) for m in tool_msgs] == [1, 1]
-    assert all(isinstance(b, TextBlock) and b.text.startswith("后台任务 ID：")
+    assert all(isinstance(b, TextBlock) and b.text.startswith("background task ID: ")
                for m in tool_msgs for b in m.content)
 
     # Task 完成后 EVENT 消息入队（标注块 + 结果块 / 标注块 + 错误文本块），

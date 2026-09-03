@@ -264,10 +264,10 @@ def _validate_carrier(carrier: "Image | File | Audio | Video") -> None:
     - ``path`` 须为绝对路径。
     """
     if carrier.data is None and carrier.path is None:
-        raise ValueError(f"{type(carrier).__name__} 的 data 与 path 至少其一")
+        raise ValueError(f"at least one of data or path is required for {type(carrier).__name__}")
     if carrier.path is not None and not Path(carrier.path).is_absolute():
         raise ValueError(
-            f"{type(carrier).__name__}.path 须为绝对路径: {carrier.path!r}")
+            f"{type(carrier).__name__}.path must be an absolute path: {carrier.path!r}")
 
 
 @dataclass
@@ -466,16 +466,16 @@ def register_media_converter(
     if isinstance(tp_or_module, type):
         # 直传 type 降级存名字（全库只有 MRO 全名一种匹配机制）
         if qualname is not None:
-            raise ValueError("tp_or_module 为 type 时 qualname 应省略")
+            raise ValueError("qualname should be omitted when tp_or_module is a type")
         module, qname = tp_or_module.__module__, tp_or_module.__qualname__
     else:
         module, qname = tp_or_module, qualname
     # 三要素缺失属调用方笔误（spec 未具名异常类型，按编程错误通道 ValueError）
     if not module or not qname or convert is None:
         raise ValueError(
-            "register_media_converter 需要 module / qualname / convert 三要素")
+            "register_media_converter requires all three of module / qualname / convert")
     if any(c.module == module and c.qualname == qname for c in _MEDIA_CONVERTERS):
-        raise ValueError(f"媒体转换器重复注册: {module}.{qname}")
+        raise ValueError(f"media converter already registered: {module}.{qname}")
     _MEDIA_CONVERTERS.append(
         MediaConverter(module=module, qualname=qname, convert=convert))
 
@@ -545,7 +545,7 @@ async def _media_to_block(
         try:
             raw = base64.b64decode(data, validate=True)
         except binascii.Error as exc:
-            raise ValueError(f"载体 data 字符串须为合法 base64: {exc}") from exc
+            raise ValueError(f"carrier data string must be valid base64: {exc}") from exc
     elif data is None:
         raw = await asyncio.to_thread(Path(path).read_bytes)  # type: ignore[arg-type]
     else:
@@ -639,13 +639,13 @@ async def normalize_output(value: Any) -> Any:
         if isinstance(v, (ToolCallBlock, ThinkingBlock)):
             # 违禁块：浅层出现 -> 框架错误通道（作者 bug）；深层埋藏
             # 的块由塑形期 StructBlock 构造校验同通道兜住
-            raise ValueError(f"工具结果中出现违禁块类型: {type(v).__name__}")
+            raise ValueError(f"forbidden block type in tool result: {type(v).__name__}")
         if isinstance(v, ContentBlock):
             # 合法块（TextBlock/StructBlock/MediaBlock）原样放行；其余块类型
             # 按违禁同通道处理
             if isinstance(v, (TextBlock, StructBlock, MediaBlock)):
                 return v
-            raise ValueError(f"工具结果中出现违禁块类型: {type(v).__name__}")
+            raise ValueError(f"forbidden block type in tool result: {type(v).__name__}")
         if isinstance(v, (Image, File, Audio, Video)):
             # 载体四类：显式声明压过推断，块类别由载体类型强制
             return await _media_to_block(
@@ -658,7 +658,7 @@ async def normalize_output(value: Any) -> Any:
             # 裸 Path 与载体同口径：相对路径 → ValueError（spec 未单列裸
             # Path 的相对路径处置，按载体规则同口径落实）
             if not v.is_absolute():
-                raise ValueError(f"裸 Path 结果须为绝对路径: {v!r}")
+                raise ValueError(f"bare Path results must be absolute paths: {v!r}")
             return await _media_to_block(
                 data=None, path=v, mime_type=None, name=None, forced=None)
         converter = _find_media_converter(v)
@@ -669,7 +669,7 @@ async def normalize_output(value: Any) -> Any:
                 data=carrier.data, path=carrier.path, mime_type=carrier.mime_type,
                 name=carrier.name, forced=_CARRIER_BLOCK[type(carrier)])
         raise ValueError(
-            f"工具结果类型不可转换: {type(v).__name__}")   # 作者 bug
+            f"tool result type cannot be converted: {type(v).__name__}")   # 作者 bug
 
     if isinstance(value, (list, tuple)):
         # 顶层序列：浅层判别（不递归）——全基础原样（tuple 归一为 list）；
@@ -1026,7 +1026,7 @@ class ToolResult:
             # pending 收据附加「后台任务 ID」块（不动作者 yield 的内容——
             # 附加块而非并入，避免污染作者数据；LLM/调用方可据此按 id 引用）
             blocks = [*blocks,
-                      TextBlock(text=f"后台任务 ID：{self.background_task_id}")]
+                      TextBlock(text=f"background task ID: {self.background_task_id}")]
         return Message(
             kind=MessageKind.TOOL,
             tool_call_id=tool_call_id,   # 由 Agent.tool_call 管线接线（ToolCall.id），见 docstring
@@ -1221,7 +1221,7 @@ def _apply_param_aliases(
         new_key = reverse.get(key, key)
         if new_key in renamed:
             raise FormatError(
-                f"参数别名应用撞名：{new_key!r}（param_aliases 与既有参数冲突）")
+                f"parameter alias collision after mapping: {new_key!r} (param_aliases conflict with existing parameters)")
         renamed[new_key] = prop
     return ToolDefinition(
         name=definition.name,
@@ -1660,7 +1660,7 @@ class Tool:
             self._args_model.model_validate(resolved_args)
         except ValidationError:
             _logger.exception(
-                "工具 %s 内部校验失败（specified/inject/默认值配置错误）",
+                "tool %s failed internal validation (specified/inject/default-value misconfiguration)",
                 getattr(self, "definition", None) and self.definition.name
                 or type(self).__name__)
             raise
@@ -1756,9 +1756,9 @@ class Tool:
         STEER 优先级）入调用方队列；任务异常 → 标注块 + 错误文本块
         （LLM 可见）。内部 API，不属稳定契约。
         """
-        marker = TextBlock(text=f"异步工具 {self.definition.name} 的最终结果：")
+        marker = TextBlock(text=f"final result of async tool {self.definition.name}: ")
         if task.cancelled():
-            blocks = [marker, TextBlock(text="异步任务被取消")]
+            blocks = [marker, TextBlock(text="async task cancelled")]
         elif (exc := task.exception()) is not None:
             blocks = [marker, TextBlock(text=str(exc))]   # 与同步 error 同语义
         else:
@@ -1775,7 +1775,7 @@ class Tool:
         取消投递「已取消」后裸 ``raise`` （任务以 cancelled 终态结束）。
         内部 API，不属稳定契约。
         """
-        marker = TextBlock(text=f"异步工具 {self.definition.name}：")
+        marker = TextBlock(text=f"async tool {self.definition.name}: ")
         try:
             async for item in agen:
                 blocks = await self._background_blocks(marker, item)
@@ -1787,12 +1787,12 @@ class Tool:
                     # 投递失败不掩盖原结局（B3/B4 边界——enqueue_message 只入
                     # 内存队列，失败仅钩子/极端场景）
                     _logger.warning(
-                        "异步工具 %s 报告投递失败", self.definition.name)
+                        "async tool %s: report delivery failed", self.definition.name)
         except asyncio.CancelledError:
             try:
                 await caller.enqueue_message(Message(
                     kind=MessageKind.EVENT, source="tool_result",
-                    content=[marker, TextBlock(text="异步任务被取消")],
+                    content=[marker, TextBlock(text="async task cancelled")],
                     priority=MessagePriority.STEER))
             except Exception:
                 pass   # B4：统一尝试投递「已取消」，失败静默
@@ -1806,7 +1806,7 @@ class Tool:
                     priority=MessagePriority.STEER))
             except Exception:
                 pass
-            _logger.exception("异步工具 %s 后台运行失败", self.definition.name)
+            _logger.exception("async tool %s failed in the background", self.definition.name)
 
     async def _background_blocks(self, marker: TextBlock, item: Any) -> list[ContentBlock]:
         """yield 值归一化塑形（与 `_deliver_async_result`、`as_message` 同一
@@ -1817,7 +1817,7 @@ class Tool:
         """
         if _has_forbidden_block(item):
             return [marker, TextBlock(
-                text="报告内容含违禁块（工具调用/思考块），已省略")]
+                text="report content contained forbidden blocks (tool calls / thinking blocks); omitted")]
         return [marker, *output_to_blocks(await normalize_output(item))]
 
 
@@ -1964,8 +1964,8 @@ class ScriptTool(Tool):
                 # 互斥规则：与 name/description/args_model 同时声明 -> 告警日志，
                 # 以显式 definition 为准
                 _logger.warning(
-                    "ScriptTool 子类 %s 同时声明了 definition 与 "
-                    "name/description/args_model——互斥规则：以显式 definition 为准",
+                    "ScriptTool subclass %s declares both definition and "
+                    "name/description/args_model — mutually exclusive rule: the explicit definition wins",
                     cls.__name__)
             self.definition = cls.__dict__["definition"]
         else:
@@ -2024,7 +2024,7 @@ def _render_env_templates(values: "dict[str, str] | None") -> "dict[str, str] | 
             rendered[key] = _ENV_JINJA.from_string(str(value)).render(
                 env=MappingProxyType(os.environ))
         except jinja2.UndefinedError as exc:
-            raise FormatError(f"模板 {value!r} 引用的环境变量缺失: {exc}") from exc
+            raise FormatError(f"environment variable referenced by template {value!r} is missing: {exc}") from exc
     return rendered
 
 
@@ -2043,7 +2043,7 @@ def _auth_headers(auth: dict[str, Any]) -> dict[str, str]:
         return {"Authorization": f"Bearer {auth.get('value', '')}"}
     if auth_type == "api_key":
         return {str(auth["header"]): str(auth.get("value", ""))}
-    raise FormatError(f"未知 auth 类型: {auth_type!r}（须为 basic / bearer / api_key）")
+    raise FormatError(f"unknown auth type: {auth_type!r} (must be basic / bearer / api_key)")
 
 
 class _ShellRaw(str):
@@ -2052,8 +2052,8 @@ class _ShellRaw(str):
 
 def _shell_raw_filter(value: Any) -> _ShellRaw:
     """``{{ arg | raw }}`` 旁路自动转义；每次渲染命中即告警。内部 API。"""
-    _logger.warning("CliTool 命令模板使用了 | raw 旁路自动转义——"
-                    "原始拼接需确保值可信（命令注入风险自担）")
+    _logger.warning("CliTool command template uses the | raw bypass of auto-escaping — "
+                    "ensure raw concatenation values are trusted (command-injection risk is on you)")
     return _ShellRaw(str(value))
 
 
@@ -2213,9 +2213,9 @@ class McpTool(Tool):
         :raises flowing.errors.MissingMcpSourceError: 两者均未给出。
         """
         if command is not None and url is not None:
-            raise AmbiguousMcpSourceError("command 与 url 同时给出")  # 来源互斥
+            raise AmbiguousMcpSourceError("both command and url were given")  # 来源互斥
         if command is None and url is None:
-            raise MissingMcpSourceError("command 与 url 均未给出")
+            raise MissingMcpSourceError("neither command nor url was given")
         self.definition = definition
         self.command = command
         self.args = args
@@ -2228,7 +2228,7 @@ class McpTool(Tool):
             try:
                 self.url = _ENV_JINJA.from_string(url).render(env=MappingProxyType(os.environ))
             except jinja2.UndefinedError as exc:
-                raise FormatError(f"模板 {url!r} 引用的环境变量缺失: {exc}") from exc
+                raise FormatError(f"environment variable referenced by template {url!r} is missing: {exc}") from exc
         else:
             self.url = None
         self.headers = _render_env_templates(headers)
@@ -2363,15 +2363,15 @@ class McpTool(Tool):
         """
         if self._server_tool_name is None:
             raise RuntimeError(
-                f"MCP 声明 {self.definition.name!r} 是工具组代理，不可直接执行"
-                "——按合成名 <声明名>-<server 工具名> 引用展开产物")
+                f"MCP declaration {self.definition.name!r} is a tool-group proxy and cannot be executed directly"
+                " — reference its expanded products by the synthetic name <decl-name>-<server tool name>")
         async with self._connect() as session:
             result = await session.call_tool(self._server_tool_name,
                                              arguments=kwargs)
         if result.is_error:
             text = "".join(getattr(block, "text", "") for block in result.content)
             raise RuntimeError(
-                f"MCP 工具 {self._server_tool_name} 服务端返回错误: {text}")
+                f"MCP tool {self._server_tool_name} got a server error: {text}")
         if result.structured_content is not None:
             return result.structured_content
         texts = [block.text for block in result.content
@@ -2457,12 +2457,12 @@ class CliTool(Tool):
           :class:`flowing.errors.FormatError` （fail fast，不留到执行期）。
         """
         if not definition.params_schema:
-            raise MissingSchemaError("cli 工具必须声明 args（无自动推断来源）")
+            raise MissingSchemaError("cli tools must declare args (no automatic inference source)")
         if shell not in _SHELL_EXECUTABLES:
             # 加载期 fail-fast（声明笔误），不留到执行期 KeyError
             raise FormatError(
-                f"非法 shell 声明: {shell!r}（可选值："
-                f"{', '.join(sorted(_SHELL_EXECUTABLES))}）")
+                f"invalid shell declaration: {shell!r} (allowed values: "
+                f"{', '.join(sorted(_SHELL_EXECUTABLES))})")
         self.definition = definition
         self.command = command
         self.shell = shell
@@ -2596,7 +2596,7 @@ class RequestTool(Tool):
         :param timeout: 超时秒数，默认 30。
         """
         if not definition.params_schema:
-            raise MissingSchemaError("request 工具必须声明 args")
+            raise MissingSchemaError("request tools must declare args")
         self.definition = definition
         # URL 两阶段渲染：装配期先渲染 {{ env.X }}（非 env
         # 占位原样保留），执行期再渲染路径参数（见 execute）
@@ -2668,8 +2668,8 @@ class RequestTool(Tool):
                 params=query_params or None, json=json_body or None)
         if resp.status_code not in self.expected_status:
             raise RuntimeError(
-                f"请求 {url} 返回非预期状态码 {resp.status_code}"
-                f"（期望 {self.expected_status}）: {resp.text[:500]}")
+                f"request to {url} returned unexpected status {resp.status_code}"
+                f" (expected {self.expected_status}): {resp.text[:500]}")
         try:
             data = resp.json()
         except json.JSONDecodeError:
@@ -2750,7 +2750,7 @@ def _tool_from_fya(path: Path, identity: str) -> Tool:
     tool_type = fields.get("type")
     if tool_type not in ("script", "cli", "request", "mcp"):
         raise FormatError(
-            f"{path} 的 type 缺失或非法: {tool_type!r}（须为 script / cli / request / mcp）")
+            f"type of {path} is missing or invalid: {tool_type!r} (must be script / cli / request / mcp)")
     explicit_name = fields.get("name")
     if explicit_name is not None and explicit_name != identity:
         raise NameMismatchError(explicit_name, identity, str(path))
@@ -2766,13 +2766,13 @@ def _tool_from_fya(path: Path, identity: str) -> Tool:
     elif tool_type == "cli":
         command = fields.get("command")
         if command is None:
-            raise FormatError(f"{path} 缺少 cli 工具的 command 字段")
+            raise FormatError(f"cli tool at {path} is missing the command field")
         tool = CliTool(definition=definition, command=command,
                        shell=fields.get("shell", "sh"))
     elif tool_type == "request":
         url = fields.get("url")
         if url is None:
-            raise FormatError(f"{path} 缺少 request 工具的 url 字段")
+            raise FormatError(f"request tool at {path} is missing the url field")
         tool = RequestTool(
             definition=definition, url=url,
             method=fields.get("method", "POST"), headers=fields.get("headers"),
@@ -2795,11 +2795,11 @@ def _tool_from_fya(path: Path, identity: str) -> Tool:
     if "background" in fields:
         if tool_type == "script":
             if not isinstance(fields["background"], bool):
-                raise FormatError(f"{path} 的 background 须为布尔值")
+                raise FormatError(f"background of {path} must be a boolean")
             tool.background = fields["background"]   # 显式 False 与缺省等价，但为一致性落属性无害
         else:
             raise FormatError(
-                f"{path} 的 background 字段仅 script 型工具支持（当前 type: {tool_type}）")
+                f"the background field of {path} is only supported for script tools (current type: {tool_type})")
     return tool
 
 
@@ -2825,7 +2825,7 @@ def _script_tool_from_fya(
     callable_ref = fields.get("callable")
     if not callable_ref or "::" not in str(callable_ref):
         raise FormatError(
-            f"{path} 的 script 工具须声明 callable: <路径>::<函数名或类名>")
+            f"script tool at {path} must declare callable: <path>::<function-or-class-name>")
     path_part, _, symbol = str(callable_ref).partition("::")
     root = _launch_project_root()
     impl_path = resolve_path(
@@ -2836,7 +2836,7 @@ def _script_tool_from_fya(
     module = importlib.util.module_from_spec(spec)   # type: ignore[union-attr]
     spec.loader.exec_module(module)   # type: ignore[union-attr]
     if not hasattr(module, symbol):
-        raise FormatError(f"{impl_path} 内不存在 {symbol}（callable: 指针落空）")
+        raise FormatError(f"{symbol} does not exist in {impl_path} (callable: pointer missed)")
     target = getattr(module, symbol)
     description = fields.get("description")
     output_schema = fields.get("output")
@@ -2848,8 +2848,8 @@ def _script_tool_from_fya(
     elif callable(target):
         if hasattr(target, "__flowing_tool_name__"):
             raise FormatError(
-                f"callable: 指向已打标函数 {symbol}——"
-                "显式指针通道与自动提升通道二选一（声明通道互斥）")
+                f"callable: points to the already-marked function {symbol} — "
+                "the explicit-pointer and auto-promotion channels are mutually exclusive (declaration channels conflict)")
         args_model = (schema_to_model(f"{kebab_to_pascal(identity)}Args", params)
                       if params else _infer_from_execute(target))
         cls = type(kebab_to_pascal(identity), (ScriptTool,), {
@@ -2860,7 +2860,7 @@ def _script_tool_from_fya(
         })
         tool = cls()
     else:
-        raise FormatError(f"{impl_path} 的 {symbol} 不是函数或 ScriptTool 子类")
+        raise FormatError(f"{symbol} of {impl_path} is neither a function nor a ScriptTool subclass")
     # fya 显式声明（description / output）压过一切兜底来源（优先级链头部）
     if description is not None or output_schema is not None:
         d = tool.definition
@@ -2939,7 +2939,7 @@ class ToolRegistry:
         bare = name if name is not None else tool.definition.name
         key = f"{ns}::{bare}"
         if key in self._tools:
-            raise ToolNameConflictError(f"规范名重名注册：{key}")  # 全键重名永远不允许
+            raise ToolNameConflictError(f"tool with the canonical name already registered: {key}")  # 全键重名永远不允许
         self._tools[key] = tool
         tool.registry_key = key   # 回写全键（Entry 装配对文件派生工具落账 name_ori 的依据）
 
@@ -3037,7 +3037,7 @@ class ToolRegistry:
         if form == "qualified":
             # 限定名（ns::name）：只查注册表精确键，不走文件查找链
             # （命名空间无法反向映射到文件；命中已在上方精确键短路返回）
-            raise ToolNotFoundError(f"工具未注册: {name_or_path}")
+            raise ToolNotFoundError(f"tool not registered: {name_or_path}")
         if form == "bare":
             if source_dir is not None:
                 # 裸名 + source_dir：先走定向文件查找链（相对 source_dir——
@@ -3050,13 +3050,13 @@ class ToolRegistry:
             for key in (f"default::{name_or_path}", f"builtin::{name_or_path}"):
                 if key in self._tools:
                     return self._tools[key]
-            raise ToolNotFoundError(f"工具未注册且查找链不命中: {name_or_path}")
+            raise ToolNotFoundError(f"tool not registered and no lookup chain hit: {name_or_path}")
         # 路径形态（慢路径，声明期行为）：@/ 锚 launch 上下文项目根（无需
         # source_dir）；./ ../ 需 source_dir（缺省 -> ValueError，resolve_path
         # 现有口径）。无 launch 上下文时 @/ 无法锚定 -> ValueError（编程错误）
         root = _launch_project_root()
         if root is None and name_or_path.replace("\\", "/").startswith("@/"):
-            raise ValueError("@/ 路径解析需要 launch 上下文（_current_project_root 未登记）")
+            raise ValueError("@/ path resolution requires a launch context (_current_project_root not registered)")
         resolved = resolve_path(
             name_or_path,
             project_root=root if root is not None else Path.cwd(),   # 哑根：@/ 已在上方拒绝
@@ -3068,12 +3068,12 @@ class ToolRegistry:
             if hit is None:
                 # 显式路径语境：目录无候选 -> 直接报错（定点引用的目录为空
                 # 几乎必为笔误），不继续向下
-                raise FormatError(f"显式路径目录无合法工具入口: {resolved}")
+                raise FormatError(f"explicit path directory has no valid tool entry: {resolved}")
             return self._resolve_hit(hit, True, resolved, candidates,
                                      ref=name_or_path)
         if not resolved.exists() or not (
                 resolved.name.endswith(".fya") or resolved.suffix == ".py"):
-            raise ToolNotFoundError(f"工具未注册且查找链不命中: {name_or_path}")
+            raise ToolNotFoundError(f"tool not registered and no lookup chain hit: {name_or_path}")
         # 直指文件的显式路径：候选列表仅服务于 .fya/.py 并存告警
         identity = infer_name(resolved, naming=TOOL_NAMING)
         candidates = [resolved.name, f"{kebab_to_snake(identity)}.py"]
@@ -3125,8 +3125,8 @@ class ToolRegistry:
                           if c.endswith(".py") and (base_dir / c).exists()]
             if coexisting:
                 warnings.warn(
-                    f"同名 .fya 与 .py 并存，.fya 优先: {hit}"
-                    f"（并存: {', '.join(coexisting)}）")
+                    f"a same-name .fya and .py coexist; the .fya wins: {hit}"
+                    f" (coexisting: {', '.join(coexisting)})")
         ns_dir = hit.parent.parent if folder_form else hit.parent
         derived_key = f"{self._derived_namespace(ns_dir)}::{identity}"
         if derived_key in self._tools:
@@ -3176,15 +3176,15 @@ class ToolRegistry:
         ]
         if marked and subclasses:
             raise AmbiguousToolError(
-                f"{path} 同时存在 @flowing_tool 打标函数与 ScriptTool 子类")
+                f"{path} contains both a @flowing_tool-marked function and a ScriptTool subclass")
         if len(marked) > 1:
-            raise AmbiguousToolError(f"{path} 含多个 @flowing_tool 打标函数")
+            raise AmbiguousToolError(f"{path} contains multiple @flowing_tool-marked functions")
         if len(subclasses) > 1:
             raise AmbiguousToolError(
-                f"{path} 含多个 ScriptTool 子类（spec 未列多子类形态，"
-                "就近归入 AmbiguousToolError 通道）")
+                f"{path} contains multiple ScriptTool subclasses (the spec does not list the multi-subclass form; "
+                "it is routed to the AmbiguousToolError channel)")
         if not marked and not subclasses:
-            raise FormatError(f"{path} 内没有 @flowing_tool 打标函数或 ScriptTool 子类")
+            raise FormatError(f"no @flowing_tool-marked function or ScriptTool subclass in {path}")
         if marked:
             return _auto_generate_tool(marked[0])
         cls = subclasses[0]
@@ -3340,7 +3340,7 @@ def _infer_from_execute(execute: Callable[..., Any]) -> "type[BaseModel]":
         if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
             continue  # **kwargs（如 FinishTool 动态字段）不进 schema
         if param.annotation is inspect.Parameter.empty:
-            raise MissingSchemaError(f"参数缺类型标注：{param_name}")
+            raise MissingSchemaError(f"parameter lacks a type annotation: {param_name}")
         if param.default is inspect.Parameter.empty:
             fields[param_name] = (param.annotation, ...)   # 无默认 → 必填
         else:

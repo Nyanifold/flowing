@@ -82,7 +82,7 @@ def test_mcp_url_env_missing_is_format_error(monkeypatch):
     from flowing.errors import FormatError
 
     monkeypatch.delenv("FLOWING_TEST_GHOST", raising=False)
-    with pytest.raises(FormatError, match="环境变量缺失"):
+    with pytest.raises(FormatError, match="environment variable referenced by template"):
         _declaration(url="http://127.0.0.1:{{ env.FLOWING_TEST_GHOST }}/sse")
 
 
@@ -183,7 +183,7 @@ async def test_mcp_declaration_instance_not_executable():
     decl = _declaration(command=sys.executable, args=[str(DEMO_SERVER)])
     result = await decl({"title": "x"})
     assert result.status == "error"
-    assert "合成名" in result.error
+    assert "synthetic name" in result.error
 
 
 async def test_mcp_connection_failure_is_error_result():

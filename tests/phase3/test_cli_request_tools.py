@@ -52,7 +52,7 @@ def test_cli_tool_illegal_shell_fails_fast():
     """非法 shell 声明 → 构造期 FormatError（加载期 fail-fast，不留到执行期）。"""
     from flowing.errors import FormatError
 
-    with pytest.raises(FormatError, match="非法 shell"):
+    with pytest.raises(FormatError, match="invalid shell declaration"):
         _cli_tool("echo hi", {"x": {"type": "string"}}, shell="zsh")
 
 

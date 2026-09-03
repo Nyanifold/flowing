@@ -198,7 +198,7 @@ async def test_g3_background_failure_dual_channel(caplog):
     msg = caller.messages[0]
     assert msg.kind is MessageKind.EVENT and msg.source == "tool_result"
     assert any("后台炸了" in t for t in _texts(msg))
-    assert any("异步工具 bg-tool 后台运行失败" in rec.message
+    assert any("async tool bg-tool failed in the background" in rec.message
                for rec in caplog.records)
 
 
@@ -232,7 +232,7 @@ async def test_g4_yield_normalization_and_forbidden_block():
     # 报告 3/4：ToolCallBlock 与 ThinkingBlock 都容错转文本（不抛、不泄漏）
     for m3 in caller.messages[2:4]:
         assert all(isinstance(b, TextBlock) for b in m3.content)
-        assert any("违禁块" in t for t in _texts(m3))
+        assert any("forbidden blocks" in t for t in _texts(m3))
     assert not any(isinstance(b, (ToolCallBlock, ThinkingBlock))
                    for m in caller.messages for b in m.content)
     # 报告 5：后续 yield 正常继续
@@ -261,12 +261,12 @@ async def test_g5_receipt_registration_key():
     assert msg.kind is MessageKind.TOOL and msg.tool_status == "pending"
     assert any(b.data.get("text") == "hi"
                for b in msg.content if isinstance(b, StructBlock))
-    task_blocks = [t for t in _texts(msg) if t.startswith("后台任务 ID：")]
-    assert task_blocks == [f"后台任务 ID：{r.background_task_id}"]
+    task_blocks = [t for t in _texts(msg) if t.startswith("background task ID: ")]
+    assert task_blocks == [f"background task ID: {r.background_task_id}"]
     # 非 pending 状态不携带注册键块
     done = ToolResult(status="completed", output={"ok": 1})
     done_msg = done.as_message("tc-2")
-    assert not any(t.startswith("后台任务 ID：") for t in _texts(done_msg))
+    assert not any(t.startswith("background task ID: ") for t in _texts(done_msg))
 
 
 # ---------------------------------------------------------------------------
@@ -349,7 +349,7 @@ async def test_g7_cancel_api_and_destroy(tmp_path):
         assert agent.cancel_background_task(tid) is True
         assert await _drain_until(
             lambda: tid not in agent._background_tasks)
-        assert any("异步任务被取消" in t
+        assert any("async task cancelled" in t
                    for m in captured for t in _texts(m))
         # cancel_all：全部取消（含已完成的——命中语义与 task.cancel() 返回值无关）
         r2 = await tool({"text": "x"}, caller=agent)
