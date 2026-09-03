@@ -139,7 +139,7 @@ class SkillRegistry:
         """
         key = f"{namespace or 'default'}::{skill.name}"
         if key in self._skills:
-            raise FlowingError(f"技能重名注册：{key}")  # 全键重名永远不允许
+            raise FlowingError(f"skill already registered: {key}")  # 全键重名永远不允许
         self._skills[key] = skill
         skill.registry_key = key   # 落账时回写全键（与 get 的解析通道同口径）
 
@@ -194,7 +194,7 @@ class SkillRegistry:
         if name in self._skills:
             return self._skills[name]
         if "::" in name:  # 限定名:只查注册表精确键(插件注册通道),不走文件查找链
-            raise FlowingError(f"技能未注册：{name}")
+            raise FlowingError(f"skill not registered: {name}")
         if classify_ref(name) == "path" or source_dir is not None:
             # 路径形态恒走文件定位（@/ 无需 source_dir；./ ../ 缺省时报错，
             # resolve_path 现有口径——与 ToolRegistry.get 同姿态）；裸名 +
@@ -225,12 +225,12 @@ class SkillRegistry:
                 return self._skills[key]
         if classify_ref(name) == "path":
             # 路径形态：文件定位未命中（不存在或后缀非法）——报文含原引用串
-            raise FlowingError(f"技能定义文件不存在或形态非法：{name}")
+            raise FlowingError(f"skill definition file does not exist or has an invalid form: {name}")
         attempted = _attempted_paths(name, source_dir)
         raise FlowingError(
-            f"技能未注册且查找链不命中：{name}（已尝试: "
-            + (", ".join(str(p) for p in attempted) if attempted else "仅注册表裸名视图")
-            + "）")
+            f"skill not registered and no lookup chain hit: {name} (tried: "
+            + (", ".join(str(p) for p in attempted) if attempted else "registry bare-name view only")
+            + ")")
 
 
 def _dir_candidates(name: str) -> list[str]:
@@ -288,7 +288,7 @@ def _locate_skill_file(
     if classify_ref(ref) == "path":
         root = _launch_project_root()
         if root is None and ref.replace("\\", "/").startswith("@/"):
-            raise ValueError("@/ 路径解析需要 launch 上下文（_current_project_root 未登记）")
+            raise ValueError("@/ path resolution requires a launch context (_current_project_root not registered)")
         resolved = resolve_path(
             ref, project_root=root if root is not None else Path.cwd(),   # 哑根：@/ 已在上方拒绝
             source_dir=source_dir)
@@ -298,7 +298,7 @@ def _locate_skill_file(
             hit = probe_candidates(resolved, candidates)
             if hit is None:
                 # 显式路径语境：目录无候选 -> 直接报错，不继续向下
-                raise FormatError(f"显式路径目录无合法技能入口: {resolved}")
+                raise FormatError(f"explicit path directory has no valid skill entry: {resolved}")
             return hit, True, resolved, candidates
         if resolved.is_file() and (
                 resolved.name.endswith(".fya") or resolved.name.endswith(".md")):
@@ -353,9 +353,9 @@ def _parse_skill_file(name: str, source_dir: Path) -> Skill:
     if located is None:
         attempted = _attempted_paths(name, source_dir)
         raise FlowingError(
-            f"按 {name!r} 找不到任何合法技能定义文件（已尝试: "
+            f"no valid skill definition file found for {name!r} (tried: "
             + (", ".join(str(p) for p in attempted) if attempted else str(name))
-            + "）")
+            + ")")
     hit, _folder_form, base_dir, candidates = located
     identity = infer_name(hit, naming=SKILL_NAMING)   # 通用名命中 -> 规范名取目录名
     if hit.name.endswith(".fya"):
@@ -365,8 +365,8 @@ def _parse_skill_file(name: str, source_dir: Path) -> Skill:
                       if c.endswith(".md") and (base_dir / c).exists()]
         if coexisting:
             warnings.warn(
-                f"同名 .fya 系与 .md 并存，.fya 系优先: {hit}"
-                f"（并存: {', '.join(coexisting)}）")
+                f"a same-name .fya family and .md coexist; the .fya family wins: {hit}"
+                f" (coexisting: {', '.join(coexisting)})")
         return _parse_skill_fya(hit, identity)
     return _parse_skill_md(hit, identity)
 
@@ -428,8 +428,8 @@ def _parse_skill_fya(path: Path, identity: str) -> Skill:
     raw = split_fya(path.read_text(encoding="utf-8"))
     if raw.blocks:
         raise FormatError(
-            f"{path} 含 Skill 定义不支持的具名块: {sorted(raw.blocks)}"
-            "（Skill 正文经 content 字段声明；$script 只用于定义 on_load）")
+            f"{path} contains named blocks unsupported by Skill definitions: {sorted(raw.blocks)}"
+            " (Skill body is declared via the content field; $script is only for defining on_load)")
     fields = load_fya_yaml(raw.yaml_text)
     explicit_name = fields.get("name")
     if (explicit_name is not None and explicit_name is not PENDING
@@ -443,7 +443,7 @@ def _parse_skill_fya(path: Path, identity: str) -> Skill:
         raise MissingFieldError("content", str(path))
     raw_args = fields.get("args")
     if raw_args is not None and not isinstance(raw_args, dict):
-        raise FormatError(f"{path} 的 args 字段必须是映射: {raw_args!r}")
+        raise FormatError(f"args field of {path} must be a mapping: {raw_args!r}")
     args_schema = expand_args_schema(
         {k: ({} if v is PENDING else v) for k, v in (raw_args or {}).items()})
     on_load = None
@@ -453,7 +453,7 @@ def _parse_skill_fya(path: Path, identity: str) -> Skill:
         exec(compile(raw.script, str(path), "exec"), namespace)  # noqa: S102
         fn = namespace.get("on_load")
         if fn is not None and not callable(fn):
-            raise FormatError(f"{path} 的 $script 中 on_load 不是可调用对象")
+            raise FormatError(f"on_load in $script of {path} is not callable")
         on_load = fn
     extra = {k: v for k, v in fields.items() if k not in _SKILL_FYA_RESERVED}
     skill = Skill(name=identity, description=Parsable(description),

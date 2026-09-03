@@ -423,8 +423,9 @@ class SkillLoadTool(Tool):
 
     definition: ToolDefinition = ToolDefinition(
         name="skill-load",
-        description="加载指定技能的详细执行指南。可用技能见 <available_skills>。",
-        params_schema={"name": {"type": "string", "description": "要加载的技能名称"}},
+        description="Load the detailed execution guide of the specified skill. "
+                    "Available skills are listed in <available_skills>.",
+        params_schema={"name": {"type": "string", "description": "name of the skill to load"}},
     )
     """类级默认声明：``name="skill-load"``、``params`` 只含 ``name``——LLM
     不传参（参数合并在 ``skill_load()`` 内完成）。
@@ -455,7 +456,8 @@ class SkillLoadTool(Tool):
         entry = caller._skill_entries.get(name)  # 按别名查找（LLM 入口做 enabled 检查）
         if entry is None or not entry.enabled:
             raise FlowingError(  # -> flowing.errors.FlowingError；由 Tool.__call__ 包装为 error 结果
-                f"技能 {name!r} 未声明或已禁用（enabled=False 时 LLM 入口拒绝，编程式 skill_load 不受限）",
+                f"skill {name!r} is not declared or is disabled (enabled=False rejects the LLM entry; "
+                f"programmatic skill_load is unaffected)",
             )
         skill_result = await caller.skill_load(name)  # -> SkillResult（同一执行路径，五步流程见 use_skill）
         receipt = {"loaded": name}  # 收据化封装：正文不经 ToolResult（PLUGIN 消息在 skill_load 内入队）
@@ -749,7 +751,7 @@ def use_skill(
                       body: dict[str, Any] | None = None) -> SkillEntry:
             if isinstance(name, EntryRef):   # 归一：EntryRef 与 alias/body 不可同传
                 if alias is not None or body is not None:
-                    raise FormatError("EntryRef 与 alias/body 不可同传")
+                    raise FormatError("EntryRef and alias/body cannot be given together")
                 ref = name
             else:
                 item = {f"{name} as {alias}" if alias is not None else name: body or {}}
@@ -771,11 +773,11 @@ def use_skill(
                     if bvalue is PENDING:
                         continue   # args: _ —— 空补丁语义（与条目覆写位 PENDING 同口径）
                     if not isinstance(bvalue, Mapping):
-                        raise FormatError(f"skill 条目的 args 必须是映射: {bvalue!r}")
+                        raise FormatError(f"args of a skill entry must be a mapping: {bvalue!r}")
                     for pname, pvalue in bvalue.items():
                         if split_as(str(pname))[1] is not None:
                             # 键含 as -> FormatError（无改名通道）
-                            raise FormatError(f"skill 条目 args 的参数键不允许 as 改名: {pname!r}")
+                            raise FormatError(f"as-renaming is not allowed for keys in a skill entry's args: {pname!r}")
                         if pvalue is PENDING:
                             continue   # _（PENDING）值视为未声明该参数（不进 specified，覆盖校验照常）
                         specified[pname] = pvalue if isinstance(pvalue, Parsable) else Parsable(pvalue)
@@ -783,7 +785,7 @@ def use_skill(
                     enabled = bool(bvalue)
                 else:
                     raise FormatError(
-                        f"skill 条目含未知键: {bkey!r}（键集固定 description/args/enabled）")
+                        f"skill entry contains unknown key: {bkey!r} (fixed key set: description/args/enabled)")
             if ref.alias in agent._skill_entries:   # 同 alias = 笔误（绑定层统一 fail-fast）
                 raise EntryNameConflictError(ref.alias, kind="skill")
             entry = SkillEntry(
@@ -805,7 +807,7 @@ def use_skill(
             ]
             if uncovered:
                 raise FormatError(
-                    f"技能 {ref.raw!r} 的参数未被 specified 覆盖且无默认值: {uncovered}")
+                    f"parameters of skill {ref.raw!r} are neither covered by specified nor have defaults: {uncovered}")
             agent._skill_entries[entry.name_alias] = entry
             return entry
         agent.skill_add = skill_add  # type: ignore[attr-defined]
@@ -819,11 +821,11 @@ def use_skill(
         # skills: _ 是延迟定义承诺——须在调用本函数前赋值兑现；仍为 PENDING
         # 即承诺未兑现，fail-fast（插件层的 PENDING 检查点，核心检查不覆盖
         # _extra 字段）
-        raise FormatError("skills 字段声明为 _（PENDING）但在 use_skill 前未赋值兑现")
+        raise FormatError("the skills field was declared as _ (PENDING) but never resolved before use_skill")
     elif isinstance(raw_decl, list):
         raw_items = list(raw_decl)
     else:
-        raise FormatError(f"skills 字段必须是列表: {raw_decl!r}")
+        raise FormatError(f"the skills field must be a list: {raw_decl!r}")
     if source_dir is not None:
         # glob 展开复用阶段 3 落地的通用 helper（三类条目同一份实现）：
         # 入参是规范化之前的原始列表项；先收显式条目，glob 命中与已收条目

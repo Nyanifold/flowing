@@ -128,7 +128,7 @@ def _locate_file(resolved: Path, *, raw: str) -> Path:
     if resolved.is_file():
         return resolved
     if resolved.suffix == ".py":
-        raise FlowingError(f"workflow 定义文件不存在：{resolved}")
+        raise FlowingError(f"workflow definition file does not exist: {resolved}")
     stem = resolved.name
     candidates = [resolved.with_name(stem + ".py")]   # 候选一：原样补 .py
     snake = stem.replace("-", "_")
@@ -137,11 +137,11 @@ def _locate_file(resolved: Path, *, raw: str) -> Path:
     hits = [c for c in candidates if c.is_file()]
     if len(hits) > 1:
         raise FlowingError(
-            f"workflow 路径歧义：{raw!r} 同时命中 {hits[0]} 与 {hits[1]}")
+            f"ambiguous workflow path: {raw!r} matched both {hits[0]} and {hits[1]}")
     if not hits:
         raise FlowingError(
-            f"workflow 定义文件不存在：{resolved}（已尝试候选："
-            + "、".join(str(c) for c in candidates) + "）")
+            f"workflow definition file does not exist: {resolved} (tried candidates: "
+            + ", ".join(str(c) for c in candidates) + ")")
     return hits[0]
 
 
@@ -163,20 +163,20 @@ def _load_workflow_class(file_path: Path) -> type[Workflow]:
     ]
     if len(classes) > 1:
         raise FlowingError(
-            f"workflow 文件形态歧义：{file_path} 含 {len(classes)} 个 "
-            f"Workflow 子类（{[c.__name__ for c in classes]}），一个文件一个编排")
+            f"ambiguous workflow file form: {file_path} contains {len(classes)} "
+            f"Workflow subclasses ({[c.__name__ for c in classes]}); one orchestration per file")
     if classes:
         return classes[0]   # 类形态优先（与顶层 run 并存时忽略 run）
     run_fn = vars(module).get("run")
     if run_fn is None:
         raise FlowingError(
-            f"workflow 文件形态缺失：{file_path} 既无 Workflow 子类也无顶层 "
+            f"missing workflow file form: {file_path} has neither a Workflow subclass nor a top-level "
             f"async def run")
     params = list(inspect.signature(run_fn).parameters)
     if not inspect.iscoroutinefunction(run_fn) or (params and params[0] == "self"):
         raise FlowingError(
-            f"workflow 函数形态不合法：{file_path} 的顶层 run 必须是"
-            f" async def 且无 self 参数（self 由编译注入）")
+            f"invalid workflow function form: the top-level run of {file_path} must be an "
+            f"async def without a self parameter (self is injected by compilation)")
     return _compile_function_form(module, file_path)
 
 
