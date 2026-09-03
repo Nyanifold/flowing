@@ -111,7 +111,7 @@ async def test_t65_request_timeout_and_late_reply_discarded():
     assert h_a._pending_replies == {}   # 超时后 future 已摘除（无泄漏）
     # 迟到回复：静默丢弃 + warnings.warn（可观测而非无声）
     late = captured[0]
-    with pytest.warns(UserWarning, match="无匹配 pending future"):
+    with pytest.warns(UserWarning, match="no matching pending future"):
         bus.reply("b", late.reply_to, late.correlation_id, {"late": True})
 
 
@@ -193,11 +193,11 @@ async def test_t71_reply_without_pending_future_or_target_discarded_with_warn():
     seen: list[SignalEnvelope] = []
     h_a = bus.create_handle("a", on_signal=seen.append)
     # 情形一：无匹配 pending future（接收侧句柄丢弃）
-    with pytest.warns(UserWarning, match="无匹配 pending future"):
+    with pytest.warns(UserWarning, match="no matching pending future"):
         bus.reply("b", "a", "no-such-correlation", {})
     # 情形二：target 端点已注销（总线侧丢弃）
     h_a.destroy()
-    with pytest.warns(UserWarning, match="目标端点 .* 不存在"):
+    with pytest.warns(UserWarning, match="target endpoint .* does not exist"):
         bus.reply("b", "a", "no-such-correlation", {})
     assert seen == []   # '_reply' 信封从未进入接收回调
 
