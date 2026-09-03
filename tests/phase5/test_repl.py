@@ -68,7 +68,7 @@ async def test_t16_empty_pool_no_create(project_empty, persist_dir, monkeypatch,
     rc = await cmd_repl(str(project_empty), persist=str(persist_dir))
     assert rc == EXIT_OK
     out = capsys.readouterr().out
-    assert "无法确定 Agent 类型" in out
+    assert "cannot determine agent type" in out
     assert "(new agent)>>>" in out   # 仍在未绑定态循环中
     # 名录保持为空：无 session 目录产生
     assert not [p for p in persist_dir.iterdir() if p.is_dir()]
@@ -95,7 +95,7 @@ async def test_t18_unknown_command(project_ok, persist_dir, monkeypatch, capsys)
     rc = await cmd_repl(str(project_ok), persist=str(persist_dir))
     assert rc == EXIT_OK
     out = capsys.readouterr().out
-    assert "未知命令" in out
+    assert "unknown command" in out
     assert "alpha-reply" in out   # 未知命令后仍在循环中，消息照常投递
 
 
@@ -113,7 +113,7 @@ async def test_t20_messages(project_ok, project_two_roots, tmp_path, monkeypatch
     drive_input(monkeypatch, ["/messages", "/exit"])
     assert await cmd_repl(str(project_two_roots), persist=str(tmp_path / "p1")) == EXIT_OK
     out = capsys.readouterr().out
-    assert "无会话可看" in out
+    assert "nothing to view" in out
     # 已绑定：一轮对话后打印消息链
     drive_input(monkeypatch, ["你好", "/messages", "/exit"])
     assert await cmd_repl(str(project_ok), persist=str(tmp_path / "p2")) == EXIT_OK
@@ -132,9 +132,9 @@ async def test_t21_use_switch(project_two_roots, persist_dir, monkeypatch, capsy
     assert rc == EXIT_OK
     out = capsys.readouterr().out
     # 未绑定态 /messages 提示
-    assert "无会话可看" in out
+    assert "nothing to view" in out
     # /use ghost → 未知 id 提示，绑定不变（下一条提示符仍是 root-a）
-    i_unknown = out.index("未知 Agent")
+    i_unknown = out.index("unknown agent")
     assert "(root-a)>>>" in out[i_unknown:]
     # 切换后消息投递到新目标
     assert "alpha-reply" in out and "beta-reply" in out
@@ -183,8 +183,8 @@ async def test_t23_use_corrupt_session(project_two_roots, persist_dir, monkeypat
     rc = await cmd_repl(str(project_two_roots), persist=str(persist_dir))
     assert rc == EXIT_OK
     out = capsys.readouterr().out
-    assert "恢复 Agent 失败" in out
-    i_fail = out.index("恢复 Agent 失败")
+    assert "failed to restore agent" in out
+    i_fail = out.index("failed to restore agent")
     assert "(new agent)>>>" in out[i_fail:]   # 绑定不变（仍未绑定）
     assert "(root-b)>>>" in out[i_fail:]      # 完好的 root-b 仍可恢复绑定
 
@@ -263,5 +263,5 @@ async def test_t27_default_repl_eval_is_unknown(project_ok, persist_dir, monkeyp
     rc = await cmd_repl(str(project_ok), persist=str(persist_dir))
     assert rc == EXIT_OK
     out = capsys.readouterr().out
-    assert "未知命令" in out
+    assert "unknown command" in out
     assert not re.search(r"(?m)^default$", out)   # 未执行求值

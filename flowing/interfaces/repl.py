@@ -58,12 +58,12 @@ SLASH_COMMANDS: tuple[str, ...] = (
 """
 
 _HELP_LINES: tuple[str, ...] = (
-    "/help                列出全部命令（本说明）",
-    "/exit  /quit         退出 repl（优雅 shutdown 后以退出码 0 退出）",
-    "/snapshot            打印当前 Runtime 只读快照",
-    "/messages            打印当前绑定 Agent 的消息链概览",
-    "/agents              列出有记录的 Agent（含休眠记录）",
-    "/use <agent_id>      切换绑定目标（休眠 id 经 get_agent 现场恢复）",
+    "/help                list all commands (this help)",
+    "/exit  /quit         exit repl (graceful shutdown, then exit with code 0)",
+    "/snapshot            print a read-only snapshot of the current Runtime",
+    "/messages            print an overview of the bound Agent's message chain",
+    "/agents              list recorded Agents (including dormant records)",
+    "/use <agent_id>      switch the binding target (dormant ids are restored via get_agent)",
 )
 """``/help`` 的全部命令一句话说明（与 :data:`SLASH_COMMANDS` 一一对应）。"""
 
@@ -118,7 +118,7 @@ def _print_message_chain(agent: Agent) -> None:
         chain.append(msg)
         mid = msg.parent_id
     if not chain:
-        print("（无消息）")
+        print("(no messages)")
         return
     for msg in reversed(chain):
         text = _fold("".join(b.text for b in msg.content if isinstance(b, TextBlock)))
@@ -262,7 +262,7 @@ async def cmd_repl(
     try:
         runtime = await launch(path, main_file=main_file, **kwargs)
     except Exception as exc:
-        print(f"launch 阶段失败：{exc}", file=sys.stderr)
+        print(f"launch failed: {exc}", file=sys.stderr)
         return EXIT_RUNTIME_ERROR
     _install_signal_handlers(runtime)
 
@@ -341,14 +341,14 @@ async def cmd_repl(
             except Exception as exc:
                 # 记录损坏导致启动恢复失败：与 /use 同口径——打印错误，
                 # 进未绑定态（用户可 /agents + /use 现场选择其他记录）
-                print(f"恢复 Agent 失败：{exc}")
+                print(f"failed to restore agent: {exc}")
     if found is not None:
         _bind(found)
     elif any(meta.get("parent_agent_id") == runtime.node_id
              for meta in runtime._agent_pool.values()):
         # 多根不再报错退出、唯一休眠根恢复失败同样落到此处：进未绑定态并
         # 提示选择路径（记录数不定，措辞保持中性）
-        print("存在根 Agent 记录：/agents 查看，/use <id> 选择")
+        print("root agent records exist: see /agents, select with /use <id>")
 
     # 第 3 步：读行循环；提示符 = 已绑定 (agent_id)>>> / 未绑定 (new agent)>>>
     while True:
@@ -380,7 +380,7 @@ async def cmd_repl(
                 # （与 serve GET /agents 同口径；前缀懒读盘、不回写池元数据）
                 records = _list_agent_records(runtime)
                 if not records:
-                    print("（无 Agent 记录）")
+                    print("(no agent records)")
                 for rec in records:
                     mtime_str = (
                         time.strftime("%Y-%m-%d %H:%M", time.localtime(rec["mtime"]))
@@ -392,28 +392,28 @@ async def cmd_repl(
                 # 未激活走 recover 管线现场恢复）；未知 id → 打印提示，绑定
                 # 不变；只换投递目标，不 destroy 原 Agent（保持激活）
                 if not arg:
-                    print("用法：/use <agent_id>")
+                    print("usage: /use <agent_id>")
                 elif arg in runtime._nodes or arg in runtime._agent_pool:
                     try:
                         target = await runtime.get_agent(arg)
                     except Exception as exc:
                         # 名录中但 session 目录损坏：recover 管线原生异常
                         # 上抛，打印错误，绑定不变，不退出
-                        print(f"恢复 Agent 失败：{exc}")
+                        print(f"failed to restore agent: {exc}")
                     else:
                         if isinstance(target, Agent):
                             _bind(target)
                         else:
-                            print(f"{arg!r} 不是 Agent，无法绑定")
+                            print(f"{arg!r} is not an Agent; cannot bind")
                 else:
-                    print(f"未知 Agent：{arg!r}，/agents 查看有记录的 id")
+                    print(f"unknown agent: {arg!r}; see /agents for recorded ids")
             elif cmd == "/snapshot":
                 print(runtime.snapshot())  # 人类可读渲染
             elif cmd == "/messages":
                 # 未绑定：打印提示（无会话可看）；已绑定：沿
                 # agent.current_head_id 上溯的消息链概览
                 if agent is None:
-                    print("未绑定 Agent：无会话可看（/agents 查看，/use <id> 选择）")
+                    print("no agent bound: nothing to view (see /agents, select with /use <id>)")
                 else:
                     _print_message_chain(agent)
             elif extra_slash_handlers is not None and cmd in extra_slash_handlers:
@@ -422,7 +422,7 @@ async def cmd_repl(
                 await extra_slash_handlers[cmd](arg, agent, runtime)
             else:
                 # 未识别 /xxx：打印提示，不进消息流、不退出
-                print(f"未知命令：{cmd}，/help 查看可用命令")
+                print(f"unknown command: {cmd}; run /help for available commands")
         else:
             if agent is None:
                 # 未绑定收到消息 → 先创建新 Agent：agent_type 取池中根条目
@@ -431,13 +431,14 @@ async def cmd_repl(
                 # 「无法确定 Agent 类型」，不创建
                 agent_type = _default_agent_type(runtime)
                 if agent_type is None:
-                    print("无法确定 Agent 类型（池无根记录），请先在 main 中 mount / 创建根 Agent")
+                    print("cannot determine agent type (no root record in the pool); "
+                          "mount or create a root agent in main first")
                     continue
                 try:
                     _bind(await runtime.create_agent(agent_type))  # parent_id=None 缺省即根
                 except Exception as exc:
                     # 创建失败（如 agent_type 已不可解析）：打印错误，保持未绑定
-                    print(f"创建 Agent 失败：{exc}")
+                    print(f"failed to create agent: {exc}")
                     continue
             # 以 str 调 query()（打包 USER 消息在其内部完成），等待回合结果
             flags["query_active"] = True

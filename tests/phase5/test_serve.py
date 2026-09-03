@@ -266,7 +266,7 @@ async def test_t44_port_bind_failure(project_ok, persist_dir, monkeypatch, capsy
             str(project_ok), persist=str(persist_dir), port=port), timeout=10)
     assert rc == EXIT_RUNTIME_ERROR
     err = capsys.readouterr().err
-    assert "端口绑定失败" in err and str(port) in err
+    assert "port binding failed" in err and str(port) in err
     assert captured["runtime"]._shutdown_event.is_set()   # 先 shutdown 再退出
 
 

@@ -23,12 +23,12 @@ from flowing.interfaces.web import cmd_web
 
 
 _USAGES: dict[str, str] = {
-    "run": "flowing run <path> [-m <main 文件>] [--key value ...]",
-    "repl": "flowing repl <path> [-m <main 文件>] [--key value ...]（别名：cli）",
-    "repl-debug": "flowing repl-debug <path> [-m <main 文件>] [--key value ...]",
-    "serve": "flowing serve <path> [-m <main 文件>] [-a <host>] [-p <port>] [--key value ...]",
-    "web": "flowing web <path> [-m <main 文件>] [-a <host>] [-p <port>] [--key value ...]",
-    "test": "flowing test <path> [-m <main 文件>] [--key value ...]",
+    "run": "flowing run <path> [-m <main file>] [--key value ...]",
+    "repl": "flowing repl <path> [-m <main file>] [--key value ...] (alias: cli)",
+    "repl-debug": "flowing repl-debug <path> [-m <main file>] [--key value ...]",
+    "serve": "flowing serve <path> [-m <main file>] [-a <host>] [-p <port>] [--key value ...]",
+    "web": "flowing web <path> [-m <main file>] [-a <host>] [-p <port>] [--key value ...]",
+    "test": "flowing test <path> [-m <main file>] [--key value ...]",
     "compile": "flowing compile <path>",
 }
 """各子命令的一行用法。``-h`` / ``--help`` 打印到 stdout；用法错误时
@@ -37,15 +37,15 @@ _USAGES: dict[str, str] = {
 
 def _print_general_usage(file) -> None:
     """总用法输出：子命令封闭集清单（空 argv / 未知子命令时的 stderr 输出）。"""
-    print("用法：flowing <子命令> [<path>] [参数 ...]", file=file)
-    print("子命令：" + ", ".join(SUBCOMMANDS) + "（cli 是 repl 的别名）", file=file)
+    print("usage: flowing <subcommand> [<path>] [args ...]", file=file)
+    print("subcommands: " + ", ".join(SUBCOMMANDS) + " (cli is an alias for repl)", file=file)
 
 
 def _usage_error(message: str, subcommand: str) -> int:
     """用法错误的统一出口：向 stderr 打印错误提示与该子命令用法，
     返回 :data:`EXIT_USAGE_ERROR`。"""
-    print(f"用法错误：{message}", file=sys.stderr)
-    print(f"用法：{_USAGES[subcommand]}", file=sys.stderr)
+    print(f"usage error: {message}", file=sys.stderr)
+    print(f"usage: {_USAGES[subcommand]}", file=sys.stderr)
     return EXIT_USAGE_ERROR
 
 
@@ -73,7 +73,7 @@ def _parse_flowing_args(subcommand: str, rest: list[str]):
             i += 1
         elif token in ("-m", "-a", "-p"):
             if i + 1 >= len(rest) or rest[i + 1].startswith("-"):
-                return _usage_error(f"{token} 缺值", subcommand)
+                return _usage_error(f"{token} is missing a value", subcommand)
             value: str = rest[i + 1]
             if token == "-m":
                 main_file = value
@@ -83,11 +83,11 @@ def _parse_flowing_args(subcommand: str, rest: list[str]):
                 try:
                     port = int(value)
                 except ValueError:
-                    return _usage_error(f"-p 端口须为数字，收到 {value!r}", subcommand)
+                    return _usage_error(f"-p port must be a number, got {value!r}", subcommand)
             i += 2
         elif token.startswith("-") and not token.startswith("--"):
             # 未知单横线参数：flowing 级参数是封闭集，main 参数一律双横线
-            return _usage_error(f"未知参数 {token!r}（main 参数请用 --key value 形式）", subcommand)
+            return _usage_error(f"unknown argument {token!r} (main args must use the --key value form)", subcommand)
         else:
             kv_argv.append(token)
             i += 1
@@ -97,9 +97,9 @@ def _parse_flowing_args(subcommand: str, rest: list[str]):
     while j < len(kv_argv):
         token = kv_argv[j]
         if not token.startswith("--"):
-            return _usage_error(f"裸参数 {token!r}（仅支持 --key value 形式）", subcommand)
+            return _usage_error(f"bare argument {token!r} (only the --key value form is supported)", subcommand)
         if token == "--" or "=" in token:
-            return _usage_error(f"不支持的参数形式 {token!r}（仅支持 --key value 空格分隔）", subcommand)
+            return _usage_error(f"unsupported argument form {token!r} (only --key value separated by space)", subcommand)
         if j + 1 < len(kv_argv) and not kv_argv[j + 1].startswith("--"):
             j += 2   # 键值对（值以字符串原样传递，不做类型推断）
         else:
@@ -180,7 +180,7 @@ def main(argv: list[str] | None = None) -> int:
     subcommand: str = argv_list[0]
     if subcommand not in SUBCOMMANDS:
         # 未知子命令（精确小写匹配，无前缀/模糊匹配）：打印总用法到 stderr
-        print(f"用法错误：未知子命令 {subcommand!r}", file=sys.stderr)
+        print(f"usage error: unknown subcommand {subcommand!r}", file=sys.stderr)
         _print_general_usage(sys.stderr)
         return EXIT_USAGE_ERROR
     if subcommand == "cli":
@@ -193,14 +193,14 @@ def main(argv: list[str] | None = None) -> int:
         rest = argv_list[1:]
     if not Path(path).is_dir():
         # <path> 不存在或不是目录：CLI 层先于 launch 拒绝
-        return _usage_error(f"路径 {path!r} 不存在或不是目录", subcommand)
+        return _usage_error(f"path {path!r} does not exist or is not a directory", subcommand)
     parsed = _parse_flowing_args(subcommand, rest)
     if isinstance(parsed, int):
         return parsed   # 单横线参数 / --key 形态错误（stderr 已打印用法）
     main_file, host, port, help_requested, kwargs = parsed
     if help_requested:
         # -h / --help：打印该子命令用法到 stdout（--help 为保留字，不透传给 main）
-        print(f"用法：{_USAGES[subcommand]}")
+        print(f"usage: {_USAGES[subcommand]}")
         return EXIT_OK
     if subcommand == "run":
         return asyncio.run(cmd_run(path, main_file=main_file, **kwargs))
@@ -278,5 +278,5 @@ def cmd_compile(path: str) -> int:
         print(str(exc), file=sys.stderr)
         return EXIT_RUNTIME_ERROR
     if not products:
-        print("无可编译文件")
+        print("nothing to compile")
     return EXIT_OK

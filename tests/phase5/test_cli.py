@@ -139,9 +139,9 @@ def test_r9_single_dash_failures(tmp_path, capsys):
     """-p 非数字 / -m 缺值 / 未知单横线参数 → EXIT_USAGE_ERROR + stderr
     用法说明。"""
     assert main(["serve", str(tmp_path), "-p", "abc"]) == EXIT_USAGE_ERROR
-    assert "端口须为数字" in capsys.readouterr().err
+    assert "port must be a number" in capsys.readouterr().err
     assert main(["run", str(tmp_path), "-m"]) == EXIT_USAGE_ERROR
-    assert "-m 缺值" in capsys.readouterr().err
+    assert "-m is missing a value" in capsys.readouterr().err
     assert main(["run", str(tmp_path), "-x", "1"]) == EXIT_USAGE_ERROR
     assert "-x" in capsys.readouterr().err
     assert main(["run", str(tmp_path), "--"]) == EXIT_USAGE_ERROR
@@ -217,7 +217,7 @@ def test_t60_no_fya(tmp_path, capsys):
     project = tmp_path / "empty-proj"
     project.mkdir()
     assert main(["compile", str(project)]) == EXIT_OK
-    assert "无可编译文件" in capsys.readouterr().out
+    assert "nothing to compile" in capsys.readouterr().out
 
 
 def test_t61_compile_no_event_loop(monkeypatch, tmp_path):

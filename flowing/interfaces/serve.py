@@ -123,7 +123,7 @@ async def _resolve_agent(runtime: Runtime, agent_id: str) -> Agent | web.Respons
         node = await runtime.get_agent(agent_id)   # 休眠记录现场恢复
     except Exception as exc:
         # 有记录但 recover 抛异常（session 目录损坏等）：500 + 错误摘要
-        return _error(500, f"recover 失败：{exc}")
+        return _error(500, f"recover failed: {exc}")
     if not isinstance(node, Agent):
         return _error(404, "unknown agent")   # Workflow 根等：不是可投递目标
     return node
@@ -142,9 +142,9 @@ def _build_app(runtime: Runtime, extra_routes: tuple[tuple[str, str, object], ..
         try:
             body = await request.json()
         except json.JSONDecodeError:
-            return _error(400, "请求体须为 JSON 对象")
+            return _error(400, "request body must be a JSON object")
         if not isinstance(body, dict) or not isinstance(body.get("text"), str):
-            return _error(400, "请求体缺 text 字段或 text 非字符串")
+            return _error(400, "request body is missing a text field or text is not a string")
         agent = await _resolve_agent(runtime, request.match_info["agent_id"])
         if isinstance(agent, web.Response):
             return agent
@@ -177,27 +177,27 @@ def _build_app(runtime: Runtime, extra_routes: tuple[tuple[str, str, object], ..
             try:
                 body = await request.json()
             except json.JSONDecodeError:
-                return _error(400, "请求体须为 JSON 对象")
+                return _error(400, "request body must be a JSON object")
         else:
             body = {}   # 空 body 合法：缺省类型 = 项目默认主 Agent
         if not isinstance(body, dict):
-            return _error(400, "请求体须为 JSON 对象")
+            return _error(400, "request body must be a JSON object")
         agent_type = body.get("agent_type")
         args = body.get("args", {})
         if agent_type is not None and not isinstance(agent_type, str):
-            return _error(400, "agent_type 须为字符串")
+            return _error(400, "agent_type must be a string")
         if not isinstance(args, dict):
-            return _error(400, "args 须为对象")
+            return _error(400, "args must be an object")
         if agent_type is None:
             # 缺省类型 = 项目默认主 Agent（共享辅助，与 repl 未绑定态隐式创建同口径）；
             # 池无根记录 → 类型无法确定，视为创建参数错误映射 400
             agent_type = _default_agent_type(runtime)
             if agent_type is None:
-                return _error(400, "无法确定默认 Agent 类型（池无根记录）")
+                return _error(400, "cannot determine the default agent type (no root record in the pool)")
         try:
             agent = await runtime.create_agent(agent_type, **args)
         except KeyError:
-            return _error(400, f"未知 agent_type：{agent_type!r}")
+            return _error(400, f"unknown agent_type: {agent_type!r}")
         except Exception as exc:
             # setup 抛异常：创建管线在注册前先跑 setup，池无半注册实例
             return _error(500, f"{type(exc).__name__}: {exc}")
@@ -308,7 +308,7 @@ def _build_app(runtime: Runtime, extra_routes: tuple[tuple[str, str, object], ..
         "GET /snapshot": ("GET", "/snapshot", _snapshot),
         "GET /healthz": ("GET", "/healthz", _healthz),
     }
-    assert tuple(routes) == SERVE_ENDPOINTS, "端点注册表必须与 SERVE_ENDPOINTS 一一对应"
+    assert tuple(routes) == SERVE_ENDPOINTS, "endpoint registry must correspond one-to-one with SERVE_ENDPOINTS"
     app = web.Application(middlewares=[_error_middleware])
     for method, path, handler in (*routes.values(), *extra_routes):
         app.router.add_route(method, path, handler)
@@ -330,7 +330,7 @@ async def _serve_runtime(runtime: Runtime, app: web.Application, host: str, port
     try:
         await web.TCPSite(runner, host, port).start()
     except OSError as exc:
-        print(f"端口绑定失败（{host}:{port}）：{exc}", file=sys.stderr)
+        print(f"port binding failed ({host}:{port}): {exc}", file=sys.stderr)
         await runner.cleanup()
         await runtime.shutdown()
         return EXIT_RUNTIME_ERROR
@@ -470,7 +470,7 @@ async def cmd_serve(
     try:
         runtime = await launch(path, main_file=main_file, **kwargs)
     except Exception as exc:
-        print(f"launch 阶段失败：{exc}", file=sys.stderr)
+        print(f"launch failed: {exc}", file=sys.stderr)
         return EXIT_RUNTIME_ERROR
     _install_signal_handlers(runtime)
     # 第 2–10 步：端点注册表建 app（与 SERVE_ENDPOINTS 一一对应），绑定
