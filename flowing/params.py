@@ -66,7 +66,7 @@ calling 传给 LLM，因此只接受 JSON 兼容值（``str`` / ``int`` / ``floa
 类型安全键：:class:`InjectionKey` 与 :class:`ConfigKey` 是两个仅在调用
 侧生效的泛型类型安全键：泛型参数 ``T`` 只提供编译期类型标注，运行期
 完全退化为按 ``name`` 的字符串匹配（注入存储的 key 恒为 ``str``），框架
-不做运行期类型校验。因此类型不匹配（父 provide 了 ``int``、子按
+不做运行期类型校验。因此类型不匹配（亲节点 provide 了 ``int``、子按
 ``InjectionKey[str]`` inject）不会被框架拦截——需要运行期校验的场景走
 参数声明（Pydantic 模型校验），而非 provide / inject。
 
@@ -520,7 +520,7 @@ class InjectionKey(Generic[T]):
       ``str`` 直接比较；``__hash__`` 等于 ``hash(self.name)``。
     - ``__str__`` 返回 ``name``；``__repr__`` 返回 ``InjectionKey(...)``
       调试形态。
-    - 运行期不做 ``T`` 的类型校验：父 provide 了 ``int``、子按
+    - 运行期不做 ``T`` 的类型校验：亲节点 provide 了 ``int``、子按
       ``InjectionKey[str]`` inject 不会被框架拦截（类型契约是静态的）。
       两个泛型参数不同但 ``name`` 相同的键（``InjectionKey[int]("x")``
       与 ``InjectionKey[str]("x")``）在运行期相等且同槽——避免在同一
