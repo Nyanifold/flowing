@@ -147,7 +147,7 @@ async def test_t73_subagent_invoke_sync(runtime, provider):
                              "name": "w1"}))
     # 调用序：亲节点（工具调用）→ 子（文本交卷）→ 亲节点（收尾文本）
     script_provider(provider, step1, text_response("子结果文本"),
-                    text_response("父收尾"))
+                    text_response("亲代收尾"))
     result = await agent.query("唤起子代理")
     assert result.status == "completed"
     tool_msg = next(agent._messages[mid] for mid in result.turn.message_ids
