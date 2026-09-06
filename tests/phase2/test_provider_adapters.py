@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from flowing.context import Context, PromptSegment
+from flowing.errors import InvalidRequestError
 from flowing.message import Message, MessageKind, TextBlock, ToolCallBlock
 from flowing.model import ModelConfig
 from flowing.providers import ProviderConfig
@@ -195,3 +196,48 @@ async def test_deepseek_thinking_params_mapping():
     body = provider.sent[0]
     assert "thinking" not in body
     assert "reasoning_effort" not in body
+
+
+_OPENAI_CANNED = {
+    "model": "test-model",
+    "choices": [{
+        "message": {"role": "assistant", "content": "ok"},
+        "finish_reason": "stop",
+    }],
+    "usage": {"prompt_tokens": 3, "completion_tokens": 2},
+}
+
+
+async def test_openai_extra_body_passthrough():
+    """extra_body dict 原样合入请求体；同名键按合入顺序覆盖
+    （基类固定字段 → extra_body → adapter 专有字段）；非 dict 抛
+    InvalidRequestError。"""
+    ctx = Context(system_prompt=[], tools=[], messages=[
+        Message(kind=MessageKind.USER, content=[TextBlock(text="hi")])])
+
+    # 基类：extra_body 合入，且覆盖基类固定字段同名键
+    provider = _MockOpenAI(_OPENAI_CANNED)
+    await provider.generate(ctx, ModelConfig(
+        model="test-model", provider="test", max_output_tokens=100,
+        extra={"extra_body": {"max_tokens": 50, "vendor_flag": True}}))
+    body = provider.sent[0]
+    assert body["vendor_flag"] is True
+    assert body["max_tokens"] == 50
+
+    # 非 dict → InvalidRequestError
+    provider = _MockOpenAI(_OPENAI_CANNED)
+    with pytest.raises(InvalidRequestError):
+        await provider.generate(ctx, ModelConfig(
+            model="test-model", provider="test",
+            extra={"extra_body": ["not", "a", "dict"]}))
+
+    # DeepSeek：adapter 专有字段在 extra_body 之后写入，同名键以 adapter 为准
+    provider = _MockDeepSeek(_DEEPSEEK_CANNED)
+    await provider.generate(ctx, ModelConfig(
+        model="deepseek-v4-pro", provider="test", thinking_budget=1,
+        extra={"reasoning_effort": "high",
+               "extra_body": {"reasoning_effort": "low", "vendor_flag": 1}}))
+    body = provider.sent[0]
+    assert body["reasoning_effort"] == "high"
+    assert body["thinking"] == {"type": "enabled"}
+    assert body["vendor_flag"] == 1

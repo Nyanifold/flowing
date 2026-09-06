@@ -118,6 +118,12 @@ class OpenAICompletionsProvider(Provider):
       ``Context.messages`` 逐条按 kind 映射 role；``Context.tools`` 经
       白名单组装为 function 声明；``model.max_output_tokens`` 非
       ``None`` 时写入 ``max_tokens``。
+    - 通用透传：models.yaml 条目中的 ``extra_body`` 字段（进
+      ``ModelConfig._extra``，不参与 Parsable 求值）为 dict 时原样
+      合入请求体，承载厂商私有参数；非 dict 抛
+      :class:`flowing.errors.InvalidRequestError`。合入顺序：基类
+      固定字段 → ``extra_body`` → adapter 专有字段，同名键后者覆盖
+      前者。
     - 响应映射：响应含 ``tool_calls`` → ``finish=False``，其余 →
       ``finish=True``；原始 ``finish_reason`` 保留在
       ``provider_data["stop_reason"]``。
@@ -198,6 +204,13 @@ class OpenAICompletionsProvider(Provider):
             body["tools"] = [self._map_tool(d) for d in context.tools]
         if model.max_output_tokens is not None:
             body["max_tokens"] = model.max_output_tokens
+        extra_body = model._extra.get("extra_body")
+        if extra_body is not None:
+            if not isinstance(extra_body, dict):
+                raise InvalidRequestError(
+                    f"models.yaml extra_body must be a mapping, "
+                    f"got {type(extra_body).__name__}")
+            body.update(extra_body)
         return body
 
     def _map_tool(self, definition) -> dict:
@@ -669,6 +682,9 @@ class DeepSeekProvider(OpenAICompletionsProvider):
     - 思考强度：models.yaml 条目中的 ``reasoning_effort`` 字段进
       ``ModelConfig._extra``，本 adapter 原样透传为请求体顶层
       ``reasoning_effort``（如 ``"high"``）；缺省不发送。
+    - 其余厂商私有参数走基类 ``extra_body`` 通用透传（见
+      :class:`OpenAICompletionsProvider`）；本 adapter 的思考字段在
+      ``extra_body`` 合入之后写入，同名键以本 adapter 为准。
 
     .. seealso::
 
