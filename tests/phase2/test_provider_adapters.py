@@ -9,7 +9,7 @@ from flowing.message import Message, MessageKind, TextBlock, ToolCallBlock
 from flowing.model import ModelConfig
 from flowing.providers import ProviderConfig
 from flowing.providers.anthropic import AnthropicMessagesProvider
-from flowing.providers.openai import OpenAICompletionsProvider
+from flowing.providers.openai import DeepSeekProvider, OpenAICompletionsProvider
 
 
 def _model() -> ModelConfig:
@@ -150,3 +150,48 @@ async def test_anthropic_parallel_tool_results_merged():
     assert len(single) == 1
     assert single[0]["type"] == "tool_result"
     assert single[0]["tool_use_id"] == "tu_3"
+
+
+class _MockDeepSeek(DeepSeekProvider):
+    name = "mock-deepseek-thinking"
+
+    def __init__(self, canned):
+        super().__init__(ProviderConfig({"api_key": "sk-x"}))
+        self._canned = canned
+        self.sent: list[dict] = []
+
+    async def _post(self, path, body):
+        self.sent.append(body)
+        return self._canned
+
+
+_DEEPSEEK_CANNED = {
+    "model": "deepseek-v4-pro",
+    "choices": [{
+        "message": {"role": "assistant", "content": "ok"},
+        "finish_reason": "stop",
+    }],
+    "usage": {"prompt_tokens": 3, "completion_tokens": 2},
+}
+
+
+async def test_deepseek_thinking_params_mapping():
+    """DeepSeek adapter：thinking_budget 真值 → thinking 开关；
+    _extra["reasoning_effort"] → 请求体顶层透传；缺省两者都不发送。"""
+    ctx = Context(system_prompt=[], tools=[], messages=[
+        Message(kind=MessageKind.USER, content=[TextBlock(text="hi")])])
+
+    provider = _MockDeepSeek(_DEEPSEEK_CANNED)
+    await provider.generate(ctx, ModelConfig(
+        model="deepseek-v4-pro", provider="test",
+        thinking_budget=1, extra={"reasoning_effort": "high"}))
+    body = provider.sent[0]
+    assert body["thinking"] == {"type": "enabled"}
+    assert body["reasoning_effort"] == "high"
+
+    provider = _MockDeepSeek(_DEEPSEEK_CANNED)
+    await provider.generate(ctx, ModelConfig(
+        model="deepseek-v4-pro", provider="test"))
+    body = provider.sent[0]
+    assert "thinking" not in body
+    assert "reasoning_effort" not in body

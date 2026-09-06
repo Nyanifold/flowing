@@ -663,6 +663,12 @@ class DeepSeekProvider(OpenAICompletionsProvider):
     - 凭证取条目 ``api_key``；DeepSeek 的前缀缓存由服务端自动处理
       （要求前缀字节稳定），adapter 不发送缓存标记；缓存命中统计
       （如 ``prompt_cache_hit_tokens``）保留在 ``Usage.raw``。
+    - 思考开关：``ModelConfig.thinking_budget`` 为真值（非零 int）时
+      请求体带 ``thinking: {"type": "enabled"}``；DeepSeek 端点不收
+      数值预算，``thinking_budget`` 在本 adapter 只作开关语义。
+    - 思考强度：models.yaml 条目中的 ``reasoning_effort`` 字段进
+      ``ModelConfig._extra``，本 adapter 原样透传为请求体顶层
+      ``reasoning_effort``（如 ``"high"``）；缺省不发送。
 
     .. seealso::
 
@@ -670,8 +676,19 @@ class DeepSeekProvider(OpenAICompletionsProvider):
     """
 
     name: ClassVar[str] = "deepseek"
-    known_model_fields: ClassVar[frozenset[str]] = frozenset({"thinking_budget"})
+    known_model_fields: ClassVar[frozenset[str]] = frozenset(
+        {"thinking_budget", "reasoning_effort"})
     default_base_url: ClassVar[str | None] = "https://api.deepseek.com"
+
+    def _build_request(self, context: Context, model: ModelConfig) -> dict:
+        """在基类请求体上补 DeepSeek 思考参数（见类 docstring 行为要点）。"""
+        body = super()._build_request(context, model)
+        if model.thinking_budget:
+            body["thinking"] = {"type": "enabled"}
+        effort = model._extra.get("reasoning_effort")
+        if effort is not None:
+            body["reasoning_effort"] = effort
+        return body
 
 
 @register_provider
