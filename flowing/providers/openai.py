@@ -669,6 +669,13 @@ class DeepSeekProvider(OpenAICompletionsProvider):
           adapter: deepseek
           api_key: "{{env.DEEPSEEK_API_KEY}}"
 
+        # models.yaml
+        deepseek-v4:
+          provider: deepseek-personal
+          model: deepseek-v4-pro
+          thinking: enabled          # 思考开关（或 disabled，或 dict 原样透传）
+          reasoning_effort: high     # 思考强度（low/high/max）
+
     .. rubric:: 行为要点
 
     - 默认端点 ``https://api.deepseek.com``；条目配 ``base_url`` 时以
@@ -676,13 +683,13 @@ class DeepSeekProvider(OpenAICompletionsProvider):
     - 凭证取条目 ``api_key``；DeepSeek 的前缀缓存由服务端自动处理
       （要求前缀字节稳定），adapter 不发送缓存标记；缓存命中统计
       （如 ``prompt_cache_hit_tokens``）保留在 ``Usage.raw``。
-    - 思考开关：``ModelConfig.thinking_budget`` 为真值（非零 int）时
-      请求体带 ``thinking: {"type": "enabled"}``；DeepSeek 端点不收
-      数值预算，``thinking_budget`` 在本 adapter 只作开关语义。
-      缺省 / 为 0 时不发送 ``thinking`` 字段（取服务端缺省）；如需
-      显式关闭，经 ``extra_body`` 写 ``{"thinking": {"type":
-      "disabled"}}``（本 adapter 此时不写 ``thinking``，extra_body
-      的值不会被覆盖）。
+    - 思考开关：models.yaml 条目中的 ``thinking`` 字段（进
+      ``ModelConfig._extra``）按官方形态映射——字符串
+      （``"enabled"`` / ``"disabled"``）包装为 ``{"type": ...}``，
+      dict 原样透传；缺省不发送 ``thinking`` 字段（取服务端缺省）。
+      adapter 不校验取值、由服务端校验。DeepSeek 端点没有数值预算
+      概念，本 adapter **不消费** ``ModelConfig.thinking_budget``
+      （该内建字段的预算语义仅 Anthropic adapter 使用）。
     - 思考强度：models.yaml 条目中的 ``reasoning_effort`` 字段进
       ``ModelConfig._extra``，本 adapter 原样透传为请求体顶层
       ``reasoning_effort``；官方取值为 ``"low"`` / ``"high"`` /
@@ -702,14 +709,22 @@ class DeepSeekProvider(OpenAICompletionsProvider):
 
     name: ClassVar[str] = "deepseek"
     known_model_fields: ClassVar[frozenset[str]] = frozenset(
-        {"thinking_budget", "reasoning_effort"})
+        {"thinking", "reasoning_effort"})
     default_base_url: ClassVar[str | None] = "https://api.deepseek.com"
 
     def _build_request(self, context: Context, model: ModelConfig) -> dict:
         """在基类请求体上补 DeepSeek 思考参数（见类 docstring 行为要点）。"""
         body = super()._build_request(context, model)
-        if model.thinking_budget:
-            body["thinking"] = {"type": "enabled"}
+        thinking = model._extra.get("thinking")
+        if thinking is not None:
+            if isinstance(thinking, str):
+                body["thinking"] = {"type": thinking}
+            elif isinstance(thinking, dict):
+                body["thinking"] = thinking
+            else:
+                raise InvalidRequestError(
+                    f"models.yaml thinking must be a string or mapping, "
+                    f"got {type(thinking).__name__}")
         effort = model._extra.get("reasoning_effort")
         if effort is not None:
             body["reasoning_effort"] = effort

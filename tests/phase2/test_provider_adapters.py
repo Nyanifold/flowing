@@ -177,22 +177,39 @@ _DEEPSEEK_CANNED = {
 
 
 async def test_deepseek_thinking_params_mapping():
-    """DeepSeek adapter：thinking_budget 真值 → thinking 开关；
-    _extra["reasoning_effort"] → 请求体顶层透传；缺省两者都不发送。"""
+    """DeepSeek adapter：_extra["thinking"] 字符串包装 / dict 透传 /
+    非法类型报错；_extra["reasoning_effort"] 顶层透传；缺省都不发送；
+    thinking_budget 不被本 adapter 消费。"""
     ctx = Context(system_prompt=[], tools=[], messages=[
         Message(kind=MessageKind.USER, content=[TextBlock(text="hi")])])
 
+    # 字符串形态 → 包装为 {"type": ...}
     provider = _MockDeepSeek(_DEEPSEEK_CANNED)
     await provider.generate(ctx, ModelConfig(
         model="deepseek-v4-pro", provider="test",
-        thinking_budget=1, extra={"reasoning_effort": "high"}))
+        extra={"thinking": "enabled", "reasoning_effort": "high"}))
     body = provider.sent[0]
     assert body["thinking"] == {"type": "enabled"}
     assert body["reasoning_effort"] == "high"
 
+    # dict 形态 → 原样透传
     provider = _MockDeepSeek(_DEEPSEEK_CANNED)
     await provider.generate(ctx, ModelConfig(
-        model="deepseek-v4-pro", provider="test"))
+        model="deepseek-v4-pro", provider="test",
+        extra={"thinking": {"type": "disabled"}}))
+    assert provider.sent[0]["thinking"] == {"type": "disabled"}
+
+    # 非法类型 → InvalidRequestError
+    provider = _MockDeepSeek(_DEEPSEEK_CANNED)
+    with pytest.raises(InvalidRequestError):
+        await provider.generate(ctx, ModelConfig(
+            model="deepseek-v4-pro", provider="test",
+            extra={"thinking": True}))
+
+    # 缺省不发送；thinking_budget 不被消费（DeepSeek 无预算概念）
+    provider = _MockDeepSeek(_DEEPSEEK_CANNED)
+    await provider.generate(ctx, ModelConfig(
+        model="deepseek-v4-pro", provider="test", thinking_budget=8192))
     body = provider.sent[0]
     assert "thinking" not in body
     assert "reasoning_effort" not in body
@@ -234,8 +251,8 @@ async def test_openai_extra_body_passthrough():
     # DeepSeek：adapter 专有字段在 extra_body 之后写入，同名键以 adapter 为准
     provider = _MockDeepSeek(_DEEPSEEK_CANNED)
     await provider.generate(ctx, ModelConfig(
-        model="deepseek-v4-pro", provider="test", thinking_budget=1,
-        extra={"reasoning_effort": "high",
+        model="deepseek-v4-pro", provider="test",
+        extra={"thinking": "enabled", "reasoning_effort": "high",
                "extra_body": {"reasoning_effort": "low", "vendor_flag": 1}}))
     body = provider.sent[0]
     assert body["reasoning_effort"] == "high"
