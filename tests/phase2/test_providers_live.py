@@ -55,12 +55,13 @@ def _model() -> ModelConfig:
 
 
 async def test_t130_deepseek_roundtrip():
-    """T130：DeepSeek chat-completions 真实往返——响应非空、finish、Usage 齐全。"""
+    """T130：DeepSeek chat-completions 真实往返——答案语义正确（含 "2"）、
+    finish、Usage 齐全。"""
     provider = DeepSeekProvider(ProviderConfig({"api_key": _deepseek_key()}))
     response = await provider.generate(_ctx("用一句话回答：1+1 等于几？"), _model())
     assert response.finish is True
     text = "".join(b.text for b in response.message.content if b.type == "text")
-    assert text.strip()
+    assert "2" in text, f"答案语义不符：{text[:200]}"
     usage = response.message.usage
     assert usage is not None
     assert usage.input > 0 and usage.output > 0
@@ -98,7 +99,7 @@ async def test_t132_anthropic_compatible_endpoint():
     response = await provider.generate(_ctx("用一句话回答：1+1 等于几？"), _model())
     assert response.finish is True
     text = "".join(b.text for b in response.message.content if b.type == "text")
-    assert text.strip()
+    assert "2" in text, f"答案语义不符：{text[:200]}"
     usage = response.message.usage
     assert usage is not None and usage.total_tokens == usage.input + usage.output
 
@@ -125,7 +126,8 @@ async def test_t134_tool_calls_roundtrip():
     tool_blocks = [b for b in response.message.content if b.type == "tool_call"]
     assert tool_blocks, f"响应无 tool_call 块：{response.message.content}"
     assert tool_blocks[0].name == "get_weather"
-    assert "city" in tool_blocks[0].args
+    assert "北京" in tool_blocks[0].args.get("city", ""), \
+        f"工具入参语义不符：{tool_blocks[0].args}"
 
 
 # ── DeepSeek Anthropic 兼容端点：AnthropicMessagesProvider 功能面真机验证 ──
@@ -175,7 +177,9 @@ async def test_t136_anthropic_tool_two_turn_roundtrip():
         Context(system_prompt=[], tools=tools, messages=[user_msg]), _ds_model())
     assert r1.finish is False
     calls = [b for b in r1.message.content if b.type == "tool_call"]
-    assert calls and calls[0].name == "get_weather" and "city" in calls[0].args
+    assert calls and calls[0].name == "get_weather"
+    assert "北京" in calls[0].args.get("city", ""), \
+        f"工具入参语义不符：{calls[0].args}"
 
     ctx2 = Context(system_prompt=[], tools=tools, messages=[
         user_msg,
@@ -186,7 +190,10 @@ async def test_t136_anthropic_tool_two_turn_roundtrip():
     ])
     r2 = await provider.generate(ctx2, _ds_model())
     assert r2.finish is True
-    assert "".join(b.text for b in r2.message.content if b.type == "text").strip()
+    text2 = "".join(b.text for b in r2.message.content if b.type == "text")
+    # 第二轮答案真的用上了 tool_result 的内容
+    assert any(k in text2 for k in ("26", "晴")), \
+        f"第二轮未体现工具结果：{text2[:200]}"
 
 
 async def test_t137_anthropic_thinking_block_roundtrip():
@@ -202,6 +209,8 @@ async def test_t137_anthropic_thinking_block_roundtrip():
     thinking = [b for b in r1.message.content if b.type == "thinking"]
     assert thinking, f"开启 thinking 后响应无 thinking 块：{r1.message.content}"
     assert thinking[0].thinking.strip()
+    answer1 = "".join(b.text for b in r1.message.content if b.type == "text")
+    assert "9.8" in answer1, f"思考后答案语义不符：{answer1[:200]}"
 
     ctx2 = Context(system_prompt=[], tools=[], messages=[
         question, r1.message,   # thinking 块连同 signature 原样写回
@@ -218,7 +227,7 @@ async def test_t138_anthropic_stream_deltas():
         _ctx("用一句话回答：1+1 等于几？"), _ds_model())]
     assert deltas, "流式无任何 delta"
     text = "".join(d.text for d in deltas if d.kind == "text")
-    assert text.strip()
+    assert "2" in text, f"流式拼接答案语义不符：{text[:200]}"
     indices = [d.content_index for d in deltas]
     assert indices == sorted(indices), "content_index 非单调"
     final = deltas[-1]
