@@ -14,8 +14,8 @@ Composable（``use_logging`` / ``use_guardrail`` 等）属应用代码，框架
 
 Composable 只做「挂载」：注册钩子 handler、绑定实例属性；不修改框架
 核心状态。本包不提供插件（阶段一）能力：不做全局注册、不经过
-``runtime.use()``、没有 ``install()``——调用即生效，作用域严格限于传入
-的那一个 Agent 实例。
+``runtime.install()``、自身也没有 ``install()``——调用即生效，作用域严格
+限于传入的那一个 Agent 实例。
 
 .. rubric:: 使用示例
 

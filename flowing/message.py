@@ -188,7 +188,7 @@ import enum
 import itertools
 import json
 import math
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Literal
@@ -230,12 +230,11 @@ class MessageKind(enum.Enum):
     Gemini ``model`` 等），UI 通过 ``kind`` 与 ``tags`` 自行决定渲染
     方式。
 
-    命名原则：所有 kind 描述「来自谁」而非「扮演什么角色」。旧名
-    ``ASSISTANT`` 更名为 ``PROVIDER``：它是 API 的历史命名、在 Flowing
-    自己的消息模型中不自然，且隐含「纯文本 LLM」假设、无法覆盖文生图 /
-    语音 / 视频等多模态 Provider。``PLUGIN`` / ``SUBAGENT`` 的存在是因为
-    Skill 渲染结果与子 Agent 返回结果永远是独立消息，不能合并进工具结果
-    消息。
+    命名原则：所有 kind 描述「来自谁」而非「扮演什么角色」。``PROVIDER``
+    是 Provider 输出的统一来源名——不取会隐含「纯文本 LLM」的
+    「assistant」读法，以覆盖文生图 / 语音 / 视频等多模态输出。
+    ``PLUGIN`` / ``SUBAGENT`` 的存在是因为 Skill 渲染结果与子 Agent
+    返回结果永远是独立消息，不能合并进工具结果消息。
 
     .. rubric:: 使用示例
 
@@ -1490,7 +1489,7 @@ class MessageQueue:
 
 
 class MessageChain:
-    """消息级树的任意手术入口（``Agent.chain``）：五 op 最小完备集。
+    """消息级树的任意手术入口（``Agent.chain``）：写手术五 op 最小完备集 + 只读 ``get``/``walk``。
 
     .. rubric:: 功能介绍
 
@@ -1507,6 +1506,10 @@ class MessageChain:
     用完 ``remove`` 擦除；回合开头的附加式注入走 ``before_turn`` 的
     ``TurnContext.pending_messages`` （同样随批次挂树持久化）。
 
+    读路径两个只读 op：:meth:`get` 按 id 反查单条；:meth:`walk` 从指定
+    消息沿 ``parent_id`` 上溯到根（``Agent._assemble_context`` 等内部
+    消费路径与本 op 同口径）。两者都是内存读，不落盘、不派发钩子。
+
     .. rubric:: 使用示例
 
     .. code-block:: python
@@ -1521,9 +1524,16 @@ class MessageChain:
         # 子树整体重连到另一分支
         agent.chain.reparent("m8", to="m3")
 
+        # 按 id 反查单条
+        msg = agent.chain.get("m5")
+
+        # 回放活跃分支（head → 根，逆时间序；head 是 Agent 层游标，显式传入）
+        for msg in agent.chain.walk(agent.current_head_id):
+            ...
+
     .. rubric:: 行为要点
 
-    五 op 语义总表：
+    写手术五 op 语义总表：
 
     .. list-table::
        :header-rows: 1
@@ -1581,9 +1591,10 @@ class MessageChain:
 
     _agent: "Agent"
     """属主 Agent 反向引用（``Agent.__init__`` 以 ``MessageChain(self)``
-    传入）——五个 op 直接操作 ``Agent._messages``，落盘经
+    传入）——写 op 直接操作 ``Agent._messages``，落盘经
     ``Agent._persist_message`` （新消息行）与 ``Agent._persist_tree_record``
-    （变更记录行）同步提交。内部 API，不属稳定契约。
+    （变更记录行）同步提交；读 op（``get`` / ``walk``）同样读该映射。
+    内部 API，不属稳定契约。
     """
 
     def __init__(self, agent: "Agent") -> None:
@@ -1591,10 +1602,69 @@ class MessageChain:
 
         通常不直接实例化——应用层经 ``Agent.chain`` 访问本类实例。
 
-        :param agent: 属主 Agent（五个 op 直接操作其 ``_messages`` 映射，
-            落盘经其 ``_persist_message`` / ``_persist_tree_record``）。
+        :param agent: 属主 Agent（各 op 直接操作其 ``_messages`` 映射，
+            写 op 落盘经其 ``_persist_message`` / ``_persist_tree_record``）。
         """
         self._agent = agent
+
+    def get(self, msg_id: str) -> Message:
+        """按 id 反查消息（只读）。
+
+        .. rubric:: 行为要点
+
+        - 内存读：直接查属主 Agent 的 ``_messages`` 映射，O(1)、不触碰
+          持久化层；已被 :meth:`remove` 删除（tombstone）的消息不在内存
+          映射中，按不存在处理。
+        - 对不存在的 id 抛 ``KeyError``（与 :meth:`remove` 同口径——
+          重复 / 悬空引用不是静默成功）。
+        - 返回树中实况对象（非副本）：读随意，改内容请走写 op
+          （直接改对象会绕过落盘与不变量）。
+
+        :param msg_id: 消息 id。
+        :return: 该 id 的消息对象。
+        :raises KeyError: ``msg_id`` 不存在于消息树（或已被删除）。
+
+        .. seealso:: :meth:`walk` —— 沿亲链的连续上溯遍历。
+        """
+        return self._agent._messages[msg_id]
+
+    def walk(self, from_id: str | None) -> Iterator[Message]:
+        """从指定消息沿 ``parent_id`` 链上溯到根（只读遍历）。
+
+        .. rubric:: 功能介绍
+
+        「活跃分支回放」的正式读路径：``Agent._assemble_context`` 与
+        ``Agent._estimate_context_usage`` 的消息路径收集与本 op 同口径
+        （内部已收敛为调用本方法）。
+
+        .. rubric:: 行为要点
+
+        - 产出 ``from_id`` → 根的逆时间序（含 ``from_id`` 本身）；要
+          根 → 起点的时间序，调用方自行反转（``list(...)[::-1]``）。
+        - 本方法**不感知游标**：head 是 Agent 层状态
+          （``Agent.current_head_id``），回放活跃分支须显式传——
+          ``agent.chain.walk(agent.current_head_id)``。
+        - ``from_id=None`` 或起点 id 不存在 → 空迭代（对应空树 /
+          游标悬置情形，不抛错）。
+        - 孤儿断点容忍：上溯途中 ``parent_id`` 指向不存在的消息
+          （中间消息已被 :meth:`remove` 而子树未先 reparent）即终止，
+          与 ``Agent._assemble_context`` 同口径。
+        - 只沿亲链上溯，不分叉——分支枚举不在本类提供面内；产出的是
+          树中实况对象（改动请走写 op）。
+
+        :param from_id: 起点消息 id（必传）；``None`` 表示空迭代。
+        :return: 迭代器，依次产出起点到根的消息（逆时间序）。
+
+        .. seealso:: :meth:`get` —— 单条反查；
+            :meth:`flowing.agent.Agent.fork` —— 游标切换（与本 op 正交）。
+        """
+        cursor = from_id
+        while cursor is not None:
+            msg = self._agent._messages.get(cursor)
+            if msg is None:
+                break   # 起点缺失或孤儿链断点：上溯到断点即终止
+            yield msg
+            cursor = msg.parent_id
 
     def insert(self, after_id: str, msg: Message) -> str:
         """单条增：在 ``after_id`` 之后插入一条消息，返回新消息 id。
@@ -1698,22 +1768,26 @@ class MessageChain:
         return msg.id
 
     def remove(self, msg_id: str) -> None:
-        """单条删：仅删除该消息，子树不级联（tombstone）。
+        """单条删：仅删除该消息；直接子消息自动重挂到亲节点（与 insert 对称）。
 
         .. rubric:: 功能介绍
 
-        将 ``msg_id`` 从权威链中删除：内存链移除该节点 + 提交墓碑变更行
-        （``{"type": "tombstone", "id": ...}``）；物理删除延迟到压缩期
-        （FileRecordStore drain 任务排空后阈值触发）。
+        将 ``msg_id`` 从权威链中删除，同时**照顾子节点**（0904 契约修正，
+        与 :meth:`insert` 的邻接调整对称）：先把该消息的**直接子消息**
+        的 ``parent_id`` 改为被删消息的亲节点（``None`` = 提升为新根）——
+        各自子树随之整体移动，链保持连续、不留孤儿；每个被重挂的直接子
+        写一条 ``move`` 变更行（同步落盘，恢复按行序应用，含提升为根）。
+        最后移除该节点内存项并提交墓碑变更行
+        （``{"type": "tombstone", "id": ...}``）；物理删除延迟到压缩期。
 
         .. rubric:: 行为要点
 
-        - 不级联：该消息的子消息不随之删除，其 ``parent_id`` 变为指向
-          不存在节点的孤儿链——上下文上溯到断点即终止。删除带子树的消息
-          前，先对子树逐条 :meth:`reparent` 到新亲节点、再 ``remove``
-          （定式）。
-        - 删除尾部消息是纯截断语义；删除中间消息在「直接物理删除」模型
-          下本需逐行重写，tombstone 将其降为运行期 O(1)。
+        - 只删除该节点本身——子树不随删（被删消息的**直接子**被重挂，
+          它们的后代不动）；需要整棵删除时，先 :meth:`reparent` 子树到
+          别处、或逐条 ``remove``。
+        - 重挂目标 = 被删消息的亲节点：删除**尾部消息**是纯截断语义
+          （无子，不产生 move）；删除**中间消息**由「逐行重写」降为
+          「N 条 move + 1 条 tombstone」，运行期 O(子数)。
         - 对不存在的 id 抛 ``KeyError`` （重复删除不是静默成功）。
         - 不移动 ``current_head_id``；删除 head 上溯路径上的消息属于调用
           方责任。需要「删除当前 head 并回退到亲节点」时，请使用
@@ -1727,7 +1801,16 @@ class MessageChain:
         # 宿主 Agent 引用见类 docstring ``_agent`` 字段。
         if msg_id not in self._agent._messages:
             raise KeyError(msg_id)
-        del self._agent._messages[msg_id]  # 内存链移除；子树不级联（留下孤儿链）
+        removed = self._agent._messages[msg_id]
+        parent = removed.parent_id
+        # 邻接保持（与 insert 对称）：直接子重挂到被删消息的亲节点
+        rehung = [cid for cid, cm in self._agent._messages.items()
+                  if cm.parent_id == msg_id]
+        for cid in rehung:
+            self._agent._messages[cid].parent_id = parent
+            self._agent._persist_tree_record(
+                {"type": "move", "id": cid, "parent_id": parent})   # move 变更行（同步提交）
+        del self._agent._messages[msg_id]  # 内存链移除本节点（子树不级联：只删本节点）
         self._agent._persist_tree_record(
             {"type": "tombstone", "id": msg_id})   # 墓碑行（同步提交）
 
@@ -1749,8 +1832,14 @@ class MessageChain:
 
         - 匹配：以上两条规则任一命中即删除；``tags`` 为空集 → 不删任何
           消息（返回 0）。
-        - 逐条 :meth:`remove`：子树不级联、产生墓碑行；本方法只遍历现存
-          消息，天然不会因 id 不存在抛 ``KeyError``。
+        - **删除顺序 = 消息链线性顺序从后往前**（0904）：按消息产生序
+          （``_messages`` 键序，父恒先于子产生）逆序逐条
+          :meth:`remove`——子先删、父后删。这样删除父节点时其后代中的
+          待删者已清除，只需把幸存的直接子重挂到父节点的亲节点（一步到
+          位、无中间挪动），与 :meth:`remove` 的邻接保持语义一致。
+        - 逐条 :meth:`remove`：只删本节点（不级联子树）+ 墓碑行 + 直接
+          子自动重挂（每个重挂子一条 move 行）；本方法只遍历现存消息，
+          天然不会因 id 不存在抛 ``KeyError``。
         - 不直接移动 ``current_head_id``；若按 tags 删除的消息中包含当前
           head，调用方应使用 ``Agent.remove_by_tags`` （Agent 层负责 head
           维护）。不触碰 ``pending_messages`` （本方法作用于已挂树的消息）。
@@ -1769,7 +1858,8 @@ class MessageChain:
                 set(getattr(b, "tags", None) or []) & tags for b in m.content
             ):
                 to_remove.append(mid)
-        for mid in to_remove:
+        # 从后往前（子先删、父后删）：父恒先于子产生 → 逆产生序即「链尾向根」
+        for mid in reversed(to_remove):
             self.remove(mid)
         return len(to_remove)
 

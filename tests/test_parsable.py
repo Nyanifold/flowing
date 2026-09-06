@@ -242,3 +242,55 @@ def test_t43_pending_singleton():
     assert pm.PENDING is PENDING  # 两处 import 同一对象
     assert repr(PENDING) == "PENDING"
     assert PENDING is not None and PENDING is not "" and PENDING is not []
+
+
+# ---------------------------------------------------------------------------
+# F2 回归（0904）：FILE_REF/include 基准 = 声明文件目录优先，否则
+# Agent.source_dir()（方法形态）；公开 bind 绑定通道；skill content 解析期
+# 带 SKILL.fya 目录
+# ---------------------------------------------------------------------------
+
+def test_f2_fileref_uses_agent_source_dir_method(tmp_path, runtime):
+    """绑定 Agent 的 $./ 引用按 Agent.source_dir()（方法）解析到同目录文件。"""
+    sub = tmp_path / "proj"
+    sub.mkdir()
+    (sub / "body.md").write_text("内容 A", encoding="utf-8")
+    a = FakeAgent(runtime, source_dir=sub)
+    p = Parsable("$./body.md").bind(a)
+    assert p.resolve() == "内容 A"              # Agent 分支（context=None → _do_resolve）
+    assert p.resolve({}) == "内容 A"            # Mapping 分支
+
+
+def test_f2_fileref_prefers_declared_source_dir(tmp_path, runtime):
+    """显式 source_dir（声明文件目录，如 SKILL.fya 目录）优先于 Agent 目录。"""
+    agent_dir = tmp_path / "agents"
+    skill_dir = tmp_path / "skills" / "refactor"
+    agent_dir.mkdir(parents=True)
+    skill_dir.mkdir(parents=True)
+    (agent_dir / "notes.md").write_text("AGENT 文件", encoding="utf-8")
+    (skill_dir / "notes.md").write_text("SKILL 文件", encoding="utf-8")
+    a = FakeAgent(runtime, source_dir=agent_dir)
+    p = Parsable("$./notes.md", source_dir=skill_dir).bind(a)
+    assert p.resolve() == "SKILL 文件"          # 声明目录优先，不是 agent 目录
+    assert p.resolve({}) == "SKILL 文件"
+
+
+def test_f2_skill_content_resolves_relative_to_skill_file(tmp_path, runtime):
+    """SKILL.fya 的 content: $./notes.md 解析到 SKILL.fya 同目录（registry 解析期带目录）。"""
+    from flowing.plugins.skills.registry import _parse_skill_file
+
+    skills_dir = tmp_path / "skills"
+    sdir = skills_dir / "refactor-notes"
+    sdir.mkdir(parents=True)
+    (sdir / "SKILL.fya").write_text(
+        "name: refactor-notes\n"
+        "description: 重构约定。\n"
+        "content: $./notes.md\n",
+        encoding="utf-8",
+    )
+    (sdir / "notes.md").write_text("# 配置常量一律收进 src/config.ts。", encoding="utf-8")
+    skill = _parse_skill_file("refactor-notes", skills_dir)
+    # content 解析期带 SKILL.fya 目录；bind 到任意目录的 agent 后仍读对文件
+    a = FakeAgent(runtime, source_dir=tmp_path / "elsewhere")
+    rendered = skill.content.bind(a).resolve({})
+    assert "src/config.ts" in rendered

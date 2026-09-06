@@ -699,11 +699,11 @@ def build_turn_result(turn: TurnContext, agent: "Agent", *,
         status = "error"
     else:
         status = "completed"
-    # final_text：树访问经 agent._messages，turn.message_ids 逆序找
+    # final_text：树访问经 chain.get，turn.message_ids 逆序找
     # 最后一条 PROVIDER 消息，取其 content 中 TextBlock 的拼接文本
     final_text: str = ""   # 空 turn / 无 PROVIDER 消息 → ""
     for mid in reversed(turn.message_ids):
-        m = agent._messages[mid]
+        m = agent.chain.get(mid)
         if m.kind is MessageKind.PROVIDER:
             final_text = "".join(b.text for b in m.content
                                  if isinstance(b, TextBlock))
@@ -2120,17 +2120,9 @@ class Agent:
             :func:`flowing.message.estimate_message_tokens`、
             :class:`flowing.providers.Usage`
         """
-        # 沿 current_head_id 上溯收集（与 _assemble_context 同口径；
+        # 沿 current_head_id 上溯收集（chain.walk，与 _assemble_context 同口径；
         # 孤儿链断点容忍——上溯到断点即终止，同 MessageChain.remove 的语义）
-        path: list[Message] = []
-        cursor = self.current_head_id
-        while cursor is not None:
-            msg = self._messages.get(cursor)
-            if msg is None:
-                break
-            path.append(msg)
-            cursor = msg.parent_id
-        path.reverse()
+        path = list(self.chain.walk(self.current_head_id))[::-1]
         anchor = None
         for m in reversed(path):
             if m.kind is MessageKind.PROVIDER and m.usage is not None and m.usage.total_tokens > 0:
@@ -2276,7 +2268,8 @@ class Agent:
                         if isinstance(b, TextBlock))
                     await self.hooks.on_provider_delta.dispatch(
                         self, ProviderDelta(kind="text", text=full_text,
-                                            content_index=0, by=by))
+                                            content_index=0, by=by,
+                                            message_id=response.message.id))
             else:
                 # 流式：list[ContentBlock] 累积器按
                 # content_index 归位——text/thinking delta 逐段拼接进对应块；
@@ -2288,20 +2281,27 @@ class Agent:
                 final_usage: Usage | None = None
                 final_provider_data: dict[str, Any] = {}
                 interrupted = False
+                resp_id = uuid4().hex   # agent 预铸本 assistant 消息 id：先于流式，逐 delta 携带
                 async for delta in provider.generate_stream(context, model):
                     # 取消点起不再 dispatch delta（abort/cancel 均为协作式信号）
                     if self._turn_abort.is_set() or execution.cancel.is_set():
                         interrupted = True
                         break
                     delta.by = by   # 来源标记盖写（adapter 不填、无法伪造）
+                    delta.message_id = resp_id   # agent 盖写（adapter 不填），观察者实时归组依据
                     if delta.block is not None:
                         accumulated[delta.content_index] = delta.block
                     elif delta.kind == "thinking":
                         existing = accumulated.get(delta.content_index)
-                        thinking = ((existing.thinking if isinstance(existing, ThinkingBlock) else "")
-                                    + delta.text)
+                        if isinstance(existing, ThinkingBlock):
+                            thinking = existing.thinking + delta.text
+                            # 首见签名保留（Anthropic 多轮回放必需）；后续片段不覆盖
+                            sig = existing.signature or delta.signature
+                        else:
+                            thinking = delta.text
+                            sig = delta.signature
                         accumulated[delta.content_index] = ThinkingBlock(
-                            thinking=thinking)
+                            thinking=thinking, signature=sig)
                     elif delta.text or delta.content_index in accumulated:
                         existing = accumulated.get(delta.content_index)
                         text = ((existing.text if isinstance(existing, TextBlock) else "")
@@ -2315,6 +2315,7 @@ class Agent:
                 message = Message(
                     kind=MessageKind.PROVIDER,
                     content=[accumulated[i] for i in sorted(accumulated)],
+                    id=resp_id,   # 复用预铸 id：挂树后消息 id == delta 实时携带的 id
                     partial=interrupted,   # 流式中断：已累积内容定型为 partial=True 消息（保留落盘）
                     usage=final_usage,
                 )
@@ -2448,10 +2449,11 @@ class Agent:
         .. rubric:: 功能介绍
 
         对 :meth:`MessageChain.remove` 的 Agent 层包装：``MessageChain``
-        保持纯手术语义（不移动 head）；本方法补上 head 维护——当被删除的
-        消息正好是 ``current_head_id`` 时，先把 head 回退到该消息的
-        ``parent_id``，再执行删除。``parent_id`` 为 ``None`` 时 head 变为
-        ``None``——下一条消息将作为新根挂树。
+        只做链手术（删除时把直接子自动重挂到其亲节点，链保持连续）；
+        本方法补上 head 维护——当被删除的消息正好是 ``current_head_id``
+        时，先把 head 回退到该消息的 ``parent_id``，再执行删除。
+        ``parent_id`` 为 ``None`` 时 head 变为 ``None``——下一条消息将
+        作为新根挂树。
 
         .. rubric:: 行为要点
 
@@ -2459,7 +2461,7 @@ class Agent:
         - ``message_id`` 不存在时由 :meth:`MessageChain.remove` 抛
           ``KeyError``。
         - 删除非 head 消息时，行为与 :meth:`MessageChain.remove` 完全一致
-          （head 不动，子树不级联）。
+          （head 不动；被删消息的直接子自动重挂到其亲节点）。
 
         .. seealso:: :meth:`pop`、:meth:`MessageChain.remove`
         """
@@ -2552,13 +2554,17 @@ class Agent:
         return self.chain.branch(parent_id, msg)
 
     def remove_by_tags(self, tags: set[str]) -> int:
-        """按 tags 批量删除消息，并保持 head 语义。
+        """按 tags 批量删除消息，并保持 head 语义（链连续、无孤儿）。
 
         .. rubric:: 功能介绍
 
-        先记录当前 head 及其亲节点，再透传 :meth:`MessageChain.remove_by_tags`
-        批量删除；若当前 head 被删除，则把 ``current_head_id`` 回退到它
-        删除前的亲节点。其余被删消息不触发 head 变化。
+        透传 :meth:`MessageChain.remove_by_tags`（按消息链线性顺序**从后
+        往前**逐条 :meth:`MessageChain.remove`——每条删除都会把被删消息
+        的直接子自动重挂到其亲节点，链保持连续）。head 维护：删除前记录
+        ``current_head_id`` 的完整祖先链；删除后若 head 已被删，回退到
+        祖先链中**第一个仍存活**的祖先（整链被删光 → ``None``），而不是
+        只回退单层亲节点——批量删除可能连删 head 与其亲节点，单层回退会
+        指向已删节点。
 
         .. rubric:: 行为要点
 
@@ -2570,13 +2576,22 @@ class Agent:
 
         .. seealso:: :meth:`remove`、:meth:`MessageChain.remove_by_tags`
         """
+        ancestors: list[str] = []
         head_id = self.current_head_id
-        head_parent = None
-        if head_id is not None and head_id in self._messages:
-            head_parent = self._messages[head_id].parent_id
+        if head_id is not None:
+            cursor = head_id
+            while cursor is not None:
+                ancestors.append(cursor)
+                m = self._messages.get(cursor)
+                if m is None:
+                    break
+                cursor = m.parent_id
         removed = self.chain.remove_by_tags(tags)
+        # head 已被删 → 回退到祖先链首个仍存活者（含 head 本身仍存活的情形）
         if head_id is not None and head_id not in self._messages:
-            self._core_state["current_head_id"] = head_parent
+            new_head = next(
+                (aid for aid in ancestors if aid in self._messages), None)
+            self._core_state["current_head_id"] = new_head
         return removed
 
     # ────────────────────────── fork 与暂停 ───────────────────────────────
@@ -3196,8 +3211,7 @@ class Agent:
             - :class:`flowing.tool.ToolCall` —— 入参结构。
         """
         # 异常路径：before_tool_call handler raise Intercepted -> 捕获（不上抛）
-        # 返回 ToolResult.blocked(reason)（Intercepted 未在本模块具名引入，见
-        # flowing.errors 与 v2 存疑 S2-02）
+        # 返回 ToolResult.blocked(reason)（Intercepted 未在本模块具名引入）
         try:
             tool_call = await self.hooks.before_tool_call.dispatch(self, tool_call)   # 可改写 ToolCall
         except Intercepted as exc:
@@ -4057,8 +4071,7 @@ class Agent:
         try:
             # 2. before_turn（附加式注入 / Intercepted 阻断）；
             # 异常路径：Intercepted -> pending_messages 全部丢弃不落盘（显式
-            # 丢失语义），TurnResult status="blocked"（Intercepted 未在本模块
-            # 具名引入，见 v2 存疑 S2-02）
+            # 丢失语义），TurnResult status="blocked"（Intercepted 未在本模块具名引入）
             turn = await self.hooks.before_turn.dispatch(self, turn)
             # 3. 批次逐条挂树（各条照常触发 before_turn_append）
             for m in turn.pending_messages:
@@ -4331,16 +4344,10 @@ class Agent:
             segments.append(PromptSegment(
                 content=str(block.content.resolve(self)),   # prompt_blocks[0] 的 {{ self.system_prompt }} 惰性引用在此触发
                 cache=block.cache, name=block.name))
-        # 2. 消息路径：从 current_head_id 沿 parent_id 上溯到根，反转得根 -> head
-        messages: list[Message] = []
-        cursor = self.current_head_id
-        while cursor is not None:
-            msg = self._messages.get(cursor)
-            if msg is None:
-                break   # 孤儿链断点（中间消息被 chain.remove 且子树未先 reparent）：上溯到断点即终止
-            messages.append(msg)
-            cursor = msg.parent_id
-        messages.reverse()
+        # 2. 消息路径：从 current_head_id 沿 parent_id 上溯到根（chain.walk，
+        # 孤儿链断点容忍——中间消息被 chain.remove 且子树未先 reparent 时
+        # 上溯到断点即终止），反转得根 -> head
+        messages = list(self.chain.walk(self.current_head_id))[::-1]
         # （半截 turn 已落盘消息照常包含；孤立 tool_call 由恢复时合成的
         # synthetic 占位 TOOL 消息封闭成对——tool_status="error"、
         # content=[TextBlock(占位说明)]，见 _restore 步骤 ①b）

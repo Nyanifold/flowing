@@ -189,7 +189,7 @@ async def test_t98_use_clipboard_state_and_recover(tmp_path):
     clipboard_max_lines == 500；写入缓冲后模拟崩溃重放 → 缓冲内容恢复
     （写透落盘）。真 Runtime + 真 recover 管线。"""
     rt1 = make_runtime(tmp_path)
-    rt1.use(ClipboardPlugin())
+    rt1.install(ClipboardPlugin())
     rt1.register_agent_type("clipboard-agent", ClipboardAgent)
     add_fake_provider(rt1)
     agent = await rt1.create_agent("clipboard-agent")
@@ -203,7 +203,7 @@ async def test_t98_use_clipboard_state_and_recover(tmp_path):
     await rt1.shutdown()
 
     rt2 = make_runtime(tmp_path)   # 新 Runtime 同目录 = 进程重启
-    rt2.use(ClipboardPlugin())
+    rt2.install(ClipboardPlugin())
     rt2.register_agent_type("clipboard-agent", ClipboardAgent)
     add_fake_provider(rt2)
     try:

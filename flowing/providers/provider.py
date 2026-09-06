@@ -157,6 +157,24 @@ class ProviderDelta:
     ``"_turn"``、副线 ``"_side"``；下划线开头为框架保留值。钩子过滤
     依据（``on_provider_delta`` 以 ``match_on="by"`` 声明）。
     """
+    message_id: str | None = None
+    """本 delta 所属 assistant 消息的 id（agent 在派发边界盖写，
+    adapter 不填、无法伪造）。
+
+    ``provider_gen()`` 在流式开始前预铸该 id，逐条 delta 携带；流
+    结束后用同一 id 构造落盘消息——观察者从第一条 delta 起即可用它
+    归组，且该 id 就是最终挂树消息的 id。与 :attr:`by` 同属 agent
+    装饰字段，provider 层不感知消息 id。
+    """
+    signature: str | None = None
+    """思考块的签名（仅 Anthropic 家族思考 delta 携带，其余恒 ``None``）。
+
+    Anthropic 多轮回放要求 assistant 消息里的 thinking 块连同
+    ``signature`` 原样带回，否则 API 拒绝。流式时签名随
+    ``kind="thinking"`` delta 携带（content_block_start 即给全量）；
+    ``provider_gen`` 累积思考块时把首见签名保留到最终
+    ``ThinkingBlock.signature``。
+    """
     usage: "Usage | None" = None
     """本次调用的最终用量，仅末帧携带（其余帧为 ``None``）。
 

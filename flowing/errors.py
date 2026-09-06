@@ -55,7 +55,7 @@ import 期作者笔误刻意用内置 ``ValueError``，不入本层次——如
         │   ├── ContentPolicyError       # 不可重试
         │   ├── MissingEnvironmentVariableError  # 条目加载时 {{env.X}} 缺失
         │   └── ProviderNameConflictError        # adapter 规范名重名注册（import 期）
-        ├── DependencyError              # 插件依赖校验（use() 时增量）
+        ├── DependencyError              # 插件依赖校验（install() 时增量）
         ├── CommError                    # 通信扩展（CommPlugin 总线）
         │   ├── DuplicateEndpointError
         │   ├── SignalDeliveryError
@@ -1407,22 +1407,22 @@ class ProviderNameConflictError(ProviderError):
 
 
 class DependencyError(FlowingError):
-    """插件依赖图成环时抛出（``Runtime.use()`` 时增量校验）。
+    """插件依赖图成环时抛出（``Runtime.install()`` 时增量校验）。
 
     .. rubric:: 功能介绍
 
-    ``Runtime.use()`` 每次安装插件后对当前已装集合的依赖图做增量校验：已装子图
-    成环（A 依赖 B、B 依赖 A）即抛出本异常，报错现场即引入环的那次 ``use()``。
+    ``Runtime.install()`` 每次安装插件后对当前已装集合的依赖图做增量校验：已装子图
+    成环（A 依赖 B、B 依赖 A）即抛出本异常，报错现场即引入环的那次 ``install()``。
     依赖缺失只产生 ``warnings.warn`` 警告、不抛本异常（「声明了依赖但实际
-    用不上」是合法形态，``use()`` 可分批）；运行期真用到缺失依赖时由
+    用不上」是合法形态，``install()`` 可分批）；运行期真用到缺失依赖时由
     ``MissingProvideError`` 兜底。
 
     .. rubric:: 使用示例
 
     .. code-block:: python
 
-        runtime.use(PluginA())   # A 声明依赖 "b"——缺失 → 仅警告，不抛
-        runtime.use(PluginB())   # B 声明依赖 "a"——已装子图成环 → 抛出
+        runtime.install(PluginA())   # A 声明依赖 "b"——缺失 → 仅警告，不抛
+        runtime.install(PluginB())   # B 声明依赖 "a"——已装子图成环 → 抛出
 
     .. rubric:: 行为要点
 
@@ -1434,19 +1434,19 @@ class DependencyError(FlowingError):
 
     .. seealso::
 
-        :meth:`flowing.runtime.Runtime.use`
+        :meth:`flowing.runtime.Runtime.install`
         :class:`flowing.errors.MissingProvideError`
     """
 
     plugin: str
-    """环闭合点所在插件名（即引入环的那次 ``use()`` 的插件）。"""
+    """环闭合点所在插件名（即引入环的那次 ``install()`` 的插件）。"""
     missing: list[str]
     """构成环回边的依赖名列表（即使依赖环闭合的那条依赖）。"""
 
     def __init__(self, plugin: str, missing: list[str]) -> None:
         """构造异常实例。
 
-        :param plugin: 环闭合点所在插件名（即引入环的那次 ``use()`` 的插件）；
+        :param plugin: 环闭合点所在插件名（即引入环的那次 ``install()`` 的插件）；
           与 ``plugin`` 字段一致。
         :param missing: 构成环回边的依赖名列表（即使依赖环闭合的那条依赖）；
           与 ``missing`` 字段一致。
@@ -1468,7 +1468,7 @@ class CommError(FlowingError):
     .. rubric:: 功能介绍
 
     单进程内通信总线（端点注册、信号投递、请求-回复）相关异常的公共基类。通信
-    是内置扩展（必须显式 ``runtime.use(CommPlugin())`` 才存在），但其异常类型
+    是内置扩展（必须显式 ``runtime.install(CommPlugin())`` 才存在），但其异常类型
     属于框架统一层次——未启用扩展时这些类型只是不被实例化。
 
     .. rubric:: 行为要点

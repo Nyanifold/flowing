@@ -24,7 +24,7 @@ Runtime，并发 ``launch`` 互不串扰）、import 子项目入口 ``main.py``
 
 ``launch`` 只负责把子项目拉起为 Runtime：不解析配置（配置读取经
 :meth:`Runtime.get_config` 与宿主启动层（``flowing.interfaces`` 各入口））、不认识插件（插件经
-:meth:`Runtime.use` 显式启用）、不决定新建还是恢复（那是子项目 ``main()``
+:meth:`Runtime.install` 显式启用）、不决定新建还是恢复（那是子项目 ``main()``
 的策略，如 ``main(resume: str | None = None)``）、不启动任何服务端口（暴露
 方式由调用方决定，CLI / HTTP / Web / 测试 / 嵌入五种入口共用本函数）。
 子项目入口永远是 Python ``main()`` 函数，没有声明式入口文件。
@@ -62,13 +62,13 @@ import 期）调用抛 :class:`flowing.errors.ConfigNotReadyError`。
 ``get_config`` 不做命名空间访问控制：任何代码可读任何命名空间，注册
 只是「谁负责校验」的声明。
 
-插件启用：``Runtime.use(plugin)`` 是插件启用入口（阶段一），按实参顺序
+插件启用：``Runtime.install(plugin)`` 是插件启用入口（阶段一），按实参顺序
 执行各插件的 ``install(runtime)``；插件在 install 中注册全局能力（工具 /
 provide 值 / 配置命名空间 / Agent 类型 / Resource / 全局状态命名空间），
 各 Agent 再在 ``setup()`` 中经 ``use_xxx(self)`` 做实例级启用（阶段二）。
-依赖校验随 ``use()`` 增量执行：已装插件依赖图成环抛
-:class:`flowing.errors.DependencyError` （报错现场即引入环的那次 ``use()``）；
-依赖缺失只 ``warnings.warn`` 警告、不抛错（``use()`` 可分批）。未启用的
+依赖校验随 ``install()`` 增量执行：已装插件依赖图成环抛
+:class:`flowing.errors.DependencyError` （报错现场即引入环的那次 ``install()``）；
+依赖缺失只 ``warnings.warn`` 警告、不抛错（``install()`` 可分批）。未启用的
 扩展对 Agent 零开销（不是被 skip）。
 
 创建 / 恢复管线：``create_agent`` 与 ``recover_agent`` 是两个独立方法，
@@ -99,7 +99,7 @@ JSON 可序列化；``_provided`` 的值内容（凭证等敏感值）绝不进�
 
     async def main(resume: str | None = None) -> Runtime:
         runtime = Runtime()                      # @ 自动绑定到实例
-        runtime.use(MyPlugin())                  # 阶段一：安装插件
+        runtime.install(MyPlugin())              # 阶段一：安装插件
         runtime.provide("workspace_root", "/ws")
         if resume is not None:
             await runtime.recover_agent(resume)  # 恢复既有 agent
@@ -668,7 +668,7 @@ class Runtime:
         """
         return self._persist_dir
 
-    def use(self, *plugins: Plugin) -> None:
+    def install(self, *plugins: Plugin) -> None:
         """安装插件（阶段一启用）：按实参顺序执行各插件的 ``install(runtime)``。
 
         .. rubric:: 功能介绍
@@ -679,20 +679,20 @@ class Runtime:
         实例级启用（阶段二）；未启用的扩展对 Agent 零开销。插件声明式依赖
         （``dependencies``）的校验随本方法增量执行：已装插件依赖图成环抛
         :class:`flowing.errors.DependencyError` （报错现场即引入环的那次
-        ``use()``）；依赖缺失只 ``warnings.warn`` 警告、不抛错（「声明了
-        依赖但实际用不上」是合法形态，``use()`` 可分批）。
+        ``install()``）；依赖缺失只 ``warnings.warn`` 警告、不抛错（「声明了
+        依赖但实际用不上」是合法形态，``install()`` 可分批）。
 
         .. rubric:: 使用示例
 
         .. code-block:: python
 
-            runtime.use(SkillPlugin())
-            runtime.use(CommPlugin(), GuardrailPlugin())   # 分批合法
+            runtime.install(SkillPlugin())
+            runtime.install(CommPlugin(), GuardrailPlugin())   # 分批合法
 
         .. rubric:: 行为要点
 
         - 推荐在首个 ``mount()`` / ``create_agent()`` / ``recover_agent()``
-          之前完成全部 ``use()``。框架不校验调用时机——之后 ``use()`` 不报错，
+          之前完成全部 ``install()``。框架不校验调用时机——之后 ``install()`` 不报错，
           但已创建的 Agent 不会获得迟装插件注册的能力（插件注册只在
           ``install`` 发生）。
         - 同名 provide key 重复注册是覆盖更新（由 ``provide`` 的覆盖语义
@@ -723,7 +723,7 @@ class Runtime:
         self._check_dependencies()   # 增量校验已装子图：成环抛 DependencyError；缺失 warnings.warn 不抛
         # install 中 register_state 已创建即 replay（开空间即恢复，D13）；
         # 写透落盘需要持久化根目录——有插件即建（原引导 _materialize 的职责；
-        # 无状态插件 use() 也建目录——持久化根，无害）
+        # 无状态插件 install() 也建目录——持久化根，无害）
         self._persist_dir.mkdir(parents=True, exist_ok=True)
 
     def get_plugin(self, name: str, *, strict: bool = True) -> Any | None:
@@ -731,7 +731,7 @@ class Runtime:
 
         .. rubric:: 功能介绍
 
-        返回 ``use()`` 安装过的插件实例（查询源：``_plugins``，key 为
+        返回 ``install()`` 安装过的插件实例（查询源：``_plugins``，key 为
         ``plugin.name``）。未安装时的行为由 ``strict`` 决定：
 
         - ``strict=True`` （默认）：抛 ``KeyError``——直接用写法
@@ -759,8 +759,8 @@ class Runtime:
         .. rubric:: 行为要点
 
         - 同步、只读查询，无副作用；不实例化插件（实例化只发生在
-          ``use()``）、不触发 ``install``、不做依赖解析。
-        - 同名插件重复安装已被 ``use()`` 拦截，本方法读到的必然是唯一实例。
+          ``install()``）、不触发 ``install``、不做依赖解析。
+        - 同名插件重复安装已被 ``install()`` 拦截，本方法读到的必然是唯一实例。
 
         :param name: 插件的 ``name`` 类属性值（如 ``"cron"``）。
         :param strict: 未安装时是否抛 ``KeyError`` （默认 ``True``；传 ``False``
@@ -768,7 +768,7 @@ class Runtime:
         :returns: 插件实例，或未安装且 ``strict=False`` 时的 ``None``。
         :raises KeyError: ``strict=True`` （默认）且插件未安装。
 
-        .. seealso:: :meth:`flowing.runtime.Runtime.use`、
+        .. seealso:: :meth:`flowing.runtime.Runtime.install`、
             :class:`flowing.plugins.Plugin`、
             :meth:`flowing.runtime.Runtime.snapshot`
         """
@@ -787,8 +787,10 @@ class Runtime:
 
         .. rubric:: 功能介绍
 
-        ``node`` 统一为 ``.fya`` 路径字符串（如 ``"@/root.fya"``）——mount
-        仅处理 Agent 根；Workflow 根由
+        ``node`` 为 Agent 根引用：``.fya`` **文件**（如 ``"@/root.fya"``）
+        或含 ``agent.fya`` 的**目录**（如 ``"@/agents/coding-agent"``，目录
+        形态与单文件并存，候选探测同 :meth:`create_agent` 路径形态）——
+        mount 仅处理 Agent 根；Workflow 根由
         :meth:`flowing.plugins.workflow.WorkflowPlugin.launch` 创建（文件内
         需恰好一个 ``Workflow`` 子类，见 :mod:`flowing.plugins.workflow`）。
         可多次调用（多根并存，如多项目宿主）；不调用也合法（嵌入大程序，
@@ -796,9 +798,10 @@ class Runtime:
 
         mount / create_agent / recover_agent 三者分工：
 
-        - ``mount(path)``：输入是文件路径（负责 文件 → 类 的解析与装配），
-          挂到对象图上 Runtime 之下成为根，其余管线与 ``create_agent``
-          完全一致（内部直接委托）。
+        - ``mount(path)``：输入是 Agent 根引用（``.fya`` 文件或含
+          ``agent.fya`` 的目录，负责 引用 → 类 的解析与装配），挂到对象图
+          上 Runtime 之下成为根，其余管线与 ``create_agent`` 完全一致
+          （内部直接委托）。
         - ``create_agent(agent_type)``：输入是类型名，新建任意节点。
         - ``recover_agent(id)`` / ``get_agent(id)``：输入是已有 id，
           恢复 / 现场恢复，不新建。
@@ -819,7 +822,8 @@ class Runtime:
 
         .. code-block:: python
 
-            await runtime.mount("@/root.fya")                      # Agent 根（每次新建）
+            await runtime.mount("@/root.fya")                      # Agent 根（每次新建，单文件形态）
+            await runtime.mount("@/agents/coding-agent")           # 目录形态（内含 agent.fya）
             await runtime.mount("@/root.fya",
                                 agent_id="agent-main")             # 固定 id：第二次启动恢复同一根
             await runtime.mount("@/root.fya", locale="zh")         # 第二个根（不同 id）
@@ -828,14 +832,17 @@ class Runtime:
 
         - 内部顺序：``agent_id`` 非空且在池中 → 委托 ``recover_agent``；
           否则 → 创建管线（委托 ``create_agent``）。mount 不承担插件
-          依赖校验（校验在 ``use()`` 时增量执行）。
+          依赖校验（校验在 ``install()`` 时增量执行）。
         - 返回后：节点已注册进 ``_nodes``、工作循环已启动、队列为空
           （挂起在 ``await queue.get()``）。返回不代表有活干。
         - 不接受已构造的实例（实例形态统一走 ``create_agent`` 等价管线，
           mount 只做文件 → 节点）；不读取消息、不启动网络服务、不等待
           任何回合结果。
 
-        :param node: ``.fya`` 路径（支持路径前缀规则）。
+        :param node: Agent 根引用（支持路径前缀规则）：``.fya`` 文件路径，
+            或含 ``agent.fya`` 的目录路径（候选探测 ``AGENT.fya`` >
+            ``agent.fya`` > ``<name>.agent.fya`` > ``<name>.fya``，与
+            :meth:`create_agent` 的路径形态同一候选链）。
         :param agent_id: 可选，Agent 根的固定 ``node_id``。已存在于池中 →
             恢复而非新建（幂等挂载）；不存在 → 以该 id 新建；``None`` →
             每次新建（自动生成 id）。类型由 ``node`` 解析决定，本参数不
@@ -843,8 +850,9 @@ class Runtime:
         :param kwargs: 节点初始化参数（身份的一部分，见上文）。
         :return: 创建或恢复的根节点（``Agent``）。
         :raises FileNotFoundError: 路径不存在时。
-        :raises ValueError: ``node`` 不是 ``.fya`` 文件时（``.py`` Agent
-            根经 :meth:`create_agent`；Workflow 根经
+        :raises ValueError: ``node`` 既不是 ``.fya`` 文件、也不是含
+            ``agent.fya`` 的目录时（``.py`` Agent 根经 :meth:`create_agent`；
+            Workflow 根经
             :meth:`flowing.plugins.workflow.WorkflowPlugin.launch`）。
 
         .. seealso:: :meth:`flowing.runtime.Runtime.create_agent`、
@@ -855,11 +863,14 @@ class Runtime:
         if not resolved.exists():
             raise FileNotFoundError(f"mount path does not exist: {resolved}")
         self._ensure_persist_ready()   # 首个 mount 前的持久化就位（persist 目录 + 插件清单 + 兜底引导）
-        if resolved.suffix != ".fya":
-            # mount 仅接受 .fya Agent 根：.py Agent 根经 create_agent 的路径
-            # 形态，Workflow 根经 WorkflowPlugin.launch（mount 不再承载 Workflow）
+        if resolved.is_file() and resolved.suffix != ".fya":
+            # mount 仅接受 Agent 根：.fya **文件**，或含 agent.fya 的**目录**
+            # （目录形态与单文件并存，候选探测 AGENT.fya > agent.fya >
+            # <name>.agent.fya > <name>.fya，与 create_agent 的路径形态同
+            # 链——F4）。其余文件形态（.py 等）经 create_agent；Workflow 根
+            # 经 WorkflowPlugin.launch（mount 不再承载 Workflow）
             raise ValueError(
-                f"mount only accepts .fya agent roots: {node} — "
+                f"mount only accepts .fya agent roots (file or directory): {node} — "
                 ".py agent roots go through create_agent; Workflow roots go through WorkflowPlugin.launch")
         # Agent 根：与子 Agent 走同一条唯一创建入口，仅 parent_id=None 不同；
         # 幂等挂载：agent_id 指定且已在池中 -> 恢复而非新建（手动 mount 的
@@ -915,7 +926,7 @@ class Runtime:
            是「只应在创建时做」的逻辑落点；handler 只能来自类上 ``@on``
            声明（实例 hooks 在 ``__init__`` 注册，插件 / Composable 的
            挂载通道是 setup 里的 ``use_xxx``，赶不上本钩子）。与
-           ``before_tool_call["invoke-subagent"]`` 的分工：后者只覆盖工具
+           ``before_tool_call["subagent-invoke"]`` 的分工：后者只覆盖工具
            唤起路径，本钩子覆盖全部创建路径。此刻实例骨架已就位：
            ``_extra`` 可写、hooks 已建、可 ``register_state`` 声明状态键
            （声明只落 defaults 表，不落盘）；state 写透立即可用。
@@ -2026,7 +2037,7 @@ class Runtime:
 
         - 幂等：同命名空间重复声明是空操作、返回同一视图。
         - 创建即 replay：声明时即重放持久值进内存（恢复绑定在命名空间
-          创建——``use()`` 后引导与 ``_ensure_persist_ready`` 兜底重放
+          创建——``install()`` 后引导与 ``_ensure_persist_ready`` 兜底重放
           不再需要）。
         - ``backend`` 当前仅 ``'file'``；其它值 → ``ValueError``。
         - 重放产物是裸持久值（JSON 纯数据）；派生运行时结构的重建时机
@@ -2280,7 +2291,7 @@ class Runtime:
         - 内部顺序（不变量）：递归 destroy 所有节点（Agent 的工作循环
           Task 被取消，session 记录保留——各 Agent 的 tree / state 后端在
           其 ``destroy()`` 内排空关闭；Workflow 节点级联销毁其子 Agent）
-          → 插件收尾（按 ``use()`` 的 install 顺序逐个 ``await``
+          → 插件收尾（按 ``install()`` 调用顺序逐个 ``await``
           ``plugin.shutdown()``；单插件异常记日志后继续——尽力收尾路径）
           → 关闭全部全局状态视图（排空 + 停写；放在插件收尾之后，插件
           ``shutdown()`` 中仍可写全局状态）→ ``_shutdown_event.set()``。
@@ -2530,7 +2541,7 @@ class Runtime:
                     f"registered synthesized class of {path} is {cls.__name__}, not {class_name!r}"
                     " (.fya files synthesize exactly one class per file; :: disambiguation is the mechanism for handwritten .py multi-class files)")
             return cls
-        cls = compile_fya_class(path)
+        cls = compile_fya_class(path, project_root=self.project_root)  # F3：运行时编译自带项目根
         if class_name is not None and cls.__name__ != class_name:
             raise FormatError(
                 f"synthesized class of {path} is {cls.__name__}, not {class_name!r}"
@@ -2643,16 +2654,16 @@ class Runtime:
     def _check_dependencies(self) -> None:
         """插件依赖图增量校验（成环抛错、缺失警告）。内部 API，不属稳定契约。
 
-        每次 ``use()`` 安装后对当前已装集合校验：
+        每次 ``install()`` 安装后对当前已装集合校验：
 
         - 成环 → 抛 :class:`flowing.errors.DependencyError` （报错现场即
-          引入环的那次 ``use()``；``use()`` 可分批——缺依赖不报错，只有
+          引入环的那次 ``install()``；``install()`` 可分批——缺依赖不报错，只有
           真成环才报）；
         - 依赖缺失 → ``warnings.warn`` 警告不抛（「声明了依赖但实际用
           不上」是合法形态；要严格化可用 ``-W error`` 升级）。运行时真
           用到缺失依赖时由 ``MissingProvideError`` （inject 失败）兜底。
 
-        .. seealso:: :meth:`flowing.runtime.Runtime.use`、
+        .. seealso:: :meth:`flowing.runtime.Runtime.install`、
             :exc:`flowing.errors.DependencyError`
         """
         for plugin in self._plugins.values():
@@ -2660,7 +2671,7 @@ class Runtime:
                 if dep not in self._plugins:
                     warnings.warn(f"missing plugin dependency: {plugin.name} depends on the uninstalled {dep}")   # 警告不抛
         # DAG 无环校验（DFS 三色标记；只走已装集合内的边——缺依赖已在上方警告，
-        # 不成环）：已装子图成环 → DependencyError（报错现场 = 引入环的那次 use()）
+        # 不成环）：已装子图成环 → DependencyError（报错现场 = 引入环的那次 install()）
         color = dict.fromkeys(self._plugins, 0)   # 0=未访问 1=在栈 2=完成
 
         def _visit(name: str, stack: tuple[str, ...]) -> None:

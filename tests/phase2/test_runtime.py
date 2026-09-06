@@ -210,12 +210,12 @@ async def test_t96_init_lazy_zero_providers(tmp_path):
 
 
 async def test_t97_use_dependency_warn_and_cycle(tmp_path):
-    """T97：依赖缺失警告不抛；成环在引入环的那次 use() 抛 DependencyError。"""
+    """T97：依赖缺失警告不抛；成环在引入环的那次 install() 抛 DependencyError。"""
     runtime = make_runtime(tmp_path)
     with pytest.warns(UserWarning, match="missing plugin dependency"):
-        runtime.use(PluginStub("a", dependencies=["b"]))
+        runtime.install(PluginStub("a", dependencies=["b"]))
     with pytest.raises(DependencyError):
-        runtime.use(PluginStub("b", dependencies=["a"]))   # a↔b 成环
+        runtime.install(PluginStub("b", dependencies=["a"]))   # a↔b 成环
     await runtime.shutdown()
 
 
@@ -223,14 +223,14 @@ async def test_t98_get_plugin_strict_forms(tmp_path):
     """T98：get_plugin 已装命中实例；未装默认 KeyError、strict=False 返回 None。"""
     runtime = make_runtime(tmp_path)
     plugin = PluginStub("cron")
-    runtime.use(plugin)
+    runtime.install(plugin)
     assert runtime.get_plugin("cron") is plugin
     with pytest.raises(KeyError):
         runtime.get_plugin("missing")
     assert runtime.get_plugin("missing", strict=False) is None
     # 重复安装同名插件 → 后安装者报错
     with pytest.raises(ValueError, match="installed twice"):
-        runtime.use(PluginStub("cron"))
+        runtime.install(PluginStub("cron"))
     await runtime.shutdown()
 
 
@@ -238,9 +238,9 @@ async def test_t99_config_namespace(tmp_path):
     """T99：两插件注册同一命名空间 → 第二个冲突报错；未注册命名空间可读。"""
     (tmp_path / "config.yaml").write_text("foo:\n  bar: 7\n", encoding="utf-8")
     runtime = make_runtime(tmp_path)
-    runtime.use(PluginStub("p1", on_install=lambda rt: rt.register_config_namespace("i18n", object())))
+    runtime.install(PluginStub("p1", on_install=lambda rt: rt.register_config_namespace("i18n", object())))
     with pytest.raises(ConfigNamespaceConflictError):
-        runtime.use(PluginStub("p2", on_install=lambda rt: rt.register_config_namespace("i18n", object())))
+        runtime.install(PluginStub("p2", on_install=lambda rt: rt.register_config_namespace("i18n", object())))
     # config 含未注册命名空间：不报错、可读
     assert runtime.get_config("foo.bar") == 7
     await runtime.shutdown()
@@ -358,7 +358,7 @@ async def test_t103_global_state(tmp_path):
         rt.register_state("gw")
         rt.states["gw"].k = 1   # 开启即 replay，写透立即可用（D5/D13）
 
-    runtime3.use(PluginStub("gate-writer", on_install=_install_writes))
+    runtime3.install(PluginStub("gate-writer", on_install=_install_writes))
     assert runtime3.states["gw"].k == 1
     await runtime3.shutdown()
 

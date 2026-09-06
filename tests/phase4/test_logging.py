@@ -61,10 +61,10 @@ def _rows_by_hook(agent, hook: str) -> list[dict]:
 
 
 async def test_t127_install_surface_and_detection(tmp_path):
-    """T127：新 Runtime use(LoggingPlugin(level="INFO")) → inject 得实例；
+    """T127：新 Runtime install(LoggingPlugin(level="INFO")) → inject 得实例；
     detected 只含已安装的内置扩展名（未安装的点名不登记、不访问）。"""
     runtime = make_runtime(tmp_path)
-    runtime.use(LoggingPlugin(level="INFO"))
+    runtime.install(LoggingPlugin(level="INFO"))
     try:
         plugin = runtime.inject(logging_plugin_key)
         assert isinstance(plugin, LoggingPlugin)
@@ -77,7 +77,7 @@ async def test_t127_install_surface_and_detection(tmp_path):
 
     # 先装 skill/comm 再装 logging → detected 恰好登记这两个
     rt2 = make_runtime(tmp_path / "p2")
-    rt2.use(SkillPlugin(), CommPlugin(), LoggingPlugin(level="DEBUG"))
+    rt2.install(SkillPlugin(), CommPlugin(), LoggingPlugin(level="DEBUG"))
     try:
         plugin2 = rt2.inject(logging_plugin_key)
         assert plugin2.detected == frozenset({"skill", "comm"})

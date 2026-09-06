@@ -495,7 +495,7 @@ class RuntimeSnapshot:
     生命周期状态机，无 ``status`` 字段——「Runtime 是否已关闭」见
     ``Runtime.shutdown()`` 语义（``shutdown()`` 返回后即可知）。"""
     plugins: list[str]
-    """已安装插件名（``plugin.name``）列表；未 ``runtime.use(...)`` 的扩展
+    """已安装插件名（``plugin.name``）列表；未 ``runtime.install(...)`` 的扩展
     不出现（「没存在过」，不是「被 skip」）。"""
     agents: dict[str, AgentInfo]
     """``agent_id`` → ``AgentInfo``；agent 池注册表投影（含未实例化条目，

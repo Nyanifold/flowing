@@ -54,13 +54,13 @@ class TestFlowingToolMarking:
 class TestAutoGenerateTool:
     def test_promotes_to_script_tool_instance(self):
         """打标函数 → ScriptTool 子类实例：name 文件名推断、description
-        取函数 docstring 首段、args_model 从签名构建。"""
+        取函数 docstring 整体（0904）、args_model 从签名构建。"""
 
         @flowing_tool
         async def promoted(order_id: str, amount: float = 0.01) -> dict:
             """对指定订单发起支付。
 
-            第二段不进入描述。
+            第二段同样进入描述（整体回退）。
             """
             return {"tx": "fake", "order_id": order_id}
 
@@ -68,7 +68,7 @@ class TestAutoGenerateTool:
         assert isinstance(tool, ScriptTool)
         assert type(tool).__name__ == "TestToolMarking"   # kebab → Pascal
         assert tool.definition.name == INFERRED_FROM_THIS_FILE
-        assert tool.definition.description == "对指定订单发起支付。"
+        assert tool.definition.description == "对指定订单发起支付。\n\n第二段同样进入描述（整体回退）。"
         assert set(tool.definition.params_schema) == {"order_id", "amount"}
         # 无 default → 必填；有 default → 可选（schema 不带 default 键）
         assert "default" not in tool.definition.params_schema["order_id"]

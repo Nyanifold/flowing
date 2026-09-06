@@ -345,7 +345,8 @@ def _parse_skill_file(name: str, source_dir: Path) -> Skill:
       ``_extra_fields``）以及 ``$script`` 提取 ``on_load`` （经
       ``types.MethodType`` 绑定，``self`` 即本 Skill 实例）；目录形式
       正文可 ``{% include %}`` 目录内资料（渲染期经 Parsable include
-      加载器，基准为调用方 Agent 的 ``source_dir``）。
+      加载器；``content`` 的 ``$`` / ``{% include %}`` 基准 = SKILL 定义文件
+      所在目录（0904 F2 订正——不再是调用方 Agent 的 ``source_dir``））。
 
     .. seealso:: :meth:`SkillRegistry.get`
     """
@@ -409,7 +410,10 @@ def _parse_skill_md(path: Path, identity: str) -> Skill:
         raise MissingFieldError("description", str(path))
     extra = {k: v for k, v in fields.items() if k not in ("name", "description")}
     return Skill(name=identity, description=Parsable(description),
-                 content=Parsable(body), _extra_fields=extra)
+                 # content 以 SKILL 定义文件目录为 $/include 基准（F2）：
+                 # `content: $./notes.md` 解析到同目录 notes.md
+                 content=Parsable(body, source_dir=path.parent),
+                 _extra_fields=extra)
 
 
 _SKILL_FYA_RESERVED = frozenset({"name", "description", "content", "args"})
@@ -457,7 +461,11 @@ def _parse_skill_fya(path: Path, identity: str) -> Skill:
         on_load = fn
     extra = {k: v for k, v in fields.items() if k not in _SKILL_FYA_RESERVED}
     skill = Skill(name=identity, description=Parsable(description),
-                  content=Parsable(content), args_schema=args_schema,
+                  # content 以 SKILL 定义文件目录为 $/include 基准（F2）：
+                  # `content: $./notes.md` 解析到同目录 notes.md，而不是调用方
+                  # Agent 目录
+                  content=Parsable(content, source_dir=path.parent),
+                  args_schema=args_schema,
                   _extra_fields=extra)
     if on_load is not None:
         # 描述符绑定：self 即本 Skill 实例，框架以 (agent, args) 调用

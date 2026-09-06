@@ -17,7 +17,7 @@ Runtime」——所有子命令拿到 Runtime 之后做什么，是本包各模�
 
 - 不解析配置文件（``providers.yaml`` / ``models.yaml`` 等）——配置
   读取是框架核心与子项目 ``main`` 执行期间的职责。
-- 不认识插件——CLI 不知道 ``runtime.use(...)`` 装过什么，也不为任何
+- 不认识插件——CLI 不知道 ``runtime.install(...)`` 装过什么，也不为任何
   插件提供命令行开关。
 - 不感知 ``@``——``@/`` 是框架内部的项目根前缀，由
   :func:`flowing.runtime.launch` 登记到 asyncio Task 上下文；命令行的

@@ -87,7 +87,7 @@ from flowing.errors import (
     FormatError,
     NameMismatchError,
 )
-from flowing.params import expand_args_schema
+from flowing.params import bridge_properties, expand_args_schema
 from flowing.parser import EntryRef, FyaDocument, parse_fya, split_as
 from flowing.parsable import PENDING, Parsable
 from flowing.paths import infer_name, kebab_to_pascal
@@ -100,7 +100,7 @@ __all__ = [
     "compile_project",
 ]
 
-COMPILER_VERSION: str = "0.1.0"
+COMPILER_VERSION: str = "0.1.2"
 """编译器版本——写入 meta 的 ``compiler_version`` 字段。
 
 版本是缓存键的一部分：meta 中记录的 ``compiler_version`` 与当前值不同
@@ -240,6 +240,75 @@ def _rename_user_setup(script: str) -> str:
     return script
 
 
+def _split_script(script: str) -> tuple[str, str, list[str]]:
+    """``$script`` 二分为模块级段与类体段（各自保留原相对顺序）。
+
+    - 类体段：顶层 ``def`` / ``async def`` 且首个位置参数名为 ``self``
+      的函数（连同装饰器行）——它们是方法（``setup`` / ``@on``
+      handler / 实例方法）；
+    - 模块级段：其余**一切**顶层语句（import、无 ``self`` 的函数、
+      类声明、赋值、``if`` / ``try`` 等），发射到产物 ``.py`` 的类体
+      上方——类体层的非 def 语句与无 self 函数对方法体不可见（方法体
+      按模块级 globals 解析），提升后才是用户直觉语义；注意这意味着
+      ``$script`` 顶层赋值是**模块级常量**而非类属性；
+    - ``from __future__ import ...`` 只能出现在脚本顶端（否则原脚本
+      即 SyntaxError），单独抽出返回，发射到产物文件最前（语法硬性
+      要求：须先于一切其他语句）。
+
+    顶层 ``@on`` 装饰的无 ``self`` 函数 →
+    :class:`flowing.errors.FormatError`——``@on`` 的收集只扫类 MRO，
+    提升到模块级会静默丢失注册（作者笔误，编译期必须报错）。
+
+    行区间按 AST 节点切分（函数段含装饰器行）；节点间的前导空隙行
+    （注释 / 空行）归入随后节点的段，末尾空隙归入最后节点的段。
+
+    :return: ``(模块级段文本, 类体段文本, future import 语句列表)``。
+    """
+    tree = ast.parse(script)
+    lines = script.splitlines(keepends=True)
+
+    def _is_on_decorator(dec: ast.expr) -> bool:
+        # @on(...) / @on(...)[pattern] / 裸 @on 三形态，剥 Call/Subscript 取底名
+        target = dec
+        while isinstance(target, (ast.Call, ast.Subscript)):
+            target = target.func if isinstance(target, ast.Call) else target.value
+        return isinstance(target, ast.Name) and target.id == "on"
+
+    module_parts: list[str] = []
+    class_parts: list[str] = []
+    future_imports: list[str] = []
+    last_is_method = False
+    prev_end = 0   # 已消费到的行号（1-based 行号即已消费行数）
+    for node in tree.body:
+        end = node.end_lineno or node.lineno
+        start = node.lineno
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.decorator_list:
+            start = min(start, *(d.lineno for d in node.decorator_list))
+        begin = min(start, prev_end + 1)   # 前导空隙（注释 / 空行）归入本节点段
+        text = "".join(lines[begin - 1:end])
+        prev_end = end
+        if isinstance(node, ast.ImportFrom) and node.module == "__future__":
+            future_imports.append(text.rstrip("\r\n"))
+            continue
+        is_method = False
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            positional = node.args.posonlyargs + node.args.args
+            is_method = bool(positional) and positional[0].arg == "self"
+            if not is_method and any(_is_on_decorator(d) for d in node.decorator_list):
+                raise FormatError(
+                    f"@on handler {node.name!r} in $script must take self — "
+                    "top-level functions without self are hoisted to module level "
+                    "where @on registration is never collected")
+        (class_parts if is_method else module_parts).append(text)
+        last_is_method = is_method
+    tail = "".join(lines[prev_end:])
+    if tail.strip():   # 末尾空隙归入最后节点的段（全文无节点 → 模块级段）
+        (class_parts if last_is_method else module_parts).append(tail)
+    return ("".join(module_parts).rstrip("\r\n"),
+            "".join(class_parts).rstrip("\r\n"),
+            future_imports)
+
+
 def _script_setup_fn(script: str, name: str, fya_path: Path) -> Any:
     """临时 exec ``$script`` 取用户 setup 函数对象（签名探测用；类合成时还会再 exec）。
 
@@ -254,36 +323,8 @@ def _script_setup_fn(script: str, name: str, fya_path: Path) -> Any:
     return ns.get(name)
 
 
-def _annotation_to_schema_type(annotation: Any, *, context: str) -> Any:
-    """setup 签名注解 → JSON Schema ``type`` 段（推导 args_model 用）。
-
-    支持内建六型与 ``Optional[X]``/``X | None`` （→ ``[t, "null"]``）；
-    其余 → :class:`FormatError` （声明端 fail-fast，不猜测语义）。
-    """
-    if isinstance(annotation, str):
-        # 脚本带 `from __future__ import annotations` 时注解是字符串——
-        # 在内建命名空间求值
-        import builtins
-
-        try:
-            annotation = eval(annotation, vars(builtins), {})  # noqa: S307
-        except Exception as exc:
-            raise FormatError(f"{context}: cannot evaluate type annotation {annotation!r}") from exc
-    type_map = {str: "string", int: "integer", float: "number",
-                bool: "boolean", list: "array", dict: "object"}
-    if annotation in type_map:
-        return type_map[annotation]
-    if typing.get_origin(annotation) in (typing.Union, types.UnionType):
-        members = list(typing.get_args(annotation))
-        non_none = [a for a in members if a is not type(None)]
-        if len(members) == 2 and len(non_none) == 1 and non_none[0] in type_map:
-            return [type_map[non_none[0]], "null"]
-    raise FormatError(
-        f"{context}: unsupported type annotation {annotation!r} (builtin six types and Optional supported)")
-
-
 def _setup_signature(setup_fn: Any, *, class_name: str) -> tuple[dict[str, Any] | None, frozenset[str] | None]:
-    """用户 setup 签名 → ``(args properties, 透传参数集)``。
+    """用户 setup 签名 → ``(args properties, 透传参数集)``.
 
     - ``**kwargs`` / ``*args`` 吸收形态 → ``(None, None)`` （无
       args_model；透传参数集 ``None`` = 全量透传）；无参形态 →
@@ -292,6 +333,12 @@ def _setup_signature(setup_fn: Any, *, class_name: str) -> tuple[dict[str, Any] 
     - 参数缺类型标注 → 内置 ``ValueError`` （构造期抛——作者笔误，
       编程错误通道）；默认值须 JSON 可序列化（要发射进产物
       .py 与桥接进 schema）；
+    - 注解解析与工具侧同源（0904）：字符串注解（``from __future__
+      import annotations``）经 ``$script`` 命名空间求值后，统一交给
+      pydantic ``create_model``——支持 ``Annotated`` + ``Field`` 元数据
+      （``description`` / 约束）与任意 pydantic 类型，不再限定内建六型 /
+      ``Optional``；产物 properties 过 ``bridge_properties`` 收敛到桥接
+      子集（去 ``title`` 等）；
     - 正常形态 → ``(properties, frozenset(参数名))``——透传参数集供
       装配层生成的包装 setup 过滤 ``kwargs`` （编译期定死，产物运行期
       不做签名探测）。
@@ -302,30 +349,45 @@ def _setup_signature(setup_fn: Any, *, class_name: str) -> tuple[dict[str, Any] 
         return None, None
     if not params:
         return None, frozenset()
-    props: dict[str, Any] = {}
+    # 缺注解（原始形态）先报——作者笔误通道，优先于 hints 求值
     for p in params:
         if p.annotation is p.empty:
             raise ValueError(
                 f"setup parameter {p.name!r} of {class_name} lacks a type annotation — "
                 "cannot derive args_model (add an annotation or declare args: in the .fya)")
-        prop: dict[str, Any] = {
-            "type": _annotation_to_schema_type(
-                p.annotation, context=f"setup parameter {p.name!r} of {class_name}")}
-        if p.default is not p.empty:
+    # 字符串注解经 $script 命名空间求值（globals = exec 该 $script 的 dict，
+    # 含其 import 的名字，如 pydantic.Field / typing.Annotated）
+    def _resolve(p: Any) -> Any:
+        ann = p.annotation
+        if isinstance(ann, str):
             try:
-                json.dumps(p.default)
+                return eval(ann, setup_fn.__globals__)  # noqa: S307 — $script 作者自己的注解
+            except Exception as exc:
+                raise FormatError(
+                    f"setup parameter {p.name!r} of {class_name}: cannot evaluate "
+                    f"type annotation {ann!r}") from exc
+        return ann
+
+    from pydantic import create_model
+
+    fields: dict[str, Any] = {}
+    for p in params:
+        if p.default is not p.empty:
+            fields[p.name] = (_resolve(p), p.default)
+        else:
+            fields[p.name] = (_resolve(p), ...)
+    model = create_model(f"{class_name}SetupArgs", **fields)
+    props = bridge_properties(model.model_json_schema()["properties"])
+    # default 可序列化检查（产物 .py 发射与 schema 桥接都需要）
+    for pname, prop in props.items():
+        if "default" in prop:
+            try:
+                json.dumps(prop["default"])
             except TypeError as exc:
                 raise FormatError(
-                    f"default value of setup parameter {p.name!r} of {class_name} is not JSON-serializable"
+                    f"default value of setup parameter {pname!r} of {class_name} is not JSON-serializable"
                     " (it must be bridged into the args schema)") from exc
-            prop["default"] = p.default
-        props[p.name] = prop
     return props, frozenset(props)
-
-
-# ---------------------------------------------------------------------------
-# 发射：值字面量与 .py 源码生成
-# ---------------------------------------------------------------------------
 
 
 def _emit_value(value: Any) -> str:
@@ -380,14 +442,16 @@ def _agent_naming():
     return AGENT_NAMING
 
 
-def _source_file_value(fya_path: Path) -> str:
+def _source_file_value(fya_path: Path,
+                       project_root: "Path | None" = None) -> str:
     """``source_file`` 类属性注入值：根内 ``@/`` 相对形式，根外/无上下文 → 绝对路径。
 
-    无 launch 上下文时 ``@/`` 不可表达，绝对路径同样被 ``resolve_path``
-    原样接受。
+    项目根取显式 ``project_root``（运行时编译由 Runtime 传入，F3），否则
+    launch 上下文（:func:`_project_root`）；两者皆无时 ``@/`` 不可表达，
+    绝对路径同样被 ``resolve_path`` 原样接受。
     """
     resolved = fya_path.resolve()
-    root = _project_root()
+    root = project_root if project_root is not None else _project_root()
     if root is not None:
         try:
             return "@/" + str(resolved.relative_to(Path(root).resolve()))
@@ -396,7 +460,8 @@ def _source_file_value(fya_path: Path) -> str:
     return str(resolved)
 
 
-def _build(fya_path: Path) -> _Assembly:
+def _build(fya_path: Path, *,
+           project_root: "Path | None" = None) -> _Assembly:
     """``.fya`` → 发射源码（解析 → 装配 → 合成三步一体；内存/落盘两形态共享）。
 
     - 字面层：``parse_fya`` （不带 ``entry_fields``——glob 条目过不了
@@ -408,9 +473,14 @@ def _build(fya_path: Path) -> _Assembly:
       （桥接为 ``args_model`` 发生在产物 import 期的
       ``schema_to_model`` 调用——声明即模型）；缺省从 ``$script``
       用户 ``setup`` 签名推导；
-    - 合成：发射 .py 源码（文件头注释 → 按需 import → 模块级
-      ``_FYA_*`` 数据常量 → 类属性赋值 → ``$script`` 原文嵌入类体 →
-      装配层生成的 ``setup``）。
+    - 合成：发射 .py 源码（文件头注释 → ``from __future__`` 与按需
+      import → ``$script`` 模块级段（一切非 self 方法的顶层语句，保序）
+      → 模块级 ``_FYA_*`` 数据常量 → 类属性赋值 → ``$script`` 类体段
+      （self 方法）→ 装配层生成的 ``setup``）。
+
+    :param project_root: 项目根（``@/`` 展开与 ``source_file`` 换算基准）。
+        运行时编译由 :func:`compile_fya_class` 从 Runtime 传入（F3）；缺省
+        回落 launch 上下文（:func:`_project_root`）。
     """
     fya_path = Path(fya_path)
     try:
@@ -422,6 +492,7 @@ def _build(fya_path: Path) -> _Assembly:
         raise CompileError(f"failed to parse {fya_path}: {exc}") from exc
     fya_hash = _fya_hash(doc)
     fields = doc.fields
+    root = project_root if project_root is not None else _project_root()   # @/ 基准（F3）
 
     # 资源列表字段：形态校验 + glob 展开（先显式后 glob、同资源跳过——
     # _expand_glob_entries 入参是规范化之前的原始 YAML 列表项）
@@ -432,7 +503,7 @@ def _build(fya_path: Path) -> _Assembly:
                 raise FormatError(f"resource list field {field_name!r} must be a YAML list")
             fields[field_name] = _expand_glob_entries(
                 items, naming=_agent_naming(), source_dir=fya_path.parent,
-                project_root=_project_root())
+                project_root=root)
 
     # 装配：具名块填回（四条导航规则）
     _merge_named_blocks(fields, doc.blocks)
@@ -462,16 +533,21 @@ def _build(fya_path: Path) -> _Assembly:
         raise FormatError(f"args field of {fya_path} must be a mapping")
     extra = fields   # 其余字段全部落 _extra（框架不解释，扩展自行 resolve）
 
-    # $script：有装配工作（_extra / 条目绑定）时改名用户 setup 并生成包装
+    # $script：有装配工作（_extra / 条目绑定）时改名用户 setup 并生成包装；
+    # 探测 exec 用未拆分的原文（注解求值依赖其顶层 import 的名字），
+    # 发射前再二分：self 方法留类体段，其余语句归模块级段
     script = doc.script or ""
     need_wrapper = bool(extra or tools_refs or subagent_refs)
     user_setup_fn = None
     setup_params: frozenset[str] | None = None
+    module_script = ""
+    future_imports: list[str] = []
     if script.strip():
         if need_wrapper:
             script = _rename_user_setup(script)
         user_setup_fn = _script_setup_fn(
             script, _USER_SETUP_NAME if need_wrapper else "setup", fya_path)
+        module_script, script, future_imports = _split_script(script)
 
     # args 桥接：显式 args: 优先；缺省从用户 setup 签名推导
     args_props: dict[str, Any] | None
@@ -490,11 +566,21 @@ def _build(fya_path: Path) -> _Assembly:
     else:
         args_props = None
 
+    # description 缺省：.fya 未写 description 字段时，取用户 setup 方法的
+    # docstring **整体**（cleandoc 全文）作为 agent 描述（0904 用户裁决：
+    # 与工具侧 docstring 整体回退同口径；无 setup 或无 docstring → 维持缺省）
+    if description is _MISSING:
+        if user_setup_fn is not None and user_setup_fn.__doc__:
+            import inspect
+            description = inspect.cleandoc(user_setup_fn.__doc__).strip()
+
     source = _emit_source(
-        fya_path, class_name=class_name,
+        fya_path,
+        project_root=root, class_name=class_name,
         description=description, system_prompt=system_prompt,
         model_tag=model_tag, metadata=metadata,
         args_props=args_props, script=script,
+        module_script=module_script, future_imports=future_imports,
         tools_refs=tools_refs, subagent_refs=subagent_refs, extra=extra,
         has_user_setup=user_setup_fn is not None,
         need_wrapper=need_wrapper, setup_params=setup_params)
@@ -504,6 +590,7 @@ def _build(fya_path: Path) -> _Assembly:
 def _emit_source(
     fya_path: Path,
     *,
+    project_root: "Path | None" = None,
     class_name: str,
     description: Any,
     system_prompt: Any,
@@ -511,6 +598,8 @@ def _emit_source(
     metadata: Any,
     args_props: dict[str, Any] | None,
     script: str,
+    module_script: str,
+    future_imports: list[str],
     tools_refs: list[EntryRef],
     subagent_refs: list[EntryRef],
     extra: dict[str, Any],
@@ -520,17 +609,20 @@ def _emit_source(
 ) -> str:
     """发射产物 .py 源码（固定模板）。
 
-    模板：文件头注释（来源与「勿手改」提示）→ 按需 import → 模块级
-    ``_FYA_*`` 数据常量（刻意不放类体——``_check_pending`` 会扫类
-    MRO，条目覆写里的 PENDING 空补丁会被误判为未兑现字段）→
-    ``class <Name>(Agent):`` 类属性赋值 → ``$script`` 原文嵌入类体 →
-    装配层生成的 ``setup`` （前置段：``_extra`` 合入 + 条目绑定 →
-    按编译期定死的透传参数集委托用户 setup）。
+    模板：文件头注释（来源与「勿手改」提示）→ ``$script`` 拆出的
+    ``from __future__`` import（语法要求最前）→ 按需 import →
+    ``$script`` 模块级段（无 self 函数 / 类声明 / 赋值等一切非方法
+    顶层语句，保序）→ 模块级 ``_FYA_*`` 数据常量（刻意不放类体——
+    ``_check_pending`` 会扫类 MRO，条目覆写里的 PENDING 空补丁会被
+    误判为未兑现字段）→ ``class <Name>(Agent):`` 类属性赋值 →
+    ``$script`` 类体段（self 方法）→ 装配层生成的 ``setup`` （前置段：
+    ``_extra`` 合入 + 条目绑定 → 按编译期定死的透传参数集委托用户
+    setup）。
     """
     imports = ["from flowing import Agent"]
     body_lines: list[str] = []
 
-    body_lines.append(f"source_file = {_emit_value(_source_file_value(fya_path))}")
+    body_lines.append(f"source_file = {_emit_value(_source_file_value(fya_path, project_root))}")
     for attr, value in (("description", description), ("system_prompt", system_prompt)):
         if value is _MISSING:
             continue   # 未声明：description 缺省 None；system_prompt 缺省由创建管线决定
@@ -605,10 +697,16 @@ def _emit_source(
         f"# 本文件由 flowing 编译器自动生成（compiler_version={COMPILER_VERSION}），"
         f"来源：{fya_path.name}",
         "# 请勿手工修改（py_hash 闸会拒绝覆盖外部修改）；如需手改请转正为手写子类。",
+        *future_imports,   # $script 拆出，语法要求先于一切其他语句
         *imports,
-        "",
-        "",
     ]
+    if module_script:
+        # $script 模块级段（无 self 函数 / 类声明 / 赋值 / import 等，
+        # 保序）——方法体经模块 globals 可见；跟在编译器 import 之后，
+        # 可引用其中的 Agent / Parsable 等名字
+        parts += module_script.splitlines() + ["", ""]
+    else:
+        parts += ["", ""]
     parts.extend(constants)
     if constants:
         parts += ["", ""]
@@ -687,7 +785,8 @@ def _save_meta(meta_path: Path, meta: Mapping[str, Any]) -> None:
 # ---------------------------------------------------------------------------
 
 
-def compile_fya_class(fya_path: Path) -> type:
+def compile_fya_class(fya_path: Path, *,
+              project_root: "Path | None" = None) -> type:
     """``.fya`` → 内存中的 Agent 类（运行期唯一合成点）。
 
     .. rubric:: 功能介绍
@@ -697,8 +796,11 @@ def compile_fya_class(fya_path: Path) -> type:
     :func:`flowing.params.expand_args_schema` 归一化 +
     :func:`flowing.params.schema_to_model` 桥接为 ``args_model``）→
     合成（生成 Agent 子类：类属性注入 ``source_file``/``description``/
-    ``system_prompt`` 等，``$script`` 块的 ``setup``/``@on`` 成员并入
-    类体）。产物是普通 Python 类，与手写子类同属一个类模型（二者是
+    ``system_prompt`` 等；``$script`` 按「self 签名」二分——带 self 的
+    顶层函数（``setup`` / ``@on`` handler / 实例方法）入类体，其余一切
+    顶层语句（import / 无 self 函数 / 类声明 / 赋值等）按原序提升到
+    模块级——类体层语句对方法体不可见，提升后才是用户直觉语义）。
+    产物是普通 Python 类，与手写子类同属一个类模型（二者是
     等价的两条声明途径，同目录并存时 ``.fya`` 优先）。
 
     .. rubric:: 行为要点
@@ -713,12 +815,15 @@ def compile_fya_class(fya_path: Path) -> type:
       :class:`flowing.errors.CompileError`。
 
     :param fya_path: 源 ``.fya`` 路径。
+    :param project_root: 项目根（``@/`` 展开与 ``source_file`` 换算
+        基准）。运行时编译由 ``Runtime`` 传入（F3：惰性建 Agent 不依赖
+        launch 上下文）；缺省回落 launch 上下文。
     :return: 合成的 Agent 子类。
     :raises flowing.errors.CompileError: 解析或合成失败。
 
     .. seealso:: :func:`compile_fya_file` —— 落盘形态。
     """
-    assembly = _build(Path(fya_path))
+    assembly = _build(Path(fya_path), project_root=project_root)
     module = types.ModuleType(f"flowing_fya_{assembly.class_name}")
     module.__file__ = str(fya_path)   # traceback 定位到源 .fya
     try:
@@ -731,7 +836,8 @@ def compile_fya_class(fya_path: Path) -> type:
     return cls
 
 
-def compile_fya_file(fya_path: Path) -> Path:
+def compile_fya_file(fya_path: Path, *,
+             project_root: "Path | None" = None) -> Path:
     """编译单个 ``.fya`` 为同目录 ``.py``，含 meta hash 校验。
 
     .. rubric:: 功能介绍
@@ -742,7 +848,8 @@ def compile_fya_file(fya_path: Path) -> Path:
        源码（字面层 + 装配 + 合成一步完成）；
     2. 发射：生成 ``.py`` 源码——Parsable 值以类体赋值形式写出
        （如 ``system_prompt = Parsable('$./system-prompt.md')``），
-       ``$script`` 块原样嵌入；
+       ``$script`` 按「self 签名」二分：self 方法入类体，其余顶层
+       语句按原序提升到模块级；
     3. meta 校验：读同目录 ``.flowing.meta.yaml`` （每目录一份，
        条目以 ``fya_path.name`` 为键）中本文件的条目——产物 ``.py``
        已存在且记录的 ``py_hash`` （AST 口径）与实际不符 →
@@ -754,6 +861,8 @@ def compile_fya_file(fya_path: Path) -> Path:
        （``fya_hash`` / ``py_hash`` / ``compiler_version``）。
 
     :param fya_path: 源 ``.fya`` 路径。
+    :param project_root: 项目根（同 :func:`compile_fya_class`，缺省回落
+        launch 上下文）。
     :return: 产物 ``.py`` 的路径（无论本次是否重编译）。
     :raises flowing.errors.ArtifactModifiedError: 产物被外部修改
       （``py_hash`` 不匹配，或无 meta 记录的既有产物）——报错中止，
@@ -765,7 +874,7 @@ def compile_fya_file(fya_path: Path) -> Path:
     fya_path = Path(fya_path)
     product = fya_path.with_suffix(".py")   # 同目录去 .fya 后缀
     # 合成与发射（与 compile_fya_class 同源的 _build；Parsable 以类体赋值写出）
-    assembly = _build(fya_path)
+    assembly = _build(fya_path, project_root=project_root)
     # meta 校验：py_hash 不匹配 -> ArtifactModifiedError；fya_hash 未变且
     # compiler_version 一致 -> 幂等跳过
     meta_path = fya_path.parent / _META_FILENAME

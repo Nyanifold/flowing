@@ -137,7 +137,8 @@ async def second_fn(x: int) -> int:
             ToolRegistry().get("empty-tool", source_dir=tmp_path)
 
     def test_t37b_single_subclass_instantiated(self, tmp_path):
-        """恰好一个 ScriptTool 子类 → 实例化（name 由类名 kebab 化推断）。"""
+        """恰好一个 ScriptTool 子类 → 实例化（0904：规范名 = 文件身份
+        sub-tool，加载层注入——不再由类名 kebab 推断）。"""
         _write(tmp_path / "sub_tool.py", '''
 from flowing.tool import ScriptTool
 
@@ -155,7 +156,8 @@ class SubTool(ScriptTool):
         assert tool.definition.description == "子类 docstring 描述。"
 
     def test_t37c_subclass_explicit_name_mismatch(self, tmp_path):
-        """子类显式 name 声明与文件推断名不符 → NameMismatchError。"""
+        """子类显式 name 声明与文件身份（sub_tool.py → sub-tool）不符 →
+        NameMismatchError（防文件/类名错位）。"""
         _write(tmp_path / "sub_tool.py", '''
 from flowing.tool import ScriptTool
 

@@ -26,10 +26,13 @@ from flowing.interfaces import (
     _install_signal_handlers,
     _list_agent_records,
 )
+from flowing.interfaces.controls import slash_lines
 
 
 SLASH_COMMANDS: tuple[str, ...] = (
-    "/help", "/exit", "/quit", "/snapshot", "/messages", "/agents", "/use",
+    "/help", "/exit", "/quit", "/agent", "/agents", "/new", "/snapshot",
+    "/messages", "/model", "/status", "/tasks", "/export", "/rewind",
+    "/cancel", "/pause", "/resume",
 )
 """repl 内 slash-command 的封闭集合：以 ``/`` 开头的输入是控制命令，
 不是发给 LLM 的消息。固定集合保证默认 repl 这个冷启动观察窗口的
@@ -47,9 +50,12 @@ SLASH_COMMANDS: tuple[str, ...] = (
   ``current_head_id`` 上溯；未绑定时打印提示）。
 - ``/agents``：列出有记录的 Agent（``agent_id``、最后一次回复前缀、
   最后修改时间；数据源与懒读规则见 :func:`cmd_repl`）。
-- ``/use <id>``：切换绑定目标（未激活的 id 经
-  :meth:`flowing.runtime.Runtime.get_agent` 现场恢复；未知 id 打印
-  提示，绑定不变）。
+- ``/agent <id>``：切换绑定目标（未激活 id 经
+  :meth:`flowing.runtime.Runtime.get_agent` 现场恢复；未知 id 提示，
+  绑定不变）。其余命令（``messages`` / ``model`` / ``status`` /
+  ``tasks`` / ``export`` / ``rewind`` / ``cancel`` / ``pause`` /
+  ``resume``）经 ``slash_lines`` 执行，语义见
+  :mod:`flowing.interfaces.controls`。
 
 未识别的 ``/xxx`` 输入：打印「未知命令，/help 查看可用命令」，
 不报错、不退出、不进消息流。带参命令按第一个空格分流参数。
@@ -60,10 +66,18 @@ SLASH_COMMANDS: tuple[str, ...] = (
 _HELP_LINES: tuple[str, ...] = (
     "/help                list all commands (this help)",
     "/exit  /quit         exit repl (graceful shutdown, then exit with code 0)",
-    "/snapshot            print a read-only snapshot of the current Runtime",
-    "/messages            print an overview of the bound Agent's message chain",
+    "/agent <agent_id>    switch the foreground binding (dormant ids are restored)",
     "/agents              list recorded Agents (including dormant records)",
-    "/use <agent_id>      switch the binding target (dormant ids are restored via get_agent)",
+    "/new [agent_type]    create a new root Agent and bind it",
+    "/snapshot            print a read-only snapshot of the current Runtime",
+    "/messages            print the bound Agent's message chain (current head up)",
+    "/model [tag]         show or switch the bound Agent's model_tag",
+    "/status              print a status rollup of the bound Agent",
+    "/tasks [cancel <id>] list background tasks / cancel one",
+    "/export [format]     export the bound Agent's message chain (md default)",
+    "/rewind <msg_id>     move the current head to a historical message (fork)",
+    "/cancel              cooperatively stop the bound Agent",
+    "/pause  /resume      pause / resume the bound Agent",
 )
 """``/help`` 的全部命令一句话说明（与 :data:`SLASH_COMMANDS` 一一对应）。"""
 
@@ -74,13 +88,17 @@ def _fold(text: str, limit: int = 60) -> str:
     return folded[:limit] + ("…" if len(folded) > limit else "")
 
 
-def _summarize_message(host: Agent, msg: Message) -> str | None:
+def _summarize_message(host: Agent, msg: Message, *,
+                       omit_thinking: bool = False) -> str | None:
     """新挂树消息的一行摘要（``after_turn_append`` 观察 handler 的渲染）。
 
     TOOL 消息（工具结果）、STEER 注入消息、以及含 ThinkingBlock 或
     ToolCallBlock 的 PROVIDER 消息（多轮推理与工具调用可见）返回一行
     摘要，正文默认折叠；纯文本 PROVIDER 消息已由 ``on_provider_delta``
     流式显示，不重复摘要；其余 kind 不摘要（返回 ``None``）。
+
+    ``omit_thinking=True`` 时跳过 ``[thinking]`` 段：REPL 已把思考按
+    灰显增量流式上屏，挂树摘要不再重复（纯增量原则）。
     """
     if msg.kind is MessageKind.TOOL:
         name = msg.tool_call_id or ""
@@ -97,8 +115,9 @@ def _summarize_message(host: Agent, msg: Message) -> str | None:
         return f"[steer] {_fold(text)}"
     if msg.kind is MessageKind.PROVIDER:
         parts: list[str] = []
-        thinking = "".join(b.text for b in msg.content if isinstance(b, ThinkingBlock))
-        if thinking:
+        thinking = "".join(
+            b.thinking for b in msg.content if isinstance(b, ThinkingBlock))
+        if thinking and not omit_thinking:
             parts.append(f"[thinking] {_fold(thinking)}")
         calls = [b.name for b in msg.content if isinstance(b, ToolCallBlock)]
         if calls:
@@ -123,6 +142,28 @@ def _print_message_chain(agent: Agent) -> None:
     for msg in reversed(chain):
         text = _fold("".join(b.text for b in msg.content if isinstance(b, TextBlock)))
         print(f"{msg.id[:12]}  {msg.kind.value:<9} {text}")
+
+
+def _print_export(agent: Agent, fmt: str = "md") -> None:
+    """沿 current_head 上溯打印消息链导出（/export 的渲染；md 默认）。"""
+    chain: list[Message] = []
+    mid = agent.current_head_id
+    while mid is not None:
+        msg = agent._messages.get(mid)
+        if msg is None:
+            break   # 孤儿链断点：到断点即终止
+        chain.append(msg)
+        mid = msg.parent_id
+    chain.reverse()
+    for m in chain:
+        text = "".join(b.text for b in m.content if isinstance(b, TextBlock))
+        if fmt == "jsonl":
+            import json
+            from flowing.message import to_record
+            print(json.dumps(to_record(m), ensure_ascii=False))
+        else:
+            print(f"**{m.kind.value}**: {text}")
+
 
 async def cmd_repl(
     path: str,
@@ -271,37 +312,75 @@ async def cmd_repl(
     # 终端交错策略为简单换行打印，不做光标控制）；
     # query_active：当前回合由 repl 自己的 query 驱动（其最终文本由 query
     # 返回路径打印，after_turn handler 不重复打印）
-    flags = {"mid_line": False, "query_active": False}
+    flags = {"mid_line": False, "query_active": False,
+             "thinking_line": False, "thinking_streamed": False}
     _HOOK_OWNER = "repl"   # 观察 handler 的统一 owner（/use 迁移时按 owner 摘除）
+    # 思考按「灰显增量」上屏（纯增量、不与最终/折叠摘要重复）；非 tty
+    # （管道/重定向）时不回填思考，保持 stdout 答案是干净正文，思考留给
+    # 折叠摘要兜底显示。
+    _TTY = sys.stdout.isatty()
+    _GRAY = "\x1b[90m"
+    _RESET = "\x1b[0m"
+
+    def _end_thinking() -> None:
+        # 结束当前灰显思考行：只重置颜色（换行由调用方按需补）
+        if flags["thinking_line"]:
+            print(_RESET, end="", flush=True)
+            flags["thinking_line"] = False
 
     def _print_line(text: str) -> None:
-        if flags["mid_line"]:
-            print()   # 流式行未收尾：先换行再独占一行
+        if flags["thinking_line"] or flags["mid_line"]:
+            _end_thinking()
+            print()   # 收起进行中的思考/正文行，再独占一行
             flags["mid_line"] = False
         print(text)
 
     def _on_delta(host: Agent, delta: ProviderDelta) -> ProviderDelta:
-        # 流式打印生成中的文本（纯观察；携带 value 的钩子点要求返回 value）
+        # 纯增量观察：text 灰显? 否——正文正常色；思考用灰显。已流式的
+        # 内容由 _summarize_message(omit_thinking) 抑制，绝不重复。
         if delta.kind == "text" and delta.text:
+            if flags["thinking_line"]:
+                _end_thinking()
+                print()   # 思考行结束后正文另起一行
+                flags["mid_line"] = False
             print(delta.text, end="", flush=True)
             flags["mid_line"] = True
+        elif delta.kind == "thinking" and delta.text:
+            if not _TTY:
+                return delta   # 非 tty：不回填答案，交给折叠摘要兜底
+            flags["thinking_streamed"] = True
+            if flags["mid_line"]:
+                print()   # 罕见交错（正文先行）：先收正文行
+                flags["mid_line"] = False
+            if not flags["thinking_line"]:
+                print(_GRAY, end="", flush=True)
+                flags["thinking_line"] = True
+            print(delta.text, end="", flush=True)
         return delta
 
     def _on_append(host: Agent, msg: Message) -> Message:
-        line = _summarize_message(host, msg)
+        # 已流式上屏的思考，挂树摘要里不再重复；一行后复位供下一条消息用
+        line = _summarize_message(host, msg,
+                                  omit_thinking=flags["thinking_streamed"])
+        flags["thinking_streamed"] = False
         if line is not None:
             _print_line(line)
         return msg
 
     def _after_turn(host: Agent, turn: TurnContext) -> TurnContext:
         # 后台回合（cron / comm 等无 repl 等待者的触发源）收尾后打印最终
-        # 文本，保证观察窗口可见；repl 自己 query 驱动的回合由 query 返回
-        # 路径打印，不重复。build_turn_result 在 after_turn 之后才组装
+        # 文本，保证观察窗口可见；已有增量（正文/思考）上屏则不重复最终
+        # 文本（纯增量）。build_turn_result 在 after_turn 之后才组装
         # TurnResult，此处复用同一聚合函数现场取文本
         if not flags["query_active"]:
-            result = build_turn_result(turn, host)
-            if result.final_text:
-                _print_line(result.final_text)
+            if flags["thinking_line"] or flags["mid_line"]:
+                _end_thinking()
+                print()
+                flags["mid_line"] = False
+            else:
+                result = build_turn_result(turn, host)
+                if result.final_text:
+                    _print_line(result.final_text)
         return turn
 
     def _subscribe(a: Agent) -> None:
@@ -369,36 +448,21 @@ async def cmd_repl(
             if cmd in ("/exit", "/quit"):
                 break  # 第 4 步：shutdown 后返回 EXIT_OK
             if cmd == "/help":
-                # 打印 SLASH_COMMANDS 全部命令及一句话说明
+                # 打印命令目录全部命令及一句话说明
                 for help_line in _HELP_LINES:
                     print(help_line)
                 if extra_help_text:
                     print(extra_help_text)
-            elif cmd == "/agents":
-                # 列池名录：每行 agent_id + 最后回复前缀 + 最后修改时间。
-                # 数据源与懒读规则由共享辅助 _list_agent_records 承载
-                # （与 serve GET /agents 同口径；前缀懒读盘、不回写池元数据）
-                records = _list_agent_records(runtime)
-                if not records:
-                    print("(no agent records)")
-                for rec in records:
-                    mtime_str = (
-                        time.strftime("%Y-%m-%d %H:%M", time.localtime(rec["mtime"]))
-                        if rec["mtime"] is not None else "-"
-                    )
-                    print(f'{rec["agent_id"]}  "{rec["last_reply"]}"  {mtime_str}')
-            elif cmd == "/use":
-                # 切换绑定：命中激活实例或池名录 → get_agent（已激活直接返回，
-                # 未激活走 recover 管线现场恢复）；未知 id → 打印提示，绑定
-                # 不变；只换投递目标，不 destroy 原 Agent（保持激活）
+            elif cmd in ("/agent", "/use"):
+                # /use 为 /agent 的兼容别名。切换绑定：命中激活实例或池名录
+                # → get_agent（已激活直接返回，未激活走 recover 管线现场恢复）；
+                # 未知 id → 打印提示，绑定不变；只换投递目标，不 destroy 原 Agent
                 if not arg:
-                    print("usage: /use <agent_id>")
+                    print("usage: /agent <agent_id>")
                 elif arg in runtime._nodes or arg in runtime._agent_pool:
                     try:
                         target = await runtime.get_agent(arg)
                     except Exception as exc:
-                        # 名录中但 session 目录损坏：recover 管线原生异常
-                        # 上抛，打印错误，绑定不变，不退出
                         print(f"failed to restore agent: {exc}")
                     else:
                         if isinstance(target, Agent):
@@ -407,22 +471,28 @@ async def cmd_repl(
                             print(f"{arg!r} is not an Agent; cannot bind")
                 else:
                     print(f"unknown agent: {arg!r}; see /agents for recorded ids")
-            elif cmd == "/snapshot":
-                print(runtime.snapshot())  # 人类可读渲染
-            elif cmd == "/messages":
-                # 未绑定：打印提示（无会话可看）；已绑定：沿
-                # agent.current_head_id 上溯的消息链概览
-                if agent is None:
-                    print("no agent bound: nothing to view (see /agents, select with /use <id>)")
+            elif cmd == "/new":
+                # 新建一个根会话并绑定（缺省类型 = 项目默认主 Agent）
+                agent_type = arg or _default_agent_type(runtime)
+                if agent_type is None:
+                    print("cannot determine agent type (no root record in the pool); "
+                          "mount or create a root agent in main first")
                 else:
-                    _print_message_chain(agent)
+                    try:
+                        target = await runtime.create_agent(agent_type)
+                    except Exception as exc:
+                        print(f"failed to create agent: {exc}")
+                    else:
+                        _bind(target)
+                        print(f"bound to new agent {target.node_id}")
             elif extra_slash_handlers is not None and cmd in extra_slash_handlers:
                 # 扩展注入点（repl-debug 等继承者；默认 repl 不启用）：
                 # 在已识别 slash-command 之后、未知命令之前调用
                 await extra_slash_handlers[cmd](arg, agent, runtime)
             else:
-                # 未识别 /xxx：打印提示，不进消息流、不退出
-                print(f"unknown command: {cmd}; run /help for available commands")
+                # 其余命令走共享命令目录（与 serve/web 同源），逐行打印
+                for line_text in await slash_lines(cmd, arg, agent, runtime):
+                    print(line_text)
         else:
             if agent is None:
                 # 未绑定收到消息 → 先创建新 Agent：agent_type 取池中根条目
@@ -446,13 +516,14 @@ async def cmd_repl(
                 result: TurnResult = await agent.query(line)     # 返回 TurnResult；repl 不走副线
             finally:
                 flags["query_active"] = False
-            if flags["mid_line"]:
-                # 流式输出已在屏：换行收尾，不再重复打印最终文本
+            if flags["thinking_line"] or flags["mid_line"]:
+                # 增量已流式上屏（思考灰显 / 正文）→ 收尾换行，不再重复最终文本
+                _end_thinking()
                 print()
                 flags["mid_line"] = False
             else:
-                # 无流式文本（error / blocked / 空回复）：照常打印最终文本，
-                # status="error" 时照常打印（可能为空串），不因此退出
+                # 无流式（error / blocked / 空回复 / 非 tty 思考留待摘要）：
+                # 照常打印最终文本；status="error" 时照常打印（可能为空串）
                 print(result.final_text)
     await runtime.shutdown()
     return EXIT_OK

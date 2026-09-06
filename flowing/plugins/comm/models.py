@@ -107,7 +107,7 @@ class EventEnvelope:
 
     .. code-block:: python
 
-        # 应用层注册 UI 端点（阶段一 runtime.use(CommPlugin()) 之后；
+        # 应用层注册 UI 端点（阶段一 runtime.install(CommPlugin()) 之后；
         # runtime 为 Runtime 实例）
         comm = runtime.inject(communication_key)
         ui_handle = comm.create_handle(endpoint_id="ui-main")

@@ -106,12 +106,13 @@ asyncio Task 隔离（见 :mod:`flowing.runtime`）。
     class MakePayment(ScriptTool):
         \"\"\"对指定订单发起支付。仅在用户明确确认支付意图后调用。\"\"\"
 
+        name = "make-payment"      # 必填：不再由类名推断
         args_model = PayArgs
 
         async def execute(self, *, order_id: str, amount: float) -> dict:
             return {"tx": "fake", "order_id": order_id, "amount": amount}
 
-    tool = MakePayment()          # name 由类名推断为 make-payment
+    tool = MakePayment()
     result = await tool({"order_id": "o1", "amount": 9.9})
     assert result.status == "completed"
 
@@ -154,6 +155,7 @@ from flowing.errors import (
     AmbiguousToolError,
     FormatError,
     Intercepted,
+    MissingFieldError,
     MissingMcpSourceError,
     MissingSchemaError,
     NameMismatchError,
@@ -177,7 +179,13 @@ from flowing.message import (
 )
 from pydantic import BaseModel, ValidationError
 
-from flowing.params import _coerce, apply_param_overrides, expand_args_schema, schema_to_model
+from flowing.params import (
+    _coerce,
+    apply_param_overrides,
+    bridge_properties,
+    expand_args_schema,
+    schema_to_model,
+)
 from flowing.parsable import Parsable
 from flowing.paths import (
     NamingRules,
@@ -1186,9 +1194,17 @@ class ToolDefinition:
         )
 
 
+def _whole_doc(doc: str | None) -> str | None:
+    """docstring 整体提取（0904 description 回退口径）：``inspect.cleandoc``
+    全文、去首尾空白；无内容 → ``None``。内部 API。"""
+    if not doc:
+        return None
+    return inspect.cleandoc(doc).strip() or None
+
+
 def _first_paragraph(doc: str | None) -> str | None:
-    """docstring 首段提取（description 三级回退链的「首段」口径）：cleandoc
-    后按空行切首段，段内换行折叠为空格；无内容 → ``None``。内部 API。"""
+    """docstring 首段提取（其它内部用途）：cleandoc 后按空行切首段，
+    段内换行折叠为空格；无内容 → ``None``。内部 API。"""
     if not doc:
         return None
     paragraph = inspect.cleandoc(doc).split("\n\n", 1)[0].strip()
@@ -1838,18 +1854,21 @@ class ScriptTool(Tool):
     .. rubric:: 功能介绍
 
     工具作者不直接构造 `ToolDefinition`，而是在子类上声明
-    ``description`` / ``args_model`` 类属性；``__init__`` 时框架自动
-    生成 ``self.definition``。``name`` 可省略——缺省由类名 kebab 化推断
-    （``MakePayment`` → ``make-payment``），显式声明仅作一致性断言（不符
-    抛 :class:`flowing.errors.NameMismatchError`）。``args_model`` 也可
-    省略——从 ``execute()`` 签名的类型标注与默认值构建模型。
+    ``name`` / ``description`` / ``args_model`` 类属性；``__init__`` 时
+    框架自动生成 ``self.definition``。``name`` **必填**（0904 契约：不再
+    由类名 kebab 推断——ScriptTool 禁止没有 name 字段）；手写子类须类体
+    显式 ``name``（或显式 ``definition``），``.fya`` / ``.py`` 文件通道的
+    规范名 = 文件身份（文件名/目录名，加载层注入，类体显式 ``name`` 与
+    文件身份不符抛 :class:`flowing.errors.NameMismatchError`）。
+    ``args_model`` 可省略——从 ``execute()`` 签名的类型标注与默认值构建
+    模型。
 
     script 工具共有三条等价的定义通道：手写本类子类（主路径）；
     ``@flowing_tool`` 打标函数（框架自动提升为等价子类）；``.fya`` 的
-    ``callable:`` 指针指向裸函数。名字一律推断（文件名 / 目录名 / 类名），
-    任何显式 ``name`` 声明（``.fya`` 字段、类属性、装饰器参数）仅作一致
-    性断言；``description`` 按显式声明 > 类 docstring 首段 >
-    ``execute()`` docstring 首段的三级回退链取。
+    ``callable:`` 指针指向裸函数。规范名来源：手写通道 = 类体显式
+    ``name``（必填）；文件通道（``.fya`` / ``.py`` / 打标函数）= 文件名 /
+    目录名身份（声明面权威，加载层注入）。``description`` 按显式声明 >
+    类 docstring 整体 > ``execute()`` docstring 整体的三级回退链取（0904：整体）。
 
     .. rubric:: 使用示例
 
@@ -1866,8 +1885,7 @@ class ScriptTool(Tool):
         class MakePayment(ScriptTool):
             \"\"\"对指定订单发起支付。仅在用户明确确认支付意图后调用。\"\"\"
 
-            # name 省略——由类名 kebab 化推断为 "make-payment"
-            # （显式写 name = "make-payment" 合法，仅作一致性断言）
+            name = "make-payment"         # 必填：不再由类名推断
             description = "发起支付"
             args_model = PayArgs          # 参数声明（BaseModel 子类）
 
@@ -1915,7 +1933,10 @@ class ScriptTool(Tool):
 
     :raises flowing.errors.MissingSchemaError: 既无 ``args_model`` 声明、
       ``execute()`` 参数又缺类型标注时（签名构建不出字段类型）。
-    :raises flowing.errors.NameMismatchError: 显式 ``name`` 与推断名不符。
+    :raises flowing.errors.NameMismatchError: 文件通道（``.fya`` / ``.py``
+      加载）类体显式 ``name`` 与文件身份（文件名/目录名）不符时（防错位）；
+      手写直接构造通道无此错误（``name`` 缺失抛
+      :class:`flowing.errors.MissingFieldError`）。
 
     .. seealso::
 
@@ -1925,13 +1946,14 @@ class ScriptTool(Tool):
     """
 
     name: str
-    """规范工具名（kebab-case）。可省略：缺省由类名 kebab 化推断；显式
-    声明仅作一致性断言（不符抛 :class:`flowing.errors.NameMismatchError`）；
-    与显式 ``definition`` 互斥。
+    """规范工具名（kebab-case）。**必填**（0904 契约：不再由类名 kebab
+    化推断）：手写子类须类体显式声明；``.fya`` / ``.py`` 文件通道由加载层
+    以文件身份（文件名/目录名）注入，类体显式 ``name`` 与文件身份不符抛
+    :class:`flowing.errors.NameMismatchError`；与显式 ``definition`` 互斥。
     """
     description: str
     """工具描述。类属性声明；缺省时按三级回退链取：显式 ``description``
-    > 类 docstring 首段 > ``execute()`` docstring 首段。
+    > 类 docstring **整体** > ``execute()`` docstring **整体**（0904：不再取首段）。
     """
     args_model: type[BaseModel] | None
     """参数声明：Pydantic ``BaseModel`` 子类，声明即模型——LLM schema 由
@@ -1947,11 +1969,11 @@ class ScriptTool(Tool):
 
         - 顺序：显式 ``definition`` 类属性存在 → 直接使用（同时声明
           ``name`` / ``description`` / ``args_model`` 时发告警日志，仍以
-          显式 ``definition`` 为准——互斥规则）；否则 ``name`` 缺省由
-          类名 kebab 化推断（显式声明仅作一致性断言，不符 →
-          ``NameMismatchError``），``description`` 按三级回退链取（显式
-          声明 > 类 docstring 首段 > ``execute()`` docstring 首段，皆无
-          → 空串），``args_model`` 未声明时按
+          显式 ``definition`` 为准——互斥规则）；否则要求类体显式
+          ``name``（0904 契约：必填、不再由类名推断；缺失抛
+          :class:`flowing.errors.MissingFieldError`），``description`` 按
+          三级回退链取（显式声明 > 类 docstring **整体** >
+          ``execute()`` docstring **整体**，皆无 → 空串），``args_model`` 未声明时按
           ``self.args_model or _infer_from_execute(self.execute)`` 取值，
           最后生成 ``ToolDefinition`` （``params_schema`` 取
           ``args_model.model_json_schema()["properties"]``）。
@@ -1969,27 +1991,34 @@ class ScriptTool(Tool):
                     cls.__name__)
             self.definition = cls.__dict__["definition"]
         else:
-            # name 缺省由类名 kebab 化推断（pascal_to_kebab）；类体显式
-            # 声明仅作一致性断言（不符 -> NameMismatchError）。只看本类
-            # __dict__——继承来的 name 不参与断言（与 agent 侧
-            # _load_agent_from_py 的口径一致）
-            inferred_name = pascal_to_kebab(cls.__name__)
+            # name 必填（0904 契约：不再由类名 kebab 推断——ScriptTool 禁止
+            # 没有 name 字段）。类体显式 name（或经 .fya/.py 文件身份注入的
+            # name）即规范名；只看本类 __dict__——继承来的 name 不参与
+            # （与 agent 侧 _load_agent_from_py 的口径一致）
             explicit_name = cls.__dict__.get("name")
-            if explicit_name is not None and explicit_name != inferred_name:
-                raise NameMismatchError(explicit_name, inferred_name, cls.__name__)
+            if explicit_name is None:
+                raise MissingFieldError(
+                    "name", cls.__name__)   # FormatError 族：声明缺必填字段
             args_model = getattr(self, "args_model", None)
             if args_model is None:
                 args_model = _infer_from_execute(self.execute)  # 从 execute 签名构建模型
-            # description 三级回退链：显式声明 > 类 docstring 首段 >
-            # execute() docstring 首段；皆无 -> 空串。注意用 cls.__doc__
+            # description 三级回退链：显式声明 > 类 docstring 整体 >
+            # execute() docstring 整体；皆无 -> 空串。注意用 cls.__doc__
             # 而非 inspect.getdoc(cls)——后者会继承基类 docstring
             description = getattr(cls, "description", None)
             if description is None:
-                description = (_first_paragraph(cls.__doc__)
-                               or _first_paragraph(self.execute.__doc__) or "")
+                # 0904：无显式 description 时回退 docstring **整体**（cleandoc
+                # 全文），与用户裁决一致（此前取首段）
+                description = (_whole_doc(cls.__doc__)
+                               or _whole_doc(self.execute.__doc__) or "")
             self.definition = ToolDefinition(
-                name=inferred_name, description=description,
-                params_schema=args_model.model_json_schema()["properties"])  # 声明即模型：schema 从模型派生
+                name=explicit_name, description=description,
+                # 声明即模型：schema 从模型派生，但先收敛到桥接子集——
+                # pydantic 的 model_json_schema() 会给 property 附 title 等
+                # 展示键，直接进 definition 会在 agent 侧 schema_to_model
+                # 桥接时被超子集校验拒绝（F1：工具声明三通道皆可用）。
+                params_schema=bridge_properties(
+                    args_model.model_json_schema()["properties"]))
         self._has_caller = "caller" in inspect.signature(self.execute).parameters
         self._execution = None
         # 创建时定内部校验模型——声明即模型，无需再编译；
@@ -2818,7 +2847,7 @@ def _script_tool_from_fya(
       桥接为校验模型（声明即模型）；缺省从 callable 签名构建
       （``_infer_from_execute``）；
     - fya 的显式 ``description`` / ``output`` 声明压过一切兜底来源
-      （callable docstring 首段是函数路径的最后回退）。
+      （callable docstring 整体是函数路径的最后回退，0904）。
     """
     import importlib.util
 
@@ -2841,9 +2870,14 @@ def _script_tool_from_fya(
     description = fields.get("description")
     output_schema = fields.get("output")
     if isinstance(target, type) and issubclass(target, ScriptTool):
-        explicit_name = target.__dict__.get("name")   # 写了仅作一致性断言
+        # 0904 契约（同 _tool_from_py）：.fya callable 通道规范名 = 文件身份
+        # identity（TOOL.fya 目录/文件名）；类体显式 name 与身份不符报错；
+        # 无 definition 也无显式 name 时以身份注入（不再类名推断）
+        explicit_name = target.__dict__.get("name")
         if explicit_name is not None and explicit_name != identity:
             raise NameMismatchError(explicit_name, identity, str(path))
+        if explicit_name is None and "definition" not in target.__dict__:
+            target.name = identity
         tool = target()
     elif callable(target):
         if hasattr(target, "__flowing_tool_name__"):
@@ -2855,7 +2889,7 @@ def _script_tool_from_fya(
         cls = type(kebab_to_pascal(identity), (ScriptTool,), {
             "execute": staticmethod(target),
             "name": identity,
-            "description": description or _first_paragraph(target.__doc__) or "",
+            "description": description or _whole_doc(target.__doc__) or "",
             "args_model": args_model,
         })
         tool = cls()
@@ -3153,9 +3187,10 @@ class ToolRegistry:
         恰好一个 ``@flowing_tool`` 打标函数 → :func:`_auto_generate_tool`
         提升；恰好一个 `ScriptTool` 子类 → 实例化；两者并存 / 多个打标
         函数 / 多个子类 → ``AmbiguousToolError``；皆无 → ``FormatError``。
-        子类的显式 ``name`` 声明仅作一致性断言（不符 →
-        ``NameMismatchError``；打标函数的装饰器参数断言在
-        :func:`_auto_generate_tool` 内）。
+        子类的规范名 = 文件身份（``identity``）：类体显式 ``name`` 与身份
+        不符 → ``NameMismatchError``（防错位）；类既无显式 ``name`` 也无
+        ``definition`` 时以 ``identity`` 注入（0904 契约：不再由类名推断）。
+        打标函数的装饰器参数断言在 :func:`_auto_generate_tool` 内。
         """
         import importlib.util
 
@@ -3188,9 +3223,15 @@ class ToolRegistry:
         if marked:
             return _auto_generate_tool(marked[0])
         cls = subclasses[0]
-        explicit_name = cls.__dict__.get("name")   # name 非机制字段：写了仅作一致性断言
+        # 0904 契约：ScriptTool 不再由类名推断 name。.py 文件通道的规范名 =
+        # 文件身份（文件名/目录名，声明面权威，与 @flowing_tool 通道同源）：
+        # 类体显式 name 与文件身份不符 -> NameMismatchError（防错位）；类既无
+        # definition 也无显式 name 时以文件身份注入（不再回退类名推断）。
+        explicit_name = cls.__dict__.get("name")
         if explicit_name is not None and explicit_name != identity:
             raise NameMismatchError(explicit_name, identity, str(path))
+        if explicit_name is None and "definition" not in cls.__dict__:
+            cls.name = identity
         return cls()
 
     def get_tool_class(self, name_or_path: str, *,
@@ -3378,7 +3419,7 @@ def _auto_generate_tool(fn: Callable[..., Any]) -> Tool:
         raise NameMismatchError(declared, name, fn.__code__.co_filename)
     # description 三级回退链在打标函数形态下的落点：显式声明无通道
     # （装饰器无 description 形参）、无类 docstring —— 取函数 docstring 首段
-    description = _first_paragraph(fn.__doc__) or ""
+    description = _whole_doc(fn.__doc__) or ""
     cls = type(kebab_to_pascal(name), (ScriptTool,), {
         "execute": staticmethod(fn),
         "name": name,

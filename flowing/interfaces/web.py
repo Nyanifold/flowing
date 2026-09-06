@@ -29,14 +29,10 @@
 
 边界：
 
-- 前端页面与 Runtime 的交互只有封闭端点集一条通道——
-  ``POST /agents/<agent-id>/message`` 投递消息、``GET /agents`` /
-  ``GET /snapshot`` 读取、``POST /agents`` 创建。前端不得绕过
-  serve 的 HTTP API 另开消息通道（例如直连 Agent 的内部方法）；这
-  保证「HTTP 请求与 CLI 输入等价」的不变量在 web 形态下同样成立。
-- 项目级自定义前端（注册 / 替换资产来源的开放机制）当前不实现；
-  :func:`get_frontend_assets` 的签名与返回结构是稳定契约，未来的
-  扩展机制在不改变签名的前提下接入。
+- 前端页面与 Runtime 的交互只有 serve 的封闭 HTTP 端点一条通道
+  （消息投递 / 观察流 / 控制与读取端点）；前端不绕过 serve API 另开
+  消息通道（例如直连 Agent 的内部方法）。这保证「HTTP 请求与 CLI
+  输入等价」的不变量在 web 形态下同样成立。
 - 本模块不做任何构建 / 打包：资产在 import 本模块时即已就绪，
   ``GET /`` 与 ``GET /assets/*`` 只是读取 :class:`FrontendAssets`
   的字段。WebSocket 不引入——流式推送由 serve 的 SSE 端点承载。
@@ -124,7 +120,7 @@ class FrontendAssets:
 # 内置默认前端资产本体（模块内常量：随包发布即就绪、零构建零打包）
 # ---------------------------------------------------------------------------
 
-_INDEX_HTML = """\
+_INDEX_HTML = r"""
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -134,186 +130,378 @@ _INDEX_HTML = """\
 <link rel="stylesheet" href="/assets/style.css">
 </head>
 <body>
-<header>
-  <span class="brand">Flowing</span>
-  <select id="agent-select" title="切换 Agent"></select>
-  <span id="current-id" class="mono"></span>
-  <button id="btn-new">新建 Agent</button>
-  <button id="btn-snapshot">快照</button>
-</header>
-<main id="conversation"></main>
-<div id="empty-state" hidden>
-  <p>暂无 Agent 记录。</p>
-  <button id="btn-new-empty">新建 Agent</button>
+<div id="layout">
+  <aside id="sidebar">
+    <div class="side-head"><span class="brand">Flowing</span>
+      <button id="btn-new" title="新建 Agent">+</button></div>
+    <div id="agent-tree" class="tree"></div>
+  </aside>
+  <main>
+    <header>
+      <span id="view-tabs">
+        <button class="tab active" data-view="record">记录</button>
+        <button class="tab" data-view="tree">树</button>
+      </span>
+      <span id="current-id" class="mono"></span>
+      <span id="busy" hidden>…生成中…</span>
+    </header>
+    <div id="record-view">
+      <div id="conversation"></div>
+      <div id="empty-state" hidden><p>选择左侧一个 Agent，或新建。</p></div>
+    </div>
+    <div id="tree-view" hidden></div>
+    <pre id="meta" hidden></pre>
+    <footer>
+      <input id="input" type="text" autofocus autocomplete="off"
+             placeholder="输入消息；以 / 开头使用 repl 指令" spellcheck="false">
+      <button id="btn-send">发送</button>
+    </footer>
+  </main>
 </div>
-<pre id="snapshot-view" hidden></pre>
-<footer>
-  <input id="input" type="text" placeholder="输入消息，回车发送" autofocus>
-  <button id="btn-send">发送</button>
-</footer>
 <script src="/assets/app.js"></script>
 </body>
 </html>
 """
 
-_APP_JS = """\
+_APP_JS = r"""
 "use strict";
-// Flowing 内置默认前端：对话页（serve 封闭端点集的唯一消费方）。
-// 通道：POST /agents/<id>/message 投递、GET /agents/<id>/stream（SSE）
-// 流式显示、GET /agents 列举/切换、POST /agents 新建、GET /snapshot 查看。
-const $ = (sel) => document.querySelector(sel);
-const state = { current: null, es: null, generating: null };
+// Flowing 内置前端 v3.1：agent 继承树侧栏 + 「记录(从 head 上溯)/树(切分支)」
+// 双子页 + 可输入 repl 指令的输入框。通道均为 serve HTTP API：
+//  GET /agents（含 parent_agent_id / name）、POST /agents（id-adopt）、
+//  GET /agents/<id>/messages、GET /agents/<id>/tree、POST …/rewind、
+//  POST …/message、POST …/cancel、GET …/stream(SSE: message/thinking/text/turn_end)。
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s).replace(/[&<>"]/g,
+  (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const state = {
+  agents: [], current: null, es: null, view: "record",
+  rows: new Map(), generating: null, running: false,
+};
+const storeKey = "flowing.web.agent";
 
-function bubble(kind, text) {
-  const div = document.createElement("div");
-  div.className = "msg " + kind;
-  div.textContent = text;
-  $("#conversation").appendChild(div);
-  div.scrollIntoView();
-  return div;
+function rowKeyOf(id) { return id; }
+
+function appendText(el, text) {
+  const span = document.createElement("span");
+  span.textContent = text;
+  el.appendChild(span);
+  el.scrollTop = el.scrollHeight;
 }
 
-function closeStream() {
-  if (state.es) { state.es.close(); state.es = null; }
+function bubble(el, cls, text) {
+  const d = document.createElement("div");
+  d.className = "msg " + cls;
+  d.textContent = text;
+  el.appendChild(d);
+  el.scrollTop = el.scrollHeight;
+  return d;
 }
 
-function openStream(agentId) {
-  // 建立/复用该 Agent 的 SSE 订阅（两段式：delta 流 → turn_end 收尾）
-  closeStream();
-  const es = new EventSource(`/agents/${encodeURIComponent(agentId)}/stream`);
-  es.addEventListener("delta", (e) => {
-    if (!state.generating) state.generating = bubble("provider", "");
-    state.generating.textContent += JSON.parse(e.data);
-  });
-  es.addEventListener("message", (e) => {
-    const msg = JSON.parse(e.data);
-    // 工具结果与 steer 注入渲染为 meta 摘要行（MessagePriority.STEER = 1）
-    if (msg.kind === "tool" || msg.priority === 1) {
-      const text = (msg.content || []).map((b) => b.text || "").join("");
-      bubble("meta", `[${msg.kind}] ${text.slice(0, 80)}`);
-    }
-  });
-  es.addEventListener("turn_end", () => { state.generating = null; });
-  state.es = es;
-}
+function setBusy(on) { state.running = on; $("#busy").hidden = !on; }
 
-async function loadHistory(agentId) {
-  $("#conversation").innerHTML = "";
-  const resp = await fetch(`/agents/${encodeURIComponent(agentId)}/messages`);
-  if (!resp.ok) return;
-  for (const msg of await resp.json()) {
-    const text = (msg.content || []).map((b) => b.text || "").join("");
-    if (msg.kind === "user" || msg.kind === "provider") bubble(msg.kind, text);
+// ---- 侧边栏：agent 继承树 --------------------------------------------------
+function renderTree() {
+  const root = $("#agent-tree");
+  root.innerHTML = "";
+  const children = new Map();   // parent_id -> [agent]
+  for (const a of state.agents) {
+    const p = a.parent_agent_id || null;
+    if (!children.has(p)) children.set(p, []);
+    children.get(p).push(a);
   }
-}
-
-function selectAgent(agentId) {
-  state.current = agentId;
-  $("#current-id").textContent = agentId || "";
-  $("#empty-state").hidden = true;
-  openStream(agentId);
-  loadHistory(agentId);
+  function build(parentId) {
+    const items = (children.get(parentId) || []).slice()
+      .sort((a, b) => (a.name || a.agent_id).localeCompare(b.name || b.agent_id));
+    if (items.length === 0) return null;
+    const ul = document.createElement("ul");
+    for (const a of items) {
+      const li = document.createElement("li");
+      li.className = a.agent_id === state.current ? "current" : "";
+      const row = document.createElement("div");
+      row.className = "agent";
+      const kids = build(a.agent_id);
+      if (kids) {
+        const toggle = document.createElement("span");
+        toggle.className = "toggle";
+        toggle.textContent = "▾";
+        toggle.onclick = (e) => {
+          e.stopPropagation();
+          kids.hidden = !kids.hidden;
+          toggle.textContent = kids.hidden ? "▸" : "▾";
+        };
+        row.appendChild(toggle);
+      } else {
+        row.appendChild(document.createElement("span"));
+      }
+      const label = document.createElement("span");
+      label.className = "label";
+      label.textContent = a.name || a.agent_id;
+      label.title = `${a.agent_id}  ${a.last_reply || ""}`;
+      row.appendChild(label);
+      row.onclick = () => focus(a.agent_id);
+      li.appendChild(row);
+      if (kids) li.appendChild(kids);
+      ul.appendChild(li);
+    }
+    return ul;
+  }
+  const top = build(null);
+  if (top) root.appendChild(top);
+  else bubble(root, "meta", "(no agents)");
 }
 
 async function refreshAgents() {
   const resp = await fetch("/agents");
-  const agents = await resp.json();
-  const select = $("#agent-select");
-  select.innerHTML = "";
-  for (const a of agents) {
-    const opt = document.createElement("option");
-    opt.value = a.agent_id;
-    opt.textContent = `${a.agent_id}  "${a.last_reply || ""}"`;
-    select.appendChild(opt);
-  }
-  if (agents.length === 0) {
-    // 零根空态：显示新建入口
-    closeStream();
-    state.current = null;
-    $("#current-id").textContent = "";
-    $("#empty-state").hidden = false;
-    return;
-  }
-  // 多根默认选中最后修改时间最新的根；已有选中且仍在名录则保持
-  const keep = agents.some((a) => a.agent_id === state.current);
-  const chosen = keep ? state.current
-    : agents.slice().sort((a, b) =>
-        (b.modified_at || "").localeCompare(a.modified_at || ""))[0].agent_id;
-  select.value = chosen;
-  selectAgent(chosen);
+  if (!resp.ok) return;
+  state.agents = await resp.json();
+  renderTree();
+  if (!state.current && state.agents.length) focus(state.agents[0].agent_id);
 }
 
-async function createAgent() {
-  const resp = await fetch("/agents", { method: "POST",
-    headers: { "Content-Type": "application/json" }, body: "{}" });
-  if (!resp.ok) { bubble("meta", `创建失败：${resp.status}`); return; }
-  const { agent_id } = await resp.json();
-  await refreshAgents();
-  selectAgent(agent_id);
-  $("#agent-select").value = agent_id;
+// ---- 当前 agent 视角 --------------------------------------------------------
+async function focus(id) {
+  state.current = id;
+  localStorage.setItem(storeKey, id);
+  $("#current-id").textContent = id;
+  $("#empty-state").hidden = true;
+  renderTree();
+  openStream(id);
+  await showView("record");
+}
+
+function closeStream() { if (state.es) { state.es.close(); state.es = null; } state.generating = null; }
+
+function openStream(id) {
+  closeStream();
+  const es = new EventSource(`/agents/${encodeURIComponent(id)}/stream`);
+  const conv = $("#conversation");
+  es.addEventListener("thinking", (e) => {
+    const d = JSON.parse(e.data);
+    const key = rowKeyOf(d.message_id || "g" + state.generatingIndex());
+    let el = state.rows.get(key);
+    if (!el) { el = bubble(conv, "thinking", ""); state.rows.set(key, el); }
+    appendText(el, d.text || "");
+    setBusy(true);
+  });
+  es.addEventListener("delta", (e) => {
+    const d = JSON.parse(e.data);
+    const key = rowKeyOf(d.message_id || "g" + state.generatingIndex());
+    let el = state.rows.get(key);
+    if (!el || el.dataset.role !== "provider") {
+      el = bubble(conv, "provider", "");
+      el.dataset.role = "provider";
+      state.rows.set(key, el);
+    }
+    appendText(el, d.text || "");
+    state.generating = el;
+    setBusy(true);
+  });
+  es.addEventListener("message", (e) => {
+    const m = JSON.parse(e.data);
+    setBusy(false);
+    // 只在记录视图把新消息落行；user/provider/tool 各按其类
+    if (m.kind === "tool") {
+      const text = (m.content || []).map((b) => b.text || b.data ? JSON.stringify(b.data) : "").join("");
+      bubble(conv, "meta", `[tool:${m.tool_status || ""}] ${esc(text).slice(0, 120)}`);
+      return;
+    }
+    const key = rowKeyOf(m.id);
+    let el = state.rows.get(key);
+    if (el) return;   // 已在流式增量中
+    const cls = m.kind === "user" ? "user" : "provider";
+    el = bubble(conv, cls, "");
+    el.dataset.role = m.kind === "user" ? "user" : "provider";
+    state.rows.set(key, el);
+    const text = (m.content || []).map((b) => b.text || "").join("");
+    appendText(el, text);
+  });
+  es.addEventListener("turn_end", (e) => { setBusy(false); state.generating = null; });
+  es.onerror = () => { es.close(); setBusy(false); };
+  state.es = es;
+}
+state.generatingIndex = () => (state._g = (state._g || 0) + 1);
+
+async function loadRecord(id) {
+  const conv = $("#conversation");
+  conv.innerHTML = "";
+  state.rows.clear();
+  const resp = await fetch(`/agents/${encodeURIComponent(id)}/messages`);
+  if (!resp.ok) return;
+  const msgs = await resp.json();
+  for (const m of msgs) {
+    const text = (m.content || []).map((b) => b.text || "").join("");
+    const think = (m.content || []).map((b) => b.thinking || "").join("");
+    if (m.kind === "user") { const el = bubble(conv, "user", text); state.rows.set(rowKeyOf(m.id), el); }
+    else if (m.kind === "provider") {
+      if (think) { const t = bubble(conv, "thinking", think); t.onclick = () => t.classList.toggle("folded"); t.classList.add("folded"); }
+      const el = bubble(conv, "provider", text); state.rows.set(rowKeyOf(m.id), el);
+    }
+  }
+}
+
+// ---- 「树」子页：消息树 + 切换分支 ------------------------------------------
+async function loadTree(id) {
+  const host = $("#tree-view");
+  host.innerHTML = "";
+  const resp = await fetch(`/agents/${encodeURIComponent(id)}/tree`);
+  if (!resp.ok) { bubble(host, "meta", "tree unavailable"); return; }
+  const t = await resp.json();
+  const hdr = document.createElement("div");
+  hdr.className = "meta";
+  hdr.textContent = `head=${t.head}`;
+  host.appendChild(hdr);
+  function nodeEl(n) {
+    const li = document.createElement("li");
+    li.className = n.head ? "head" : "";
+    const d = document.createElement("div");
+    d.className = "node";
+    d.textContent = `${n.kind}:${n.id.slice(0, 12)}${n.head ? " ←head" : ""}`;
+    d.title = n.id;
+    d.onclick = async () => {
+      await fetch(`/agents/${encodeURIComponent(id)}/rewind`,
+        { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message_id: n.id }) });
+      await showView("record");
+    };
+    li.appendChild(d);
+    if (n.children && n.children.length) {
+      const ul = document.createElement("ul");
+      for (const c of n.children) ul.appendChild(nodeEl(c));
+      li.appendChild(ul);
+    }
+    return li;
+  }
+  const ul = document.createElement("ul");
+  for (const r of t.roots) ul.appendChild(nodeEl(r));
+  host.appendChild(ul);
+}
+
+async function showView(v) {
+  state.view = v;
+  for (const b of document.querySelectorAll("#view-tabs .tab"))
+    b.classList.toggle("active", b.dataset.view === v);
+  $("#record-view").hidden = v !== "record";
+  $("#tree-view").hidden = v !== "tree";
+  if (v === "record" && state.current) await loadRecord(state.current);
+  else if (v === "tree" && state.current) await loadTree(state.current);
+}
+
+// ---- 输入框：普通消息 vs repl 指令 -------------------------------------------
+async function runCommand(text) {
+  const meta = $("#meta");
+  meta.hidden = false;
+  meta.textContent = "";
+  bubble(meta, "meta", "» " + text);
+  const parts = text.slice(1).split(/\s+/);
+  const cmd = parts[0];
+  const arg = parts.slice(1).join(" ").trim();
+  const out = [];
+  try {
+    if (cmd === "new") {   // 前端侧：新建并切换聚焦（repl /new 语义）
+      const r = await fetch("/agents", { method: "POST", body: "{}",
+        headers: { "Content-Type": "application/json" } });
+      const b = await r.json(); await refreshAgents(); await focus(b.agent_id);
+      out.push("bound " + b.agent_id);
+    } else if (cmd === "agent") {   // 前端侧：切换聚焦
+      const hit = state.agents.find((a) => a.agent_id === arg || a.name === arg);
+      if (hit) { await focus(hit.agent_id); out.push("focus " + hit.agent_id); }
+      else out.push("unknown agent: " + arg);
+    } else if (state.current) {   // 其余命令走共享命令目录（serve POST …/command）
+      const r = await fetch(`/agents/${encodeURIComponent(state.current)}/command`,
+        { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ line: text }) });
+      const b = await r.json();
+      out.push(...(b.lines || []));
+    } else {
+      out.push("no agent focused (click one in the sidebar)");
+    }
+  } catch (err) { out.push("error: " + err.message); }
+  out.forEach((l) => bubble(meta, "meta", l));
 }
 
 async function send() {
   const input = $("#input");
   const text = input.value.trim();
-  if (!text || !state.current) return;
+  if (!text) return;
   input.value = "";
-  bubble("user", text);
-  if (!state.es) openStream(state.current);   // 发送后立即建立/复用 SSE 订阅
-  state.generating = bubble("provider", "正在生成…");
-  const resp = await fetch(`/agents/${encodeURIComponent(state.current)}/message`, {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text }),
-  });
+  if (text.startsWith("/")) { await runCommand(text); return; }
+  if (!state.current) return;
+  bubble($("#conversation"), "user", text);
+  setBusy(true);
+  const resp = await fetch(`/agents/${encodeURIComponent(state.current)}/message`,
+    { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }) });
+  setBusy(false);
+  if (!resp.ok) return;
   const body = await resp.json();
-  // 完整生成段：POST 响应的最终文本覆盖流式气泡（无流式时直接呈现）
+  const conv = $("#conversation");
+  const key = rowKeyOf(body.message_id);   // 挂树 USER 消息
   if (state.generating) {
     state.generating.textContent = body.final_text || "";
     state.generating = null;
   } else {
-    bubble("provider", body.final_text || "");
+    const el = bubble(conv, "provider", body.final_text || "");
+    state.rows.set(key + ":reply", el);
   }
 }
 
-async function showSnapshot() {
-  const view = $("#snapshot-view");
-  if (!view.hidden) { view.hidden = true; return; }
-  const resp = await fetch("/snapshot");
-  view.textContent = JSON.stringify(await resp.json(), null, 2);
-  view.hidden = false;
-}
-
-$("#agent-select").addEventListener("change", (e) => selectAgent(e.target.value));
-$("#btn-new").addEventListener("click", createAgent);
-$("#btn-new-empty").addEventListener("click", createAgent);
-$("#btn-snapshot").addEventListener("click", showSnapshot);
 $("#btn-send").addEventListener("click", send);
 $("#input").addEventListener("keydown", (e) => { if (e.key === "Enter") send(); });
-refreshAgents();
+$("#btn-new").addEventListener("click", async () => {
+  const r = await fetch("/agents", { method: "POST", body: "{}",
+    headers: { "Content-Type": "application/json" } });
+  const b = await r.json(); await refreshAgents(); await focus(b.agent_id);
+});
+for (const b of document.querySelectorAll("#view-tabs .tab"))
+  b.addEventListener("click", () => showView(b.dataset.view));
+
+const saved = localStorage.getItem(storeKey);
+refreshAgents().then(() => {
+  if (saved && state.agents.some((a) => a.agent_id === saved)) focus(saved);
+});
 """
 
-_STYLE_CSS = """\
-body { font-family: system-ui, sans-serif; margin: 0; display: flex;
-       flex-direction: column; height: 100vh; }
-header { display: flex; gap: .5rem; align-items: center; padding: .5rem 1rem;
-         border-bottom: 1px solid #ddd; }
+_STYLE_CSS = r"""
+body { margin: 0; font-family: system-ui, sans-serif; height: 100vh; display: flex; }
+#layout { display: flex; width: 100%; height: 100%; }
+#sidebar { width: 260px; border-right: 1px solid #ddd; overflow: auto; padding: .5rem; }
+.side-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: .5rem; }
 .brand { font-weight: 600; }
-.mono { font-family: ui-monospace, monospace; color: #666; font-size: .85em; }
-main { flex: 1; overflow-y: auto; padding: 1rem; }
-.msg { max-width: 70%; margin: .4rem 0; padding: .5rem .8rem;
-       border-radius: .6rem; white-space: pre-wrap; }
+#agent-tree ul { list-style: none; padding-left: 1em; margin: 0; }
+#agent-tree .agent { cursor: pointer; padding: .15em .2em; border-radius: 4px; }
+#agent-tree .agent:hover { background: #eef2ff; }
+#agent-tree .current .label { font-weight: 700; }
+.toggle { display: inline-block; width: 1em; cursor: pointer; color: #888; }
+main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+header { display: flex; gap: .8rem; align-items: center; padding: .5rem 1rem;
+         border-bottom: 1px solid #ddd; }
+#view-tabs .tab { border: 1px solid #bbb; background: #fff; padding: .2em .6em;
+                  border-radius: 6px; cursor: pointer; }
+#view-tabs .tab.active { background: #2563eb; color: #fff; border-color: #2563eb; }
+.mono { font-family: ui-monospace, monospace; font-size: .8em; color: #666;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#record-view { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+#conversation { flex: 1; padding: 1rem; }
+.msg { max-width: 78%; margin: .4rem 0; padding: .5rem .8rem; border-radius: .6rem;
+       white-space: pre-wrap; }
 .msg.user { margin-left: auto; background: #d7ebff; }
 .msg.provider { margin-right: auto; background: #f0f0f0; }
-.msg.meta { margin: .2rem auto; background: none; color: #888;
-            font-size: .8em; padding: 0; }
-footer { display: flex; gap: .5rem; padding: .5rem 1rem;
-         border-top: 1px solid #ddd; }
+.msg.thinking { margin-right: auto; background: #faf5d0; color: #6b5b00; font-size: .85em;
+                border-left: 3px solid #d9c400; cursor: pointer; }
+.msg.thinking.folded { max-height: 1.6em; overflow: hidden; }
+.msg.meta { margin: .2rem auto; background: none; color: #888; font-size: .8em; padding: 0; white-space: normal; }
+#tree-view { flex: 1; overflow: auto; padding: 1rem; font-family: ui-monospace, monospace; font-size: .85em; }
+#tree-view ul { list-style: none; padding-left: 1.2em; }
+#tree-view .node { cursor: pointer; padding: 1px 2px; }
+#tree-view .node:hover { background: #eef2ff; }
+#tree-view .head { color: #2563eb; font-weight: 700; }
+#meta { flex: 0 1 auto; max-height: 30%; overflow: auto; padding: .5rem 1rem;
+        background: #fafafa; border-top: 1px solid #eee; }
+footer { display: flex; gap: .5rem; padding: .5rem 1rem; border-top: 1px solid #ddd; }
 footer input { flex: 1; padding: .5rem; }
 #empty-state { text-align: center; margin-top: 4rem; color: #666; }
-#snapshot-view { overflow: auto; max-height: 50vh; margin: 0;
-                 padding: 1rem; background: #fafafa; border-top: 1px solid #ddd; }
-"""
 
+"""
 _ASSETS_CACHE: FrontendAssets | None = None
 
 
@@ -321,12 +509,12 @@ def get_frontend_assets() -> FrontendAssets:
     """返回前端资产包。
 
     ``web`` 子命令获取前端资产的唯一入口。返回框架随包发布的内置
-    最小默认前端（一个经 ``POST /agents/<agent-id>/message`` 对话、
-    可查看快照、可选择 / 切换 / 新建 Agent 的静态页面）。
+    默认前端：agent 继承树侧栏 + 「记录 / 树」双子页（记录从当前
+    head 上溯，树可点节点切换分支），输入框支持消息与 repl 指令
+    （经 serve 的观察 / 控制端点，含思考折叠展示）。
 
-    项目级自定义前端的开放注册机制当前不实现，但本签名与返回结构
-    作为稳定契约保留——未来的 Web 暴露层扩展在不改变签名的前提下
-    替换资产来源。
+    本内置资产即 ``web`` 的默认前端来源（``GET /`` 与 ``GET /assets/*``
+    的返回即此资产包）。
 
     .. rubric:: 使用示例
 

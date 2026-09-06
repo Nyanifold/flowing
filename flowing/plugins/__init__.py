@@ -13,12 +13,12 @@
   :mod:`flowing.plugins.workflow` （``WorkflowPlugin`` / ``Workflow``）、
   :mod:`flowing.plugins.clipboard` （``ClipboardPlugin`` / ``use_clipboard``）。
 
-启用遵循双层启用模型。阶段一调用 ``runtime.use(plugin)`` 安装全局能力
+启用遵循双层启用模型。阶段一调用 ``runtime.install(plugin)`` 安装全局能力
 （工具、``provide`` 值、配置命名空间、Agent 类型、Resource、全局状态命名
 空间）；阶段二各 Agent 在 ``setup()`` 中调用 ``use_xxx(self)`` 做实例级
 启用。框架核心发布时不预装任何内置扩展；未启用的扩展对 Agent 而言
 从没存在过（零开销，不是被跳过）。``Plugin`` 基类定义在扩展包而非
-``flowing.runtime``：核心只经 :meth:`flowing.runtime.Runtime.use` 消费
+``flowing.runtime``：核心只经 :meth:`flowing.runtime.Runtime.install` 消费
 插件接口，不认识任何具体插件。
 
 .. rubric:: 全局约定（跨符号、影响使用的约定）
@@ -27,10 +27,10 @@
   :meth:`Plugin.install` 与关闭时的 :meth:`Plugin.shutdown`。其余运行期
   协作走 ``provide`` / ``inject`` 与消息队列，框架不主动调用插件的其它方法。
 - 声明式依赖：插件在 ``dependencies`` 中声明依赖的其它插件注册名，
-  只声明、不自己检查。每次 ``use()`` 安装后，框架对已装插件集合做
+  只声明、不自己检查。每次 ``install()`` 安装后，框架对已装插件集合做
   增量校验：依赖缺失只发 ``warnings.warn`` 警告、不抛错；依赖成环抛
   :class:`flowing.errors.DependencyError` （报错现场即引入环的那次
-  ``use()``）。
+  ``install()``）。
 - 插件约定（consenting adults，靠自觉遵守而非框架校验）：``install``
   只注册——不做业务、不查询其它插件、不修改其它状态；协作不查询——
   插件间经 ``provide`` / ``inject`` 或消息队列协作，安装顺序与协作
@@ -48,11 +48,11 @@
   改名参数。
 - 注册名是 per-Runtime 作用域的标签，不是全局唯一标识：生态上不排斥
   两个作用相近的插件取同一个注册名；约束只有一条——每个 Runtime 同时
-  只装一个同名插件，重复安装同名插件时 ``use()`` 抛 ``ValueError``。
+  只装一个同名插件，重复安装同名插件时 ``install()`` 抛 ``ValueError``。
 - 同名 ``provide`` key 重复注册是覆盖更新（后者生效，``inject`` 实时
   可见），框架不报错；避免插件间键冲突靠键名前缀约定（插件注册名加
   ``:`` 前缀）。
-- 插件 ``install`` 抛出的异常从 ``use()`` 直接上抛，框架不按插件粒度
+- 插件 ``install`` 抛出的异常从 ``Runtime.install()`` 直接上抛，框架不按插件粒度
   隔离降级：安装失败的插件不会进入已装集合。
 
 .. rubric:: 使用示例
@@ -74,9 +74,9 @@
         async def shutdown(self) -> None:
             await svc.close()                          # 释放运行期资源
 
-    runtime.use(MyPlugin())   # 阶段一：安装（每个插件恰好一次 install）
+    runtime.install(MyPlugin())   # 阶段一：安装（每个插件恰好一次 install）
 
-.. seealso:: :meth:`flowing.runtime.Runtime.use` （阶段一入口）、
+.. seealso:: :meth:`flowing.runtime.Runtime.install` （阶段一入口）、
     :meth:`flowing.runtime.Runtime.shutdown` （插件收尾阶段）、
     :class:`flowing.plugins.Plugin`、各内置扩展子包
 """
@@ -97,10 +97,10 @@ class Plugin:
 
     .. rubric:: 功能介绍
 
-    阶段一（Runtime 安装）的契约载体：``runtime.use(plugin)`` 按实参顺序
+    阶段一（Runtime 安装）的契约载体：``runtime.install(plugin)`` 按实参顺序
     对每个插件实例调用一次 :meth:`install`，插件在此注册全局能力（工具、
     ``provide`` 值、配置命名空间、Agent 类型、Resource、全局状态命名空间）。
-    插件实例由用户代码构造后传入 ``Runtime.use()``，框架不实例化插件。
+    插件实例由用户代码构造后传入 ``Runtime.install()``，框架不实例化插件。
     本类是扩展的唯一基类；子类须显式声明 :attr:`name` 与
     :attr:`dependencies` （:attr:`namespace` 可选），并按需实现
     :meth:`install` / :meth:`shutdown`。插件作者的约定（``install``
@@ -129,34 +129,34 @@ class Plugin:
 
     .. rubric:: 行为要点
 
-    - ``runtime.use()`` 按实参顺序对每个插件调用一次 ``install``；可分批
-      调用，依赖正确性由每次 ``use()`` 后的增量校验保障（与安装顺序
+    - ``runtime.install()`` 按实参顺序对每个插件调用一次 ``install``；可分批
+      调用，依赖正确性由每次 ``install()`` 后的增量校验保障（与安装顺序
       无关）；同名插件重复安装抛 ``ValueError`` （一个 Runtime 同时只装
       一个同名插件）。
     - 生命周期：插件实例在 ``install`` 之后只被框架回调一次——
       :meth:`shutdown`；其余运行期协作走 ``provide`` / ``inject`` 与
       消息队列，框架不主动调用插件的其它方法。
     - 推荐在创建任何 Agent（``mount`` / ``create_agent`` /
-      ``recover_agent``）之前完成全部 ``use()``。框架不校验调用时机：
+      ``recover_agent``）之前完成全部 ``install()``。框架不校验调用时机：
       迟装不报错，但已创建的 Agent 不会获得迟装插件注册的能力；插件
       未安装时，对应 ``use_xxx()`` 的第一步 ``inject`` 抛
       :class:`flowing.errors.MissingProvideError`。
-    - ``install`` 的可反复执行性：每次进程启动都会重新执行 ``use()`` →
+    - ``install`` 的可反复执行性：每次进程启动都会重新执行 ``install()`` →
       ``install()`` （每个 Runtime 内每个插件只安装一次），``install``
       应写成对持久化状态结构上无关——不读取持久值做注册决策；需要从
       持久值派生运行时结构的重建，放在 ``after_recover`` （agent 侧）
       或插件自择时机的懒重建（全局侧）。
-    - 边缘情况：``dependencies`` 中的名字无对应已安装插件 → ``use()``
-      时 ``warnings.warn`` 警告、不抛错；已装插件依赖图成环 → ``use()``
+    - 边缘情况：``dependencies`` 中的名字无对应已安装插件 → ``install()``
+      时 ``warnings.warn`` 警告、不抛错；已装插件依赖图成环 → ``install()``
       抛 :class:`flowing.errors.DependencyError`。
 
-    .. seealso:: :meth:`flowing.runtime.Runtime.use`、
+    .. seealso:: :meth:`flowing.runtime.Runtime.install`、
         :class:`flowing.plugins.skills.SkillPlugin` 等内置实现
     """
 
     name: ClassVar[str]
     """插件注册名。子类必须显式声明：框架不提供默认值、不自动派生
-    （``Runtime.use`` 直接按本名登记，未声明即 ``AttributeError``）。
+    （``Runtime.install`` 直接按本名登记，未声明即 ``AttributeError``）。
     推荐格式（习惯约定，非强制校验）：类名去掉 ``Plugin`` 后缀转
     kebab-case（``CronPlugin`` → ``"cron"``）。
 
@@ -177,13 +177,13 @@ class Plugin:
 
     dependencies: ClassVar[list[str]]
     """声明式依赖清单：其它插件的注册名（``name``）列表。依赖只声明
-    约定：插件只声明、不自己检查；框架在每次 ``use()`` 后对已装插件
+    约定：插件只声明、不自己检查；框架在每次 ``install()`` 后对已装插件
     集合做增量校验——清单中的名字无对应已安装插件时只发
     ``warnings.warn`` 警告、不抛错；已装插件依赖图成环时抛
     :class:`flowing.errors.DependencyError` （报错现场即引入环的那次
-    ``use()``）。
+    ``install()``）。
 
-    .. seealso:: :meth:`flowing.runtime.Runtime.use` —— 依赖校验在该
+    .. seealso:: :meth:`flowing.runtime.Runtime.install` —— 依赖校验在该
         方法内执行。
     """
 
@@ -238,8 +238,8 @@ class Plugin:
 
         .. rubric:: 行为要点
 
-        - ``runtime.use()`` 按实参顺序对每个插件调用一次本方法；本方法
-          抛出的异常从 ``use()`` 直接上抛（框架不隔离），安装失败的
+        - ``runtime.install()`` 按实参顺序对每个插件调用一次本方法；本方法
+          抛出的异常从 ``runtime.install()`` 直接上抛（框架不隔离），安装失败的
           插件不会进入已装集合。
         - 只注册——不做业务、不查询其它插件、不修改其它状态；注册只在
           本方法发生，运行时不增删全局注册状态。
@@ -249,7 +249,7 @@ class Plugin:
 
         :param runtime: 当前安装的 Runtime 实例。
 
-        .. seealso:: :meth:`flowing.runtime.Runtime.use`、
+        .. seealso:: :meth:`flowing.runtime.Runtime.install`、
             :meth:`flowing.runtime.Runtime.provide`
         """
         # 空实现：注册通道由实现类按需选用，均为可选、非必经步骤。
@@ -268,7 +268,7 @@ class Plugin:
 
         - 时机：``Runtime.shutdown()`` 的插件收尾阶段——晚于所有 Agent
           的递归 destroy，早于全局状态视图关闭与退出事件置位（此时
-          ``await runtime`` 尚未解除阻塞）；按 ``use()`` 的 install
+          ``await runtime`` 尚未解除阻塞）；按 ``install()`` 的 install
           顺序逐个 ``await``。
         - 单插件异常不阻断后续收尾：框架记日志后继续（尽力收尾路径）。
         - 不删除持久化数据：session 目录与全局状态文件随目录存续，本

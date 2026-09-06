@@ -38,6 +38,7 @@ from flowing.errors import (
     NameMismatchError,
 )
 from flowing.parser import EntryRef, parse_fya
+from flowing.parsable import Parsable
 from flowing.parsable import PENDING, Parsable
 from flowing.runtime import AGENT_NAMING
 from flowing.subagents import _expand_glob_entries
@@ -461,3 +462,221 @@ async def test_e2e_fya_full_chain_runtime_turn(tmp_path):
         assert result.status == "completed" and "订单已收到" in result.final_text
     finally:
         await runtime.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# F3 回归（0904）：compile_fya_class 接受 project_root——launch 上下文复位后
+# （ContextVar=None）编译含 @/ 条目的 .fya 也能展开；Runtime 运行时编译把
+# 自身 project_root 传入（不再依赖 launch 时机）
+# ---------------------------------------------------------------------------
+
+def test_f3_at_glob_needs_project_root_without_launch_context(tmp_path):
+    """无 launch 上下文（ContextVar=None）时 @/ glob 缺 project_root 报错。"""
+    proj = tmp_path
+    tool_dir = proj / "tools" / "demo-tool"
+    tool_dir.mkdir(parents=True)
+    (tool_dir / "TOOL.fya").write_text(
+        "type: script\n"
+        "description: demo 工具。\n"
+        "callable: ./impl.py::demo_fn\n",
+        encoding="utf-8",
+    )
+    (tool_dir / "impl.py").write_text(
+        "async def demo_fn() -> str:\n    return 'ok'\n",
+        encoding="utf-8",
+    )
+    fya = proj / "root.fya"
+    fya.write_text(
+        "description: root\n"
+        "tools:\n"
+        '  - "@/tools/*"\n',
+        encoding="utf-8",
+    )
+    # 修复前：_project_root() 无上下文 → @/ 条目直接 ValueError
+    with pytest.raises(ValueError):
+        compile_fya_class(fya)
+    # 修复后：显式 project_root（Runtime 传入）→ glob 正常展开、类可合成
+    cls = compile_fya_class(fya, project_root=proj)
+    assert cls.__name__.endswith("Agent")   # 合成成功即 @/ glob 已展开（此前此处抛 ValueError）
+
+
+# ---------------------------------------------------------------------------
+# F4 回归（0904）：Runtime.mount 接受目录形态 Agent 根（含 agent.fya）——
+# 与单文件形态并存、幂等挂载同 create_agent 路径形态
+# ---------------------------------------------------------------------------
+
+async def test_f4_mount_accepts_directory_form(tmp_path):
+    """mount 目录形态：@/order-agent（含 agent.fya）挂根成功、固定 id 幂等恢复。"""
+    shutil.copytree(FIXTURES / "agents" / "order-agent", tmp_path / "order-agent")
+    shutil.copy(FIXTURES / "agents" / "payment.fya", tmp_path / "order-agent" / "payment.fya")
+    runtime = make_runtime(tmp_path)
+    try:
+        agent = await runtime.mount("@/order-agent", agent_id="oa-root")
+        assert type(agent).__name__ == "OrderAgent"
+        assert agent.node_id == "oa-root"
+        # 幂等：同 id 再 mount → 恢复同一根（不新建、不报重复创建）
+        again = await runtime.mount("@/order-agent", agent_id="oa-root")
+        assert again.node_id == "oa-root"
+        assert type(again).__name__ == "OrderAgent"
+        # 目录内无合法 agent 候选（空目录）→ KeyError 系报错（不静默）
+        (tmp_path / "empty").mkdir()
+        with pytest.raises(Exception):
+            await runtime.mount("@/empty")
+        # 其它文件形态仍被拒（.py 根走 create_agent）
+        (tmp_path / "plain.py").write_text("", encoding="utf-8")
+        with pytest.raises(ValueError):
+            await runtime.mount("@/plain.py")
+    finally:
+        await runtime.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# 0904：.fya 未写 description 时，agent description = $script setup 的
+# docstring 整体（cleandoc 全文）
+# ---------------------------------------------------------------------------
+
+def test_fya_description_falls_back_to_setup_docstring(tmp_path):
+    fya = tmp_path / "desc-root.fya"
+    fya.write_text(
+        "args:\n"
+        "  task: str\n"
+        "---\n"
+        "$script:\n"
+        "async def setup(self, task: str):\n"
+        "    \"\"\"装配入口说明。\n"
+        "\n"
+        "第二段同样进入描述（整体回退）。\n"
+        "    \"\"\"\n"
+        "    self.task = task\n",
+        encoding="utf-8",
+    )
+    cls = compile_fya_class(fya)
+    assert isinstance(cls.description, Parsable)
+    assert cls.description.source == \
+        "装配入口说明。\n\n第二段同样进入描述（整体回退）。"
+
+
+def test_fya_description_explicit_wins_over_setup_docstring(tmp_path):
+    """description 字段存在时优先，不回退 setup docstring。"""
+    fya = tmp_path / "desc-root2.fya"
+    fya.write_text(
+        "description: 显式描述\n"
+        "---\n"
+        "$script:\n"
+        "async def setup(self):\n"
+        "    \"\"\"不应被使用的 docstring。\"\"\"\n"
+        "    pass\n",
+        encoding="utf-8",
+    )
+    cls = compile_fya_class(fya)
+    assert cls.description.source == "显式描述"
+
+
+# ---------------------------------------------------------------------------
+# 0904：.fya setup 注解经 pydantic 解析——Annotated + Field 元数据
+# （description/约束）在无 args 声明时正确进入推导的 args schema
+# ---------------------------------------------------------------------------
+
+def test_fya_setup_supports_pydantic_field_annotations(tmp_path):
+    fya = tmp_path / "pf.fya"
+    fya.write_text(
+        "---\n"
+        "$script:\n"
+        "from typing import Annotated\n"
+        "from pydantic import Field\n"
+        "async def setup(self, task: Annotated[str, Field(description='任务说明', min_length=2)],\n"
+        "                retries: Annotated[int, Field(description='重试次数', ge=0)] = 3):\n"
+        "    self.task = task\n",
+        encoding="utf-8",
+    )
+    cls = compile_fya_class(fya)
+    props = cls.args_model.model_json_schema()["properties"]
+    assert props["task"]["description"] == "任务说明"
+    assert props["task"]["minLength"] == 2
+    assert props["retries"]["description"] == "重试次数"
+    assert props["retries"]["minimum"] == 0
+    assert props["retries"]["default"] == 3
+
+
+def test_fya_setup_missing_annotation_still_raises(tmp_path):
+    """缺注解的 setup 参数仍按作者笔误通道报 ValueError（不落入 pydantic）。"""
+    fya = tmp_path / "noann.fya"
+    fya.write_text(
+        "---\n"
+        "$script:\n"
+        "async def setup(self, task):\n"
+        "    self.task = task\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="lacks a type annotation"):
+        compile_fya_class(fya)
+
+
+def test_fya_script_split_module_level_and_class_body(tmp_path):
+    """$script 二分：self 方法入类体，其余顶层语句（import / 无 self 函数 /
+    类声明 / 赋值）按原序提升到模块级；from __future__ 置于产物最前。"""
+    fya = tmp_path / "split.fya"
+    fya.write_text(textwrap.dedent("""\
+        description: 二分验证。
+        ---
+        $script:
+        from __future__ import annotations
+
+        import os
+
+        SUFFIX = "-ok"
+
+
+        class Helper:
+            def render(self, x: int) -> str:
+                return f"{x}{SUFFIX}"
+
+
+        def slugify(text: str) -> str:
+            return text.lower().replace(" ", "-")
+
+
+        async def setup(self, task: str):
+            self.task = task
+            self.helper = Helper()
+            self.slug = slugify(task)
+            self.sep = os.sep
+
+
+        def extra_method(self) -> str:
+            return self.helper.render(len(self.task)) + "/" + self.slug
+        """), encoding="utf-8")
+    asm = _build(fya, project_root=tmp_path)
+    # 发射形态：future import 最前；模块级段在类上方且保序
+    src = asm.source
+    assert src.splitlines()[2] == "from __future__ import annotations"
+    assert src.index("import os") < src.index("SUFFIX") < src.index("class Helper") \
+        < src.index("def slugify") < src.index("class SplitAgent")
+    cls = compile_fya_class(fya)
+    # self 方法入类体；非 self 成员不在类体（顶层赋值是模块级常量而非类属性）
+    assert "setup" in vars(cls) and "extra_method" in vars(cls)
+    assert "Helper" not in vars(cls) and "slugify" not in vars(cls)
+    assert not hasattr(cls, "SUFFIX")
+    # 方法体经模块 globals 可见提升后的名字（运行行为）
+    import asyncio
+    inst = cls.__new__(cls)
+    asyncio.run(inst.setup(task="Hello World"))
+    assert inst.extra_method() == "11-ok/hello-world"
+
+
+def test_fya_script_selfless_on_handler_rejected(tmp_path):
+    """顶层 @on 装饰的无 self 函数 → FormatError（提升到模块级会静默丢失
+    注册，作者笔误必须死在编译期）。"""
+    fya = tmp_path / "badon.fya"
+    fya.write_text(textwrap.dedent("""\
+        description: x
+        ---
+        $script:
+        from flowing import on
+
+        @on('before_tool_call')
+        def guard(tool_call):
+            return tool_call
+        """), encoding="utf-8")
+    with pytest.raises(FormatError, match="must take self"):
+        compile_fya_class(fya)

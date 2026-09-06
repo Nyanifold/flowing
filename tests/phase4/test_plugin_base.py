@@ -1,6 +1,6 @@
 """阶段 4 插件基类测试（W01）：测试清单 T01–T04。
 
-覆盖 ``Plugin`` 基类与 ``Runtime.use()`` 的衔接：install 恰好一次、依赖
+覆盖 ``Plugin`` 基类与 ``Runtime.install()`` 的衔接：install 恰好一次、依赖
 缺失警告不抛、依赖成环抛 ``DependencyError``、install 内 provide 的值沿
 provide 链对任意 Agent 可见。
 
@@ -72,7 +72,7 @@ class _ProvidePlugin(Plugin):
 def test_t01_install_called_once_with_runtime(tmp_path):
     runtime = make_runtime(tmp_path)
     plugin = _RecorderPlugin()
-    runtime.use(plugin)
+    runtime.install(plugin)
     assert plugin.install_calls == [runtime]
 
 
@@ -84,21 +84,21 @@ def test_t01_install_called_once_with_runtime(tmp_path):
 def test_t02_missing_dependency_warns_not_raises(tmp_path):
     runtime = make_runtime(tmp_path, register_default_type=False)
     with pytest.warns(UserWarning, match="x"):
-        runtime.use(_DepPlugin("p", ["x"]))
+        runtime.install(_DepPlugin("p", ["x"]))
     assert runtime.get_plugin("p") is not None  # 安装仍然生效
 
 
 # ---------------------------------------------------------------------------
-# T03：依赖成环 → 第二个 use() 抛 DependencyError
+# T03：依赖成环 → 第二个 install() 抛 DependencyError
 # ---------------------------------------------------------------------------
 
 
 def test_t03_dependency_cycle_raises(tmp_path):
     runtime = make_runtime(tmp_path, register_default_type=False)
     with pytest.warns(UserWarning, match="b"):   # a 先装时 b 未装：缺失警告（预期）
-        runtime.use(_DepPlugin("a", ["b"]))
+        runtime.install(_DepPlugin("a", ["b"]))
     with pytest.raises(DependencyError):
-        runtime.use(_DepPlugin("b", ["a"]))
+        runtime.install(_DepPlugin("b", ["a"]))
 
 
 # ---------------------------------------------------------------------------
@@ -108,6 +108,6 @@ def test_t03_dependency_cycle_raises(tmp_path):
 
 async def test_t04_provide_in_install_visible_to_agents(tmp_path):
     runtime = make_runtime(tmp_path)
-    runtime.use(_ProvidePlugin())
+    runtime.install(_ProvidePlugin())
     agent = await runtime.create_agent("test-agent")
     assert agent.inject("k") == "v"

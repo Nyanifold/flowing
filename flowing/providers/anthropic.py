@@ -57,6 +57,7 @@ from flowing.message import (
 from flowing.model import ModelConfig
 from flowing.providers.provider import (
     Provider,
+    ProviderDelta,
     ProviderResponse,
     Usage,
     register_provider,
@@ -384,7 +385,251 @@ class AnthropicMessagesProvider(Provider):
             raise self._classify_error(exc) from exc
         return self._map_response(resp)
 
-    # generate_stream 不覆写：走基类默认回退（同 openai 家族注释）。
+    # ── 流式（真 SSE）：正文 / 思考 / 工具调用逐 delta ───────────────────
+
+    def _stream_headers(self) -> dict[str, str]:
+        """流式请求头（多出 ``Accept: text/event-stream``）。"""
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "text/event-stream",
+            "anthropic-version": self.anthropic_version,
+        }
+        credential = self.get_credential()   # 凭证唯一入口，每次读取
+        if credential:
+            headers["x-api-key"] = credential
+        return headers
+
+    def _usage_from_anthropic(self, raw: dict) -> "Usage | None":
+        """原始 usage → 归一 :class:`Usage`（Anthropic 恒等式组装，同非流式）。"""
+        if not raw:
+            return None
+        fresh = raw.get("input_tokens", 0)
+        cache_read = raw.get("cache_read_input_tokens", 0)
+        cache_write = raw.get("cache_creation_input_tokens", 0)
+        output = raw.get("output_tokens", 0)
+        return Usage(
+            input=fresh + cache_read + cache_write,
+            fresh_input=fresh,
+            output=output,
+            cache_read=cache_read,
+            cache_write=cache_write,
+            reasoning=0,
+            total_tokens=fresh + cache_read + cache_write + output,
+            raw=dict(raw),
+        )
+
+    def _parse_tool_input(self, raw: str) -> dict:
+        """工具参数 partial JSON 片段 → 对象；容错解析（同 openai 家族）。"""
+        s = raw.strip()
+        if not s:
+            return {}
+        try:
+            parsed = json.loads(s)
+            return parsed if isinstance(parsed, dict) else {}
+        except json.JSONDecodeError:
+            pass
+        repaired = s
+        if not repaired.endswith("}"):
+            depth = 0
+            in_str = False
+            esc = False
+            for ch in repaired:
+                if in_str:
+                    if esc:
+                        esc = False
+                    elif ch == "\\":
+                        esc = True
+                    elif ch == '"':
+                        in_str = False
+                    continue
+                if ch == '"':
+                    in_str = True
+                elif ch in "{[":
+                    depth += 1
+                elif ch in "}]":
+                    depth -= 1
+            repaired += "}" * max(depth, 0)
+        try:
+            parsed = json.loads(repaired)
+            return parsed if isinstance(parsed, dict) else {}
+        except json.JSONDecodeError:
+            return {}
+
+    async def generate_stream(
+        self, context: Context, model: ModelConfig
+    ) -> Any:
+        """真 SSE 流式覆写：逐 delta 产出正文 / 思考 / 工具调用。
+
+        Anthropic Messages ``stream=true`` 响应逐帧解析。帧为
+        ``data: <json>``（类型在 JSON 的 ``type`` 字段），事件序列：
+        ``message_start`` → ``content_block_start/delta/stop``（可多条）→
+        ``message_delta`` → ``message_stop``。
+
+        - 正文：``content_block_delta`` 的 ``text_delta`` → ``kind="text"``。
+        - 思考：``thinking_delta`` → ``kind="thinking"``；签名来自
+          ``content_block_start`` 的 ``signature``（附在首条 thinking delta
+          上，agent 累积时保留到 ``ThinkingBlock.signature``——Anthropic
+          多轮回放必需）。
+        - 工具：``tool_use`` 块的 ``input_json_delta`` 逐段拼 JSON，
+          ``content_block_stop`` 时以完整 :class:`ToolCallBlock` 的
+          ``block`` delta 产出。
+        - 用量 / stop：``message_start.usage`` 的 input / cache 与
+          ``message_delta.usage`` 的 output 合并为末帧 usage；
+          ``message_delta.delta.stop_reason`` 经
+          ``provider_data["stop_reason"]`` 透出。
+        - 帧内 ``error``（含 overloaded 等在流中途触发）按 :meth:`_classify_error`
+          归类上抛。
+        """
+        import httpx
+
+        base_url = self.config.get("base_url") or self.default_base_url
+        if not base_url:
+            raise FlowingError(
+                f"provider entry is missing base_url (adapter {self.name!r} has no official default endpoint)")
+        url = f"{str(base_url).rstrip('/')}/v1/messages"
+        body = self._build_request(context, model)
+        body["stream"] = True
+
+        # 按 Anthropic content index 维持各块累积状态
+        blocks: dict[int, dict[str, Any]] = {}
+        usage_raw: dict[str, Any] = {}
+        stop_reason = None
+
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(120.0)) as client:
+                async with client.stream("POST", url, json=body,
+                                         headers=self._stream_headers()) as resp:
+                    if resp.status_code >= 400:
+                        try:
+                            err_bytes = await resp.aread()
+                        except Exception:
+                            err_bytes = b""
+                        try:
+                            err_body = json.loads(err_bytes or b"{}")
+                        except Exception:
+                            err_body = (err_bytes or b"").decode("utf-8", "replace")
+                        raise self._classify_error(
+                            _HttpResponseError(resp.status_code, err_body,
+                                               dict(resp.headers)))
+                    async for raw_line in resp.aiter_lines():
+                        line = raw_line.strip()
+                        if not line.startswith("data:"):
+                            continue   # event:/空行等跳过
+                        data = line[5:].strip()
+                        if not data:
+                            continue
+                        try:
+                            ev = json.loads(data)
+                        except json.JSONDecodeError:
+                            continue
+                        etype = ev.get("type")
+                        if etype == "error":
+                            err = ev.get("error") or {}
+                            raise self._classify_error(_HttpResponseError(
+                                502, {"error": err}))
+                        if etype == "message_start":
+                            msg = ev.get("message") or {}
+                            usage_raw.update(msg.get("usage") or {})
+                            continue
+                        if etype == "message_delta":
+                            d = ev.get("delta") or {}
+                            if d.get("stop_reason"):
+                                stop_reason = d["stop_reason"]
+                            usage_raw.update(ev.get("usage") or {})
+                            continue
+                        if etype == "message_stop" or etype == "stream_end":
+                            break
+                        if etype == "ping":
+                            continue
+                        if etype == "content_block_start":
+                            idx = ev.get("index", 0)
+                            cb = ev.get("content_block") or {}
+                            btype = cb.get("type")
+                            if btype == "thinking":
+                                blocks[idx] = {
+                                    "type": "thinking", "text": "",
+                                    "signature": cb.get("signature"),
+                                }
+                                if cb.get("thinking"):
+                                    blocks[idx]["text"] = cb["thinking"]
+                                    yield ProviderDelta(
+                                        kind="thinking", text=cb["thinking"],
+                                        content_index=idx,
+                                        signature=cb.get("signature"))
+                            elif btype == "text":
+                                blocks[idx] = {"type": "text", "text": ""}
+                                if cb.get("text"):
+                                    blocks[idx]["text"] = cb["text"]
+                                    yield ProviderDelta(
+                                        kind="text", text=cb["text"],
+                                        content_index=idx)
+                            elif btype == "tool_use":
+                                blocks[idx] = {
+                                    "type": "tool_use", "id": cb.get("id"),
+                                    "name": cb.get("name"),
+                                    "args": cb.get("input", "") if isinstance(
+                                        cb.get("input", ""), str) else json.dumps(
+                                            cb.get("input") or {}, ensure_ascii=False),
+                                }
+                            continue
+                        if etype == "content_block_delta":
+                            idx = ev.get("index", 0)
+                            d = ev.get("delta") or {}
+                            dtype = d.get("type")
+                            slot = blocks.get(idx)
+                            if dtype == "text_delta" and d.get("text"):
+                                text = d["text"]
+                                if slot is None:
+                                    slot = {"type": "text", "text": ""}
+                                    blocks[idx] = slot
+                                slot["text"] += text
+                                yield ProviderDelta(kind="text", text=text,
+                                                    content_index=idx)
+                            elif dtype == "thinking_delta" and d.get("thinking"):
+                                text = d["thinking"]
+                                sig = slot.get("signature") if slot else None
+                                if slot is None:
+                                    slot = {"type": "thinking", "text": "", "signature": None}
+                                    blocks[idx] = slot
+                                slot["text"] += text
+                                # 签名附在首条 thinking delta（agent 保留首见签名）
+                                yield ProviderDelta(kind="thinking", text=text,
+                                                    content_index=idx, signature=sig)
+                            elif dtype == "signature_delta" and d.get("signature"):
+                                if slot is not None:
+                                    slot["signature"] = d["signature"]
+                            elif dtype == "input_json_delta" and d.get("partial_json"):
+                                if slot is None:
+                                    slot = {"type": "tool_use", "id": None,
+                                            "name": None, "args": ""}
+                                    blocks[idx] = slot
+                                slot["args"] += d["partial_json"]
+                            continue
+                        if etype == "content_block_stop":
+                            idx = ev.get("index", 0)
+                            slot = blocks.get(idx)
+                            if slot and slot["type"] == "tool_use" \
+                                    and slot.get("id") and slot.get("name"):
+                                yield ProviderDelta(
+                                    kind="tool_use", text="", content_index=idx,
+                                    block=ToolCallBlock(
+                                        id=slot["id"], name=slot["name"],
+                                        args=self._parse_tool_input(slot["args"])))
+                            continue
+        except httpx.TimeoutException as exc:
+            raise ProviderTimeoutError(f"provider request timed out: {exc}") from exc
+        except httpx.TransportError as exc:
+            raise NetworkError(f"provider network failure: {exc}") from exc
+
+        # 末帧：usage + finish_reason（Anthropic 流式 usage 由 message_start 与
+        # message_delta 合并）。content_index 取未用过的空闲下标——避免覆盖
+        # 已累积的思考/正文块（思考-only/思考+工具场景无 text 时极易撞 index 0）。
+        free_index = (max(blocks) + 1) if blocks else 0
+        yield ProviderDelta(
+            kind="text", text="", content_index=free_index,
+            usage=self._usage_from_anthropic(usage_raw) if usage_raw else None,
+            provider_data={"stop_reason": stop_reason},
+        )
 
 
 @register_provider
@@ -420,6 +665,49 @@ class AnthropicProvider(AnthropicMessagesProvider):
 
     name: ClassVar[str] = "anthropic"
     default_base_url: ClassVar[str | None] = "https://api.anthropic.com"
+
+
+@register_provider
+class DeepSeekAnthropicProvider(AnthropicMessagesProvider):
+    """DeepSeek 的 Anthropic Messages 兼容端点 adapter（``name="deepseek-anthropic"``）。
+
+    .. rubric:: 功能介绍
+
+    DeepSeek 提供 Anthropic Messages 兼容 API，可用 Anthropic 协议调用
+    DeepSeek 模型。本 adapter 复用 :class:`AnthropicMessagesProvider` 的
+    全部格式映射与真 SSE 流式，仅改默认端点与凭证口径——同一 DeepSeek
+    key 既可走 OpenAI 系（``name="deepseek"``）也可走 Anthropic 系
+    （``name="deepseek-anthropic"``）。流式正文 / 思考 / 工具调用与
+    usage 均经本协议真机验证。
+
+    .. rubric:: 使用示例
+
+    .. code-block:: yaml
+
+        # providers.yaml
+        deepseek-anthropic:
+          adapter: deepseek-anthropic
+          api_key: "{{env.DEEPSEEK_API_KEY}}"
+        # model 配置里指定模型（如 deepseek-v4-flash / deepseek-chat）
+
+    .. rubric:: 行为要点
+
+    - 默认端点 ``https://api.deepseek.com/anthropic``；条目配 ``base_url``
+      时以条目为准（代理场景）。
+    - 凭证取条目 ``api_key``（与 OpenAI 系 deepseek adapter 同 key）；
+      DeepSeek 端点接受 Anthropic ``x-api-key`` + ``anthropic-version``
+      头（由基类设置）。
+    - Anthropic 端点在流式下思考块可能给空 ``signature``（非流式给全量）——
+      多轮把思考写回时以实际返回为准。
+
+    .. seealso::
+
+        :class:`AnthropicMessagesProvider` 格式与流式实现来源。
+        ``flowing.providers.openai.DeepSeekProvider`` OpenAI 系对照。
+    """
+
+    name: ClassVar[str] = "deepseek-anthropic"
+    default_base_url: ClassVar[str | None] = "https://api.deepseek.com/anthropic"
 
 
 @register_provider

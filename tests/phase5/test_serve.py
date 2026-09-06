@@ -132,7 +132,10 @@ async def test_t38_sse_event_sequence_and_cleanup(project_ok, persist_dir, monke
         first_delta = names.index("delta")
         assert first_delta >= 0 and names.index("turn_end") > first_delta
         deltas = [data for name, data in events if name == "delta"]
-        assert "".join(deltas) == "alpha-reply"   # FakeProvider 两段 delta
+        assert all(isinstance(d, dict) and "text" in d and "message_id" in d
+                   for d in deltas)                       # delta 带 message_id + text
+        assert "".join(d["text"] for d in deltas) == "alpha-reply"   # FakeProvider 两段 delta
+        assert all(d["message_id"] for d in deltas)       # 预铸 id 已随事件透出
         # 断开连接后：订阅按 owner 摘除，handler 数回落到基线
         await wait_until(lambda: _hook_count(
             agent, "on_provider_delta", "after_turn_append",
@@ -328,13 +331,105 @@ async def test_t46_shutdown_cancels_pending_post(project_ok, persist_dir, monkey
 def test_serve_endpoints_closed_set():
     """封闭集断言：注册表键与 SERVE_ENDPOINTS 一一对应（_build_app 构造期
     assert 的直接镜像，防漂移）。"""
-    assert SERVE_ENDPOINTS == (
-        "POST /agents/<agent-id>/message",
-        "GET /agents",
-        "POST /agents",
-        "GET /agents/<agent-id>/messages",
-        "GET /agents/<agent-id>/stream",
-        "POST /agents/<agent-id>/cancel",
-        "GET /snapshot",
-        "GET /healthz",
-    )
+    from flowing.interfaces.serve import SERVE_ENDPOINTS as SE
+    assert SERVE_ENDPOINTS == SE   # 与模块常量同源（防本地手抄漂移）
+    assert "POST /agents/<agent-id>/abort" in SERVE_ENDPOINTS
+    assert "GET /agents/<agent-id>/status" in SERVE_ENDPOINTS
+
+
+async def test_v3_endpoints_smoke(project_ok, persist_dir, monkeypatch):
+    """v3 新增 unary 端点冒烟：status/model/model_tags/export/abort/pause/resume/
+    rewind/tasks 命中项目 agent 返回合理形状（不 500）。"""
+    handle = await start_http(monkeypatch, serve_mod, cmd_serve, project_ok, persist_dir)
+    try:
+        # 先产生一轮消息，得到 USER message_id 供 rewind
+        r = await handle.client.post("/agents/root/message", json={"text": "你好"})
+        assert r.status_code == 200
+        user_mid = r.json()["message_id"]
+
+        st = await handle.client.get("/agents/root/status")
+        assert st.status_code == 200
+        assert "paused" in st.json() and "current_turn" in st.json()
+
+        model = await handle.client.get("/agents/root/model")
+        assert model.status_code == 200
+        assert "model_tag" in model.json()
+
+        mtags = await handle.client.get("/agents/root/models")
+        assert mtags.status_code == 200 and "model_tags" in mtags.json()
+
+        exp = await handle.client.get("/agents/root/export?format=md")
+        assert exp.status_code == 200 and "alpha-reply" in exp.text
+
+        ab = await handle.client.post("/agents/root/abort")
+        assert ab.status_code == 200 and ab.json()["status"] == "aborted"
+
+        pu = await handle.client.post("/agents/root/pause")
+        assert pu.status_code == 200 and pu.json()["paused"] is True
+        re = await handle.client.post("/agents/root/resume")
+        assert re.status_code == 200 and re.json()["paused"] is False
+
+        rw = await handle.client.post("/agents/root/rewind",
+                                      json={"message_id": user_mid})
+        assert rw.status_code == 200 and rw.json()["head"] == user_mid
+
+        tasks = await handle.client.get("/agents/root/tasks")
+        assert tasks.status_code == 200 and isinstance(tasks.json(), list)
+    finally:
+        await stop_http(handle, EXIT_OK)
+
+
+def _walk(node):
+    yield node
+    for c in node.get("children", []):
+        yield from _walk(c)
+
+
+async def test_v3_more_endpoints_smoke(project_ok, persist_dir, monkeypatch):
+    """tree / help / PATCH name / POST id-adopt 冒烟。"""
+    handle = await start_http(monkeypatch, serve_mod, cmd_serve, project_ok, persist_dir)
+    try:
+        r = await handle.client.post("/agents/root/message", json={"text": "你好"})
+        user_mid = r.json()["message_id"]
+
+        tr = await handle.client.get("/agents/root/tree")
+        assert tr.status_code == 200
+        body = tr.json()
+        assert "head" in body and "roots" in body
+        ids = {n["id"] for root in body["roots"] for n in _walk(root)}
+        assert user_mid in ids
+
+        hp = await handle.client.get("/help")
+        assert hp.status_code == 200
+        assert "GET /agents/<agent-id>/tree" in hp.json()["endpoints"]
+
+        rn = await handle.client.patch("/agents/root", json={"name": "首席"})
+        assert rn.status_code == 200 and rn.json()["name"] == "首席"
+        listed = await handle.client.get("/agents")
+        assert any(i["agent_id"] == "root" and i["name"] == "首席" for i in listed.json())
+
+        ad = await handle.client.post("/agents", json={"id": "root"})
+        assert ad.status_code == 200 and ad.json()["agent_id"] == "root"   # adopt
+        miss = await handle.client.post("/agents", json={"id": "no-such"})
+        assert miss.status_code == 404
+    finally:
+        await stop_http(handle, EXIT_OK)
+
+
+async def test_command_endpoint_shared(project_ok, persist_dir, monkeypatch):
+    """POST /agents/{id}/command：走共享命令目录，web 可输入全部 repl 指令。"""
+    handle = await start_http(monkeypatch, serve_mod, cmd_serve, project_ok, persist_dir)
+    try:
+        await handle.client.post("/agents/root/message", json={"text": "你好"})
+        r = await handle.client.post("/agents/root/command",
+                                     json={"line": "/messages"})
+        assert r.status_code == 200
+        body = r.json()
+        assert any("alpha-reply" in ln for ln in body["lines"])
+        r2 = await handle.client.post("/agents/root/command", json={"line": "/model"})
+        assert r2.status_code == 200 and r2.json()["lines"]
+        # 非 slash 拒绝
+        r3 = await handle.client.post("/agents/root/command", json={"line": "你好"})
+        assert r3.status_code == 400
+    finally:
+        await stop_http(handle, EXIT_OK)

@@ -137,10 +137,11 @@ class ReadTool(Tool):
             name="read",
             description="Read a UTF-8 text file, with line-window support (offset/limit).",
             params_schema={
-                "path": {"type": "string"},
-                "cwd": {"type": ["string", "null"], "default": None},
-                "offset": {"type": "integer", "default": 0},
-                "limit": {"type": ["integer", "null"], "default": None},
+                "path": {"type": "string", "description": "File to read (absolute, or relative to cwd)."},
+                "cwd": {"type": ["string", "null"], "default": None, "description": "Base directory for relative paths (absolute when given)."},
+                "offset": {"type": "integer", "default": 0, "description": "0-based starting line of the window."},
+                "limit": {"type": ["integer", "null"], "default": None,
+                          "description": "Maximum number of lines to return (default: whole file)."},
             })
         self._has_caller = False
         self._execution = None
@@ -200,9 +201,10 @@ class WriteTool(Tool):
             name="write",
             description="Overwrite a UTF-8 text file (parent directories are created automatically).",
             params_schema={
-                "path": {"type": "string"},
-                "cwd": {"type": ["string", "null"], "default": None},
-                "content": {"type": "string"},
+                "path": {"type": "string",
+                         "description": "File to overwrite (absolute, or relative to cwd); parent directories are created automatically."},
+                "cwd": {"type": ["string", "null"], "default": None, "description": "Base directory for relative paths (absolute when given)."},
+                "content": {"type": "string", "description": "Full text to write (the file is overwritten)."},
             })
         self._has_caller = False
         self._execution = None
@@ -257,9 +259,9 @@ class BashTool(Tool):
             name="bash",
             description="Run a shell command via /bin/bash and return stdout/stderr/exit_code.",
             params_schema={
-                "command": {"type": "string"},
-                "timeout": {"type": "integer", "default": 120},
-                "cwd": {"type": ["string", "null"], "default": None},
+                "command": {"type": "string", "description": "Shell command to run via /bin/bash."},
+                "timeout": {"type": "integer", "default": 120, "description": "Timeout in seconds."},
+                "cwd": {"type": ["string", "null"], "default": None, "description": "Base directory for relative paths (absolute when given)."},
             })
         self._has_caller = False
         self._execution = None
@@ -331,11 +333,13 @@ class EditTool(Tool):
             name="edit",
             description="Edit a file with exact string replacement (unique match required by default).",
             params_schema={
-                "path": {"type": "string"},
-                "cwd": {"type": ["string", "null"], "default": None},
-                "old_string": {"type": "string"},
-                "new_string": {"type": "string"},
-                "replace_all": {"type": "boolean", "default": False},
+                "path": {"type": "string", "description": "File to edit (absolute, or relative to cwd)."},
+                "cwd": {"type": ["string", "null"], "default": None, "description": "Base directory for relative paths (absolute when given)."},
+                "old_string": {"type": "string",
+                               "description": "Text to replace; must match exactly once (unless replace_all)."},
+                "new_string": {"type": "string", "description": "Replacement text."},
+                "replace_all": {"type": "boolean", "default": False,
+                                "description": "Replace every occurrence (default False = require a unique match)."},
             })
         self._has_caller = False
         self._execution = None
@@ -401,10 +405,12 @@ class GrepTool(Tool):
             name="grep",
             description="Content search (ripgrep regex) with line numbers in the output.",
             params_schema={
-                "pattern": {"type": "string"},
-                "path": {"type": "string"},
-                "cwd": {"type": ["string", "null"], "default": None},
-                "glob": {"type": ["string", "null"], "default": None},
+                "pattern": {"type": "string", "description": "ripgrep regex to search for."},
+                "path": {"type": "string",
+                         "description": "File or directory to search (absolute, or relative to cwd)."},
+                "cwd": {"type": ["string", "null"], "default": None, "description": "Base directory for relative paths (absolute when given)."},
+                "glob": {"type": ["string", "null"], "default": None,
+                         "description": "File filter passed to ripgrep (--glob), e.g. '*.ts'."},
             })
         self._has_caller = False
         self._execution = None
@@ -481,9 +487,9 @@ class GlobTool(Tool):
             name="glob",
             description="Enumerate files by glob pattern (** recursive), newest mtime first.",
             params_schema={
-                "pattern": {"type": "string"},
-                "path": {"type": "string"},
-                "cwd": {"type": ["string", "null"], "default": None},
+                "pattern": {"type": "string", "description": "Glob pattern (** recursive) to enumerate files by."},
+                "path": {"type": "string", "description": "Directory to search (absolute, or relative to cwd)."},
+                "cwd": {"type": ["string", "null"], "default": None, "description": "Base directory for relative paths (absolute when given)."},
             })
         self._has_caller = False
         self._execution = None
@@ -580,7 +586,8 @@ class FinishTool(Tool):
             name="finish",
             description="End the current task and return a structured result. After the call, the "
                         "subagent's current logical execution phase ends.",
-            params_schema={"summary": {"type": "string", "default": ""}})
+            params_schema={"summary": {"type": "string", "default": "",
+                                        "description": "Summary of the completed task (used as the final result text)."}})
         self._has_caller = True   # execute 声明 caller: Agent
         self._execution = None
         self._args_model = schema_to_model(type(self).__name__ + "Args", self.definition.params_schema)
@@ -675,15 +682,20 @@ class SubagentInvokeTool(Tool):
         self.definition = ToolDefinition(
             name="subagent-invoke",
             description="Invoke a subagent: create one (agent_type + optional name) or resume one "
-                        "(resume instance name). Returns an acknowledgement receipt; the subagent's "
-                        "output arrives later as a message. With asynchronized=True it does not wait "
-                        "for completion and returns a receipt immediately.",
+                        "(resume instance name). By default it waits for the subagent to finish and "
+                        "returns its result directly. With asynchronized=True it returns a receipt "
+                        "immediately, and the subagent's output arrives later as a message.",
             params_schema={
-                "name": {"type": "string", "default": ""},
-                "agent_type": {"type": "string", "default": ""},
-                "prompt": {"type": "string", "default": ""},
-                "resume": {"type": "string", "default": ""},
-                "asynchronized": {"type": "boolean", "default": False},
+                "name": {"type": "string", "default": "",
+                         "description": "Instance name to create for a new subagent (optional)."},
+                "agent_type": {"type": "string", "default": "",
+                               "description": "Subagent type to create (mutually exclusive with resume)."},
+                "prompt": {"type": "string", "default": "",
+                           "description": "Task prompt for the new subagent."},
+                "resume": {"type": "string", "default": "",
+                           "description": "Name of an existing instance to resume (mutually exclusive with agent_type)."},
+                "asynchronized": {"type": "boolean", "default": False,
+                                  "description": "When true, return a receipt immediately and run the subagent in the background."},
             })
         self._has_caller = True   # execute 声明 caller: Agent
         self._execution = None

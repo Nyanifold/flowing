@@ -632,7 +632,7 @@ class Parsable(Generic[T]):
     .. seealso:: :meth:`__get__`、:meth:`resolve`
     """
 
-    def __init__(self, source: Any) -> None:
+    def __init__(self, source: Any, *, source_dir: "Path | None" = None) -> None:
         """构造 Parsable，按 ``source`` 样式自动推断 ``type``。
 
         .. rubric:: 功能介绍
@@ -655,13 +655,20 @@ class Parsable(Generic[T]):
         :param source: 求值指令（模板文本 / ``$`` 路径 / 表达式 / 字面量）。
             不应为 :data:`PENDING`——``_`` 在 ``.fya`` 解析层直接映射为 PENDING
             哨兵，不构造 Parsable。
+        :param source_dir: ``$``/``{% include %}`` 引用的**声明文件目录**
+            （内部 API，不属稳定契约）。给定时作 ``./`` 引用的解析基准并
+            优先于绑定 Agent 的 ``source_dir()``——语义是「承载本求值指令的
+            文件所在目录」：SKILL.fya 的 ``content: $./notes.md`` 以
+            SKILL.fya 目录为基准，而不是调用方 Agent 目录。缺省 ``None``
+            → 回落绑定 Agent 的 ``source_dir()``（如 .fya 的
+            ``system_prompt: $./x.md``，Agent 声明文件即该 .fya）。
 
         .. rubric:: 行为要点
 
         - 按模块级「五种形式判定」自上而下推断 ``type``。
         - 构造产物未绑定（``_instance is None``），需经
-          ``flowing.agent.Agent.parsable`` 或描述符协议绑定后才能无参
-          :meth:`resolve`。
+          ``flowing.agent.Agent.parsable`` / :meth:`bind` 或描述符协议绑定后
+          才能无参 :meth:`resolve`。
         - 不校验 ``$`` 路径存在性、不做 Jinja2 语法预检——错误在求值时暴露。
 
         .. seealso:: :meth:`resolve`
@@ -669,6 +676,7 @@ class Parsable(Generic[T]):
         self.source = source
         self.type = self._infer_type(source)
         self._instance = None
+        self._source_dir = Path(source_dir) if source_dir is not None else None
 
     @overload
     def __get__(self, instance: None, owner: type | None = ...) -> "Parsable[T]": ...
@@ -717,6 +725,44 @@ class Parsable(Generic[T]):
         bound: "Parsable[T]" = copy.copy(self)
         bound._instance = instance
         return bound
+
+    def bind(self, instance: "Agent") -> "Parsable[T]":
+        """返回绑定了 ``instance`` 的浅拷贝（:meth:`resolve` 默认以它为上下文）。
+
+        .. rubric:: 功能介绍
+
+        与描述符实例访问同构的**显式绑定**入口：给「构造期无法预知调用方
+        的声明式 Parsable」补绑定。典型场景：SKILL.fya 的 ``content`` 在
+        registry 解析期构造（此时无 Agent），使用时才绑定调用方 Agent——
+        绑定后 ``resolve`` 能取到 ``config`` / ``env`` / FILE_REF 的 runtime
+        来源；``source_dir``（构造时给的声明文件目录）在绑定后仍优先。
+
+        .. rubric:: 行为要点
+
+        - 返回新浅拷贝（共享 ``source`` / ``type`` / ``_source_dir``），
+          原对象不被修改——与描述符语义一致，可安全链式使用。
+        - 重复 ``bind`` 以最后一次为准。
+
+        .. seealso:: :meth:`__get__`、:meth:`resolve`
+        """
+        import copy
+        bound: "Parsable[T]" = copy.copy(self)
+        bound._instance = instance
+        return bound
+
+    def _file_base(self) -> "Path | None":
+        """``./`` 引用（FILE_REF / include）的解析基准（内部 API）。
+
+        优先构造时声明的 ``source_dir``（承载本指令的文件目录，如 SKILL.fya
+        目录），缺省回落绑定 Agent 的 ``source_dir()``。两者皆无 → ``None``
+        （下游 resolve_path 对 ``./`` 缺 source_dir 报错、对 ``@/`` 走
+        project_root）。
+        """
+        if self._source_dir is not None:
+            return self._source_dir
+        if self._instance is not None:
+            return self._instance.source_dir()
+        return None
 
     def resolve(self, context: "Agent | Mapping[str, Any] | None" = None) -> T:
         """惰性求值：执行（可能的）两步渲染并返回结果。
@@ -805,10 +851,11 @@ class Parsable(Generic[T]):
             ctx.setdefault("env", MappingProxyType(os.environ))  # os.environ 只读视图
             if self._instance is not None:
                 ctx.setdefault("config", self._instance.runtime.config)
-                # {% include %} 基准永远来自绑定实例：绑定实例存在时，
-                # Mapping 分支的 include 与 $ 引用同源于 resolve_path
+                # {% include %} 基准 = 声明文件目录（_source_dir，如 SKILL.fya
+                # 目录）优先，否则绑定 Agent 的 source_dir()——两通道同源于
+                # _file_base()
                 ctx["__include_resolver__"] = _make_include_resolver(
-                    self._instance.runtime, self._instance.source_dir
+                    self._instance.runtime, self._file_base()
                 )
             # 未绑定时不注入 config，模板引用 config.* 按 Jinja2 默认渲染为空
             if self.type is FILE_REF:
@@ -818,7 +865,7 @@ class Parsable(Generic[T]):
                     raise MissingContextError()
                 resolved_path = self._instance.runtime.resolve_path(
                     self.source[1:],   # 先剥 $ 形式标记再进 resolve_path
-                    source_dir=self._instance.source_dir,  # 文件→目录换算的唯一承担者是 Agent.source_dir
+                    source_dir=self._file_base(),  # 声明目录优先，否则 Agent.source_dir()
                 )
                 ctx["__file_ref_path__"] = resolved_path  # 供 _render 第一步读文件（内部约定键名）
             return self._render(ctx)
@@ -928,15 +975,16 @@ class Parsable(Generic[T]):
         }
         # {% include %} 与 $ 引用同源：include 名经同一
         # resolve_path、同一 source_dir 基准（绑定实例的 Agent.source_dir）
-        ctx["__include_resolver__"] = _make_include_resolver(agent.runtime, agent.source_dir)
+        ctx["__include_resolver__"] = _make_include_resolver(
+            agent.runtime, self._source_dir or agent.source_dir())
         if self.type is FILE_REF:
-            # FILE_REF 路径解析（每次求值）：source_dir 基准由
-            # agent.source_dir 属性统一供给（「文件→所在目录」换算的
-            # 唯一承担者；source_file is None 时为 None，./ 前缀
+            # FILE_REF 路径解析（每次求值）：source_dir 基准 = 声明文件目录
+            # （_source_dir，如 SKILL.fya 目录）优先，否则绑定 Agent 的
+            # source_dir()（source_file is None 时为 None，./ 前缀
             # 由 resolve_path 报错）
             resolved_path = agent.runtime.resolve_path(
                 self.source[1:],   # 先剥 $ 形式标记再进 resolve_path
-                source_dir=agent.source_dir,
+                source_dir=self._source_dir or agent.source_dir(),
             )
             ctx["__file_ref_path__"] = resolved_path  # 供 _render 第一步读文件（内部约定键名）
         result: T = self._render(ctx)

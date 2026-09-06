@@ -193,15 +193,15 @@ async def test_t119_archive_orphans(tmp_path):
 
 async def test_bootstrap_materializes_persist_dir_for_plugin_state(tmp_path, monkeypatch):
     """疑虑①回归：默认 persist 路径 + 插件写全局状态 + 全程无 agent ——
-    构造期只读引导不建目录；use() 引导解锁时建目录；写透不失败、store 不 poison。"""
+    构造期只读引导不建目录；install() 引导解锁时建目录；写透不失败、store 不 poison。"""
     monkeypatch.chdir(tmp_path)   # 默认 persist 路径 = <cwd>/.flowing，隔离到 tmp
     runtime = make_runtime(tmp_path, persist=False, models=False,
                            register_default_type=False)
     assert runtime._persist_dir == tmp_path / ".flowing"
     assert not runtime._persist_dir.exists()   # __init__ 只读（注册即 replay 不建目录）
-    runtime.use(PluginStub(
+    runtime.install(PluginStub(
         "plug", on_install=lambda rt: rt.register_state("plug")))
-    assert runtime._persist_dir.exists()   # use() 有插件即建持久化根
+    assert runtime._persist_dir.exists()   # install() 有插件即建持久化根
     runtime.states["plug"].k = 1   # 开启即 replay，写透不失败（此前这里会 drain poison）
     await runtime.states["plug"]._store.drain()
     assert runtime.states["plug"]._store._poisoned is None
@@ -258,7 +258,7 @@ async def test_t121_shutdown_plugin_order_and_resilience(tmp_path, caplog):
         events.append("p2")
 
     runtime = make_runtime(tmp_path)
-    runtime.use(
+    runtime.install(
         PluginStub("p1", on_install=_install_writer, on_shutdown=_shutdown_writer),
         PluginStub("bad", on_shutdown=_shutdown_bad),
         PluginStub("p2", on_shutdown=_shutdown_p2),
@@ -283,7 +283,7 @@ async def test_t122_runtime_snapshot(tmp_path):
     runtime-0；_provided 值内容不进快照；keys 过滤；JSON 可序列化。"""
     runtime = make_runtime(tmp_path)
     add_fake_provider(runtime)
-    runtime.use(PluginStub("cron"))
+    runtime.install(PluginStub("cron"))
     runtime.provide("api_secret", "sk-topsecret")   # 敏感值（测试用假值）
     agent = await runtime.create_agent("test-agent")
     snap = runtime.snapshot()

@@ -27,9 +27,14 @@ from .support import (
 
 
 def test_slash_commands_closed_set():
-    """项 6：slash-command 封闭集。"""
-    assert SLASH_COMMANDS == ("/help", "/exit", "/quit", "/snapshot",
-                              "/messages", "/agents", "/use")
+    """v3 slash-command 封闭集：含新命令组、不含 /use(已更名 /agent) 与
+    /abort /enqueue /steer。"""
+    expected = ("/help", "/exit", "/quit", "/agent", "/agents", "/new",
+                "/snapshot", "/messages", "/model", "/status", "/tasks",
+                "/export", "/rewind", "/cancel", "/pause", "/resume")
+    assert SLASH_COMMANDS == expected
+    assert "/use" not in SLASH_COMMANDS
+    assert not {"abort", "enqueue", "steer"} & {c.lstrip("/") for c in SLASH_COMMANDS}
 
 
 async def test_t14_single_root_bind_and_turn(project_ok, persist_dir, monkeypatch, capsys):
@@ -113,7 +118,7 @@ async def test_t20_messages(project_ok, project_two_roots, tmp_path, monkeypatch
     drive_input(monkeypatch, ["/messages", "/exit"])
     assert await cmd_repl(str(project_two_roots), persist=str(tmp_path / "p1")) == EXIT_OK
     out = capsys.readouterr().out
-    assert "nothing to view" in out
+    assert "no agent bound" in out
     # 已绑定：一轮对话后打印消息链
     drive_input(monkeypatch, ["你好", "/messages", "/exit"])
     assert await cmd_repl(str(project_ok), persist=str(tmp_path / "p2")) == EXIT_OK
@@ -132,7 +137,7 @@ async def test_t21_use_switch(project_two_roots, persist_dir, monkeypatch, capsy
     assert rc == EXIT_OK
     out = capsys.readouterr().out
     # 未绑定态 /messages 提示
-    assert "nothing to view" in out
+    assert "no agent bound" in out
     # /use ghost → 未知 id 提示，绑定不变（下一条提示符仍是 root-a）
     i_unknown = out.index("unknown agent")
     assert "(root-a)>>>" in out[i_unknown:]
@@ -265,3 +270,18 @@ async def test_t27_default_repl_eval_is_unknown(project_ok, persist_dir, monkeyp
     out = capsys.readouterr().out
     assert "unknown command" in out
     assert not re.search(r"(?m)^default$", out)   # 未执行求值
+
+
+async def test_v3_new_commands(project_ok, persist_dir, monkeypatch, capsys):
+    """v3 repl 新命令冒烟：/model /status /export md /help 在绑定根上工作。"""
+    spy_launch(monkeypatch, repl_mod)
+    drive_input(monkeypatch, ["你好", "/model", "/status", "/export md",
+                              "/help", "/exit"])
+    rc = await cmd_repl(str(project_ok), persist=str(persist_dir))
+    assert rc == EXIT_OK
+    out = capsys.readouterr().out
+    assert "model_tag=" in out                # /model
+    assert "agent_id=" in out and "paused=" in out   # /status
+    assert "alpha-reply" in out               # 回合回复（流式）与 /export md 均含
+    assert "/agent <agent_id>" in out         # /help 列出新命令
+    assert "/use" not in out.splitlines()[0] if out else True   # /help 不列 /use

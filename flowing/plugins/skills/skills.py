@@ -15,7 +15,7 @@ Skill 的加载路径也不走 Turn 引擎硬编码——LLM 经 ``skill-load`` 
 调用加载，框架看到的只是一次普通 ``tool_call`` （Tool / 子 Agent 在
 Turn 引擎中有硬编码调用点，Skill 完全复用 Tool 机制）。
 
-启用遵循双层启用模型：阶段一 ``runtime.use(SkillPlugin(...))``
+启用遵循双层启用模型：阶段一 ``runtime.install(SkillPlugin(...))``
 注册全局 ``SkillRegistry`` 与 ``skill-load`` 工具；阶段二
 ``use_skill(self)`` 为单个 Agent 实例启用。
 
@@ -23,8 +23,8 @@ Turn 引擎中有硬编码调用点，Skill 完全复用 Tool 机制）。
 
 - 启用方式：
 
-  - 阶段一：``runtime.use(SkillPlugin(...))``——``install()`` 同步完成
-    全部注册（重复 ``use()`` 同一插件实例属编程错误，见
+  - 阶段一：``runtime.install(SkillPlugin(...))``——``install()`` 同步完成
+    全部注册（重复 ``install()`` 同一插件实例属编程错误，见
     :class:`SkillPlugin`）；
   - 阶段二：``setup()`` 中 ``use_skill(self)``——恢复时 ``setup()``
     在新实例上执行，安全；对同一实例重复调用本
@@ -469,7 +469,7 @@ class SkillPlugin(Plugin):
 
     .. rubric:: 功能介绍
 
-    ``runtime.use(SkillPlugin(...))`` 时框架调用 ``install(runtime)``：
+    ``runtime.install(SkillPlugin(...))`` 时框架调用 ``install(runtime)``：
     向 runtime 的工具注册表注册 :class:`SkillLoadTool`，并以
     :data:`skill_registry_key` provide 一个全局 :class:`SkillRegistry`。
     构造参数是 Runtime 级默认渲染模板，可被 ``use_skill()`` 的
@@ -481,9 +481,9 @@ class SkillPlugin(Plugin):
 
     .. code-block:: python
 
-        runtime.use(SkillPlugin())   # 不设 Runtime 级默认模板
+        runtime.install(SkillPlugin())   # 不设 Runtime 级默认模板
         # 或指定全局默认渲染模板（文件承载）：
-        runtime.use(SkillPlugin(catalog_template="$./catalog.md.j2"))
+        runtime.install(SkillPlugin(catalog_template="$./catalog.md.j2"))
 
     .. rubric:: 行为要点
 
@@ -491,7 +491,7 @@ class SkillPlugin(Plugin):
       ``use_skill(self)`` 启用实例级能力。
     - 构造参数缺省 → Agent 未指定模板时使用内置
       :data:`DEFAULT_CATALOG_TEMPLATE`。
-    - 重复 ``use()`` 同一插件实例属编程错误（框架 ``use()`` 的通用
+    - 重复 ``install()`` 同一插件实例属编程错误（框架 ``install()`` 的通用
       规则，每插件只 install 一次）。
     - 不扫描任何目录、不解析任何 Skill 文件（声明期解析由
       :func:`use_skill` 在实例启用时对声明条目一次性完成）。
@@ -499,7 +499,7 @@ class SkillPlugin(Plugin):
     .. seealso:: :func:`use_skill` （阶段二入口）、
         :class:`flowing.plugins.Plugin` （插件基类与插件约定：``install``
         只注册 / 协作不查询 / 注册只在 ``install`` / 依赖只声明）、
-        :meth:`flowing.runtime.Runtime.use`
+        :meth:`flowing.runtime.Runtime.install`
     """
 
     def __init__(
@@ -949,9 +949,11 @@ async def _load_skill(
     if skill.on_load is not None:  # 第 5 步：不拦截、不返回值；抛异常则加载失败上抛
         skill.on_load(agent, ctx.args)
     # 第 6 步：渲染上下文 = agent 局部变量 + 合并 args（复刻 Parsable 摊平
-    # 顺序：_extra < 实例属性 < agent/self 入口；合并 args 置最高优先级；
-    # 经 agent.parsable 重绑定到调用方实例后，env/config 注入与
-    # include/FILE_REF 的 source_dir 基准自动就位）
+    # 顺序：_extra < 实例属性 < agent/self 入口；合并 args 置最高优先级）。
+    # content 在 registry 解析期已带 SKILL.fya 目录（_source_dir），此处只
+    # bind 调用方 agent 补 env/config/FILE_REF 的 runtime 来源（0904 F2：
+    # 不再 agent.parsable(...) 重造——那会丢掉 SKILL 目录基准，$./ 引用会
+    # 错误地落到调用方 Agent 目录）
     render_context = {
         **agent._extra,
         **agent.__dict__,
@@ -959,7 +961,7 @@ async def _load_skill(
         "self": agent,
         **ctx.args,
     }
-    rendered = agent.parsable(skill.content.source).resolve(render_context)  # 先 $ 展开再 Jinja2，同步
+    rendered = skill.content.bind(agent).resolve(render_context)  # 先 $ 展开再 Jinja2，同步
     content = SkillContent(name=name, body=rendered)
     content = await agent.hooks.after_skill_load.dispatch(agent, content)  # 第 7 步：可改渲染后正文
     await agent.enqueue_message(Message(  # 第 8 步：独立 PLUGIN 消息入队，不合并进 ToolResult

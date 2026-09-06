@@ -4,7 +4,7 @@
 
 定时扩展的启用模型是双层解耦的：
 
-- ``runtime.use(CronPlugin())`` 只做一件事：向全局注册表注册两件 LLM
+- ``runtime.install(CronPlugin())`` 只做一件事：向全局注册表注册两件 LLM
   工具（``schedule-cron`` / ``manage-cron``）。不 provide 任何注入键、
   不创建任何 Runtime 级服务——任务随 Agent 走，不存在中央调度器；
 - ``use_cron(agent)`` 在 Agent 的 ``setup()`` 中调用，为该实例登记
@@ -69,7 +69,7 @@ from .tools import ManageCronTool, ScheduleCronTool
 class CronPlugin(Plugin):
     """定时扩展插件——只注册两件 LLM 工具，无 Runtime 级服务。
 
-    ``runtime.use(CronPlugin())`` 时框架调用 ``install(runtime)``：
+    ``runtime.install(CronPlugin())`` 时框架调用 ``install(runtime)``：
     ``runtime.register_tool`` 注册 ``schedule-cron`` / ``manage-cron``。
     不 provide、不创建调度器、不挂状态持久化（``cron_jobs`` 键是
     ``use_cron`` 的 per-Agent 声明）。

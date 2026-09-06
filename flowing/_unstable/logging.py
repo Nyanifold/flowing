@@ -8,7 +8,7 @@
 （记录哪些字段、摘要如何截断、是否滚动都是开放项，本文件只固定最小
 骨架）。
 
-完全在框架核心之外，只复用 ``runtime.use()`` 安装、``agent.hooks``
+完全在框架核心之外，只复用 ``runtime.install()`` 安装、``agent.hooks``
 实例级钩子、``Runtime.get_plugin()`` 插件探测等公开或半公开机制，
 核心不感知本插件的存在。
 
@@ -16,11 +16,11 @@
 
 - 启用方式（双层启用，与内置扩展同构）：
 
-  - 阶段一（Runtime 安装）：``runtime.use(LoggingPlugin(level="INFO"))``
+  - 阶段一（Runtime 安装）：``runtime.install(LoggingPlugin(level="INFO"))``
     —— ``install()`` 经 ``runtime.provide(logging_plugin_key, self)``
     提供自身，并在安装期一次性探测四个内置扩展是否已装（运行期不
     重复探测）。重复安装同名插件按框架既有规则报错（一个 Runtime
-    同时只装一个同名插件，见 :meth:`flowing.runtime.Runtime.use`）。
+    同时只装一个同名插件，见 :meth:`flowing.runtime.Runtime.install`）。
   - 阶段二（Agent 启用）：``setup()`` 中 ``use_logging(self)`` —— 经
     ``agent.inject(logging_plugin_key)`` 取回插件实例并按当前等级挂
     handler。未安装本插件时调用抛
@@ -167,7 +167,7 @@ def _utc_ts() -> str:
 class LoggingPlugin(Plugin):
     """钩子链路日志插件：等级开关 + 插件探测 + 落盘器。
 
-    ``runtime.use(LoggingPlugin(level=...))`` 安装（阶段一）。持有全局
+    ``runtime.install(LoggingPlugin(level=...))`` 安装（阶段一）。持有全局
     等级与探测结果；``use_logging()`` 挂的 handler 每次触发时回读本
     实例的当前等级。
 
@@ -175,7 +175,7 @@ class LoggingPlugin(Plugin):
 
     .. code-block:: python
 
-        runtime.use(LoggingPlugin(level="DEBUG"))
+        runtime.install(LoggingPlugin(level="DEBUG"))
         # Agent 侧：setup() 中 use_logging(self)
         # 运行期调级：
         runtime.get_plugin("logging").level = "INFO"
@@ -186,7 +186,7 @@ class LoggingPlugin(Plugin):
       钩子是 per-agent 的，属 :func:`use_logging` 的职责。
     - ``level`` 运行期可写（property setter 校验），写后下一次钩子
       触发即生效；非法值抛 :class:`flowing.errors.FlowingError`。
-    - 重复安装（再次 ``runtime.use(LoggingPlugin())``）→ 同名插件
+    - 重复安装（再次 ``runtime.install(LoggingPlugin())``）→ 同名插件
       冲突，按框架既有规则报错（一个 Runtime 同时只装一个同名插件）。
 
     .. seealso:: :func:`use_logging`、模块 docstring「注册面清单」。

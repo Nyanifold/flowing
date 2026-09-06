@@ -36,7 +36,7 @@ async def test_restart_recover_sweep(tmp_path):
     base = local_at(2026, 9, 3, 7, 0, 0)
     JOBS._now = lambda: base
     rt1 = make_runtime(tmp_path)
-    rt1.use(CronPlugin())
+    rt1.install(CronPlugin())
     rt1.register_agent_type("cron-agent", CronAgent)
     add_fake_provider(rt1)
     agent = await rt1.create_agent("cron-agent")
@@ -52,7 +52,7 @@ async def test_restart_recover_sweep(tmp_path):
     fixed = local_at(2026, 9, 3, 7, 0, 30)   # 测试时钟钉死（重启后时刻）
     JOBS._now = lambda: fixed
     rt2 = make_runtime(tmp_path)
-    rt2.use(CronPlugin())
+    rt2.install(CronPlugin())
     rt2.register_agent_type("cron-agent", CronAgent)
     script_provider(add_fake_provider(rt2), text_response("ok"))
     try:
@@ -78,7 +78,7 @@ async def test_recover_coalesced_from_fixture(tmp_path):
     """
     CronAgent.captured = []
     rt1 = make_runtime(tmp_path)
-    rt1.use(CronPlugin())
+    rt1.install(CronPlugin())
     rt1.register_agent_type("cron-agent", CronAgent)
     add_fake_provider(rt1)
     agent = await rt1.create_agent("cron-agent")
@@ -94,7 +94,7 @@ async def test_recover_coalesced_from_fixture(tmp_path):
     fixed = local_at(2026, 8, 30, 1, 0, 30)    # 语料 last_fired=00:00:00，一小时后
     JOBS._now = lambda: fixed
     rt2 = make_runtime(tmp_path)
-    rt2.use(CronPlugin())
+    rt2.install(CronPlugin())
     rt2.register_agent_type("cron-agent", CronAgent)
     script_provider(add_fake_provider(rt2), text_response("ok"))
     try:

@@ -28,10 +28,10 @@ from comm_support import (
 
 
 async def test_t74_install_surface_and_zero_cost_without_plugin(tmp_path):
-    """T74：新 Runtime use(CommPlugin()) → inject 得 Communication 实例且
+    """T74：新 Runtime install(CommPlugin()) → inject 得 Communication 实例且
     端点表为空；未安装时 use_comm(self) 抛 MissingProvideError。"""
     runtime = make_runtime(tmp_path)
-    runtime.use(CommPlugin())
+    runtime.install(CommPlugin())
     try:
         bus = runtime.inject(communication_key)
         assert isinstance(bus, Communication)

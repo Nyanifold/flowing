@@ -1072,10 +1072,11 @@ async def test_t83_head_maintenance(runtime, provider):
     agent.push(m2)
     agent.push(m3)
 
-    agent.remove("m2")   # 删非 head：head 不动
+    agent.remove("m2")   # 删非 head：m3 是 m2 直接子 → 自动重挂到 m1，head 不动
     assert agent.current_head_id == "m3"
-    agent.remove("m3")   # 删 head：head 回退到其删除前的 parent_id 原值
-    assert agent.current_head_id == "m2"   # 孤儿语义（remove 不级联；m2 已删——调用方责任）
+    assert agent._messages["m3"].parent_id == "m1"   # 0904：链连续、无孤儿
+    agent.remove("m3")   # 删 head：head 回退到其 parent（m3.parent 已是 m1）
+    assert agent.current_head_id == "m1"
 
     # 连续 pop() 删到根后 head 为 None（干净链上逐条删）
     agent2 = await runtime.create_agent(SimpleAgent)

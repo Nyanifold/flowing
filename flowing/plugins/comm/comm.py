@@ -6,11 +6,11 @@
 为进程内各实体（Agent、UI 组件、应用层代码）提供两条互不交叉的消息
 通道：点对点信号（``send`` / ``request`` / ``reply``）与发布-订阅事件
 （``publish`` / ``subscribe``）。框架核心不感知本扩展——它完全由
-``runtime.use()`` / ``use_comm()`` 按需启用。
+``runtime.install()`` / ``use_comm()`` 按需启用。
 
 启用遵循全局统一的双层启用模型：
 
-- 阶段一（Runtime 安装）：``runtime.use(CommPlugin())`` ——
+- 阶段一（Runtime 安装）：``runtime.install(CommPlugin())`` ——
   ``CommPlugin.install(runtime)`` 创建全局 ``Communication`` 总线实例
   并经 ``runtime.provide(communication_key, bus)`` 注入 provide 链根；
 - 阶段二（Agent 启用）：Agent 的 ``setup()`` 中调用 ``use_comm(self)``，
@@ -21,10 +21,10 @@
 
 - 启用方式：
 
-  - 阶段一：``runtime.use(CommPlugin())`` —— ``install()`` 同步创建
-    总线并 provide；重复安装同名插件（再次 ``use(CommPlugin())``）抛
+  - 阶段一：``runtime.install(CommPlugin())`` —— ``install()`` 同步创建
+    总线并 provide；重复安装同名插件（再次 ``install(CommPlugin())``）抛
     ``ValueError`` （一个 Runtime 同时只装一个同名插件，见
-    :meth:`flowing.runtime.Runtime.use`）；
+    :meth:`flowing.runtime.Runtime.install`）；
   - 阶段二：``setup()`` 中 ``use_comm(self)`` —— 为该实例注册端点、
     声明钩子点、挂载清理 handler；恢复时 ``setup()`` 在新实例上执行
     安全（进程重启则总线随插件重新安装而新建；同进程内先
@@ -131,7 +131,7 @@
 .. code-block:: python
 
     # 阶段一：安装插件即创建全局总线
-    runtime.use(CommPlugin())
+    runtime.install(CommPlugin())
 
     # 阶段二：Agent 的 setup() 中按实例启用并挂钩子
     async def setup(self):
@@ -220,7 +220,7 @@ class Communication:
 
     .. code-block:: python
 
-        # 应用层注册 UI 端点（阶段一 runtime.use(CommPlugin()) 之后）
+        # 应用层注册 UI 端点（阶段一 runtime.install(CommPlugin()) 之后）
         comm = runtime.inject(communication_key)
         ui_handle = comm.create_handle(endpoint_id="ui-main")
         ui_handle.subscribe("assistant_replied", on_assistant_replied)
@@ -1050,7 +1050,7 @@ class CommPlugin(Plugin):
 
     .. rubric:: 功能介绍
 
-    ``runtime.use(CommPlugin())`` 时框架调用 ``install(runtime)``，创建
+    ``runtime.install(CommPlugin())`` 时框架调用 ``install(runtime)``，创建
     全局 ``Communication`` 实例并以 ``communication_key`` provide 到
     Runtime provide 链根。此后任何 Agent 可经 ``use_comm(self)`` 启用
     实例级通信能力。框架核心发布时不预装本插件——未启用的通信扩展
@@ -1061,15 +1061,15 @@ class CommPlugin(Plugin):
     - ``install()`` 只做 provide 注册（插件约定：``install`` 只注册，
       约定定义见 :mod:`flowing.plugins`；本插件无工具、无配置命名
       空间、无钩子声明）。
-    - 重复安装同名插件（再次 ``runtime.use(CommPlugin())``）→
+    - 重复安装同名插件（再次 ``runtime.install(CommPlugin())``）→
       ``ValueError`` （一个 Runtime 同时只装一个同名插件，见
-      :meth:`flowing.runtime.Runtime.use`）。
+      :meth:`flowing.runtime.Runtime.install`）。
     - 生命周期：``runtime.shutdown()`` 插件收尾阶段调用总线
       ``_close()`` 清空端点表与订阅表（挂起请求的取消归各句柄
       ``destroy()``，总线不兜底）。
 
     .. seealso:: :class:`Communication`、:func:`use_comm`、
-        :class:`flowing.plugins.Plugin`、:meth:`flowing.runtime.Runtime.use`
+        :class:`flowing.plugins.Plugin`、:meth:`flowing.runtime.Runtime.install`
     """
 
     name: ClassVar[str] = "comm"
@@ -1079,7 +1079,7 @@ class CommPlugin(Plugin):
 
     dependencies: ClassVar[list[str]] = []   # 与基类 Plugin 的 ClassVar 对齐
     """依赖声明（类属性元数据）。本插件无依赖，为空列表；框架在
-    ``use()`` 时做存在性与无环 DAG 校验。
+    ``install()`` 时做存在性与无环 DAG 校验。
 
     .. seealso:: :meth:`flowing.runtime.Runtime._check_dependencies`
     """
@@ -1175,7 +1175,7 @@ def use_comm(agent: Agent, *, name: str | None = None) -> None:
       与其他端点冲突同理）。
     - 通信信封永不自动进入对话通道——桥接（如 ``enqueue_message``）
       由 handler 显式完成；本函数不注册任何工具、不修改 prompt。
-    - 前置条件：``CommPlugin`` 已经 ``runtime.use()`` 安装（否则
+    - 前置条件：``CommPlugin`` 已经 ``runtime.install()`` 安装（否则
       ``MissingProvideError``）；本函数应在 ``setup()`` 中调用（钩子点
       声明属 setup 阶段契约，见
       :meth:`flowing.hooks.HookRegistry.declare`）。

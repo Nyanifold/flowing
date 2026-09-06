@@ -74,7 +74,10 @@ class FakeAgent:
         extra: dict | None = None,
     ) -> None:
         self.runtime = runtime
-        self.source_dir = None if source_dir is None else Path(source_dir)
+        # source_dir 以方法形态对齐真 Agent（flowing/agent.py Agent.source_dir
+        # 是方法；parsable 的 FILE_REF/include 基准经 source_dir() 调用取）——
+        # 0904 前此处是普通实例属性，与真 Agent 协议漂移（F2 修复）。
+        self._source_dir = None if source_dir is None else Path(source_dir)
         self._extra = {} if extra is None else extra
         # D10：parsable 不再读 agent._state——无状态袋接口（R-6 取消）
         # ProvideNode 协议面
@@ -83,6 +86,10 @@ class FakeAgent:
         if parent_id is not None:
             self._parent_id = parent_id
         runtime.register(self)
+
+    def source_dir(self) -> Path | None:
+        """文件上下文目录（对齐 Agent.source_dir 方法形态）。"""
+        return self._source_dir
 
     def provide(self, key: str, value: Any) -> None:
         self._provided[key] = value

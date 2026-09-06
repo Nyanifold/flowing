@@ -13,7 +13,7 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
-from flowing.errors import Intercepted, MissingSchemaError
+from flowing.errors import Intercepted, MissingFieldError, MissingSchemaError
 from flowing.message import MessageKind, TextBlock
 from flowing.tool import (
     ScriptTool,
@@ -62,6 +62,7 @@ class TestInferFromExecute:
         """清单 32：execute 参数缺类型标注（且无 args_model）→ MissingSchemaError。"""
 
         class BadTool(ScriptTool):
+            name = "bad-tool"
             description = "d"
 
             async def execute(self, *, order_id):
@@ -74,6 +75,7 @@ class TestInferFromExecute:
         """清单 32：caller / *args / **kwargs 不进 schema。"""
 
         class GoodTool(ScriptTool):
+            name = "good-tool"
             description = "d"
 
             async def execute(self, *args, a: int, caller, **kwargs):
@@ -120,10 +122,21 @@ class TestScriptToolInit:
         assert tool.definition is BothTool.definition
         assert "mutually exclusive" in caplog.text
 
-    def test_name_inferred_from_class_name(self):
-        """name 缺省由类名 kebab 化推断；显式声明仅作一致性断言。"""
+    def test_name_required_and_explicit(self):
+        """0904 契约：ScriptTool 的 name 必填（不再由类名推断）；显式
+        name 即规范名。"""
+
+        class NoNameTool(ScriptTool):
+            description = "d"
+
+            async def execute(self) -> str:
+                return "x"
+
+        with pytest.raises(MissingFieldError):
+            NoNameTool()   # 缺 name：构造期报错
 
         class MakePayment(ScriptTool):
+            name = "make-payment"   # 显式声明即规范名
             description = "d"
 
             async def execute(self, *, amount: float) -> dict:
@@ -132,7 +145,7 @@ class TestScriptToolInit:
         assert MakePayment().definition.name == "make-payment"
 
         class MakePaymentAssert(ScriptTool):
-            name = "make-payment-assert"   # 与类名推断一致：合法
+            name = "make-payment-assert"
             description = "d"
 
             async def execute(self) -> str:
@@ -140,8 +153,8 @@ class TestScriptToolInit:
 
         assert MakePaymentAssert().definition.name == "make-payment-assert"
 
-    def test_name_mismatch_raises(self):
-        from flowing.errors import NameMismatchError
+    def test_explicit_name_is_authoritative(self):
+        """0904 契约：显式 name 即规范名（不再与类名推断比对报错）。"""
 
         class MakePaymentMismatch(ScriptTool):
             name = "other-name"
@@ -150,32 +163,43 @@ class TestScriptToolInit:
             async def execute(self) -> str:
                 return "x"
 
-        with pytest.raises(NameMismatchError):
-            MakePaymentMismatch()
+        assert MakePaymentMismatch().definition.name == "other-name"
 
     def test_description_fallback_chain(self):
-        """description 三级回退链：显式 > 类 docstring 首段 > execute docstring。"""
+        """description 三级回退链：显式 > 类 docstring 整体 > execute docstring
+        整体（0904：不再取首段）。"""
 
         class DocstringTool(ScriptTool):
             """对指定订单发起支付。
 
-            第二段不应进入描述。
+            第二段同样进入描述（整体回退）。
             """
+
+            name = "docstring-tool"
 
             async def execute(self) -> str:
                 return "x"
 
-        assert DocstringTool().definition.description == "对指定订单发起支付。"
+        assert DocstringTool().definition.description == \
+            "对指定订单发起支付。\n\n第二段同样进入描述（整体回退）。"
 
         class ExecuteDocstringTool(ScriptTool):
+            name = "execdoc-tool"
+
             async def execute(self) -> str:
-                """执行体的说明文字。"""
+                """执行体的说明文字。
+
+                多段 execute docstring 整体进入描述（0904）。
+                """
                 return "x"
 
         tool = ExecuteDocstringTool()
-        assert tool.definition.description == "执行体的说明文字。"
+        assert tool.definition.description == \
+            "执行体的说明文字。\n\n多段 execute docstring 整体进入描述（0904）。"
 
         class NoDocstringTool(ScriptTool):
+            name = "nodoc-tool"
+
             async def execute(self) -> str:
                 return "x"
 
@@ -260,6 +284,7 @@ class TestInternalValidation:
         （不变成 ToolResult(error)，不进 LLM 可见文本），并记日志。"""
 
         class PayTool(ScriptTool):
+            name = "pay"
             description = "支付"
 
             async def execute(self, *, amount: float) -> dict:

@@ -1,0 +1,172 @@
+"""``flowing.interfaces.controls`` —— 共享 slash 命令目录（repl 与 serve/web 同源）。
+
+.. rubric:: 功能介绍
+
+repl 输入框与 web 输入框都以 ``/cmd [arg]`` 形式接受控制命令。本模块承载
+命令的**单一逻辑源**（返回文本行），两端只是不同渲染：
+- repl：对 ``slash_lines(...)`` 返回的行逐行 ``print``（并自行处理改变前台
+  绑定的 ``/exit /quit /agent /new`` 与会话级生命周期）；
+- serve ``POST /agents/{id}/command``：把 ``slash_lines`` 返回的行回成 JSON，
+  供 web 用任意聚焦 agent 执行任意 repl 指令。
+
+命令按目标分为两类：
+- **runtime 级**（不需 agent）：``help / agents / snapshot``；
+- **agent 级**（作用于给定 agent）：``messages / model / status / tasks /
+  export / rewind / cancel / pause / resume``。
+
+约定：本目录只含「作用于显式目标并返回文本」的命令；前台绑定切换（``agent``/
+``new``）与进程退出（``exit / quit``）是交互壳自身行为，不在此列。
+
+.. seealso::
+
+    ``flowing.interfaces.repl.cmd_repl``
+    ``flowing.interfaces.serve`` ``POST /agents/<id>/command``
+"""
+
+from __future__ import annotations
+
+import time
+
+from flowing.agent import Agent
+from flowing.interfaces import _default_agent_type, _list_agent_records
+from flowing.message import Message, TextBlock
+from flowing.runtime import Runtime
+
+
+HELP_LINES: tuple[str, ...] = (
+    "/help                list all commands (this help)",
+    "/exit  /quit         exit repl (graceful shutdown, then exit with code 0)",
+    "/agent <agent_id>    switch the foreground binding (dormant ids are restored)",
+    "/agents              list recorded Agents (including dormant records)",
+    "/new [agent_type]    create a new root Agent and bind it",
+    "/snapshot            print a read-only snapshot of the current Runtime",
+    "/messages            print the bound Agent's message chain (current head up)",
+    "/model [tag]         show or switch the bound Agent's model_tag",
+    "/status              print a status rollup of the bound Agent",
+    "/tasks [cancel <id>] list background tasks / cancel one",
+    "/export [format]     export the bound Agent's message chain (md default)",
+    "/rewind <msg_id>     move the current head to a historical message (fork)",
+    "/cancel              cooperatively stop the bound Agent",
+    "/pause  /resume      pause / resume the bound Agent",
+)
+"""命令的一句话说明（/help 用；与 repl ``SLASH_COMMANDS`` 一一对应）。"""
+
+
+def _fold(text: str, limit: int = 80) -> str:
+    folded = " ".join(text.split())
+    return folded[:limit] + ("…" if len(folded) > limit else "")
+
+
+async def slash_lines(cmd: str, arg: str, agent: Agent | None,
+                      runtime: Runtime) -> list[str]:
+    """执行一个 slash 命令，返回应展示的文本行（纯函数式：不直接 print）。
+
+    带前导 ``/`` 的 ``cmd`` 会被剥成命令名；``arg`` 为第一个空格之后的
+    参数串（可再切子命令）。不识别 / 需绑定 agent 的命令而无 agent 时返回
+    提示行而非抛错。
+    """
+    name = cmd[1:] if cmd.startswith("/") else cmd
+    arg = (arg or "").strip()
+    lines: list[str] = []
+
+    if name == "help":
+        return list(HELP_LINES)
+    if name == "agents":
+        records = _list_agent_records(runtime)
+        if not records:
+            return ["(no agent records)"]
+        for rec in records:
+            mtime = (time.strftime("%Y-%m-%d %H:%M", time.localtime(rec["mtime"]))
+                     if rec["mtime"] is not None else "-")
+            lines.append(f'{rec["agent_id"]}  "{rec["last_reply"]}"  {mtime}')
+        return lines
+    if name == "snapshot":
+        return [str(runtime.snapshot())]
+
+    # ---- 以下需绑定/目标 agent ----
+    if agent is None:
+        return ["no agent bound (see /agents, select with /agent <id>)"]
+
+    if name == "messages":
+        chain: list[Message] = []
+        mid = agent.current_head_id
+        while mid is not None:
+            m = agent._messages.get(mid)
+            if m is None:
+                break
+            chain.append(m)
+            mid = m.parent_id
+        if not chain:
+            return ["(no messages)"]
+        for m in reversed(chain):
+            text = "".join(b.text for b in m.content if isinstance(b, TextBlock))
+            lines.append(f"{m.id[:12]}  {m.kind.value:<9} {_fold(text)}")
+        return lines
+
+    if name == "model":
+        if not arg:
+            return [f"model_tag={getattr(agent, 'model_tag', None)}  "
+                    f"provider={getattr(agent.model, 'provider', None)}  "
+                    f"model={getattr(agent.model, 'model', None)}"]
+        try:
+            agent.model_tag = arg
+            return [f"model_tag -> {arg}"]
+        except Exception as exc:
+            return [f"failed to set model_tag: {exc}"]
+
+    if name == "status":
+        return [f"agent_id={agent.node_id}",
+                f"model_tag={getattr(agent, 'model_tag', None)}  paused={agent.paused}",
+                f"current_head={agent.current_head_id}  messages={len(agent._messages)}  "
+                f"tasks={len(agent.get_background_tasks())}"]
+
+    if name == "tasks":
+        sub, _, subarg = arg.partition(" ")
+        if sub == "cancel":
+            ok = agent.cancel_background_task(subarg.strip())
+            return ["cancelled" if ok else f"no such task: {subarg.strip()!r}"]
+        tasks = agent.get_background_tasks()
+        if not tasks:
+            return ["(no background tasks)"]
+        return [f"{tid} {'done' if t.done() else 'running'}"
+                for tid, t in tasks.items()]
+
+    if name == "export":
+        chain = []
+        mid = agent.current_head_id
+        while mid is not None:
+            m = agent._messages.get(mid)
+            if m is None:
+                break
+            chain.append(m)
+            mid = m.parent_id
+        chain.reverse()
+        fmt = arg or "md"
+        if fmt == "jsonl":
+            import json
+            from flowing.message import to_record
+            return [json.dumps(to_record(m), ensure_ascii=False) for m in chain]
+        return [f"**{m.kind.value}**: "
+                + "".join(b.text for b in m.content if isinstance(b, TextBlock))
+                for m in chain]
+
+    if name == "rewind":
+        if not arg:
+            return ["usage: /rewind <message_id>"]
+        if arg not in agent._messages:
+            return [f"unknown message_id: {arg!r}"]
+        await agent.fork(arg)
+        return [f"head -> {agent.current_head_id}"]
+
+    if name == "cancel":
+        await agent.cancel()
+        return ["cancelled"]
+
+    if name in ("pause", "resume"):
+        (agent.pause if name == "pause" else agent.resume)()
+        return [f"{name} ok (paused={agent.paused})"]
+
+    if name in ("agent", "new"):
+        return [f"/{name} is a shell-level command (handled by the interactive front-end)"]
+
+    return [f"unknown command: /{name}; run /help for available commands"]

@@ -59,6 +59,7 @@ from flowing.message import (
 from flowing.model import ModelConfig
 from flowing.providers.provider import (
     Provider,
+    ProviderDelta,
     ProviderResponse,
     Usage,
     register_provider,
@@ -325,21 +326,7 @@ class OpenAICompletionsProvider(Provider):
         msg = Message(kind=MessageKind.PROVIDER, content=blocks)
         raw_usage = resp.get("usage")
         if raw_usage:   # usage 附着契约：唯一权威落点是 message.usage
-            cached = (raw_usage.get("prompt_tokens_details") or {}).get(
-                "cached_tokens", 0)
-            prompt = raw_usage.get("prompt_tokens", 0)
-            completion = raw_usage.get("completion_tokens", 0)
-            msg.usage = Usage(
-                input=prompt,
-                fresh_input=prompt - cached,   # OpenAI 系：prompt_tokens 含 cache 读
-                output=completion,
-                cache_read=cached,
-                cache_write=0,
-                reasoning=(raw_usage.get("completion_tokens_details") or {}).get(
-                    "reasoning_tokens", 0),
-                total_tokens=prompt + completion,   # 恒等式回填
-                raw=dict(raw_usage),
-            )
+            msg.usage = self._usage_from_raw(raw_usage)
         finish_reason = choice.get("finish_reason")
         return ProviderResponse(
             message=msg,
@@ -409,9 +396,245 @@ class OpenAICompletionsProvider(Provider):
             raise self._classify_error(exc) from exc
         return self._map_response(resp)
 
-    # generate_stream 不覆写：走基类默认回退（generate() 结果包成
-    # delta——契约合法，见 Provider.generate_stream「默认实现行为」）；
-    # 真 SSE 流式不在本基类提供，不影响 Turn 循环可见语义。
+    def _usage_from_raw(self, raw_usage: dict) -> "Usage | None":
+        """原始 usage dict → 归一 :class:`Usage`（流 / 非流共用，口径一致）。
+
+        cache 读取按厂商方言取值：OpenAI 系 ``prompt_tokens_details.cached_tokens``，
+        无则回退 DeepSeek 的 ``prompt_cache_hit_tokens`` 与 Kimi 顶层
+        ``cached_tokens``。统计口径与非流式原实现一致：``input`` 为含
+        cache 读的毛输入，``fresh_input = input - cache_read``。
+        """
+        if not raw_usage:
+            return None
+        details = raw_usage.get("prompt_tokens_details") or {}
+        cached = details.get("cached_tokens")
+        if cached is None:
+            cached = raw_usage.get("prompt_cache_hit_tokens")   # DeepSeek 顶层字段
+        if cached is None:
+            cached = raw_usage.get("cached_tokens")   # Kimi 顶层字段
+        cached = cached or 0
+        prompt = raw_usage.get("prompt_tokens", 0)
+        completion = raw_usage.get("completion_tokens", 0)
+        return Usage(
+            input=prompt,
+            fresh_input=prompt - cached,   # OpenAI 系：prompt_tokens 含 cache 读
+            output=completion,
+            cache_read=cached,
+            cache_write=0,
+            reasoning=(raw_usage.get("completion_tokens_details") or {}).get(
+                "reasoning_tokens", 0),
+            total_tokens=raw_usage.get("total_tokens", prompt + completion),
+            raw=dict(raw_usage),
+        )
+
+    # ── 流式（真 SSE）：正文 / 思考 / 工具调用逐 delta ───────────────────
+
+    def _stream_headers(self) -> dict[str, str]:
+        """流式请求头（多出 ``Accept: text/event-stream``）。"""
+        headers = {"Content-Type": "application/json",
+                   "Accept": "text/event-stream"}
+        credential = self.get_credential()   # 凭证唯一入口，每次读取
+        if credential:
+            headers["Authorization"] = f"Bearer {credential}"
+        return headers
+
+    def _parse_tool_args(self, raw: str) -> dict:
+        """流式累积的工具参数 → 对象；JSON 容错（坏转义/残缺 → 尽力修复）。
+
+        与 pi-ai ``parseStreamingJson`` 同思路：先严格解析，失败则做浅层
+        修复（剥离尾随逗号 / 补闭合），仍失败回退 ``{}`` 不抛异常——流式
+        下工具参数可能被 finish 截断，不应让回合崩溃。非流式路径
+        (``_map_response``) 保持严格（参数残缺属上游缺陷，明确报错）。
+        """
+        s = raw.strip()
+        if not s:
+            return {}
+        try:
+            parsed = json.loads(s)
+            return parsed if isinstance(parsed, dict) else {}
+        except json.JSONDecodeError:
+            pass
+        repaired = s
+        if not repaired.endswith("}"):
+            # 补闭合：数一下未配对的开括号/方括号（跳过字符串字面量内）
+            depth = 0
+            in_str = False
+            esc = False
+            for ch in repaired:
+                if in_str:
+                    if esc:
+                        esc = False
+                    elif ch == "\\":
+                        esc = True
+                    elif ch == '"':
+                        in_str = False
+                    continue
+                if ch == '"':
+                    in_str = True
+                elif ch in "{[":
+                    depth += 1
+                elif ch in "}]":
+                    depth -= 1
+            repaired += "}" * max(depth, 0)
+        # 容错：坏转义（如裸换行在字符串里）走 partial 解析前先剥掉非法控制符
+        try:
+            parsed = json.loads(repaired)
+            return parsed if isinstance(parsed, dict) else {}
+        except json.JSONDecodeError:
+            pass
+        # 终极兜底：不抛，返回 {}（宁可空参数也不崩回合）
+        return {}
+
+    async def generate_stream(
+        self, context: Context, model: ModelConfig
+    ) -> Any:
+        """真 SSE 流式覆写：逐 delta 产出正文 / 思考 / 工具调用。
+
+        替代基类「一次 generate() 包成单条 text delta」的回退——OpenAI /
+        DeepSeek 家族的 chat/completions ``stream=true`` 响应在此逐 chunk
+        解析。chunk 形态（``data: <json>``，``[DONE]`` 收尾）：
+
+        - 思考：``choices[0].delta.<方言>``（DeepSeek ``reasoning_content``），
+          按 :attr:`_REASONING_KEYS` 顺序首个非空者胜出，逐段产出
+          ``kind="thinking"`` delta；记住方言供出站同 key 回写。
+        - 正文：``delta.content`` 非空 → ``kind="text"`` delta。
+        - 工具：``delta.tool_calls[]`` 按流式 ``index``（缺省回退 ``id``）
+          累积，首现的 ``id``/``name`` 生效、``function.arguments`` 逐段
+          拼接；流结束后整段解析为参数对象，以携带完整
+          :class:`ToolCallBlock` 的 ``block`` delta 产出。
+        - 用量 / finish：请求带 ``stream_options.include_usage``；任一 chunk
+          顶层 ``usage`` 覆盖末帧用量（可能出现在空 ``choices`` 的独立
+          chunk 或 DeepSeek 的 finish chunk）；``finish_reason`` 经末帧
+          ``provider_data["stop_reason"]`` 透出（completed 结局的
+          finish_reason 来源，见 :meth:`flowing.agent.Agent.provider_gen`）。
+
+        块 content_index 按「首现顺序」动态分配（pi 同款），与文本分块
+        单一化一致——同一逻辑块的所有 delta 共享同一 index，agent 累积时
+        依此归位。非 2xx / chunk 内 ``error`` 按 :meth:`_classify_error`
+        归类上抛；超时 / 传输层失败同 :meth:`generate`。
+        """
+        import httpx
+
+        base_url = self.config.get("base_url") or self.default_base_url
+        if not base_url:
+            raise FlowingError(
+                f"provider entry is missing base_url (adapter {self.name!r} has no official default endpoint)")
+        url = f"{str(base_url).rstrip('/')}/chat/completions"
+        body = self._build_request(context, model)
+        body["stream"] = True
+        body["stream_options"] = {"include_usage": True}
+
+        cidx = {"next": 0}
+        think_idx = {"v": None}     # 思考块 content_index
+        text_idx = {"v": None}      # 正文块 content_index
+        tools: dict[object, dict] = {}   # stream index/id -> {idx,id,name,args}
+        finish_reason = None
+        last_usage: dict | None = None
+
+        async def _alloc() -> int:
+            i = cidx["next"]
+            cidx["next"] += 1
+            return i
+
+        async def _finalize_tools():
+            # 流结束后按分配序把工具块作为 block delta 产出（参数整段解析）
+            for key in sorted(tools, key=lambda k: tools[k]["idx"]):
+                slot = tools[key]
+                if slot["id"] is None or slot["name"] is None:
+                    continue   # 残缺工具调用（缺 id/name）不产块
+                block = ToolCallBlock(
+                    id=slot["id"], name=slot["name"],
+                    args=self._parse_tool_args(slot["args"]))
+                yield ProviderDelta(kind="tool_use", text="",
+                                    content_index=slot["idx"], block=block)
+
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(120.0)) as client:
+                async with client.stream("POST", url, json=body,
+                                         headers=self._stream_headers()) as resp:
+                    if resp.status_code >= 400:
+                        try:
+                            err_bytes = await resp.aread()
+                        except Exception:
+                            err_bytes = b""
+                        try:
+                            err_body = json.loads(err_bytes or b"{}")
+                        except Exception:
+                            err_body = (err_bytes or b"").decode("utf-8", "replace")
+                        raise self._classify_error(
+                            _HttpResponseError(resp.status_code, err_body,
+                                               dict(resp.headers)))
+                    async for raw_line in resp.aiter_lines():
+                        line = raw_line.strip()
+                        if not line.startswith("data:"):
+                            continue
+                        data = line[5:].strip()
+                        if data == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(data)
+                        except json.JSONDecodeError:
+                            continue
+                        if chunk.get("error"):
+                            raise self._classify_error(_HttpResponseError(
+                                chunk.get("status", 400),
+                                {"error": chunk["error"]}, {}))
+                        if chunk.get("usage") is not None:
+                            last_usage = chunk["usage"]
+                        choices = chunk.get("choices") or []
+                        if not choices:
+                            continue   # 独立 usage chunk（choices 为空）
+                        choice = choices[0]
+                        if choice.get("finish_reason") is not None:
+                            finish_reason = choice["finish_reason"]
+                        delta = choice.get("delta") or {}
+                        # 思考（方言首现胜出并记住，供出站回写）
+                        for key in self._REASONING_KEYS:
+                            rv = delta.get(key)
+                            if not rv:
+                                continue
+                            self._reasoning_dialect = key
+                            if think_idx["v"] is None:
+                                think_idx["v"] = await _alloc()
+                            text = rv if isinstance(rv, str) else json.dumps(
+                                rv, ensure_ascii=False)
+                            yield ProviderDelta(kind="thinking", text=text,
+                                                content_index=think_idx["v"])
+                            break
+                        content = delta.get("content")
+                        if content:
+                            if text_idx["v"] is None:
+                                text_idx["v"] = await _alloc()
+                            yield ProviderDelta(kind="text", text=content,
+                                                content_index=text_idx["v"])
+                        for tc in delta.get("tool_calls") or []:
+                            sidx = tc.get("index")
+                            key = sidx if sidx is not None else tc.get("id")
+                            if key is None:
+                                continue
+                            slot = tools.setdefault(
+                                key, {"idx": None, "id": None, "name": None, "args": ""})
+                            if slot["idx"] is None:
+                                slot["idx"] = await _alloc()
+                            if slot["id"] is None and tc.get("id"):
+                                slot["id"] = tc["id"]
+                            fn = tc.get("function") or {}
+                            if slot["name"] is None and fn.get("name"):
+                                slot["name"] = fn["name"]
+                            slot["args"] += fn.get("arguments") or ""
+        except httpx.TimeoutException as exc:
+            raise ProviderTimeoutError(f"provider request timed out: {exc}") from exc
+        except httpx.TransportError as exc:
+            raise NetworkError(f"provider network failure: {exc}") from exc
+
+        # 流结束：先产工具块（整段参数），再产末帧（usage + finish_reason）
+        async for d in _finalize_tools():
+            yield d
+        yield ProviderDelta(
+            kind="text", text="", content_index=cidx["next"],   # 未使用 index：末帧只载 usage/finish，不污染已累积块
+            usage=self._usage_from_raw(last_usage) if last_usage else None,
+            provider_data={"stop_reason": finish_reason},
+        )
 
 
 @register_provider

@@ -409,15 +409,29 @@ class TestMessageChain:
             chain.branch("nope", _msg("z"))
 
     def test_m22_remove(self):
-        """M22：remove 不级联（孤儿链）+ tombstone 行；重复删 → KeyError。"""
+        """M22：remove 单节点删，但直接子自动重挂到亲节点（与 insert 对称、
+        链连续）；根删除 → 子提升为新根；重复删 → KeyError。"""
         owner, chain = _linear_chain()
         chain.remove("m2")
         assert "m2" not in owner._messages
-        assert owner._messages["m3"].parent_id == "m2"  # 孤儿链
-        assert owner.tree_records() == [{"type": "tombstone", "id": "m2"}]
+        assert owner._messages["m3"].parent_id == "m1"   # 直接子重挂到亲节点，无孤儿
+        assert owner.tree_records() == [
+            {"type": "move", "id": "m3", "parent_id": "m1"},
+            {"type": "tombstone", "id": "m2"},
+        ]
         with pytest.raises(KeyError):
             chain.remove("m2")
-        # 先 reparent 再 remove → 无孤儿
+        # 删根：直接子提升为新根（move parent_id=null）
+        owner1, chain1 = _linear_chain()
+        chain1.remove("m1")
+        assert "m1" not in owner1._messages
+        assert owner1._messages["m2"].parent_id is None
+        assert {"type": "move", "id": "m2", "parent_id": None} in owner1.tree_records()
+        # 尾部删除：纯截断，无 move
+        owner3, chain3 = _linear_chain()
+        chain3.remove("m3")
+        assert owner3.tree_records() == [{"type": "tombstone", "id": "m3"}]
+        # 整棵删除仍可显式表达：先 reparent 子树到别处、再 remove（可选路线）
         owner2, chain2 = _linear_chain()
         chain2.reparent("m3", to="m1")
         chain2.remove("m2")
@@ -488,3 +502,50 @@ class TestMessageChain:
         m = Message(id="b1", kind=MessageKind.SYSTEM, content=[blk])
         chain2.branch(None, m)
         assert chain2.remove_by_tags({"reminder"}) == 1
+
+        # 链中段命中（0904）：删除带子消息的节点 → 直接子重挂到亲节点（无孤儿）
+        owner3 = _StubOwner()
+        chain3 = MessageChain(owner3)
+        a = _msg("a")
+        chain3.branch(None, a)
+        b = _msg("b", tags=["reminder"])
+        chain3.branch("a", b)
+        c = _msg("c")
+        chain3.branch("b", c)
+        assert chain3.remove_by_tags({"reminder"}) == 1
+        assert "b" not in owner3._messages
+        assert owner3._messages["c"].parent_id == "a"   # 幸存子重挂到亲节点
+        assert {"type": "move", "id": "c", "parent_id": "a"} in owner3.tree_records()
+
+    def test_m26_get(self):
+        """M26：get 按 id 反查（只读、内存读）；不存在 / 已删除 → KeyError。"""
+        owner, chain = _linear_chain()
+        m2 = chain.get("m2")
+        assert m2 is owner._messages["m2"]   # 树中实况对象，非副本
+        with pytest.raises(KeyError):
+            chain.get("nope")
+        chain.remove("m2")
+        with pytest.raises(KeyError):
+            chain.get("m2")   # 已 tombstone 的消息按不存在处理
+
+    def test_m27_walk(self):
+        """M27：walk 从指定消息沿 parent_id 上溯到根（逆时间序）；None /
+        不存在起点 / 孤儿断点 → 容忍终止；不触碰持久化。"""
+        owner, chain = _linear_chain()
+        # m3 → m2 → m1（逆时间序，含起点本身）
+        assert [m.id for m in chain.walk("m3")] == ["m3", "m2", "m1"]
+        # 时间序由调用方自行反转
+        assert [m.id for m in chain.walk("m3")][::-1] == ["m1", "m2", "m3"]
+        # 中间节点起步 → 到根为止
+        assert [m.id for m in chain.walk("m2")] == ["m2", "m1"]
+        # None（空树游标）与不存在的起点 → 空迭代
+        assert list(chain.walk(None)) == []
+        assert list(chain.walk("nope")) == []
+        # 孤儿断点容忍：m2 被删且 m3 未先 reparent 是假不出的（remove 会
+        # 重挂），手工制造断点（parent_id 指向不存在节点）→ 上溯到断点即终止
+        orphan = _msg("orphan")
+        orphan.parent_id = "ghost"
+        owner._messages["orphan"] = orphan
+        assert [m.id for m in chain.walk("orphan")] == ["orphan"]
+        # 只读：全程不产生任何落盘行
+        assert owner.persisted == []

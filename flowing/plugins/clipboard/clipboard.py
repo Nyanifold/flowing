@@ -16,7 +16,7 @@
 
 - 启用方式：
 
-  - 阶段一：``runtime.use(ClipboardPlugin())``——``install(runtime)``
+  - 阶段一：``runtime.install(ClipboardPlugin())``——``install(runtime)``
     注册 ``clipboard-cut`` / ``clipboard-copy`` / ``clipboard-paste``
     三件全局工具（注册不等于可见：Agent 仍需 ``add_tool`` 才对 LLM
     可见）；
@@ -97,7 +97,7 @@ class ClipboardPlugin(Plugin):
 
     .. rubric:: 功能介绍
 
-    ``runtime.use(ClipboardPlugin())`` 时框架调用 ``install(runtime)``，
+    ``runtime.install(ClipboardPlugin())`` 时框架调用 ``install(runtime)``，
     注册 ``clipboard-cut`` / ``clipboard-copy`` / ``clipboard-paste``
     三件全局工具。缓冲持久化不在 install 挂载——状态键是 per-agent
     声明，由 ``use_clipboard(self)`` 在各 Agent 的 ``setup()`` 中完成

@@ -13,7 +13,8 @@ from uuid import uuid4
 from aiohttp import web
 
 from flowing.agent import Agent, TurnContext, TurnResult, build_turn_result
-from flowing.message import Message, to_record
+from flowing.interfaces.controls import slash_lines
+from flowing.message import Message, TextBlock, to_record
 from flowing.providers import ProviderDelta
 from flowing.runtime import Runtime, launch
 
@@ -33,10 +34,26 @@ SERVE_ENDPOINTS: tuple[str, ...] = (
     "GET /agents/<agent-id>/messages",
     "GET /agents/<agent-id>/stream",
     "POST /agents/<agent-id>/cancel",
+    "POST /agents/<agent-id>/abort",
+    "POST /agents/<agent-id>/pause",
+    "POST /agents/<agent-id>/resume",
+    "POST /agents/<agent-id>/rewind",
+    "GET /agents/<agent-id>/model",
+    "PATCH /agents/<agent-id>/model",
+    "GET /agents/<agent-id>/models",
+    "GET /agents/<agent-id>/status",
+    "GET /agents/<agent-id>/tasks",
+    "POST /agents/<agent-id>/tasks/<task-id>/cancel",
+    "GET /agents/<agent-id>/export",
+    "GET /agents/<agent-id>/tree",
+    "POST /agents/<agent-id>/command",
+    "PATCH /agents/<agent-id>",
+    "GET /help",
     "GET /snapshot",
     "GET /healthz",
 )
-"""默认 serve 暴露的 HTTP 端点封闭集（八条）：serve 是纯 API 的冷启动
+"""默认 serve 暴露的 HTTP 端点封闭集（共 :data:`SERVE_ENDPOINTS` 所列条数）：
+serve 是纯 API 的冷启动
 观察窗口，固定端点集保证行为可预测，不接受开放注册任意 endpoint；
 集合之外的任何路径返回 ``404``。
 
@@ -158,10 +175,12 @@ def _build_app(runtime: Runtime, extra_routes: tuple[tuple[str, str, object], ..
         # 名录懒读共享辅助（与 repl /agents 同口径）；mtime 转 ISO 字符串输出
         items = []
         for rec in _list_agent_records(runtime):
+            pool_meta = runtime._agent_pool.get(rec["agent_id"], {})
             items.append({
                 "agent_id": rec["agent_id"],
                 "agent_type": rec["agent_type"],
                 "parent_agent_id": rec["parent_agent_id"],
+                "name": pool_meta.get("name"),
                 "created_at": rec["created_at"],
                 "active": rec["active"],
                 "last_reply": rec["last_reply"],
@@ -182,6 +201,21 @@ def _build_app(runtime: Runtime, extra_routes: tuple[tuple[str, str, object], ..
             body = {}   # 空 body 合法：缺省类型 = 项目默认主 Agent
         if not isinstance(body, dict):
             return _error(400, "request body must be a JSON object")
+        # id-adopt：body 带 id 且该会话已存在 → 现场恢复(get_agent)并返回 200；
+        # 框架分配 id，不接受带未知 id 新建
+        requested_id = body.get("id")
+        if requested_id is not None:
+            if not isinstance(requested_id, str) or not requested_id:
+                return _error(400, "id must be a non-empty string")
+            if requested_id not in runtime._nodes and requested_id not in runtime._agent_pool:
+                return _error(404, "unknown agent to adopt")
+            try:
+                node = await runtime.get_agent(requested_id)
+            except Exception as exc:
+                return _error(500, f"recover failed: {exc}")
+            if not isinstance(node, Agent):
+                return _error(404, "unknown agent")
+            return _json({"agent_id": node.node_id}, status=200)   # adopt/resume
         agent_type = body.get("agent_type")
         args = body.get("args", {})
         if agent_type is not None and not isinstance(agent_type, str):
@@ -234,8 +268,14 @@ def _build_app(runtime: Runtime, extra_routes: tuple[tuple[str, str, object], ..
         owner = f"serve-sse:{uuid4().hex}"
 
         def _on_delta(host: Agent, delta: ProviderDelta) -> ProviderDelta:
+            # 正文与思考各自成事件流：text → event:delta，thinking → event:thinking；
+            # 事件负载带 message_id（agent 预铸的本 assistant 消息 id）供前端按行归位
             if delta.kind == "text" and delta.text:
-                queue.put_nowait(("delta", delta.text))
+                queue.put_nowait(("delta", {"message_id": delta.message_id,
+                                            "text": delta.text}))
+            elif delta.kind == "thinking" and delta.text:
+                queue.put_nowait(("thinking", {"message_id": delta.message_id,
+                                               "text": delta.text}))
             return delta
 
         def _on_append(host: Agent, msg: Message) -> Message:
@@ -298,6 +338,192 @@ def _build_app(runtime: Runtime, extra_routes: tuple[tuple[str, str, object], ..
     async def _healthz(request: web.Request) -> web.Response:
         return _json({"status": "ok"})
 
+    async def _abort(request: web.Request) -> web.Response:
+        agent = await _resolve_agent(runtime, request.match_info["agent_id"])
+        if isinstance(agent, web.Response):
+            return agent
+        agent.abort_turn()   # 仅终止当前逻辑 Turn；Agent 继续消费队列
+        return _json({"status": "aborted"})
+
+    async def _pause(request: web.Request) -> web.Response:
+        agent = await _resolve_agent(runtime, request.match_info["agent_id"])
+        if isinstance(agent, web.Response):
+            return agent
+        recursive = request.query.get("recursive", "false").lower() == "true"
+        (agent.pause_recursive if recursive else agent.pause)()
+        return _json({"paused": True})
+
+    async def _resume(request: web.Request) -> web.Response:
+        agent = await _resolve_agent(runtime, request.match_info["agent_id"])
+        if isinstance(agent, web.Response):
+            return agent
+        recursive = request.query.get("recursive", "false").lower() == "true"
+        (agent.resume_recursive if recursive else agent.resume)()
+        return _json({"paused": False})
+
+    async def _rewind(request: web.Request) -> web.Response:
+        try:
+            body = await request.json()
+        except json.JSONDecodeError:
+            return _error(400, "request body must be a JSON object")
+        mid = body.get("message_id") if isinstance(body, dict) else None
+        if not isinstance(mid, str) or not mid:
+            return _error(400, "message_id must be a string")
+        agent = await _resolve_agent(runtime, request.match_info["agent_id"])
+        if isinstance(agent, web.Response):
+            return agent
+        if mid not in agent._messages:
+            return _error(400, "unknown message_id")
+        await agent.fork(mid)   # 消息级 fork：把 current_head 切到该历史消息
+        return _json({"head": agent.current_head_id})
+
+    async def _model_get(request: web.Request) -> web.Response:
+        agent = await _resolve_agent(runtime, request.match_info["agent_id"])
+        if isinstance(agent, web.Response):
+            return agent
+        return _json({
+            "model_tag": getattr(agent, "model_tag", None),
+            "model": getattr(agent.model, "model", None),
+            "provider": getattr(agent.model, "provider", None),
+            "context_window": getattr(agent.model, "context_window", None),
+            "max_output_tokens": getattr(agent.model, "max_output_tokens", None),
+        })
+
+    async def _model_set(request: web.Request) -> web.Response:
+        try:
+            body = await request.json()
+        except json.JSONDecodeError:
+            return _error(400, "request body must be a JSON object")
+        tag = body.get("model_tag") if isinstance(body, dict) else None
+        if not isinstance(tag, str) or not tag:
+            return _error(400, "model_tag must be a non-empty string")
+        agent = await _resolve_agent(runtime, request.match_info["agent_id"])
+        if isinstance(agent, web.Response):
+            return agent
+        try:
+            agent.model_tag = tag   # 运行时切换模型 tag（下轮 provider_gen 重新解析）
+        except Exception as exc:
+            return _error(400, f"unknown model_tag: {tag!r} ({exc})")
+        return _json({"model_tag": tag})
+
+    async def _models(request: web.Request) -> web.Response:
+        # 渲染后的可用 model tags（+ providers）；来源：runtime 已登记的 model-tags 表。
+        agent = await _resolve_agent(runtime, request.match_info["agent_id"])
+        if isinstance(agent, web.Response):
+            return agent
+        table = getattr(runtime, "_model_tags", None)
+        tag_map = {}
+        if table is not None:
+            try:
+                tag_map = table.tags   # {tag: model} 或模型条目表
+            except Exception:
+                tag_map = {}
+        names = list(tag_map) if isinstance(tag_map, dict) else []
+        return _json({"current": getattr(agent, "model_tag", None),
+                      "model_tags": names})
+
+    async def _status(request: web.Request) -> web.Response:
+        agent = await _resolve_agent(runtime, request.match_info["agent_id"])
+        if isinstance(agent, web.Response):
+            return agent
+        snap = agent.snapshot(keys={"model", "paused", "message_queue", "current_turn",
+                                    "executions", "context_usage"})
+        return _json(dataclasses.asdict(snap))
+
+    async def _tasks(request: web.Request) -> web.Response:
+        agent = await _resolve_agent(runtime, request.match_info["agent_id"])
+        if isinstance(agent, web.Response):
+            return agent
+        tasks = agent.get_background_tasks()
+        return _json([{"task_id": tid, "done": t.done(),
+                       "cancelled": t.cancelled()}
+                      for tid, t in tasks.items()])
+
+    async def _task_cancel(request: web.Request) -> web.Response:
+        agent = await _resolve_agent(runtime, request.match_info["agent_id"])
+        if isinstance(agent, web.Response):
+            return agent
+        ok = agent.cancel_background_task(request.match_info["task_id"])
+        return _json({"status": "cancelled" if ok else "not_found"})
+
+    async def _export(request: web.Request) -> web.Response:
+        agent = await _resolve_agent(runtime, request.match_info["agent_id"])
+        if isinstance(agent, web.Response):
+            return agent
+        fmt = request.query.get("format", "jsonl")
+        chain: list[Message] = []
+        mid = agent.current_head_id
+        while mid is not None:
+            msg = agent._messages.get(mid)
+            if msg is None:
+                break
+            chain.append(msg)
+            mid = msg.parent_id
+        chain.reverse()
+        if fmt == "md":
+            lines = []
+            for m in chain:
+                text = "".join(b.text for b in m.content if isinstance(b, TextBlock))
+                lines.append(f"**{m.kind.value}**: {text}")
+            return web.Response(text="\n\n".join(lines), content_type="text/markdown")
+        return _json([to_record(m) for m in chain])
+
+    async def _tree(request: web.Request) -> web.Response:
+        agent = await _resolve_agent(runtime, request.match_info["agent_id"])
+        if isinstance(agent, web.Response):
+            return agent
+        # 整棵消息树（含分支/多根/孤儿断点），head 标记当前头
+        children: dict[str | None, list[str]] = {}
+        for mid in agent._messages:
+            parent = agent._messages[mid].parent_id
+            children.setdefault(parent, []).append(mid)
+
+        def build(mid: str) -> dict:
+            m = agent._messages[mid]
+            return {"id": mid, "kind": m.kind.value,
+                    "head": mid == agent.current_head_id,
+                    "children": [build(c) for c in children.get(mid, [])]}
+
+        roots = [mid for mid in agent._messages
+                 if agent._messages[mid].parent_id is None
+                 or agent._messages[mid].parent_id not in agent._messages]
+        return _json({"head": agent.current_head_id,
+                      "roots": [build(r) for r in roots]})
+
+    async def _agent_patch(request: web.Request) -> web.Response:
+        agent = await _resolve_agent(runtime, request.match_info["agent_id"])
+        if isinstance(agent, web.Response):
+            return agent
+        try:
+            body = await request.json()
+        except json.JSONDecodeError:
+            return _error(400, "request body must be a JSON object")
+        name = body.get("name") if isinstance(body, dict) else None
+        if name is not None and not isinstance(name, str):
+            return _error(400, "name must be a string")
+        meta = runtime._agent_pool.setdefault(agent.node_id, {})
+        meta["name"] = name
+        return _json({"agent_id": agent.node_id, "name": meta.get("name")})
+
+    async def _help(request: web.Request) -> web.Response:
+        return _json({"endpoints": list(SERVE_ENDPOINTS)})
+
+    async def _command(request: web.Request) -> web.Response:
+        # 共享命令目录执行：web 输入框经此运行任意 repl 指令（与 repl 同源）
+        try:
+            body = await request.json()
+        except json.JSONDecodeError:
+            return _error(400, "request body must be a JSON object")
+        line = body.get("line") if isinstance(body, dict) else None
+        if not isinstance(line, str) or not line.startswith("/"):
+            return _error(400, "line must be a slash command (starting with '/')")
+        agent = await _resolve_agent(runtime, request.match_info["agent_id"])
+        if isinstance(agent, web.Response):
+            return agent
+        cmd, _, arg = line.partition(" ")
+        lines = await slash_lines(cmd, arg.strip(), agent, runtime)
+        return _json({"lines": lines})
+
     routes = {
         "POST /agents/<agent-id>/message": ("POST", "/agents/{agent_id}/message", _post_message),
         "GET /agents": ("GET", "/agents", _list_agents),
@@ -305,6 +531,21 @@ def _build_app(runtime: Runtime, extra_routes: tuple[tuple[str, str, object], ..
         "GET /agents/<agent-id>/messages": ("GET", "/agents/{agent_id}/messages", _get_messages),
         "GET /agents/<agent-id>/stream": ("GET", "/agents/{agent_id}/stream", _stream),
         "POST /agents/<agent-id>/cancel": ("POST", "/agents/{agent_id}/cancel", _cancel),
+        "POST /agents/<agent-id>/abort": ("POST", "/agents/{agent_id}/abort", _abort),
+        "POST /agents/<agent-id>/pause": ("POST", "/agents/{agent_id}/pause", _pause),
+        "POST /agents/<agent-id>/resume": ("POST", "/agents/{agent_id}/resume", _resume),
+        "POST /agents/<agent-id>/rewind": ("POST", "/agents/{agent_id}/rewind", _rewind),
+        "GET /agents/<agent-id>/model": ("GET", "/agents/{agent_id}/model", _model_get),
+        "PATCH /agents/<agent-id>/model": ("PATCH", "/agents/{agent_id}/model", _model_set),
+        "GET /agents/<agent-id>/models": ("GET", "/agents/{agent_id}/models", _models),
+        "GET /agents/<agent-id>/status": ("GET", "/agents/{agent_id}/status", _status),
+        "GET /agents/<agent-id>/tasks": ("GET", "/agents/{agent_id}/tasks", _tasks),
+        "POST /agents/<agent-id>/tasks/<task-id>/cancel": ("POST", "/agents/{agent_id}/tasks/{task_id}/cancel", _task_cancel),
+        "GET /agents/<agent-id>/export": ("GET", "/agents/{agent_id}/export", _export),
+        "GET /agents/<agent-id>/tree": ("GET", "/agents/{agent_id}/tree", _tree),
+        "POST /agents/<agent-id>/command": ("POST", "/agents/{agent_id}/command", _command),
+        "PATCH /agents/<agent-id>": ("PATCH", "/agents/{agent_id}", _agent_patch),
+        "GET /help": ("GET", "/help", _help),
         "GET /snapshot": ("GET", "/snapshot", _snapshot),
         "GET /healthz": ("GET", "/healthz", _healthz),
     }
@@ -352,8 +593,9 @@ async def cmd_serve(
     .. rubric:: 功能介绍
 
     拉起 Runtime 后启动 HTTP 服务，暴露 :data:`SERVE_ENDPOINTS` 定义的
-    封闭固定端点集（八条，REST 复数风格：消息投递 / 列举 / 创建 /
-    消息视图 / SSE 流 / 取消 / 快照 / 健康检查）。无前端，供程序调用。
+    封闭固定端点集（REST 复数风格：消息投递 / 列举创建 / 消息视图 /
+    SSE 流 / 回合与模型控制 / 任务 / 导出 / 树 / help / 快照 / 健康检查；
+    完整清单以 ``GET /help`` 为权威）。无前端，供程序调用。
 
     ``-a <host>`` / ``-p <port>`` 是本命令专属的 CLI 参数（在 CLI 层
     剥离为 ``host`` / ``port``，不进入子项目 ``main`` 的 kwargs；
@@ -419,8 +661,9 @@ async def cmd_serve(
       head 上溯链的消息列表（渲染对话用；休眠 id 同样经
       ``get_agent`` 恢复）。
     - ``GET /agents/<agent-id>/stream`` （SSE 长连接）：订阅指定
-      Agent 的钩子并逐事件推送——``on_provider_delta`` →
-      ``event: delta`` （流式生成文本）；``after_turn_append`` →
+      Agent 的钩子并逐事件推送——``on_provider_delta`` 的正文 →
+      ``event: delta`` （流式正文），思考增量 → ``event: thinking``
+      （adapter 真流式时逐段推送）；``after_turn_append`` →
       ``event: message`` （新消息挂树，工具调用与结果、steer 注入等
       对前端可见，data 为消息 JSON）；``after_turn`` →
       ``event: turn_end`` （回合收尾，data 含 ``TurnResult.status``）。

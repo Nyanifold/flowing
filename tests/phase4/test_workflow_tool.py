@@ -56,7 +56,7 @@ async def test_t88_receipt_before_run_completes(project, tmp_path):
     execute 在 run() 完成之前返回收据 {"status":"started",...}；实例的
     caller 是该 Agent；path 不透传给 run()。"""
     runtime = make_runtime(tmp_path)
-    runtime.use(WorkflowPlugin())
+    runtime.install(WorkflowPlugin())
     provider = add_fake_provider(runtime)
     agent = await runtime.create_agent("test-agent")
     try:
@@ -100,7 +100,7 @@ async def test_t89_caller_query_no_deadlock(project, tmp_path):
     工作循环在当前逻辑 Turn 结束后消费该消息，无死锁（异步防死锁规则
     回归）。"""
     runtime = make_runtime(tmp_path)
-    runtime.use(WorkflowPlugin())
+    runtime.install(WorkflowPlugin())
     provider = add_fake_provider(runtime)
     agent = await runtime.create_agent("test-agent")
     try:
@@ -138,7 +138,7 @@ async def test_t90_resolve_failure_wrapped_run_failure_contained(
     runtime = make_runtime(tmp_path, register_default_type=False)
     runtime.register_agent_type("caller-agent", SimpleAgent)
     # 刻意不注册 "test-agent"：quick.py 的 run 在后台任务内失败
-    runtime.use(WorkflowPlugin())
+    runtime.install(WorkflowPlugin())
     provider = add_fake_provider(runtime)
     agent = await runtime.create_agent("caller-agent")
     try:
@@ -179,7 +179,7 @@ async def test_workflow_plugin_launch_root(project):
     runtime = make_runtime(project)
     try:
         plugin = WorkflowPlugin()
-        runtime.use(plugin)
+        runtime.install(plugin)
         wf = plugin.launch("@/verify_fix.py")
         assert wf.caller is None
         assert wf.runtime is runtime
@@ -190,7 +190,7 @@ async def test_workflow_plugin_launch_root(project):
 
 
 def test_workflow_plugin_launch_unregistered():
-    """launch：未注册（未 ``runtime.use(WorkflowPlugin())``）→ ValueError。"""
+    """launch：未注册（未 ``runtime.install(WorkflowPlugin())``）→ ValueError。"""
     import pytest
     plugin = WorkflowPlugin()
     with pytest.raises(ValueError):

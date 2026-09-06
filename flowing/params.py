@@ -220,6 +220,36 @@ SCHEMA_KEYWORDS: frozenset[str] = frozenset({
 """
 
 
+def bridge_properties(props: Mapping[str, Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
+    """把 JSON Schema ``properties`` 收敛到桥接子集（内部 API，声明即模型侧用）。
+
+    .. rubric:: 功能介绍
+
+    从 pydantic ``model_json_schema()`` 等**机器派生**的 property 表收敛为
+    桥接子集成员——丢弃 ``title`` 等纯展示键，保留 ``SCHEMA_KEYWORDS``
+    内关键字原值。调用点是框架内部把「模型 → params_schema」的转换处
+    （``ScriptTool.__init__`` 等）；**手写** .fya ``args:`` 与覆写体不走本
+    函数，超子集键仍由 :func:`schema_to_model` fail-fast（用户笔误要报错，
+    机器噪音要滤掉，两通道分开）。
+
+    .. rubric:: 行为要点
+
+    - 只滤键、不改值；输入不被修改（返回新 dict）。
+    - 子集外关键字（``title`` 等）直接丢弃——它们是 pydantic/工具链的
+      展示元数据，对桥接无意义。
+    - 值非 dict 的畸形 property 原样透传（错误留给下游判别）。
+
+    .. seealso:: :data:`SCHEMA_KEYWORDS`、:func:`schema_to_model`。
+    """
+    out: dict[str, dict[str, Any]] = {}
+    for name, prop in props.items():
+        if isinstance(prop, dict):
+            out[name] = {k: v for k, v in prop.items() if k in SCHEMA_KEYWORDS}
+        else:
+            out[name] = dict(prop) if prop is not None else {}
+    return out
+
+
 def expand_args_schema(args: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     """把 fya ``args:`` 声明块归一化为 JSON Schema properties（展开两种简写糖）。
 

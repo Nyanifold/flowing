@@ -18,12 +18,12 @@ Python 代码显式写出，与 goal mode（LLM 按目标自主决定路径）�
 
 .. rubric:: 注册面清单
 
-- 启用方式：``runtime.use(WorkflowPlugin())`` 把 ``run-workflow`` 工具
+- 启用方式：``runtime.install(WorkflowPlugin())`` 把 ``run-workflow`` 工具
   注册进全局工具注册表，之后 Agent 经 ``add_tool("run-workflow")``
   绑定该工具，即可让 LLM 按路径拉起任意 workflow 定义。本扩展没有
   实例级 ``use_workflow(self)``：``Workflow`` 基类与
   :func:`resolve_workflow` import 即用，不需要对 Agent 做任何启用动作。
-  重复安装同名插件（再次 ``runtime.use(WorkflowPlugin())``）抛
+  重复安装同名插件（再次 ``runtime.install(WorkflowPlugin())``）抛
   ``ValueError``。
 - 注册的资源：安装时向 ``runtime.tool_registry`` 注册
   :class:`RunWorkflowTool` （:class:`flowing.tool.ScriptTool` 子类，
@@ -88,7 +88,7 @@ caller 的工作循环串行，当前逻辑 Turn（正在执行 ``run-workflow``
 
     from flowing.plugins.workflow import Workflow, WorkflowPlugin
 
-    runtime.use(WorkflowPlugin())          # 阶段一：注册 run-workflow 工具
+    runtime.install(WorkflowPlugin())          # 阶段一：注册 run-workflow 工具
 
     class VerifyFixWorkflow(Workflow):
         \"\"\"运行检查器，修复失败的内容，重复直到通过或两轮无进展。\"\"\"

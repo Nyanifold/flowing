@@ -11,7 +11,7 @@ Flowing 的核心立场是「框架只提供机制，不提供策略」。包结
   ``snapshot`` / ``providers`` / ``persistence`` / ``parser`` / ``paths`` /
   ``provide`` / ``compiler`` —— 本模块顶层导出其中面向日常使用的符号。
 - **内置扩展**：``flowing.plugins``（``skills`` / ``comm`` / ``cron`` /
-  ``workflow`` / ``clipboard``）——随包发布、显式 ``runtime.use(...)`` 启用。
+  ``workflow`` / ``clipboard``）——随包发布、显式 ``runtime.install(...)`` 启用。
 - **应用层**：``flowing.composables``（``use_xxx(agent)`` 纯函数式注入）。
 
 运行模型锚点：消息级树（``Message.id`` + ``parent_id`` 链，
@@ -36,7 +36,7 @@ Skill）；provide-inject 沿 ``_parent_id`` 链上溯；实例级钩子系统�
 
     async def main(**kwargs) -> Runtime:
         runtime = flowing.Runtime()      # @ 由 launch 上下文自动绑定
-        runtime.use(...)                  # 阶段一：安装扩展
+        runtime.install(...)              # 阶段一：安装扩展
         await runtime.mount("@/root.fya") # 创建根 Agent
         return runtime
 

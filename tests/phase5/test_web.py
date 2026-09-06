@@ -42,13 +42,12 @@ def test_t48_asset_reference_key_consistency():
         assert isinstance(assets.assets[key], bytes)
 
 
-def test_t48b_steer_priority_constant_locked():
-    """前端 SSE message 监听的 steer 分支引用的优先级常量与
-    MessagePriority.STEER 一致（无浏览器条件下的文本级锁：防常量写错导致
-    steer 摘要分支永不触发 / LOW 消息误渲染）。"""
-    assert f"msg.priority === {int(MessagePriority.STEER)}" in _APP_JS
-    # 低优先级常量不得出现在 message 监听分支（历史回归：曾误写为 LOW）
-    assert f"msg.priority === {int(MessagePriority.LOW)}" not in _APP_JS
+def test_t48b_frontend_v31_contract_locked():
+    """文本级锁：v3.1 前端须消费 serve 的 message_id 归位、thinking 流、tree/
+    rewind（无浏览器下的契约性兜底；防前端与端点面漂移）。"""
+    assert "message_id" in _APP_JS          # SSE delta/thinking 按 message_id 归位
+    assert "thinking" in _APP_JS           # 消费 thinking 事件
+    assert "tree" in _APP_JS and "rewind" in _APP_JS   # 树子页 + 切分支
 
 
 async def test_t49_web_index_and_assets(project_ok, persist_dir, monkeypatch):
