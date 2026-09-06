@@ -31,6 +31,7 @@ from flowing.tool import ToolDefinition
 
 RESOURCES = Path(__file__).parent.parent.parent / "测试资源"
 PROVIDERS_MD = RESOURCES / "providers.md"
+IMAGES = Path(__file__).parent.parent / "fixtures" / "images"  # 目录即契约
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("FLOWING_LIVE_TESTS") != "1" or not PROVIDERS_MD.exists(),
@@ -75,7 +76,7 @@ async def test_t131_vision_smoke():
         ("demo-image1.png", ("分子", "预训练")),
         ("demo-image2.png", ("热图", "矩阵")),
     ):
-        data = base64.b64encode((RESOURCES / image).read_bytes()).decode()
+        data = base64.b64encode((IMAGES / image).read_bytes()).decode()
         provider = DeepSeekProvider(ProviderConfig({"api_key": _deepseek_key()}))
         ctx = Context(system_prompt=[], tools=[], messages=[Message(
             kind=MessageKind.USER,
@@ -250,7 +251,7 @@ async def test_t140_anthropic_vision_smoke():
         ("demo-image1.png", ("分子", "预训练")),
         ("demo-image2.png", ("热图", "矩阵")),
     ):
-        data = base64.b64encode((RESOURCES / image).read_bytes()).decode()
+        data = base64.b64encode((IMAGES / image).read_bytes()).decode()
         provider = _ds_anthropic()
         ctx = Context(system_prompt=[], tools=[], messages=[Message(
             kind=MessageKind.USER,
