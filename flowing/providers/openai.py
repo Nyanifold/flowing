@@ -679,12 +679,21 @@ class DeepSeekProvider(OpenAICompletionsProvider):
     - 思考开关：``ModelConfig.thinking_budget`` 为真值（非零 int）时
       请求体带 ``thinking: {"type": "enabled"}``；DeepSeek 端点不收
       数值预算，``thinking_budget`` 在本 adapter 只作开关语义。
+      缺省 / 为 0 时不发送 ``thinking`` 字段（取服务端缺省）；如需
+      显式关闭，经 ``extra_body`` 写 ``{"thinking": {"type":
+      "disabled"}}``（本 adapter 此时不写 ``thinking``，extra_body
+      的值不会被覆盖）。
     - 思考强度：models.yaml 条目中的 ``reasoning_effort`` 字段进
       ``ModelConfig._extra``，本 adapter 原样透传为请求体顶层
-      ``reasoning_effort``（如 ``"high"``）；缺省不发送。
+      ``reasoning_effort``；官方取值为 ``"low"`` / ``"high"`` /
+      ``"max"``，adapter 不校验枚举、由服务端校验；缺省不发送。
     - 其余厂商私有参数走基类 ``extra_body`` 通用透传（见
       :class:`OpenAICompletionsProvider`）；本 adapter 的思考字段在
       ``extra_body`` 合入之后写入，同名键以本 adapter 为准。
+    - 本 adapter 只覆盖 DeepSeek 的 OpenAI 兼容端点；DeepSeek 另提供
+      Anthropic 格式端点（强度参数为 ``output_config.effort``，与本
+      框架 Anthropic 原生 adapter 的 ``budget_tokens`` 形态不同），
+      接入时需另写子类，本 adapter 不涉及。
 
     .. seealso::
 
