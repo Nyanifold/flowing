@@ -8,3 +8,12 @@ deepseek-v4:
   model: deepseek-chat
   context_window: 64000
   team_note: "x"   # 框架不认识字段 → ModelConfig._extra（不告警、不丢弃）
+# 同一模型的思考开/关两个条目：思考参数为 DeepSeek adapter 解释的 _extra 字段
+deepseek-flash:
+  provider: deepseek-personal
+  model: deepseek-v4-flash
+deepseek-flash-thinking:
+  provider: deepseek-personal
+  model: deepseek-v4-flash
+  thinking: enabled           # 思考开关（→ {"type": "enabled"}）
+  reasoning_effort: high      # 思考强度（low/high/max）

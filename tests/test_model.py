@@ -63,7 +63,8 @@ def test_t87_extra_not_resolved(agent):
 
 def test_t88_load_models(fixtures_dir):
     models = load_models(fixtures_dir / "providers" / "models.yaml")
-    assert set(models) == {"sonnet", "deepseek-v4"}
+    assert set(models) == {"sonnet", "deepseek-v4",
+                           "deepseek-flash", "deepseek-flash-thinking"}
     sonnet = models["sonnet"]
     assert sonnet.provider == "anthropic" and sonnet.model == "claude-sonnet-4-6"
     assert isinstance(sonnet.thinking_budget, Parsable)  # 模板形态字段被包装
@@ -85,6 +86,19 @@ def test_t89_unknown_field_goes_to_extra(fixtures_dir):
     cfg = models["deepseek-v4"]
     assert cfg._extra["team_note"] == "x"  # 不告警、不丢弃
     assert not hasattr(cfg, "team_note") or "team_note" not in vars(cfg)
+
+
+def test_t89b_deepseek_thinking_entries_split(fixtures_dir):
+    """同一 deepseek-v4-flash 的思考开/关两个条目：思考参数进 _extra
+    （DeepSeek adapter 解释），无思考条目不携带这些键。"""
+    models = load_models(fixtures_dir / "providers" / "models.yaml")
+    plain = models["deepseek-flash"]
+    thinking = models["deepseek-flash-thinking"]
+    assert plain.model == thinking.model == "deepseek-v4-flash"
+    assert "thinking" not in plain._extra
+    assert "reasoning_effort" not in plain._extra
+    assert thinking._extra["thinking"] == "enabled"
+    assert thinking._extra["reasoning_effort"] == "high"
 
 
 def test_t90_load_model_tags(fixtures_dir):
