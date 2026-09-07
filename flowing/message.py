@@ -1295,12 +1295,17 @@ class MessageQueue:
         return msg
 
     async def dequeue(self) -> Message:
-        """阻塞取出优先级最高的一条消息（工作循环核心默认路径）。
+        """阻塞取出优先级最高的一条消息（一次一条的取出原语）。
 
         .. rubric:: 功能介绍
 
-        队列空时挂起等待，直到有消息入队；``Agent._dequeue()`` 核心默认
-        实现即 ``[await self._message_queue.dequeue()]`` （一条一条）。
+        队列空时挂起等待，直到有消息入队。本方法是「等消息 + 取消息」合体
+        的便捷原语；``Agent._dequeue()`` 的默认实现不使用它——为了把
+        ``before_dequeue`` 的派发点移到「队列确实非空、即将出队」的时刻
+        （每条真正出队的消息之前恰好一次 before 派发），默认实现改用
+        :meth:`wait_not_empty` + :meth:`dequeue_nowait` 的拆分组合
+        （见 :meth:`flowing.agent.Agent._dequeue`）。不需要该钩子时序语义
+        的直接消费方（如自定义 ``_dequeue()`` 覆写）可用本方法。
 
         .. rubric:: 行为要点
 
@@ -1311,6 +1316,7 @@ class MessageQueue:
           ``dequeue`` 随 Task 取消而结束，不返回、不泄漏。
 
         .. seealso::
+           :meth:`wait_not_empty`、:meth:`dequeue_nowait`、
            :meth:`drain_all`、:meth:`take_while`、
            :meth:`flowing.agent.Agent._dequeue`。
         """
@@ -1634,8 +1640,8 @@ class MessageChain:
         .. rubric:: 功能介绍
 
         「活跃分支回放」的正式读路径：``Agent._assemble_context`` 与
-        ``Agent._estimate_context_usage`` 的消息路径收集与本 op 同口径
-        （内部已收敛为调用本方法）。
+        :meth:`flowing.agent.Agent.estimate_context_tokens` 的消息路径
+        收集与本 op 同口径（内部已收敛为调用本方法）。
 
         .. rubric:: 行为要点
 
@@ -1772,8 +1778,8 @@ class MessageChain:
 
         .. rubric:: 功能介绍
 
-        将 ``msg_id`` 从权威链中删除，同时**照顾子节点**（0904 契约修正，
-        与 :meth:`insert` 的邻接调整对称）：先把该消息的**直接子消息**
+        将 ``msg_id`` 从权威链中删除，同时**照顾子节点**（与 :meth:`insert`
+        的邻接调整对称）：先把该消息的**直接子消息**
         的 ``parent_id`` 改为被删消息的亲节点（``None`` = 提升为新根）——
         各自子树随之整体移动，链保持连续、不留孤儿；每个被重挂的直接子
         写一条 ``move`` 变更行（同步落盘，恢复按行序应用，含提升为根）。
@@ -1832,7 +1838,7 @@ class MessageChain:
 
         - 匹配：以上两条规则任一命中即删除；``tags`` 为空集 → 不删任何
           消息（返回 0）。
-        - **删除顺序 = 消息链线性顺序从后往前**（0904）：按消息产生序
+        - **删除顺序 = 消息链线性顺序从后往前**：按消息产生序
           （``_messages`` 键序，父恒先于子产生）逆序逐条
           :meth:`remove`——子先删、父后删。这样删除父节点时其后代中的
           待删者已清除，只需把幸存的直接子重挂到父节点的亲节点（一步到

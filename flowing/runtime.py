@@ -155,6 +155,7 @@ from flowing.paths import NamingRules
 from flowing.paths import classify_ref as _classify_ref
 from flowing.paths import infer_name as _infer_name
 from flowing.paths import kebab_to_snake as _kebab_to_snake
+from flowing.paths import path_to_module_name as _path_to_module_name
 from flowing.paths import probe_candidates as _probe_candidates
 from flowing.paths import resolve_path as _paths_resolve_path
 from flowing.paths import to_project_path as _paths_to_project_path
@@ -2579,7 +2580,8 @@ class Runtime:
         if derived_key in self._agent_types:
             return self._agent_types[derived_key]   # 派生键短路复用（文件解析是声明期行为）
         spec = importlib.util.spec_from_file_location(
-            f"flowing_agent_file_{abs(hash(str(path)))}", path)
+            _path_to_module_name(path, project_root=self.project_root,
+                                 prefix="flowing_agent_file_"), path)
         module = importlib.util.module_from_spec(spec)   # type: ignore[union-attr]
         spec.loader.exec_module(module)   # type: ignore[union-attr]
         if class_name is not None:

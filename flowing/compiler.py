@@ -333,12 +333,11 @@ def _setup_signature(setup_fn: Any, *, class_name: str) -> tuple[dict[str, Any] 
     - 参数缺类型标注 → 内置 ``ValueError`` （构造期抛——作者笔误，
       编程错误通道）；默认值须 JSON 可序列化（要发射进产物
       .py 与桥接进 schema）；
-    - 注解解析与工具侧同源（0904）：字符串注解（``from __future__
+    - 注解解析与工具侧同源：字符串注解（``from __future__
       import annotations``）经 ``$script`` 命名空间求值后，统一交给
       pydantic ``create_model``——支持 ``Annotated`` + ``Field`` 元数据
-      （``description`` / 约束）与任意 pydantic 类型，不再限定内建六型 /
-      ``Optional``；产物 properties 过 ``bridge_properties`` 收敛到桥接
-      子集（去 ``title`` 等）；
+      （``description`` / 约束）与任意 pydantic 类型；产物 properties
+      过 ``bridge_properties`` 收敛到桥接子集（去 ``title`` 等）；
     - 正常形态 → ``(properties, frozenset(参数名))``——透传参数集供
       装配层生成的包装 setup 过滤 ``kwargs`` （编译期定死，产物运行期
       不做签名探测）。
@@ -567,8 +566,8 @@ def _build(fya_path: Path, *,
         args_props = None
 
     # description 缺省：.fya 未写 description 字段时，取用户 setup 方法的
-    # docstring **整体**（cleandoc 全文）作为 agent 描述（0904 用户裁决：
-    # 与工具侧 docstring 整体回退同口径；无 setup 或无 docstring → 维持缺省）
+    # docstring **整体**（cleandoc 全文）作为 agent 描述（与工具侧
+    # docstring 整体回退同口径；无 setup 或无 docstring → 维持缺省）
     if description is _MISSING:
         if user_setup_fn is not None and user_setup_fn.__doc__:
             import inspect

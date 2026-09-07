@@ -194,6 +194,7 @@ from flowing.paths import (
     kebab_to_pascal,
     kebab_to_snake,
     pascal_to_kebab,
+    path_to_module_name,
     probe_candidates,
     resolve_path,
     to_project_path,
@@ -1195,7 +1196,7 @@ class ToolDefinition:
 
 
 def _whole_doc(doc: str | None) -> str | None:
-    """docstring 整体提取（0904 description 回退口径）：``inspect.cleandoc``
+    """docstring 整体提取：``inspect.cleandoc``
     全文、去首尾空白；无内容 → ``None``。内部 API。"""
     if not doc:
         return None
@@ -1855,8 +1856,8 @@ class ScriptTool(Tool):
 
     工具作者不直接构造 `ToolDefinition`，而是在子类上声明
     ``name`` / ``description`` / ``args_model`` 类属性；``__init__`` 时
-    框架自动生成 ``self.definition``。``name`` **必填**（0904 契约：不再
-    由类名 kebab 推断——ScriptTool 禁止没有 name 字段）；手写子类须类体
+    框架自动生成 ``self.definition``。``name`` **必填**（不由类名 kebab
+    推断——ScriptTool 禁止没有 name 字段）；手写子类须类体
     显式 ``name``（或显式 ``definition``），``.fya`` / ``.py`` 文件通道的
     规范名 = 文件身份（文件名/目录名，加载层注入，类体显式 ``name`` 与
     文件身份不符抛 :class:`flowing.errors.NameMismatchError`）。
@@ -1868,7 +1869,7 @@ class ScriptTool(Tool):
     ``callable:`` 指针指向裸函数。规范名来源：手写通道 = 类体显式
     ``name``（必填）；文件通道（``.fya`` / ``.py`` / 打标函数）= 文件名 /
     目录名身份（声明面权威，加载层注入）。``description`` 按显式声明 >
-    类 docstring 整体 > ``execute()`` docstring 整体的三级回退链取（0904：整体）。
+    类 docstring 整体 > ``execute()`` docstring 整体的三级回退链取。
 
     .. rubric:: 使用示例
 
@@ -1946,14 +1947,14 @@ class ScriptTool(Tool):
     """
 
     name: str
-    """规范工具名（kebab-case）。**必填**（0904 契约：不再由类名 kebab
+    """规范工具名（kebab-case）。**必填**（不由类名 kebab
     化推断）：手写子类须类体显式声明；``.fya`` / ``.py`` 文件通道由加载层
     以文件身份（文件名/目录名）注入，类体显式 ``name`` 与文件身份不符抛
     :class:`flowing.errors.NameMismatchError`；与显式 ``definition`` 互斥。
     """
     description: str
     """工具描述。类属性声明；缺省时按三级回退链取：显式 ``description``
-    > 类 docstring **整体** > ``execute()`` docstring **整体**（0904：不再取首段）。
+    > 类 docstring **整体** > ``execute()`` docstring **整体**。
     """
     args_model: type[BaseModel] | None
     """参数声明：Pydantic ``BaseModel`` 子类，声明即模型——LLM schema 由
@@ -1970,7 +1971,7 @@ class ScriptTool(Tool):
         - 顺序：显式 ``definition`` 类属性存在 → 直接使用（同时声明
           ``name`` / ``description`` / ``args_model`` 时发告警日志，仍以
           显式 ``definition`` 为准——互斥规则）；否则要求类体显式
-          ``name``（0904 契约：必填、不再由类名推断；缺失抛
+          ``name``（必填、不由类名推断；缺失抛
           :class:`flowing.errors.MissingFieldError`），``description`` 按
           三级回退链取（显式声明 > 类 docstring **整体** >
           ``execute()`` docstring **整体**，皆无 → 空串），``args_model`` 未声明时按
@@ -1991,7 +1992,7 @@ class ScriptTool(Tool):
                     cls.__name__)
             self.definition = cls.__dict__["definition"]
         else:
-            # name 必填（0904 契约：不再由类名 kebab 推断——ScriptTool 禁止
+            # name 必填（不由类名 kebab 推断——ScriptTool 禁止
             # 没有 name 字段）。类体显式 name（或经 .fya/.py 文件身份注入的
             # name）即规范名；只看本类 __dict__——继承来的 name 不参与
             # （与 agent 侧 _load_agent_from_py 的口径一致）
@@ -2007,8 +2008,7 @@ class ScriptTool(Tool):
             # 而非 inspect.getdoc(cls)——后者会继承基类 docstring
             description = getattr(cls, "description", None)
             if description is None:
-                # 0904：无显式 description 时回退 docstring **整体**（cleandoc
-                # 全文），与用户裁决一致（此前取首段）
+                # 无显式 description 时回退 docstring **整体**（cleandoc 全文）
                 description = (_whole_doc(cls.__doc__)
                                or _whole_doc(self.execute.__doc__) or "")
             self.definition = ToolDefinition(
@@ -2847,7 +2847,7 @@ def _script_tool_from_fya(
       桥接为校验模型（声明即模型）；缺省从 callable 签名构建
       （``_infer_from_execute``）；
     - fya 的显式 ``description`` / ``output`` 声明压过一切兜底来源
-      （callable docstring 整体是函数路径的最后回退，0904）。
+      （callable docstring 整体是函数路径的最后回退）。
     """
     import importlib.util
 
@@ -2861,7 +2861,8 @@ def _script_tool_from_fya(
         path_part, project_root=root if root is not None else Path.cwd(),
         source_dir=path.parent)   # callable 路径相对 TOOL.fya 所在目录
     spec = importlib.util.spec_from_file_location(
-        f"flowing_tool_file_{abs(hash(str(impl_path)))}", impl_path)
+        path_to_module_name(impl_path, project_root=root,
+                            prefix="flowing_tool_file_"), impl_path)
     module = importlib.util.module_from_spec(spec)   # type: ignore[union-attr]
     spec.loader.exec_module(module)   # type: ignore[union-attr]
     if not hasattr(module, symbol):
@@ -2870,9 +2871,9 @@ def _script_tool_from_fya(
     description = fields.get("description")
     output_schema = fields.get("output")
     if isinstance(target, type) and issubclass(target, ScriptTool):
-        # 0904 契约（同 _tool_from_py）：.fya callable 通道规范名 = 文件身份
-        # identity（TOOL.fya 目录/文件名）；类体显式 name 与身份不符报错；
-        # 无 definition 也无显式 name 时以身份注入（不再类名推断）
+        # .fya callable 通道规范名 = 文件身份 identity（TOOL.fya
+        # 目录/文件名，同 _tool_from_py）；类体显式 name 与身份不符报错；
+        # 无 definition 也无显式 name 时以身份注入（不做类名推断）
         explicit_name = target.__dict__.get("name")
         if explicit_name is not None and explicit_name != identity:
             raise NameMismatchError(explicit_name, identity, str(path))
@@ -3189,13 +3190,14 @@ class ToolRegistry:
         函数 / 多个子类 → ``AmbiguousToolError``；皆无 → ``FormatError``。
         子类的规范名 = 文件身份（``identity``）：类体显式 ``name`` 与身份
         不符 → ``NameMismatchError``（防错位）；类既无显式 ``name`` 也无
-        ``definition`` 时以 ``identity`` 注入（0904 契约：不再由类名推断）。
+        ``definition`` 时以 ``identity`` 注入（不由类名推断）。
         打标函数的装饰器参数断言在 :func:`_auto_generate_tool` 内。
         """
         import importlib.util
 
         spec = importlib.util.spec_from_file_location(
-            f"flowing_tool_file_{abs(hash(str(path)))}", path)
+            path_to_module_name(path, project_root=_launch_project_root(),
+                                prefix="flowing_tool_file_"), path)
         module = importlib.util.module_from_spec(spec)   # type: ignore[union-attr]
         spec.loader.exec_module(module)   # type: ignore[union-attr]
         # 只认本文件定义的符号（__module__ 过滤掉 import 进来的）
@@ -3223,10 +3225,10 @@ class ToolRegistry:
         if marked:
             return _auto_generate_tool(marked[0])
         cls = subclasses[0]
-        # 0904 契约：ScriptTool 不再由类名推断 name。.py 文件通道的规范名 =
+        # ScriptTool 不做类名推断 name。.py 文件通道的规范名 =
         # 文件身份（文件名/目录名，声明面权威，与 @flowing_tool 通道同源）：
         # 类体显式 name 与文件身份不符 -> NameMismatchError（防错位）；类既无
-        # definition 也无显式 name 时以文件身份注入（不再回退类名推断）。
+        # definition 也无显式 name 时以文件身份注入（不回退类名推断）。
         explicit_name = cls.__dict__.get("name")
         if explicit_name is not None and explicit_name != identity:
             raise NameMismatchError(explicit_name, identity, str(path))

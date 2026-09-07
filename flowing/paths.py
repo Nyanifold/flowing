@@ -89,6 +89,7 @@ __all__ = [
     "snake_to_kebab",
     "kebab_to_pascal",
     "pascal_to_kebab",
+    "path_to_module_name",
 ]
 
 # ---------------------------------------------------------------------------
@@ -281,6 +282,40 @@ def to_project_path(path: Path, *, project_root: Path) -> str:
     except ValueError:
         return str(path)
     return "@/" + str(rel) if str(rel) != "." else "@/"
+
+
+def path_to_module_name(path: Path, *, project_root: Path | None, prefix: str) -> str:
+    """把文件路径换算为确定性的动态加载模块名（内部 API，不属稳定契约）。
+
+    表示风格与 :func:`to_project_path` 一致：``project_root`` 非 ``None``
+    且在根内 → ``@/`` 根相对形式；根外或 ``project_root=None`` → 绝对
+    路径原样。随后把非标点字符（``\\w`` 之外，即分隔符与标点）清洗为
+    ``_``、去首尾 ``_``，拼上 ``prefix`` 返回——``\\w`` 在 str 正则下
+    Unicode 感知，中文等 Unicode 字母原样保留（``@/工具/搜索.py`` →
+    ``工具_搜索_py``）。供 ``importlib`` 动态加载
+    （``spec_from_file_location``）的模块命名共用（Agent / Tool 的文件
+    通道加载点）。
+
+    :param path: 源文件路径。
+    :param project_root: 项目根（决定 ``@/`` 相对表示；``None`` → 绝对
+        路径表示）。
+    :param prefix: 模块名前缀（如 ``"flowing_agent_file_"``）。
+    :return: 确定性模块名（同路径同名，跨进程稳定）。
+
+    .. rubric:: 行为要点
+
+    - 相对 ``hash()`` 命名的取舍：确定性、跨进程稳定、人眼可辨（排查
+      ``__module__`` 时直接看出源文件）；清洗是有损的（``@/a/b.py`` →
+      ``a_b_py``），不同路径清洗后同名理论上可能（如 ``a-b.py`` 与
+      ``a/b_py``），但碰撞形态可诊断，且模块名只作标签（动态加载不进
+      ``sys.modules``）。
+
+    .. seealso:: :func:`to_project_path` —— 表示风格的来源。
+    """
+    display = (to_project_path(path, project_root=project_root)
+               if project_root is not None else str(path))
+    cleaned = re.sub(r"[^\w]+", "_", display).strip("_")
+    return f"{prefix}{cleaned}"
 
 
 # ---------------------------------------------------------------------------

@@ -346,7 +346,7 @@ def _parse_skill_file(name: str, source_dir: Path) -> Skill:
       ``types.MethodType`` 绑定，``self`` 即本 Skill 实例）；目录形式
       正文可 ``{% include %}`` 目录内资料（渲染期经 Parsable include
       加载器；``content`` 的 ``$`` / ``{% include %}`` 基准 = SKILL 定义文件
-      所在目录（0904 F2 订正——不再是调用方 Agent 的 ``source_dir``））。
+      所在目录，而非调用方 Agent 的 ``source_dir``）。
 
     .. seealso:: :meth:`SkillRegistry.get`
     """

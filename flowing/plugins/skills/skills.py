@@ -951,8 +951,8 @@ async def _load_skill(
     # 第 6 步：渲染上下文 = agent 局部变量 + 合并 args（复刻 Parsable 摊平
     # 顺序：_extra < 实例属性 < agent/self 入口；合并 args 置最高优先级）。
     # content 在 registry 解析期已带 SKILL.fya 目录（_source_dir），此处只
-    # bind 调用方 agent 补 env/config/FILE_REF 的 runtime 来源（0904 F2：
-    # 不再 agent.parsable(...) 重造——那会丢掉 SKILL 目录基准，$./ 引用会
+    # bind 调用方 agent 补 env/config/FILE_REF 的 runtime 来源（不经
+    # agent.parsable(...) 重造——那会丢掉 SKILL 目录基准，$./ 引用会
     # 错误地落到调用方 Agent 目录）
     render_context = {
         **agent._extra,
