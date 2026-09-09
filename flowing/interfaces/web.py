@@ -164,7 +164,9 @@ _INDEX_HTML = r"""
         <button class="tab" data-view="tree">树</button>
       </span>
       <span id="current-id" class="mono"></span>
-      <span id="busy" hidden>…生成中…</span>
+      <span class="spacer"></span>
+      <select id="model-select" title="模型选择" hidden></select>
+      <span id="busy" hidden>生成中…</span>
     </header>
     <div id="record-view">
       <div id="conversation"></div>
@@ -173,9 +175,16 @@ _INDEX_HTML = r"""
     <div id="tree-view" hidden></div>
     <pre id="meta" hidden></pre>
     <footer>
-      <input id="input" type="text" autofocus autocomplete="off"
-             placeholder="输入消息；以 / 开头使用 repl 指令" spellcheck="false">
-      <button id="btn-send">发送</button>
+      <div id="ctx-bar" title="上下文占用">
+        <div id="ctx-fill"></div>
+        <span id="ctx-label"></span>
+      </div>
+      <div id="input-row">
+        <textarea id="input" rows="1" autofocus autocomplete="off"
+                  placeholder="输入消息；以 / 开头使用 repl 指令（Enter 发送，Shift+Enter 换行）"
+                  spellcheck="false"></textarea>
+        <button id="btn-send">发送</button>
+      </div>
     </footer>
   </main>
 </div>
@@ -186,11 +195,15 @@ _INDEX_HTML = r"""
 
 _APP_JS = r"""
 "use strict";
-// Flowing 内置前端 v3.1：agent 继承树侧栏 + 「记录(从 head 上溯)/树(切分支)」
-// 双子页 + 可输入 repl 指令的输入框。通道均为 serve HTTP API：
-//  GET /agents（含 parent_agent_id / name）、POST /agents（id-adopt）、
-//  GET /agents/<id>/messages、GET /agents/<id>/tree、POST …/rewind、
-//  POST …/message、POST …/cancel、GET …/stream(SSE: message/thinking/text/turn_end)。
+// Flowing 内置前端 v4：暗色聊天界面（风格与样式基于 kimi-code web 界面，
+// 参考实现：apps/kimi-inspect 的 ChatView/index.css，kimi-code @ a4a7df2
+// （2026-09-10）——仅借配色/卡片/折叠形态；工具特殊处理、右侧面板、权限
+// 管理、plan/goal 等 coding 功能均未采纳）。新增：消息正文 Markdown 渲染、
+// 思考折叠、工具调用/返回折叠（展开为 JSON 高亮）、上下文进度条、模型选择。
+// 通道均为 serve HTTP API（不变）：
+//  GET /agents、POST /agents、GET …/messages、GET …/tree、POST …/rewind、
+//  GET …/models、PATCH …/model、GET …/status、POST …/message、
+//  POST …/command、GET …/stream(SSE: thinking/delta/message/turn_end)。
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"]/g,
   (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -200,31 +213,142 @@ const state = {
 };
 const storeKey = "flowing.web.agent";
 
-function rowKeyOf(id) { return id; }
-
-function appendText(el, text) {
-  const span = document.createElement("span");
-  span.textContent = text;
-  el.appendChild(span);
-  el.scrollTop = el.scrollHeight;
+// ---- Markdown 渲染（消息正文；极小实现：先转义再按规则替换，无 raw HTML）----
+function mdInline(s) {
+  return esc(s)
+    .replace(/`([^`\n]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/(^|\W)\*([^*\n]+)\*/g, '$1<em>$2</em>')
+    .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g,
+             '<a href="$2" target="_blank" rel="noopener">$1</a>');
+}
+function renderMd(src) {
+  const lines = String(src).split("\n");
+  const out = [];
+  let inCode = false, codeBuf = [], listBuf = null;
+  const flushList = () => {
+    if (listBuf) { out.push(`<ul>${listBuf.join("")}</ul>`); listBuf = null; }
+  };
+  const flushCode = () => {
+    out.push(`<pre class="code"><code>${esc(codeBuf.join("\n"))}</code></pre>`);
+    codeBuf = [];
+  };
+  for (const line of lines) {
+    if (/^```/.test(line)) {
+      if (inCode) { flushCode(); inCode = false; }
+      else { flushList(); inCode = true; }
+      continue;
+    }
+    if (inCode) { codeBuf.push(line); continue; }
+    const h = line.match(/^(#{1,4})\s+(.*)$/);
+    if (h) { flushList(); out.push(`<div class="md-h md-h${h[1].length}">${mdInline(h[2])}</div>`); continue; }
+    const li = line.match(/^\s*(?:[-*]|\d+\.)\s+(.*)$/);
+    if (li) { (listBuf = listBuf || []).push(`<li>${mdInline(li[1])}</li>`); continue; }
+    flushList();
+    if (line.trim() === "") out.push('<div class="md-gap"></div>');
+    else out.push(`<div>${mdInline(line)}</div>`);
+  }
+  if (inCode) flushCode();
+  flushList();
+  return out.join("");
 }
 
-function bubble(el, cls, text) {
-  const d = document.createElement("div");
-  d.className = "msg " + cls;
-  d.textContent = text;
-  el.appendChild(d);
-  el.scrollTop = el.scrollHeight;
-  return d;
+// ---- JSON 高亮（工具调用/返回展开体；先 pretty-print 再逐 token 上色）-------
+function hlJson(obj) {
+  const text = typeof obj === "string" ? obj : JSON.stringify(obj, null, 2);
+  return esc(text).replace(
+    /(&quot;(?:\\.|[^&])*?&quot;)(\s*:)?|\b(true|false|null)\b|-?\b\d+(?:\.\d+)?\b/g,
+    (m, str, colon) => {
+      if (str) return colon ? `<span class="j-key">${str}</span>${colon}`
+                            : `<span class="j-str">${str}</span>`;
+      if (/^(true|false|null)$/.test(m)) return `<span class="j-kw">${m}</span>`;
+      return `<span class="j-num">${m}</span>`;
+    });
 }
 
+// ---- 通用 DOM ---------------------------------------------------------------
+function el(cls, tag = "div") { const d = document.createElement(tag); if (cls) d.className = cls; return d; }
+function scrollDown() { const c = $("#conversation"); c.scrollTop = c.scrollHeight; }
 function setBusy(on) { state.running = on; $("#busy").hidden = !on; }
 
-// ---- 侧边栏：agent 继承树 --------------------------------------------------
+// 可折叠卡（思考 / 工具）：header 行点击开合，body 默认收起
+function foldCard(kind, title, sub) {
+  const card = el(`fold ${kind}`);
+  const head = el("fold-head");
+  head.appendChild(el("fold-icon")).textContent = "▸";
+  const t = el("fold-title"); t.textContent = title; head.appendChild(t);
+  if (sub) { const s = el("fold-sub"); s.textContent = sub; head.appendChild(s); }
+  const body = el("fold-body"); body.hidden = true;
+  head.onclick = () => {
+    body.hidden = !body.hidden;
+    head.firstChild.textContent = body.hidden ? "▸" : "▾";
+    card.classList.toggle("open", !body.hidden);
+  };
+  card.append(head, body);
+  return { card, body };
+}
+
+// ---- 消息渲染 ---------------------------------------------------------------
+function renderBlocks(m) {
+  // 把一条消息渲染为节点列表（思考卡 / md 正文 / 工具调用卡 / 工具结果卡）
+  const nodes = [];
+  const texts = [];
+  for (const b of m.content || []) {
+    if (b.type === "thinking" && b.thinking) {
+      const f = foldCard("thinking", "思考过程", "");
+      f.body.innerHTML = `<div class="thinking-text">${esc(b.thinking)}</div>`;
+      nodes.push(f.card);
+    } else if (b.type === "tool_call") {
+      const f = foldCard("toolcall", `调用 ${b.name || "tool"}`,
+                         JSON.stringify(b.args || {}).slice(0, 80));
+      f.body.innerHTML = `<pre class="json">${hlJson(b.args || {})}</pre>`;
+      nodes.push(f.card);
+    } else if (b.text) texts.push(b.text);
+    else if (b.data !== undefined) texts.push("```json\n" + JSON.stringify(b.data, null, 2) + "\n```");
+  }
+  if (texts.join("").trim()) {
+    const body = el("md");
+    body.innerHTML = renderMd(texts.join("\n"));
+    nodes.push(body);
+  }
+  return nodes;
+}
+
+function renderMessage(m) {
+  // 一条消息的完整行容器；返回 {row, key}
+  const key = String(m.id);
+  let row = state.rows.get(key);
+  if (!row) { row = el(""); $("#conversation").appendChild(row); state.rows.set(key, row); }
+  row.innerHTML = "";
+  row.className = "row " + (m.kind === "user" ? "row-user" : "");
+  if (m.kind === "tool") {
+    const f = foldCard("toolresult", `工具返回（${m.tool_status || "?"}）`, "");
+    const blocks = (m.content || []).map((b) =>
+      b.data !== undefined ? b.data : (b.text || "")).join("\n");
+    f.body.innerHTML = `<pre class="json">${hlJson(typeof blocks === "string" ? blocks : blocks)}</pre>`;
+    row.appendChild(f.card);
+  } else if (m.kind === "user") {
+    const b = el("bubble bubble-user"); b.textContent =
+      (m.content || []).map((x) => x.text || "").join("");
+    row.appendChild(b);
+  } else if (m.kind === "provider") {
+    const wrap = el("bubble-group");
+    for (const n of renderBlocks(m)) wrap.appendChild(n);
+    row.appendChild(wrap);
+  } else {   // event / system / 其余：小号 meta 行
+    const d = el("msg-meta");
+    d.textContent = `[${m.kind}${m.source ? ":" + m.source : ""}] ` +
+      (m.content || []).map((x) => x.text || "").join("").slice(0, 200);
+    row.appendChild(d);
+  }
+  return row;
+}
+
+// ---- 侧边栏：agent 继承树 ----------------------------------------------------
 function renderTree() {
   const root = $("#agent-tree");
   root.innerHTML = "";
-  const children = new Map();   // parent_id -> [agent]
+  const children = new Map();
   for (const a of state.agents) {
     const p = a.parent_agent_id || null;
     if (!children.has(p)) children.set(p, []);
@@ -236,26 +360,20 @@ function renderTree() {
     if (items.length === 0) return null;
     const ul = document.createElement("ul");
     for (const a of items) {
-      const li = document.createElement("li");
-      li.className = a.agent_id === state.current ? "current" : "";
-      const row = document.createElement("div");
-      row.className = "agent";
+      const li = el(a.agent_id === state.current ? "current" : "", "li");
+      const row = el("agent");
       const kids = build(a.agent_id);
+      const toggle = el("toggle", "span");
       if (kids) {
-        const toggle = document.createElement("span");
-        toggle.className = "toggle";
         toggle.textContent = "▾";
         toggle.onclick = (e) => {
           e.stopPropagation();
           kids.hidden = !kids.hidden;
           toggle.textContent = kids.hidden ? "▸" : "▾";
         };
-        row.appendChild(toggle);
-      } else {
-        row.appendChild(document.createElement("span"));
       }
-      const label = document.createElement("span");
-      label.className = "label";
+      row.appendChild(toggle);
+      const label = el("label", "span");
       label.textContent = a.name || a.agent_id;
       label.title = `${a.agent_id}  ${a.last_reply || ""}`;
       row.appendChild(label);
@@ -268,7 +386,7 @@ function renderTree() {
   }
   const top = build(null);
   if (top) root.appendChild(top);
-  else bubble(root, "meta", "(no agents)");
+  else { const d = el("msg-meta"); d.textContent = "(no agents)"; root.appendChild(d); }
 }
 
 async function refreshAgents() {
@@ -279,7 +397,39 @@ async function refreshAgents() {
   if (!state.current && state.agents.length) focus(state.agents[0].agent_id);
 }
 
-// ---- 当前 agent 视角 --------------------------------------------------------
+// ---- 模型选择 / 上下文进度条 --------------------------------------------------
+async function refreshModels() {
+  if (!state.current) return;
+  const resp = await fetch(`/agents/${encodeURIComponent(state.current)}/models`);
+  if (!resp.ok) return;
+  const b = await resp.json();
+  const sel = $("#model-select");
+  sel.innerHTML = "";
+  for (const name of b.model_tags || []) {
+    const o = document.createElement("option");
+    o.value = name; o.textContent = name;
+    if (name === b.current) o.selected = true;
+    sel.appendChild(o);
+  }
+  sel.hidden = !(b.model_tags || []).length;
+}
+
+async function refreshCtx() {
+  if (!state.current) return;
+  const resp = await fetch(`/agents/${encodeURIComponent(state.current)}/status`);
+  if (!resp.ok) return;
+  const snap = await resp.json();
+  const cu = snap.context_usage || {};
+  const fill = $("#ctx-fill"), label = $("#ctx-label");
+  const ratio = cu.usage_ratio;
+  if (ratio == null) { fill.style.width = "0%"; label.textContent = "ctx n/a"; return; }
+  const pct = Math.min(100, Math.round(ratio * 100));
+  fill.style.width = pct + "%";
+  fill.dataset.hot = ratio > 0.8 ? "1" : "";
+  label.textContent = `${(cu.tokens / 1000).toFixed(1)}k / ${((cu.context_window || 0) / 1000).toFixed(0)}k (${pct}%)`;
+}
+
+// ---- 当前 agent 视角 ---------------------------------------------------------
 async function focus(id) {
   state.current = id;
   localStorage.setItem(storeKey, id);
@@ -287,7 +437,7 @@ async function focus(id) {
   $("#empty-state").hidden = true;
   renderTree();
   openStream(id);
-  await showView("record");
+  await Promise.all([showView("record"), refreshModels(), refreshCtx()]);
 }
 
 function closeStream() { if (state.es) { state.es.close(); state.es = null; } state.generating = null; }
@@ -298,45 +448,43 @@ function openStream(id) {
   const conv = $("#conversation");
   es.addEventListener("thinking", (e) => {
     const d = JSON.parse(e.data);
-    const key = rowKeyOf(d.message_id || "g" + state.generatingIndex());
-    let el = state.rows.get(key);
-    if (!el) { el = bubble(conv, "thinking", ""); state.rows.set(key, el); }
-    appendText(el, d.text || "");
-    setBusy(true);
+    const key = String(d.message_id || "g" + state.generatingIndex());
+    let row = state.rows.get(key);
+    if (!row || !row.querySelector(".fold.thinking")) {
+      if (!row) { row = el("row"); conv.appendChild(row); state.rows.set(key, row); }
+      const f = foldCard("thinking", "思考过程", "");
+      f.body.innerHTML = '<div class="thinking-text"></div>';
+      row.appendChild(f.card);
+    }
+    const t = row.querySelector(".thinking-text");
+    t.textContent += d.text || "";
+    setBusy(true); scrollDown();
   });
   es.addEventListener("delta", (e) => {
     const d = JSON.parse(e.data);
-    const key = rowKeyOf(d.message_id || "g" + state.generatingIndex());
-    let el = state.rows.get(key);
-    if (!el || el.dataset.role !== "provider") {
-      el = bubble(conv, "provider", "");
-      el.dataset.role = "provider";
-      state.rows.set(key, el);
+    const key = String(d.message_id || "g" + state.generatingIndex());
+    let row = state.rows.get(key);
+    if (!row) { row = el("row"); conv.appendChild(row); state.rows.set(key, row); }
+    let live = row.querySelector(".md.live");
+    if (!live) {
+      const wrap = el("bubble-group");
+      live = el("md live"); wrap.appendChild(live); row.appendChild(wrap);
     }
-    appendText(el, d.text || "");
-    state.generating = el;
-    setBusy(true);
+    live.dataset.raw = (live.dataset.raw || "") + (d.text || "");
+    live.textContent = live.dataset.raw;   // 流式期间纯文本，落定后整体 md 重排
+    state.generating = row;
+    setBusy(true); scrollDown();
   });
   es.addEventListener("message", (e) => {
     const m = JSON.parse(e.data);
     setBusy(false);
-    // 只在记录视图把新消息落行；user/provider/tool 各按其类
-    if (m.kind === "tool") {
-      const text = (m.content || []).map((b) => b.text || b.data ? JSON.stringify(b.data) : "").join("");
-      bubble(conv, "meta", `[tool:${m.tool_status || ""}] ${esc(text).slice(0, 120)}`);
-      return;
-    }
-    const key = rowKeyOf(m.id);
-    let el = state.rows.get(key);
-    if (el) return;   // 已在流式增量中
-    const cls = m.kind === "user" ? "user" : "provider";
-    el = bubble(conv, cls, "");
-    el.dataset.role = m.kind === "user" ? "user" : "provider";
-    state.rows.set(key, el);
-    const text = (m.content || []).map((b) => b.text || "").join("");
-    appendText(el, text);
+    if (state.rows.has(String(m.id))) renderMessage(m);   // 流式行整体重排为最终形态
+    else if (m.kind !== "user") renderMessage(m);         // user 已在发送时上屏
+    scrollDown();
   });
-  es.addEventListener("turn_end", (e) => { setBusy(false); state.generating = null; });
+  es.addEventListener("turn_end", () => {
+    setBusy(false); state.generating = null; refreshCtx();
+  });
   es.onerror = () => { es.close(); setBusy(false); };
   state.es = es;
 }
@@ -349,34 +497,24 @@ async function loadRecord(id) {
   const resp = await fetch(`/agents/${encodeURIComponent(id)}/messages`);
   if (!resp.ok) return;
   const msgs = await resp.json();
-  for (const m of msgs) {
-    const text = (m.content || []).map((b) => b.text || "").join("");
-    const think = (m.content || []).map((b) => b.thinking || "").join("");
-    if (m.kind === "user") { const el = bubble(conv, "user", text); state.rows.set(rowKeyOf(m.id), el); }
-    else if (m.kind === "provider") {
-      if (think) { const t = bubble(conv, "thinking", think); t.onclick = () => t.classList.toggle("folded"); t.classList.add("folded"); }
-      const el = bubble(conv, "provider", text); state.rows.set(rowKeyOf(m.id), el);
-    }
-  }
+  for (const m of msgs) renderMessage(m);
+  scrollDown();
 }
 
-// ---- 「树」子页：消息树 + 切换分支 ------------------------------------------
+// ---- 「树」子页：消息树 + 切换分支 ---------------------------------------------
 async function loadTree(id) {
   const host = $("#tree-view");
   host.innerHTML = "";
   const resp = await fetch(`/agents/${encodeURIComponent(id)}/tree`);
-  if (!resp.ok) { bubble(host, "meta", "tree unavailable"); return; }
+  if (!resp.ok) { const d = el("msg-meta"); d.textContent = "tree unavailable"; host.appendChild(d); return; }
   const t = await resp.json();
-  const hdr = document.createElement("div");
-  hdr.className = "meta";
+  const hdr = el("msg-meta");
   hdr.textContent = `head=${t.head}`;
   host.appendChild(hdr);
   function nodeEl(n) {
-    const li = document.createElement("li");
-    li.className = n.head ? "head" : "";
-    const d = document.createElement("div");
-    d.className = "node";
-    d.textContent = `${n.kind}:${n.id.slice(0, 12)}${n.head ? " ←head" : ""}`;
+    const li = el(n.head ? "head" : "", "li");
+    const d = el("node");
+    d.textContent = `${n.kind}:${String(n.id).slice(0, 12)}${n.head ? " ←head" : ""}`;
     d.title = n.id;
     d.onclick = async () => {
       await fetch(`/agents/${encodeURIComponent(id)}/rewind`,
@@ -407,12 +545,12 @@ async function showView(v) {
   else if (v === "tree" && state.current) await loadTree(state.current);
 }
 
-// ---- 输入框：普通消息 vs repl 指令 -------------------------------------------
+// ---- 输入框：普通消息 vs repl 指令 ---------------------------------------------
 async function runCommand(text) {
   const meta = $("#meta");
   meta.hidden = false;
   meta.textContent = "";
-  bubble(meta, "meta", "» " + text);
+  const hd = el("msg-meta"); hd.textContent = "» " + text; meta.appendChild(hd);
   const parts = text.slice(1).split(/\s+/);
   const cmd = parts[0];
   const arg = parts.slice(1).join(" ").trim();
@@ -433,11 +571,12 @@ async function runCommand(text) {
           body: JSON.stringify({ line: text }) });
       const b = await r.json();
       out.push(...(b.lines || []));
+      if (cmd === "model") refreshModels();
     } else {
       out.push("no agent focused (click one in the sidebar)");
     }
   } catch (err) { out.push("error: " + err.message); }
-  out.forEach((l) => bubble(meta, "meta", l));
+  for (const l of out) { const d = el("msg-meta"); d.textContent = l; meta.appendChild(d); }
 }
 
 async function send() {
@@ -445,9 +584,14 @@ async function send() {
   const text = input.value.trim();
   if (!text) return;
   input.value = "";
+  input.style.height = "auto";
   if (text.startsWith("/")) { await runCommand(text); return; }
   if (!state.current) return;
-  bubble($("#conversation"), "user", text);
+  const userRow = el("row row-user");
+  const b = el("bubble bubble-user"); b.textContent = text;
+  userRow.appendChild(b);
+  $("#conversation").appendChild(userRow);
+  scrollDown();
   setBusy(true);
   const resp = await fetch(`/agents/${encodeURIComponent(state.current)}/message`,
     { method: "POST", headers: { "Content-Type": "application/json" },
@@ -455,19 +599,34 @@ async function send() {
   setBusy(false);
   if (!resp.ok) return;
   const body = await resp.json();
-  const conv = $("#conversation");
-  const key = rowKeyOf(body.message_id);   // 挂树 USER 消息
-  if (state.generating) {
-    state.generating.textContent = body.final_text || "";
+  const key = String(body.message_id);
+  if (state.generating) {   // 流式行已被 SSE message 事件重排；此处只兜底
     state.generating = null;
-  } else {
-    const el = bubble(conv, "provider", body.final_text || "");
-    state.rows.set(key + ":reply", el);
+  } else if (body.final_text && !state.rows.has(key + ":reply")) {
+    const row = el("row");
+    const wrap = el("bubble-group");
+    const mdb = el("md"); mdb.innerHTML = renderMd(body.final_text);
+    wrap.appendChild(mdb); row.appendChild(wrap);
+    $("#conversation").appendChild(row);
   }
+  refreshCtx();
 }
 
+// ---- 事件接线与启动 -------------------------------------------------------------
 $("#btn-send").addEventListener("click", send);
-$("#input").addEventListener("keydown", (e) => { if (e.key === "Enter") send(); });
+$("#input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+});
+$("#input").addEventListener("input", (e) => {
+  e.target.style.height = "auto";
+  e.target.style.height = Math.min(e.target.scrollHeight, 160) + "px";
+});
+$("#model-select").addEventListener("change", async (e) => {
+  if (!state.current) return;
+  await fetch(`/agents/${encodeURIComponent(state.current)}/model`,
+    { method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model_tag: e.target.value }) });
+});
 $("#btn-new").addEventListener("click", async () => {
   const r = await fetch("/agents", { method: "POST", body: "{}",
     headers: { "Content-Type": "application/json" } });
@@ -483,45 +642,128 @@ refreshAgents().then(() => {
 """
 
 _STYLE_CSS = r"""
-body { margin: 0; font-family: system-ui, sans-serif; height: 100vh; display: flex; }
+/* Flowing 内置前端样式——暗色主题，风格词汇基于 kimi-code web 界面
+   （apps/kimi-inspect index.css / ChatView，kimi-code @ a4a7df2 2026-09-10）：
+   #0b0d10 底、#d6dae0 文、neutral-800 边、sky-900/40 用户泡、折叠卡形态。 */
+:root { color-scheme: dark; }
+* { box-sizing: border-box; scrollbar-width: thin; scrollbar-color: #2b313a transparent; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: #2b313a; border-radius: 4px; }
+body {
+  margin: 0; background: #0b0d10; color: #d6dae0; height: 100vh; display: flex;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+}
 #layout { display: flex; width: 100%; height: 100%; }
-#sidebar { width: 260px; border-right: 1px solid #ddd; overflow: auto; padding: .5rem; }
-.side-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: .5rem; }
-.brand { font-weight: 600; }
-#agent-tree ul { list-style: none; padding-left: 1em; margin: 0; }
-#agent-tree .agent { cursor: pointer; padding: .15em .2em; border-radius: 4px; }
-#agent-tree .agent:hover { background: #eef2ff; }
-#agent-tree .current .label { font-weight: 700; }
-.toggle { display: inline-block; width: 1em; cursor: pointer; color: #888; }
-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-header { display: flex; gap: .8rem; align-items: center; padding: .5rem 1rem;
-         border-bottom: 1px solid #ddd; }
-#view-tabs .tab { border: 1px solid #bbb; background: #fff; padding: .2em .6em;
-                  border-radius: 6px; cursor: pointer; }
-#view-tabs .tab.active { background: #2563eb; color: #fff; border-color: #2563eb; }
-.mono { font-family: ui-monospace, monospace; font-size: .8em; color: #666;
-        overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#record-view { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
-#conversation { flex: 1; padding: 1rem; }
-.msg { max-width: 78%; margin: .4rem 0; padding: .5rem .8rem; border-radius: .6rem;
-       white-space: pre-wrap; }
-.msg.user { margin-left: auto; background: #d7ebff; }
-.msg.provider { margin-right: auto; background: #f0f0f0; }
-.msg.thinking { margin-right: auto; background: #faf5d0; color: #6b5b00; font-size: .85em;
-                border-left: 3px solid #d9c400; cursor: pointer; }
-.msg.thinking.folded { max-height: 1.6em; overflow: hidden; }
-.msg.meta { margin: .2rem auto; background: none; color: #888; font-size: .8em; padding: 0; white-space: normal; }
-#tree-view { flex: 1; overflow: auto; padding: 1rem; font-family: ui-monospace, monospace; font-size: .85em; }
-#tree-view ul { list-style: none; padding-left: 1.2em; }
-#tree-view .node { cursor: pointer; padding: 1px 2px; }
-#tree-view .node:hover { background: #eef2ff; }
-#tree-view .head { color: #2563eb; font-weight: 700; }
-#meta { flex: 0 1 auto; max-height: 30%; overflow: auto; padding: .5rem 1rem;
-        background: #fafafa; border-top: 1px solid #eee; }
-footer { display: flex; gap: .5rem; padding: .5rem 1rem; border-top: 1px solid #ddd; }
-footer input { flex: 1; padding: .5rem; }
-#empty-state { text-align: center; margin-top: 4rem; color: #666; }
 
+/* 侧边栏 */
+#sidebar { width: 240px; border-right: 1px solid #262b33; overflow: auto;
+           padding: .5rem; background: #0e1116; }
+.side-head { display: flex; justify-content: space-between; align-items: center;
+             margin-bottom: .5rem; }
+.brand { font-weight: 600; color: #e6e9ee; }
+#btn-new { background: #1a1f27; color: #d6dae0; border: 1px solid #2b313a;
+           border-radius: 6px; width: 22px; height: 22px; cursor: pointer; }
+#btn-new:hover { border-color: #0ea5e9; }
+#agent-tree ul { list-style: none; padding-left: 1em; margin: 0; }
+#agent-tree .agent { cursor: pointer; padding: .2em .3em; border-radius: 6px;
+                     display: flex; gap: .2em; align-items: center; color: #aab2bc; }
+#agent-tree .agent:hover { background: #1a1f27; }
+#agent-tree .current > .agent { background: rgba(14,116,144,.25); color: #e6e9ee; }
+.toggle { display: inline-block; width: 1em; cursor: pointer; color: #6b7280; }
+
+/* 主列 */
+main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+header { display: flex; gap: .8rem; align-items: center; padding: .45rem 1rem;
+         border-bottom: 1px solid #262b33; background: #0e1116; }
+.spacer { flex: 1; }
+#view-tabs .tab { border: 1px solid #2b313a; background: #11141a; color: #9aa1ab;
+                  padding: .2em .7em; border-radius: 6px; cursor: pointer; font-size: 12px; }
+#view-tabs .tab.active { background: rgba(14,116,144,.35); color: #e6f6ff;
+                         border-color: #155e75; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 11px; color: #6b7280; overflow: hidden;
+        text-overflow: ellipsis; white-space: nowrap; }
+#busy { color: #38bdf8; font-size: 12px; }
+#model-select { background: #11141a; color: #d6dae0; border: 1px solid #2b313a;
+                border-radius: 6px; padding: .15em .4em; font-size: 12px; }
+
+/* 消息区 */
+#record-view { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+#conversation { flex: 1; padding: 1rem 1.2rem; display: flex; flex-direction: column; }
+.row { margin: .25rem 0; }
+.row-user { display: flex; justify-content: flex-end; }
+.bubble-user { max-width: 80%; white-space: pre-wrap; border-radius: 8px;
+               background: rgba(14,116,144,.4); padding: .45rem .75rem;
+               color: #f0f9ff; }
+.bubble-group { max-width: 85%; display: flex; flex-direction: column; gap: .35rem; }
+.msg-meta { margin: .15rem auto; color: #6b7280; font-size: 11px;
+            font-family: ui-monospace, Menlo, monospace; white-space: normal; }
+
+/* Markdown 正文 */
+.md { line-height: 1.55; }
+.md code { background: #1a1f27; border-radius: 4px; padding: 0 .3em;
+           font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+.md pre.code { background: #0e1116; border: 1px solid #262b33; border-radius: 8px;
+               padding: .6rem .8rem; overflow-x: auto; }
+.md pre.code code { background: none; padding: 0; }
+.md a { color: #38bdf8; }
+.md-h { font-weight: 600; color: #e6e9ee; margin: .35rem 0 .15rem; }
+.md-h1 { font-size: 15px; } .md-h2 { font-size: 14px; }
+.md-gap { height: .4rem; }
+.md ul { margin: .2rem 0; padding-left: 1.3em; }
+
+/* 折叠卡（思考 / 工具调用 / 工具返回） */
+.fold { border: 1px solid #262b33; border-radius: 8px; background: rgba(17,20,26,.5);
+        max-width: 85%; }
+.fold-head { display: flex; align-items: center; gap: .4rem; padding: .35rem .6rem;
+             cursor: pointer; user-select: none; }
+.fold-head:hover { background: rgba(26,31,39,.6); border-radius: 8px; }
+.fold-icon { color: #6b7280; font-size: 10px; width: 1em; }
+.fold-title { font-size: 11px; color: #9aa1ab; font-family: ui-monospace, Menlo, monospace; }
+.fold-sub { font-size: 10px; color: #525a66; font-family: ui-monospace, Menlo, monospace;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40em; }
+.fold-body { border-top: 1px solid #262b33; padding: .5rem .7rem; }
+.fold.thinking { border-style: dashed; border-color: #3a3f4a; }
+.fold.thinking .fold-title { color: #b7a05a; }
+.thinking-text { white-space: pre-wrap; color: #9aa1ab; font-size: 12px; }
+pre.json { margin: 0; font-family: ui-monospace, Menlo, monospace; font-size: 11px;
+           overflow-x: auto; color: #c8cfd8; }
+.j-key { color: #7dd3fc; } .j-str { color: #86efac; }
+.j-num { color: #f0abfc; } .j-kw  { color: #fbbf24; }
+
+/* 树子页 */
+#tree-view { flex: 1; overflow: auto; padding: 1rem;
+             font-family: ui-monospace, Menlo, monospace; font-size: 11px; }
+#tree-view ul { list-style: none; padding-left: 1.2em; }
+#tree-view .node { cursor: pointer; padding: 1px 4px; border-radius: 4px;
+                   color: #9aa1ab; }
+#tree-view .node:hover { background: #1a1f27; }
+#tree-view .head { color: #38bdf8; font-weight: 700; }
+
+/* 底部：上下文进度条 + 输入 */
+#meta { flex: 0 1 auto; max-height: 30%; overflow: auto; padding: .5rem 1rem;
+        background: #0e1116; border-top: 1px solid #262b33; margin: 0; }
+footer { padding: .5rem 1rem .7rem; border-top: 1px solid #262b33;
+         background: #0e1116; }
+#ctx-bar { position: relative; height: 14px; border: 1px solid #262b33;
+           border-radius: 7px; background: #11141a; margin-bottom: .45rem;
+           overflow: hidden; }
+#ctx-fill { height: 100%; width: 0%; background: #155e75; transition: width .3s; }
+#ctx-fill[data-hot="1"] { background: #b45309; }
+#ctx-label { position: absolute; inset: 0; display: flex; align-items: center;
+             justify-content: center; font-size: 10px; color: #9aa1ab;
+             font-family: ui-monospace, Menlo, monospace; }
+#input-row { display: flex; gap: .5rem; align-items: flex-end; }
+#input { flex: 1; resize: none; border: 1px solid #2b313a; border-radius: 8px;
+         background: #05070a; color: #f3f4f6; padding: .5rem .7rem;
+         font: inherit; outline: none; max-height: 160px; }
+#input:focus { border-color: #0284c7; }
+#btn-send { background: rgba(14,116,144,.5); color: #e6f6ff;
+            border: 1px solid #155e75; border-radius: 8px;
+            padding: .45rem 1rem; cursor: pointer; }
+#btn-send:hover { background: rgba(14,116,144,.75); }
+#empty-state { text-align: center; margin-top: 4rem; color: #6b7280; }
 """
 _ASSETS_CACHE: FrontendAssets | None = None
 
@@ -530,9 +772,11 @@ def get_frontend_assets() -> FrontendAssets:
     """返回前端资产包。
 
     ``web`` 子命令获取前端资产的唯一入口。返回框架随包发布的内置
-    默认前端：agent 继承树侧栏 + 「记录 / 树」双子页（记录从当前
-    head 上溯，树可点节点切换分支），输入框支持消息与 repl 指令
-    （经 serve 的观察 / 控制端点，含思考折叠展示）。
+    默认前端（暗色聊天界面，风格基于 kimi-code web 界面 @ a4a7df2）：
+    agent 继承树侧栏 + 「记录 / 树」双子页（记录从当前 head 上溯，树可
+    点节点切换分支），消息正文 Markdown 渲染、思考折叠、工具调用/返回
+    折叠卡（展开为 JSON 高亮）、输入框上方上下文占用进度条、头部模型
+    选择；输入框支持消息与 repl 指令（经 serve 的观察 / 控制端点）。
 
     本内置资产即 ``web`` 的默认前端来源（``GET /`` 与 ``GET /assets/*``
     的返回即此资产包）。
