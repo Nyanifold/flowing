@@ -69,7 +69,7 @@ class ProvideNode(Protocol):
 
     node_id: str
     """节点在共享 ID 空间中的唯一标识。取值形如 ``runtime-0`` /
-    ``workflow-<uuid>`` / ``agent-<uuid>``，前缀即节点类型；Runtime 的
+    ``workflow-<8 位 hex>`` / ``agent-<6 位 hex>``，前缀即节点类型；Runtime 的
     ``node_id`` 恒为 ``runtime-0``。可用
     :meth:`flowing.runtime.Runtime.get_node` 按 ID 查回节点。
     """

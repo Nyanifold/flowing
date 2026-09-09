@@ -39,7 +39,7 @@ Message 字段规约总表：
    * - 字段
      - 规约要点
    * - ``id``
-     - 全局唯一消息 id（UUID），同时是消息级树的节点 id
+     - Agent 内自增序列号（纯数字字符串），同时是消息级树的节点 id；缺省 ``None`` 由 Agent 边界铸造
    * - ``parent_id``
      - 消息级亲代链；``None`` = 根标记（允许多根，森林模型）；树上溯与上下文组装的唯一依据
    * - ``kind``
@@ -192,7 +192,6 @@ from collections.abc import Callable, Iterator
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Literal
-from uuid import uuid4
 
 if TYPE_CHECKING:
     from flowing.providers import Usage   # 注解级引用（message→providers 为注解级边，无环）
@@ -813,8 +812,10 @@ class Message:
 
     .. rubric:: 行为要点
 
-    - ``id`` 默认由框架分配（UUID）；``enqueue_message`` 返回
-      ``msg.id``，``Agent.query()`` 的等待与该 id 绑定。
+    - ``id`` 缺省为 ``None``（未指定），由 Agent 边界（入队 / 挂树）
+      铸造为按 Agent 的自增序列号；显式给定的一律尊重。
+      ``enqueue_message`` 返回 ``msg.id``，``Agent.query()`` 的等待与
+      该 id 绑定。
     - ``parent_id`` 由 ``Agent._append_message`` 在挂树时设置（首条消息
       链到 ``current_head_id``，后续链到上一条）；手动构造的消息入队前
       通常为 ``None``。
@@ -877,9 +878,14 @@ class Message:
     「tool 认识 message、message 不认识 tool」的单向依赖。
     ``__post_init__`` 双向强制。
     """
-    id: str = field(default_factory=lambda: uuid4().hex)
-    """全局唯一消息 id（默认 UUID），同时是消息级树的节点 id；
+    id: str | None = None
+    """消息 id（默认 ``None`` = 未指定），同时是消息级树的节点 id；
     ``enqueue_message`` 的返回值。
+
+    ``None`` 的消息在进入 Agent 边界（入队 / 挂树 / 回合内预铸）时由
+    属主 Agent 铸造——按 Agent 维口的自增序列号（纯数字字符串），
+    计数器持久化于 core 状态袋（``message_seq``），跨恢复续接；
+    显式给定的 id 一律尊重，不被重铸。
     """
     parent_id: str | None = None
     """消息级亲代链：``None`` = 根标记（森林模型，一棵树允许多个根——新根经
@@ -1710,6 +1716,8 @@ class MessageChain:
         # _persist_message / _persist_tree_record 同步提交（write-behind 排队即返）。
         if after_id not in self._agent._messages:
             raise KeyError(after_id)
+        if msg.id is None:
+            msg.id = self._agent._next_message_id()   # 未显式指定 → 属主 Agent 铸造自增 id
         if msg.id in self._agent._messages:
             raise ValueError(msg.id)
         rehung: list[str] = []
@@ -1766,6 +1774,8 @@ class MessageChain:
         # 宿主 Agent 引用见类 docstring ``_agent`` 字段。
         if parent_id is not None and parent_id not in self._agent._messages:
             raise KeyError(parent_id)
+        if msg.id is None:
+            msg.id = self._agent._next_message_id()   # 未显式指定 → 属主 Agent 铸造自增 id
         if msg.id in self._agent._messages:
             raise ValueError(msg.id)
         msg.parent_id = parent_id   # None = 开新根（森林模型）

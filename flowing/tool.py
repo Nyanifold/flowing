@@ -138,7 +138,6 @@ import logging
 import mimetypes
 import os
 import shlex
-import uuid
 import warnings
 from collections.abc import Callable, Iterator
 from contextlib import asynccontextmanager
@@ -814,9 +813,9 @@ class ToolCall:
     """Provider 侧的调用 ID（如 OpenAI ``tool_call_id``）。它是与结果侧
     ``kind=TOOL`` 消息 ``tool_call_id`` 字段严格配对的依据，也是恢复时
     扫描孤立 tool_call 的匹配键。编程路径（cron / workflow / 手动构造）
-    由调用方生成合成字符串——推荐形如 ``<来源类型名>-<uuid4>``
-    （workflow → ``workflow-…``、cron → ``cron-…``）的有语义前缀，亦
-    接受无语义的 uuid；仅作追踪，不参与配对。
+    由调用方生成合成字符串——推荐形如 ``<来源类型名>-<随机 hex>``
+    （workflow → ``workflow-…``、cron → ``cron-…``）的有语义前缀；
+    仅作追踪，不参与配对。
     """
     name: str
     """LLM 看到的工具名——即 `ToolEntry.name_alias` （别名），不是规范名。

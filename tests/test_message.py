@@ -73,7 +73,7 @@ class TestMessageModel:
     def test_m4_defaults(self):
         """M4：字段默认值（X1 落实）。"""
         m1, m2 = make_message(), make_message()
-        assert m1.id != m2.id
+        assert m1.id is None and m2.id is None  # 缺省未指定——进入 Agent 边界（入队/挂树）时铸造自增 id
         assert m1.parent_id is None
         assert m1.turn_end is False and m1.partial is False and m1.synthetic is False
         assert m1.source == ""

@@ -75,7 +75,7 @@ class SignalEnvelope:
     """业务负载。总线对其内容完全透明（不校验、不修改、不序列化）。
     """
     correlation_id: str | None = None
-    """request-reply 关联 ID（UUID 字符串）。仅 ``request()`` 路径填充；
+    """request-reply 关联 ID（8 位随机 hex 字符串）。仅 ``request()`` 路径填充；
     回复信封原样携带，接收侧据此匹配挂起的请求。
     """
     reply_to: str | None = None

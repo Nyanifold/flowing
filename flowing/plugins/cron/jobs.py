@@ -31,9 +31,9 @@
 import asyncio
 import logging
 import re
+import secrets
 from datetime import datetime, timedelta
 from typing import Any
-from uuid import uuid4
 
 from croniter import croniter
 
@@ -278,7 +278,7 @@ class _CronRuntime:
         _next_ideal_fire(cron, _now())      # 五字段 + 可解析校验
         validate_placeholders(content)
         if job_id is None:
-            job_id = str(uuid4())
+            job_id = secrets.token_hex(4)
         if any(d.get("id") == job_id for d in agent.state.cron_jobs):
             raise ValueError(f"job_id conflict: {job_id}")
         record = CronJob(

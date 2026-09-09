@@ -14,10 +14,10 @@ ProvideNode 协议 / ``resolve_path`` / ``env`` / ``config`` /
 from __future__ import annotations
 
 import asyncio
+import secrets
 import sys
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
 
 import pytest
 
@@ -93,7 +93,7 @@ class HarnessRuntime(FakeRuntime):
     ) -> Agent:
         cls = (self.get_agent_class(agent_type)
                if isinstance(agent_type, str) else agent_type)
-        agent_id = f"agent-{uuid4().hex}"
+        agent_id = f"agent-{secrets.token_hex(3)}"
         inst = cls.__new__(cls)
         inst.node_id = agent_id
         inst.runtime = self
@@ -172,7 +172,7 @@ def tool_call_response(*calls: tuple[str, dict], text: str = "") -> ProviderResp
     """
     blocks = [TextBlock(text=text)] if text else []
     call_blocks = [
-        ToolCallBlock(id=f"call-{i}-{uuid4().hex[:8]}", name=name, args=args)
+        ToolCallBlock(id=f"call-{i}-{secrets.token_hex(4)}", name=name, args=args)
         for i, (name, args) in enumerate(calls)
     ]
     msg = Message(kind=MessageKind.PROVIDER, content=[*blocks, *call_blocks])

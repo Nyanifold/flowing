@@ -126,6 +126,7 @@ import asyncio
 import json
 import logging
 import os
+import secrets
 import warnings
 
 from collections.abc import Awaitable, Callable, Generator, MutableMapping
@@ -349,6 +350,16 @@ def resolve(path: str) -> Path:
     if path.startswith("@/"):
         return root / path[2:]
     return Path(path)   # 非 @/ 路径：普通 Path 语义（完整前缀规则是 Runtime.resolve_path 的职责）
+
+
+def _gen_node_suffix() -> str:
+    """生成 node_id 的随机后缀（6 位 hex；内部 API，不属稳定契约）。
+
+    独立成函数是测试接缝：撞注册表 / 撞目录的重生成路径经 monkeypatch
+    本函数注入碰撞序列。唯一性由 create 管线的注册表 + 目录双重检查
+    保证（6 位 hex 空间小，不依赖概率唯一）。
+    """
+    return secrets.token_hex(3)
 
 
 def _check_pending(instance: "Agent", agent_type: str) -> None:
@@ -907,15 +918,16 @@ class Runtime:
            先查注册表，路径形态经 ``resolve_path``）。
         2. ``__new__`` 并绑定 ``node_id`` （``agent_id`` 指定时即该值，须
            不在池注册表与活体表中，重复抛 ``ValueError``；缺省
-           ``f"{_id_prefix}-{uuid4()}"``）、``runtime`` 与 ``_parent_id``
-           （``parent_id=None`` 翻译为 Runtime 的 ``node_id``——「根」由
-           「亲节点是 Runtime」表达）。目录存在性检查：该 id 不在池 / 活体表
-           但 session 目录已存在 → 抛 ``FileExistsError`` （可能是已归档
-           的留档（``archive_agent``）或指定错了 ``session_dir`` /
-           ``agent_id``；框架不在此销毁任何内容，由调用方捕获决定——
-           改 id / 先删目录 / 运维恢复）。``agent_id`` 未指定（自动生成
-           uuid）时撞目录不报错，重新生成随机 id（uuid 碰撞概率为零，
-           此为防御性兜底）。
+           ``f"{_id_prefix}-<6 位随机 hex>"``）、``runtime`` 与
+           ``_parent_id`` （``parent_id=None`` 翻译为 Runtime 的
+           ``node_id``——「根」由「亲节点是 Runtime」表达）。冲突检查分两
+           步：① id 撞池注册表 / 活体表——显式 id 报错，自动 id 重生成；
+           ② session 目录已存在——目录是定点（显式 ``session_dir`` 或显式
+           ``agent_id``）时抛 ``FileExistsError`` （可能是已归档的留档
+           （``archive_agent``）或指定错了 ``session_dir`` / ``agent_id``；
+           框架不在此销毁任何内容，由调用方捕获决定——改 id / 先删目录 /
+           运维恢复）；全自动（id 与目录都随生成走）时撞目录不报错，
+           重生成 id 退让（归档留档 / 历史残留容错）。
         3. ``instance.__init__()`` —— 同步骨架，建立持久化后端与
            ``_extra``。
         4. 身份四键整写 ``meta.json``：``agent_type`` / ``parent_agent_id`` /
@@ -966,7 +978,9 @@ class Runtime:
             ``session_dir`` 字段与 ``core`` 名录 ``session_dirs`` 映射，
             恢复 / 池扫描据此定位。属框架机制字段，不进 args。
         :param agent_id: 指定该 agent 的 ``node_id`` （可选）。``None`` → 自动生成
-            ``{_id_prefix}-{uuid4()}``；指定值须不在池注册表与活体表中
+            ``{_id_prefix}-<6 位随机 hex>``（撞池注册表 / 活体表 / 既有
+            session 目录时重生成，唯一性由检查保证而非概率）；指定值须不在
+            池注册表与活体表中
             （与 :meth:`recover_agent` 的「要求已存在」对称：create 要求
             不存在），重复 → :class:`ValueError`。不校验格式，可以使用
             ``agent-`` 前缀（与自动生成的形态保持一致，便于看 id 知类型），
@@ -988,40 +1002,40 @@ class Runtime:
             :meth:`flowing.agent.Agent.create_subagent`、
             :meth:`flowing.agent.Agent.setup`
         """
-        from uuid import uuid4
-
         self._ensure_persist_ready()   # 入口就位：persist 目录 + core 插件清单
         agent_class = self.get_agent_class(agent_type)   # 类型名 → 类（惰性解析）
         instance: Agent = agent_class.__new__(agent_class)   # __new__ + 绑定
+        # 第一步：id 冲突——显式 id 撞注册表即报错（与 recover_agent 的
+        # 「要求已存在」对称）；自动 id 撞注册表（_agent_pool ∪ _nodes，
+        # 含显式 session_dir 外挂目录的在册节点）则重生成
         if agent_id is not None:
-            # 指定 agent_id：须不在池注册表与活体表中（创建冲突即报错——与
-            # recover_agent 的「要求已存在」对称；_nodes 含 Workflow 节点，一并防撞）
             if agent_id in self._agent_pool or agent_id in self._nodes:
                 raise ValueError(
                     f"agent_id already exists: {agent_id} — duplicate creation is not allowed"
                     " (create requires the id to be absent; use recover_agent to restore)")
             node_id = agent_id
+        else:
+            while True:
+                node_id = f"{agent_class._id_prefix}-{_gen_node_suffix()}"
+                if node_id not in self._agent_pool and node_id not in self._nodes:
+                    break
+        # 第二步：session 目录冲突——目录是定点（显式 session_dir 或显式
+        # id）则报错（可能是 archive 留档或指定错了 session_dir / agent_id；
+        # runtime 不销毁任何内容，由调用方决定）；全自动（id 与目录都随
+        # 生成走）则目录撞了说明是归档留档 / 历史残留，重生成 id 退让
+        while True:
             resolved_session = self._resolve_session_dir(session_dir, node_id)
-            # 目录存在性检查（create 侧严格）：id 不在池/活体表但目录
-            # 已存在 → FileExistsError（可能是 archive 留档或指定错了
-            # session_dir / agent_id；runtime 不销毁任何内容，由调用方决定）
-            if resolved_session.exists():
+            if not resolved_session.exists():
+                break
+            if session_dir is not None or agent_id is not None:
                 raise FileExistsError(
                     f"session directory already exists: {resolved_session} — possibly an archived "
                     "record (archive_agent) or a wrong session_dir / agent_id; "
                     "change the id, delete the directory, or recover via ops")
-        else:
-            # 缺省自动生成：撞目录不报错，重新生成随机 id（uuid 碰撞概率为零，
-            # 此为防御性兜底；session_dir 显式指定时目录即定点，撞了只能报错）
             while True:
-                node_id = f"{agent_class._id_prefix}-{uuid4()}"
-                resolved_session = self._resolve_session_dir(session_dir, node_id)
-                if not resolved_session.exists():
+                node_id = f"{agent_class._id_prefix}-{_gen_node_suffix()}"
+                if node_id not in self._agent_pool and node_id not in self._nodes:
                     break
-                if session_dir is not None:
-                    raise FileExistsError(
-                        f"session directory already exists: {resolved_session} — the specified "
-                        " session_dir already exists; check the path or delete the directory first")
         instance.node_id = node_id
         instance.runtime = self
         # None 翻译为 Runtime 的 node_id：「根」由「亲节点是 Runtime」表达，
@@ -1118,7 +1132,7 @@ class Runtime:
         2. ``get_agent_class(meta["agent_type"])``。
         3. ``args = dict(meta.get("args", {}))``，``override_args`` 覆盖
            —— 默认透传持久化 args，override 覆盖。
-        4. ``__new__`` → ``node_id = agent_id`` （已有 id，不是新 UUID）、
+        4. ``__new__`` → ``node_id = agent_id`` （已有 id，不新生成）、
            ``runtime``、``_parent_id = meta["parent_agent_id"]`` （meta 存
            的是翻译后的实际值，直接回绑）、``_session_dir`` （
            ``meta["session_dir"]`` 回绑；缺省 ``persist_dir / agent_id``，

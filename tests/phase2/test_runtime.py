@@ -13,11 +13,11 @@ from __future__ import annotations
 
 import asyncio
 import textwrap
-import uuid
 from pathlib import Path
 
 import pytest
 
+import flowing.runtime
 from flowing import launch, on
 from flowing.agent import Agent
 from flowing.errors import (
@@ -449,19 +449,40 @@ async def test_t109_session_dir_existence_check(tmp_path, monkeypatch):
         await runtime.create_agent("test-agent", agent_id="agent-archived")
     assert "agent-archived" not in runtime._agent_pool
     assert "agent-archived" not in runtime._nodes
-    # 自动生成 id 撞目录 → 防御性重新生成（create_agent 内 from uuid import
-    # uuid4 是调用期绑定，monkeypatch uuid.uuid4 生效）
+    # 自动生成 id 撞目录 → 防御性重新生成（monkeypatch 模块级生成接缝
+    # flowing.runtime._gen_node_suffix 注入碰撞序列）
     (runtime._persist_dir / "agent-collision").mkdir()
-    real_uuid4 = uuid.uuid4
+    real_gen = flowing.runtime._gen_node_suffix
     pending = ["collision"]
 
-    def fake_uuid4():
-        return pending.pop(0) if pending else real_uuid4()
+    def fake_gen():
+        return pending.pop(0) if pending else real_gen()
 
-    monkeypatch.setattr(uuid, "uuid4", fake_uuid4)
+    monkeypatch.setattr(flowing.runtime, "_gen_node_suffix", fake_gen)
     agent = await runtime.create_agent("test-agent")
     assert agent.node_id != "agent-collision"
     assert agent.node_id.startswith("agent-")
+    await runtime.shutdown()
+
+
+async def test_auto_node_id_retries_on_registry_collision(tmp_path, monkeypatch):
+    """自动 node_id 撞注册表（池/活体表在册但默认目录不存在的节点，如显式
+    session_dir 外挂）→ 重生成而非覆盖注册表条目。"""
+    runtime = make_runtime(tmp_path)
+    existing = await runtime.create_agent(
+        "test-agent", session_dir=tmp_path / "external-dir")   # 目录外挂：默认路径无目录
+    suffix = existing.node_id.split("-", 1)[1]
+    real_gen = flowing.runtime._gen_node_suffix
+    pending = [suffix]
+
+    def fake_gen():
+        return pending.pop(0) if pending else real_gen()
+
+    monkeypatch.setattr(flowing.runtime, "_gen_node_suffix", fake_gen)
+    agent = await runtime.create_agent("test-agent")
+    assert agent.node_id != existing.node_id
+    assert runtime._nodes[existing.node_id] is existing   # 原注册不被覆盖
+    assert runtime._agent_pool[existing.node_id]["agent_type"] == "test-agent"
     await runtime.shutdown()
 
 

@@ -125,9 +125,9 @@ caller 的工作循环串行，当前逻辑 Turn（正在执行 ``run-workflow``
     - :mod:`flowing.errors` —— ``ToolNotFoundError`` / ``Intercepted``。
 """
 
+import secrets
 from abc import ABC, abstractmethod
 from typing import Any
-from uuid import uuid4
 
 from flowing.agent import Agent
 from flowing.errors import Intercepted
@@ -263,7 +263,7 @@ class Workflow(ABC):
         """
         self.caller = caller
         self.runtime = runtime
-        self.node_id = f"workflow-{uuid4()}"  # node_id 取 workflow-* 前缀（与 ToolCall id 同族的 <来源类型名>-<uuid4> 形态）
+        self.node_id = f"workflow-{secrets.token_hex(4)}"  # node_id 取 workflow-* 前缀（与 ToolCall id 同族的 <来源类型名>-<8 位 hex> 形态）
         self.hooks = HookRegistry()  # 实例级独立钩子注册表（与任何 Agent 的 hooks 完全独立）
         self._provided = {}
         self._agents = {}
@@ -382,7 +382,7 @@ class Workflow(ABC):
         .. rubric:: 行为要点
 
         - 调用时序：``tool_registry.get(tool_name)`` 命中 → 构造
-          ``ToolCall(id=f"workflow-{uuid4()}", name=tool_name, args=args)``
+          ``ToolCall(id=f"workflow-<8 位 hex>", name=tool_name, args=args)``
           （id 由框架生成，仅作追踪）→ dispatch ``before_tool_call``
           （value 为 ``ToolCall``；handler 可改写 ``args``、可设置
           ``shortcut`` 直接给出结果、可 ``raise Intercepted`` 阻断——
@@ -413,8 +413,8 @@ class Workflow(ABC):
         """
         tool = self.runtime.tool_registry.get(tool_name)  # 规范名直查；未注册 -> ToolNotFoundError
 
-        # id 由框架生成（编程路径 id 形如 <来源类型名>-<uuid4>，仅作追踪）
-        call = ToolCall(id=f"workflow-{uuid4()}", name=tool_name, args=args)  # -> flowing.tool.ToolCall
+        # id 由框架生成（编程路径 id 形如 <来源类型名>-<8 位 hex>，仅作追踪）
+        call = ToolCall(id=f"workflow-{secrets.token_hex(4)}", name=tool_name, args=args)  # -> flowing.tool.ToolCall
         try:
             call = await self.hooks.before_tool_call.dispatch(  # Workflow 自己的钩子，与 Agent 侧完全独立
                 self, call,

@@ -157,10 +157,10 @@ from __future__ import annotations   # 注解延迟求值：Communication 与 Co
 import asyncio
 import inspect
 import logging
+import secrets
 import warnings
 from collections.abc import Callable
 from typing import Any, ClassVar
-from uuid import uuid4
 
 from flowing.agent import Agent
 from flowing.errors import (
@@ -450,7 +450,7 @@ class Communication:
 
         .. rubric:: 功能介绍
 
-        生成 ``correlation_id`` （UUID），在 ``reply_handler`` 的挂起表
+        生成 ``correlation_id`` （8 位随机 hex），在 ``reply_handler`` 的挂起表
         （等待对端回复的请求的登记处）中登记本次请求，发送带
         ``correlation_id`` 与 ``reply_to=sender``
         的信号信封，然后阻塞等待对端经 ``reply()`` 回传的 payload。
@@ -491,7 +491,7 @@ class Communication:
 
         .. seealso:: :meth:`CommHandle.request`、:meth:`CommHandle.reply`
         """
-        correlation_id = str(uuid4())
+        correlation_id = secrets.token_hex(4)
         future: asyncio.Future = asyncio.get_running_loop().create_future()
         reply_handler._pending_replies[correlation_id] = future  # 登记挂起的请求
         try:

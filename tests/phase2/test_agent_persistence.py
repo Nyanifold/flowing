@@ -286,3 +286,43 @@ async def test_orphan_placeholder_stable_across_recovers(tmp_path):
     assert "崩溃前历史" in path_texts   # 崩溃前历史不丢
     assert "继续" in path_texts and "继续的回复" in path_texts   # 新回合也在
     await rec2.destroy()
+
+
+# ---------------------------------------------------------------------------
+# 消息 id 自增序列号：铸造、显式 id 尊重、跨恢复续接
+# ---------------------------------------------------------------------------
+
+
+async def test_message_id_autoincrement_and_explicit(runtime, provider):
+    """未指定 id 的消息挂树时铸造自增纯数字 id；显式 id 一律尊重。"""
+    agent = await runtime.create_agent(SimpleAgent)
+    _push_text(agent, "m1", "显式一")   # 显式 id：不消耗序列号
+    auto1 = agent.push(Message(kind=MessageKind.USER,
+                               content=[TextBlock(text="自动一")]))
+    auto2 = agent.push(Message(kind=MessageKind.USER,
+                               content=[TextBlock(text="自动二")]))
+    assert auto1 == "1" and auto2 == "2"
+    assert agent._messages["m1"].id == "m1"   # 显式 id 不被重铸
+    # 挂树后铸造（push）之外，入队路径同样铸造
+    mid = await agent.enqueue_message(Message(
+        kind=MessageKind.USER, content=[TextBlock(text="排队")]))
+    assert mid == "3"
+    await agent.destroy()
+
+
+async def test_message_id_seq_continues_across_recover(runtime, provider):
+    """message_seq 持久化于 core 袋：恢复后计数续接，不复用历史 id。"""
+    agent = await runtime.create_agent(SimpleAgent)
+    agent.push(Message(kind=MessageKind.USER, content=[TextBlock(text="一")]))
+    agent.push(Message(kind=MessageKind.USER, content=[TextBlock(text="二")]))
+    assert agent.current_head_id == "2"
+    session_dir = agent._session_dir
+    await agent.destroy()
+
+    restored = await _restored(runtime, session_dir)
+    assert "1" in restored._messages and "2" in restored._messages
+    new_id = restored.push(Message(kind=MessageKind.USER,
+                                   content=[TextBlock(text="三")]))
+    assert new_id == "3"   # 续接而非归零重排
+    assert len(restored._messages) == 3   # 无覆盖
+    await restored.destroy()

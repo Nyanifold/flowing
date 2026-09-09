@@ -138,13 +138,11 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, TypeVar, overload
-from uuid import uuid4
 
 from pydantic import ValidationError
 
 from flowing.context import Context, ContextUsageEstimate, PromptBlockList, PromptSegment
 from flowing.errors import (
-    ContextLengthError,
     EntryNameConflictError,
     FlowingError,
     FormatError,
@@ -476,7 +474,8 @@ class Execution:
     """
 
     id: str
-    """UUID，注册表 ``Agent._executions`` 的 key。
+    """按 Agent 的自增序列号（纯数字字符串），注册表 ``Agent._executions``
+    的 key。
     """
     kind: str
     """开放字符串：内置 ``"tool"`` / ``"agent"`` / ``"request"`` /
@@ -587,8 +586,9 @@ class ProviderErrorContext:
     - handler 内调 ``agent.abort_turn()`` 是合法出口：``continue`` 后
       下一次 ``provider_gen()`` 开头检测到信号 → 返回 ``cancelled`` 响应
       → 回合走 abort 收尾（``"cancelled"`` 结局）。
-    - ``ContextLengthError`` 不经过本钩子——不可重试，直接上抛（需要
-      压缩 / 截断的场景由 ``before_provider_gen`` 等机制处理）。
+    - 全部 Provider 调用期异常都经本钩子分发（含 ``ContextLengthError``）：
+      原样重发必然重现的错误（token 超限、凭证错误等）默认策略同样不重试；
+      压缩历史 / 换大窗模型 / 仅观察都是 handler 的合法处置。
     - ``provider`` 是 provider 条目名字符串（``self.model.provider``），
       不是 Provider 实例。
 
@@ -596,7 +596,6 @@ class ProviderErrorContext:
 
         - :meth:`Agent.provider_gen` —— 异常来源（其本身不捕获、不重试）。
         - :mod:`flowing.composables.retry` —— 可选重试策略。
-        - :class:`flowing.errors.ContextLengthError` —— 不经过本钩子的例外。
     """
 
     error: Exception
@@ -953,7 +952,8 @@ class Agent:
     # ────────────────────────── 实例属性：标识与关系 ──────────────────────
 
     node_id: str
-    """全局唯一 ID（``agent-`` + UUID），生命周期内不可变；恢复路径
+    """全局唯一 ID（缺省自动生成 ``agent-`` + 6 位随机 hex，create 管线
+    带注册表防撞重试），生命周期内不可变；恢复路径
     ``node_id = agent_id`` （身份连续、可重现）。
     """
     runtime: Runtime
@@ -993,8 +993,9 @@ class Agent:
     ``setup()`` 中 ``self.hooks.<point>(...)`` 注册的在其后。
     """
     prompt_blocks: PromptBlockList
-    """system prompt 分层组装列表（ManagedList 语义）；注册顺序即拼接
-    顺序；``[0]`` 是 ``system_prompt`` 的惰性引用块（``by="core"``）。
+    """system prompt 分层组装列表（ManagedList 语义）；列表顺序即拼接
+    顺序（``append`` 追加尾部、``insert`` 任意位置插入）；框架注入的
+    ``system_prompt`` 惰性引用块（``by="core"``）初始位于 ``[0]``。
     动态内容的正确做法是块内模板引用（惰性求值保证最新），而非每回合
     append + remove_by_tag。
     """
@@ -1157,6 +1158,8 @@ class Agent:
         # 直接操作 Agent._messages 并经 Agent._persist_message 落盘
         self._executions = {}
         self._background_tasks: dict[str, asyncio.Task] = {}   # 后台任务注册表（B9：按 id 取消/查询 + 强引用防 GC + destroy 统一覆盖；cancel_by_tag 不涉及）
+        self._task_seq = 0   # 后台任务 id 自增计数器（纯内存：注册表不落盘，恢复后为空，计数随之归零）
+        self._execution_seq = 0   # Execution id 自增计数器（同上，纯内存）
         self._pending_turns = {}
         self._tool_entries = {}
         self._subagent_entries = {}
@@ -1330,6 +1333,7 @@ class Agent:
         # 初始化语义不走 register 以避免恢复期产生脏行）
         self._core_state._persisted.setdefault("child_ids", {})
         self._core_state._persisted.setdefault("current_head_id", None)
+        self._core_state._persisted.setdefault("message_seq", 0)   # 消息 id 自增计数器（持久化：恢复续接，tombstone/压缩不影响）
 
     def register_state(self, name: str, backend: str = "file") -> StateView:
         """开启一个命名状态空间，返回其 :class:`StateView` （公共 API）。
@@ -1785,6 +1789,8 @@ class Agent:
         else:
             blocks = content
         msg = Message(kind=kind, content=blocks, **kwargs)
+        if msg.id is None:
+            msg.id = self._next_message_id()   # 铸造先于 _pending_turns 注册——等待句柄以终态 id 为键
         fut: asyncio.Future[TurnResult] = asyncio.get_running_loop().create_future()
         self._pending_turns[msg.id] = fut   # 注册先于入队——消息对外可见时句柄必已存在
         try:
@@ -1911,6 +1917,8 @@ class Agent:
             - :meth:`message` —— 散装箱糖。
             - :class:`flowing.message.MessageQueue` —— 排序与阻塞语义。
         """
+        if msg.id is None:
+            msg.id = self._next_message_id()   # 入队即铸造——before_enqueue 起钩子即可见终态 id
         msg = await self.hooks.before_enqueue.dispatch(self, msg)   # 可检查/修改；Intercepted 原样上抛
         self._message_queue.enqueue(msg)
         await self.hooks.after_enqueue.dispatch(self, msg)   # 纯观察（日志/审计）
@@ -1970,13 +1978,35 @@ class Agent:
                 finish_reason="cancelled"))
         return True
 
+    def _next_message_id(self) -> str:
+        """铸造下一条消息 id（内部 API，不属稳定契约）。
+
+        按 Agent 的自增序列号：计数器存 core 状态袋 ``message_seq`` 键
+        （持久化，恢复重放自动续接——tombstone 与物理压缩不影响），
+        每次铸造 +1 写透，返回纯数字字符串。显式给定的消息 id 不经
+        本方法，铸造方负责先查 ``_messages`` 冲突。
+        """
+        seq = self._core_state.get("message_seq", 0) + 1
+        self._core_state["message_seq"] = seq   # 写透（D7 末行合并）
+        return str(seq)
+
+    def _next_task_id(self) -> str:
+        """铸造下一个后台任务注册键（内部 API）：纯内存自增，进程内单调不复用。"""
+        self._task_seq += 1
+        return str(self._task_seq)
+
+    def _next_execution_id(self) -> str:
+        """铸造下一个 Execution id（内部 API）：纯内存自增，进程内单调不复用。"""
+        self._execution_seq += 1
+        return str(self._execution_seq)
+
     def track_background_task(self, task: asyncio.Task) -> str:
         """注册一个后台任务并返回注册键（后台机制的唯一注册入口）。
 
         .. rubric:: 功能介绍
 
         后台机制（async generator 工具形态 / ``background`` 标记 / 返回
-        Task 路径）的驱动任务统一经本方法登记：生成 ``uuid4`` 注册键 →
+        Task 路径）的驱动任务统一经本方法登记：生成自增序列号注册键 →
         写入 ``_background_tasks`` → 挂 done_callback 闭包移除（完成 /
         异常 / 取消即弃）→ 返回注册键。注册键随 pending 收据交付
         （``ToolResult.background_task_id``），调用方 / LLM 可据此按 id
@@ -1993,7 +2023,7 @@ class Agent:
         .. seealso:: :meth:`cancel_background_task`、
             :meth:`cancel_all_background_tasks`
         """
-        task_id = uuid4().hex
+        task_id = self._next_task_id()
         self._background_tasks[task_id] = task
         task.add_done_callback(
             lambda t: self._background_tasks.pop(task_id, None))
@@ -2231,9 +2261,9 @@ class Agent:
         - 流式中断（abort）：已累积内容保留为 ``partial=True`` 的消息
           随响应返回（保留落盘），``cancelled=True``；取消点起不再
           dispatch delta。
-        - 不捕获任何异常：Provider 异常分类（``RateLimitedError`` 等）
-          原样上抛给回合层；``ContextLengthError`` 同样上抛（且不经过
-          ``on_provider_error``）。
+        - 不捕获任何异常：Provider 异常分类（``RateLimitedError`` /
+          ``ContextLengthError`` 等）原样上抛给回合层（统一经
+          ``on_provider_error`` 分发）。
         - 不重试、不缓存、不聚合用量——回合级聚合是回合执行体的职责；
           本方法只保证响应消息上附着的 ``message.usage`` 原样抵达
           ``after_provider_gen`` 钩子与调用方。
@@ -2252,7 +2282,7 @@ class Agent:
         model: ModelConfig = self.model.resolve(self)   # 每次调用前字段级惰性求值
         provider: Provider = self.runtime.provider_registry.get(model.provider)   # 懒获取（未知条目 KeyError）
         context = await self.hooks.before_provider_gen.dispatch(self, context)   # 可改写完整 Context
-        execution = Execution(id=uuid4().hex, kind="request", tags=[],
+        execution = Execution(id=self._next_execution_id(), kind="request", tags=[],
                               started_at=datetime.now(),
                               cancel=asyncio.Event(), pause=asyncio.Event())
         self._executions[execution.id] = execution   # 注册，finally 清理
@@ -2263,6 +2293,8 @@ class Agent:
                 # 「每次 provider_gen 至少一条 delta」）
                 response = await provider.generate(context, model)
                 if response.message is not None:
+                    if response.message.id is None:
+                        response.message.id = self._next_message_id()   # 铸造先于 delta dispatch（观察者按 id 归组）
                     full_text = "".join(
                         b.text for b in response.message.content
                         if isinstance(b, TextBlock))
@@ -2281,7 +2313,7 @@ class Agent:
                 final_usage: Usage | None = None
                 final_provider_data: dict[str, Any] = {}
                 interrupted = False
-                resp_id = uuid4().hex   # agent 预铸本 assistant 消息 id：先于流式，逐 delta 携带
+                resp_id = self._next_message_id()   # agent 预铸本 assistant 消息 id：先于流式，逐 delta 携带
                 async for delta in provider.generate_stream(context, model):
                     # 取消点起不再 dispatch delta（abort/cancel 均为协作式信号）
                     if self._turn_abort.is_set() or execution.cancel.is_set():
@@ -2401,7 +2433,7 @@ class Agent:
             - :meth:`query` —— 主线入口（副线请直接调本方法）。
             - :meth:`provider_gen` —— 底层调用。
         """
-        execution = Execution(id=uuid4().hex, kind="side_query", tags=[],
+        execution = Execution(id=self._next_execution_id(), kind="side_query", tags=[],
                               started_at=datetime.now(),
                               cancel=asyncio.Event(), pause=asyncio.Event())
         self._executions[execution.id] = execution   # 可被 cancel_by_tag / 级联取消命中
@@ -2525,6 +2557,8 @@ class Agent:
 
         .. seealso:: :meth:`pop`、:meth:`branch`
         """
+        if msg.id is None:
+            msg.id = self._next_message_id()   # 挂树前铸造（回合内 PROVIDER/TOOL 消息的主要铸造点）
         if msg.id in self._messages:
             raise ValueError(msg.id)
         msg.parent_id = self.current_head_id
@@ -3079,7 +3113,7 @@ class Agent:
             resume=resume, prompt=prompt, args=init_kwargs)
         invocation = await self.hooks.before_subagent_invoke.dispatch(
             self, invocation)   # 可改写 args/prompt；Intercepted 硬阻断唤起（上抛，未创建实例）
-        execution = Execution(id=uuid4().hex, kind="agent", tags=["subagent"],
+        execution = Execution(id=self._next_execution_id(), kind="agent", tags=["subagent"],
                               started_at=datetime.now(),
                               cancel=asyncio.Event(), pause=asyncio.Event())
         self._executions[execution.id] = execution   # cancel()/级联取消可命中
@@ -3240,7 +3274,7 @@ class Agent:
             except (ValidationError, _LlmViewValidationError) as exc:
                 result = ToolResult(status="error", error=str(exc))
             else:
-                execution = Execution(id=uuid4().hex, kind="tool", tags=[],
+                execution = Execution(id=self._next_execution_id(), kind="tool", tags=[],
                                       started_at=datetime.now(),
                                       cancel=asyncio.Event(), pause=asyncio.Event())
                 self._executions[execution.id] = execution
@@ -4045,7 +4079,7 @@ class Agent:
         挂树、不 abort，当轮 context 可见）→ ``_assemble_context`` →
         ``provider_gen`` （异常 → 构造 ``ProviderErrorContext`` → dispatch
         ``on_provider_error`` → ``can_continue=False`` 则 break，``True``
-        则 continue；``ContextLengthError`` 不经过该钩子直接上抛）→ 响应
+        则 continue）→ 响应
         消息挂树 → 工具调用循环（同一响应内全部 ``tool_call`` 并行执行，
         批次前同一 pause/abort 检查点）→ ``response.finish`` 或
         ``finish_output`` 置位则 break。三处 abort 判定互斥（各自随即
@@ -4102,8 +4136,6 @@ class Agent:
                 context = self._assemble_context()
                 try:
                     response = await self.provider_gen(context, by="_turn")   # 主 Turn 来源标记
-                except ContextLengthError:
-                    raise   # 不可重试例外：不经过 on_provider_error，直接上抛
                 except Exception as exc:
                     qctx = ProviderErrorContext(error=exc, provider=self.model.provider,
                                              model=self.model)

@@ -43,7 +43,7 @@ class CronJob:
     """
 
     id: str
-    """任务 ID（该 Agent 作用域内唯一；注册时缺省生成 uuid4）。
+    """任务 ID（该 Agent 作用域内唯一；注册时缺省生成 8 位随机 hex）。
     """
     cron: str
     """五字段 cron 表达式（``分 时 日 月 周``，分精度），按系统本地
