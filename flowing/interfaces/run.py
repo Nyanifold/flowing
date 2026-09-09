@@ -9,7 +9,27 @@ import sys
 
 from flowing.runtime import launch
 
-from flowing.interfaces import EXIT_OK, EXIT_RUNTIME_ERROR, _install_signal_handlers
+from flowing.interfaces import EXIT_OK, EXIT_RUNTIME_ERROR
+
+
+def _install_signal_handlers(runtime) -> None:
+    """安装 SIGINT / SIGTERM → ``runtime.shutdown()`` 的优雅关闭桥
+    （run 子命令本地件，不属稳定契约）。
+
+    处理器只发起 ``shutdown()`` （非阻塞，发信号后立即返回），真正的
+    清理由事件循环完成。非主线程 / 不支持信号的平台为 no-op。
+    """
+    import asyncio
+    import signal
+
+    def _handler(signum: int, frame: object) -> None:
+        asyncio.ensure_future(runtime.shutdown())
+
+    try:
+        signal.signal(signal.SIGINT, _handler)
+        signal.signal(signal.SIGTERM, _handler)
+    except (ValueError, OSError, RuntimeError):
+        pass
 
 
 async def cmd_run(

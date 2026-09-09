@@ -23,10 +23,43 @@ from flowing.interfaces import (
     EXIT_OK,
     EXIT_RUNTIME_ERROR,
     _default_agent_type,
-    _install_signal_handlers,
     _list_agent_records,
 )
 from flowing.interfaces.controls import slash_lines
+
+
+def _install_repl_signal_handlers(runtime: Runtime, flags: dict) -> None:
+    """repl 专用信号处理器（repl 子命令本地件，不属稳定契约）。
+
+    - SIGINT（Ctrl-C）：回合进行中 → 对当前绑定 Agent ``abort_turn()``
+      （协作式取消当轮，会话存活）；提示符空闲（阻塞在 ``input()``）→
+      抛 ``KeyboardInterrupt`` 中断当前输入行（读行循环捕获后换行重
+      提示）。退出走 ``/exit`` 或 Ctrl-D（EOF）。
+    - SIGTERM：与 run/serve/web 同口径的优雅关闭桥（发起
+      ``runtime.shutdown()``）。
+
+    非主线程 / 不支持信号的平台为 no-op。返回安装前的 SIGINT 处理器，
+    供 cmd_repl 退出时还原（测试进程内反复进入 repl 不串扰）。
+    """
+    import asyncio
+    import signal
+
+    def _sigint_handler(signum: int, frame: object) -> None:
+        target = flags.get("bound_agent")
+        if flags["query_active"] and target is not None:
+            target.abort_turn()   # 协作式取消当前回合，repl 与会话存活
+            return
+        raise KeyboardInterrupt   # 空闲：中断 input() 当前行
+
+    def _sigterm_handler(signum: int, frame: object) -> None:
+        asyncio.ensure_future(runtime.shutdown())
+
+    try:
+        previous = signal.signal(signal.SIGINT, _sigint_handler)
+        signal.signal(signal.SIGTERM, _sigterm_handler)
+        return previous
+    except (ValueError, OSError, RuntimeError):
+        return None   # 非主线程等平台：no-op
 
 
 SLASH_COMMANDS: tuple[str, ...] = (
@@ -269,8 +302,10 @@ async def cmd_repl(
       类型」提示，名录保持为空，不退出。
     - 未识别的 ``/xxx``：打印「未知命令，/help 查看可用命令」，
       继续循环。
-    - 回合进行中收到 SIGINT：走统一信号路径（shutdown 是协作式的，
-      进行中的逻辑 Turn 随 destroy 取消）。
+    - 回合进行中收到 SIGINT（Ctrl-C）：repl 专用处理器对当前绑定 Agent
+      ``abort_turn()``——协作式取消当轮（回合以 cancelled 收尾），repl 与
+      会话存活；提示符空闲时 SIGINT 中断当前输入行（换行重提示，不退出）。
+      SIGTERM 走优雅关闭桥（``runtime.shutdown()``）。
     - ``query()`` 返回 ``status="error"`` 的 ``TurnResult``：照常
       打印错误文本，repl 不因此退出。
     - ``/use`` 或启动绑定恢复失败（记录损坏）：打印错误，绑定不变，
@@ -305,7 +340,6 @@ async def cmd_repl(
     except Exception as exc:
         print(f"launch failed: {exc}", file=sys.stderr)
         return EXIT_RUNTIME_ERROR
-    _install_signal_handlers(runtime)
 
     # ---- 过程显示的共享状态与观察 handler ---------------------------------
     # mid_line：屏幕上有未换行的流式输出（delta 就地追加，摘要做换行补偿——
@@ -313,8 +347,12 @@ async def cmd_repl(
     # query_active：当前回合由 repl 自己的 query 驱动（其最终文本由 query
     # 返回路径打印，after_turn handler 不重复打印）
     flags = {"mid_line": False, "query_active": False,
-             "thinking_line": False, "thinking_streamed": False}
+             "thinking_line": False, "thinking_streamed": False,
+             "bound_agent": None}   # SIGINT 处理器读：回合进行中取消当轮
     _HOOK_OWNER = "repl"   # 观察 handler 的统一 owner（/use 迁移时按 owner 摘除）
+    # repl 专用信号语义（不与 run/serve/web 共享优雅关闭桥）：SIGINT 回合
+    # 进行中取消当轮、空闲中断当前输入行；SIGTERM 优雅关闭。退出时还原
+    _prev_sigint = _install_repl_signal_handlers(runtime, flags)
     # 思考按「灰显增量」上屏（纯增量、不与最终/折叠摘要重复）；非 tty
     # （管道/重定向）时不回填思考，保持 stdout 答案是干净正文，思考留给
     # 折叠摘要兜底显示。
@@ -404,6 +442,7 @@ async def cmd_repl(
         if agent is not None:
             _unsubscribe(agent)   # /use 切换：订阅随之迁移
         agent = target
+        flags["bound_agent"] = target   # SIGINT 处理器的取消目标
         _subscribe(target)
 
     # 第 2 步：启动绑定——先扫已激活实例（同步），返回 None 时回退查池
@@ -437,8 +476,15 @@ async def cmd_repl(
         try:
             line: str = input(prompt)
         except EOFError:
-            # EOF（Ctrl-D）：与 /exit 同路径
+            # EOF（Ctrl-D）：与 /exit 同路径；补一个换行，避免后续输出
+            # 粘在提示符所在行
+            print()
             break
+        except KeyboardInterrupt:
+            # Ctrl-C（空闲时）：repl 专用 SIGINT 处理器抛出的中断——取消当前
+            # 输入行，换行重提示，不退出（退出走 /exit 或 Ctrl-D）
+            print()
+            continue
         if not line.strip():
             continue   # 空行不投递（空 USER 消息节点无意义），继续循环
         if line.startswith("/"):
@@ -525,6 +571,10 @@ async def cmd_repl(
                 # 无流式（error / blocked / 空回复 / 非 tty 思考留待摘要）：
                 # 照常打印最终文本；status="error" 时照常打印（可能为空串）
                 print(result.final_text)
+    # 还原 SIGINT 处理器（测试进程内反复进出 repl 不串扰）后优雅关闭
+    if _prev_sigint is not None:
+        import signal
+        signal.signal(signal.SIGINT, _prev_sigint)
     await runtime.shutdown()
     return EXIT_OK
 

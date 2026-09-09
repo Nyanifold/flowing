@@ -1,4 +1,5 @@
-"""阶段 5 T01–T07：``interfaces/__init__.py`` 共享件（parse_kv_args / 常量 / 信号）。"""
+"""阶段 5 T01–T07：``interfaces/__init__.py`` 共享件（parse_kv_args / 常量）
+与信号桥（优雅关闭桥为各子命令本地件，此处经 run 模块取同构实现）。"""
 
 from __future__ import annotations
 
@@ -12,9 +13,9 @@ from flowing.interfaces import (
     EXIT_RUNTIME_ERROR,
     EXIT_USAGE_ERROR,
     SUBCOMMANDS,
-    _install_signal_handlers,
     parse_kv_args,
 )
+from flowing.interfaces.run import _install_signal_handlers   # 优雅关闭桥（run 本地件，各子命令同构）
 
 
 def test_constants():

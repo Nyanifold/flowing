@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 from types import SimpleNamespace
 
@@ -285,3 +286,26 @@ async def test_v3_new_commands(project_ok, persist_dir, monkeypatch, capsys):
     assert "alpha-reply" in out               # 回合回复（流式）与 /export md 均含
     assert "/agent <agent_id>" in out         # /help 列出新命令
     assert "/use" not in out.splitlines()[0] if out else True   # /help 不列 /use
+
+
+async def test_sigint_aborts_active_turn_not_session():
+    """repl 专用 SIGINT 语义：回合进行中 ^C → abort_turn 取消当轮（会话
+    存活），不再走 shutdown 桥。"""
+    import os
+    import signal
+
+    class _StubAgent:
+        def __init__(self):
+            self.aborted = False
+
+        def abort_turn(self):
+            self.aborted = True
+
+    flags = {"query_active": True, "bound_agent": _StubAgent()}
+    prev = repl_mod._install_repl_signal_handlers(None, flags)
+    try:
+        os.kill(os.getpid(), signal.SIGINT)
+        await asyncio.sleep(0)   # 让信号处理器在事件循环内落地
+        assert flags["bound_agent"].aborted
+    finally:
+        signal.signal(signal.SIGINT, prev)

@@ -22,9 +22,25 @@ from flowing.interfaces import (
     EXIT_OK,
     EXIT_RUNTIME_ERROR,
     _default_agent_type,
-    _install_signal_handlers,
     _list_agent_records,
 )
+
+
+def _install_signal_handlers(runtime) -> None:
+    """安装 SIGINT / SIGTERM → ``runtime.shutdown()`` 的优雅关闭桥
+    （serve 子命令本地件，不属稳定契约）。非主线程 / 不支持信号的
+    平台为 no-op。"""
+    import asyncio
+    import signal
+
+    def _handler(signum: int, frame: object) -> None:
+        asyncio.ensure_future(runtime.shutdown())
+
+    try:
+        signal.signal(signal.SIGINT, _handler)
+        signal.signal(signal.SIGTERM, _handler)
+    except (ValueError, OSError, RuntimeError):
+        pass
 
 
 SERVE_ENDPOINTS: tuple[str, ...] = (

@@ -38,8 +38,7 @@ Runtime」——所有子命令拿到 Runtime 之后做什么，是本包各模�
   无前端）。
 - ``flowing.interfaces.web`` —— ``web`` 子命令与内置默认前端资产。
 - 共享件（本包顶层）：``SUBCOMMANDS`` / ``EXIT_OK`` /
-  ``EXIT_RUNTIME_ERROR`` / ``EXIT_USAGE_ERROR`` / ``parse_kv_args`` /
-  ``_install_signal_handlers``。
+  ``EXIT_RUNTIME_ERROR`` / ``EXIT_USAGE_ERROR`` / ``parse_kv_args``。
 
 .. rubric:: 全局约定（跨符号、影响使用的约定）
 
@@ -67,11 +66,14 @@ Runtime」——所有子命令拿到 Runtime 之后做什么，是本包各模�
 - ``2``：用法错误——未知子命令、``<path>`` 指向不存在的目录、
   ``<path>`` 之后出现非 ``--key`` 形式的裸参数。
 
-信号处理：CLI 进程对 SIGINT / SIGTERM 安装统一的信号处理器（见
-:func:`_install_signal_handlers`）。处理器只发起 ``runtime.shutdown()``
-（非阻塞，立即返回）；``shutdown()`` 完成递归 destroy 全部节点与插件
-收尾后置位退出事件，``await runtime`` 处随即唤醒，进程以退出码 ``0``
-退出。框架不实现「二次信号强制 kill」——关闭卡死时的兜底是应用层职责。
+信号处理：各子命令自行安装自己的信号处理器（不共享统一安装件）——
+``run`` / ``serve`` / ``web`` 装 SIGINT / SIGTERM → ``runtime.shutdown()``
+的优雅关闭桥；``repl`` 装交互语义：回合进行中 SIGINT 取消当前回合
+（``abort_turn``），提示符空闲时中断当前输入行（Ctrl-D 或 ``/exit``
+退出）。优雅关闭桥只发起 ``shutdown()``（非阻塞，立即返回）；
+``shutdown()`` 完成递归 destroy 全部节点与插件收尾后置位退出事件，
+``await runtime`` 处随即唤醒，进程以退出码 ``0`` 退出。框架不实现
+「二次信号强制 kill」——关闭卡死时的兜底是应用层职责。
 
 封闭观察窗口：默认 ``repl`` 的 slash-command 集合与默认 ``serve`` 的
 HTTP 端点集合都是封闭的，不接受运行时注册新命令 / 新端点——它们是
@@ -216,34 +218,6 @@ def parse_kv_args(argv: list[str]) -> dict[str, str | bool]:
             i += 1
         # 同一 --key 出现多次：后者覆盖前者（dict 赋值语义）
     return result
-
-def _install_signal_handlers(runtime: Runtime) -> None:
-    """安装 SIGINT / SIGTERM → ``runtime.shutdown()`` 的桥接（内部 API，
-    不属稳定契约）。
-
-    对 SIGINT 与 SIGTERM 各安装一次处理器；处理器只发起
-    ``shutdown()`` （非阻塞，发信号后立即返回），真正的清理在事件
-    循环内完成。重复调用幂等（后装覆盖先装，语义相同）。非主线程 /
-    不支持信号的平台调用为 no-op，不抛异常。
-
-    .. seealso:: :meth:`flowing.runtime.Runtime.shutdown`
-    """
-    import asyncio
-    import signal
-
-    def _handler(signum: int, frame: object) -> None:
-        # 处理器中只发起 shutdown()（非阻塞，发信号后立刻返回）；
-        # 禁止 sys.exit() / os._exit()；真正的清理由事件循环完成
-        asyncio.ensure_future(runtime.shutdown())
-
-    try:
-        # 对 SIGINT 与 SIGTERM 各安装一次；重复调用幂等（后装覆盖先装）
-        signal.signal(signal.SIGINT, _handler)
-        signal.signal(signal.SIGTERM, _handler)
-    except (ValueError, OSError, RuntimeError):
-        # 非主线程 / 不支持信号的平台：no-op，不抛异常
-        pass
-
 
 def _default_agent_type(runtime: Runtime) -> str | None:
     """取项目默认主 Agent 类型（内部 API，不属稳定契约）。

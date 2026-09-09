@@ -61,8 +61,25 @@ from types import MappingProxyType
 from aiohttp import web
 from flowing.runtime import launch
 
-from flowing.interfaces import EXIT_OK, EXIT_RUNTIME_ERROR, _install_signal_handlers
+from flowing.interfaces import EXIT_OK, EXIT_RUNTIME_ERROR
 from flowing.interfaces.serve import _build_app, _serve_runtime
+
+
+def _install_signal_handlers(runtime) -> None:
+    """安装 SIGINT / SIGTERM → ``runtime.shutdown()`` 的优雅关闭桥
+    （web 子命令本地件，不属稳定契约）。非主线程 / 不支持信号的
+    平台为 no-op。"""
+    import asyncio
+    import signal
+
+    def _handler(signum: int, frame: object) -> None:
+        asyncio.ensure_future(runtime.shutdown())
+
+    try:
+        signal.signal(signal.SIGINT, _handler)
+        signal.signal(signal.SIGTERM, _handler)
+    except (ValueError, OSError, RuntimeError):
+        pass
 
 
 @dataclass(frozen=True)
