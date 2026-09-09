@@ -232,3 +232,26 @@ async def test_t126_remove_by_owner_uninstall(tmp_path):
         ReminderAgent.reminder_args = []
         ReminderAgent.reminder_kwargs = {}
         await agent.destroy()
+
+
+async def test_error_turn_with_cleaned_reminder_no_crash(tmp_path):
+    """回归：clean=True 的提醒在 after_turn 被擦除后，error 回合（PROVIDER
+    消息从未挂树）的 build_turn_result 逆序遍历 turn.message_ids 时跳过
+    已 tombstone 的 id，不抛 KeyError——回合以 status="error" 正常交付。"""
+    from flowing.errors import ServerError
+
+    ReminderAgent.reminder_args = [["易逝提醒"]]
+    ReminderAgent.reminder_kwargs = {"clean": True}
+    runtime, provider = make_composables_harness(tmp_path,
+                                                 agent_cls=ReminderAgent)
+    agent = await runtime.create_agent("test-agent")
+    try:
+        script_provider(provider, ServerError("boom"))
+        r = await agent.query("会失败的一轮")
+        assert r.status == "error"          # 不楔死、不变 turn crashed
+        assert r.final_text == ""           # 无 PROVIDER 消息
+        assert _reminders_in_tree(agent) == []
+    finally:
+        ReminderAgent.reminder_args = []
+        ReminderAgent.reminder_kwargs = {}
+        await agent.destroy()

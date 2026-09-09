@@ -698,11 +698,15 @@ def build_turn_result(turn: TurnContext, agent: "Agent", *,
         status = "error"
     else:
         status = "completed"
-    # final_text：树访问经 chain.get，turn.message_ids 逆序找
-    # 最后一条 PROVIDER 消息，取其 content 中 TextBlock 的拼接文本
+    # final_text：turn.message_ids 逆序找最后一条 PROVIDER 消息，取其
+    # content 中 TextBlock 的拼接文本；回合内挂树、收尾期被清理的消息
+    #（如 use_system_reminder clean=True 的提醒——after_turn 先于本函数
+    # 运行）按 tombstone 语义跳过，不抛 KeyError
     final_text: str = ""   # 空 turn / 无 PROVIDER 消息 → ""
     for mid in reversed(turn.message_ids):
-        m = agent.chain.get(mid)
+        m = agent._messages.get(mid)
+        if m is None:
+            continue   # 已被收尾清理删除（tombstone）：跳过
         if m.kind is MessageKind.PROVIDER:
             final_text = "".join(b.text for b in m.content
                                  if isinstance(b, TextBlock))
