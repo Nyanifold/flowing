@@ -2,14 +2,28 @@
 
 .. rubric:: 功能介绍
 
-本模块提供 ``use_compact()``：为单个 Agent 实例启用「上下文占用超阈值
-自动压缩」策略。压缩是一次性完成的动作：每次主回合的 LLM 调用成功返回
-后，默认策略检查当前上下文占用比率（``estimate_context_tokens().usage_ratio``）；
-比率超过阈值时，在同一 handler 调用内依次——让模型基于当前完整上下文
-产出交接摘要（经 ``side_query`` 副线调用，不挂树、不落盘）→ 把摘要作为
-新的 ``SYSTEM`` 根消息挂到消息树（``MessageChain.branch(None, ...)``）→
-经 ``Agent.fork()`` 把 ``current_head_id`` 切到新根。旧链完整保留在消息
-树与 ``tree.jsonl`` 中成为历史，新链从摘要开始，当前回合无缝继续。
+本模块提供两个内置上下文压缩 Composable（可选、非默认；二选一）：
+
+- ``use_compact()`` —— 请求**后**触发（``after_provider_gen["_turn"]``），
+  全量摘要换新根：让模型把当前对话压缩为交接摘要，摘要作为新根开新链，
+  旧链整体成为历史。
+- ``use_auto_compact()`` —— 请求**前**触发（``before_provider_gen``），
+  头尾保留式压缩：保留链头（≤ ``head_tokens``）与链尾（≤ ``tail_tokens``）
+  的原始消息，中段压缩为「用户指令汇编 + 交接摘要」一条消息，开分支
+  换链后本次请求直接携压缩后上下文发出。
+
+``use_compact()`` 的压缩序列：主回合 LLM 调用成功返回后检查
+``estimate_context_tokens().usage_ratio``，超阈值时在同一 handler 调用内
+依次——经 ``side_query`` 副线让模型基于当前完整上下文产出交接摘要
+（不挂树、不落盘）→ 摘要作为新的 ``SYSTEM`` 根消息挂树
+（``MessageChain.branch(None, ...)``）→ ``Agent.fork()`` 把
+``current_head_id`` 切到新根。旧链完整保留在消息树与 ``tree.jsonl``
+中成为历史，新链从摘要开始，当前回合无缝继续。
+
+``use_auto_compact()`` 的注册面同构：handler 挂 ``before_provider_gen``
+（``by="auto_compact"``，普通注册——主回合/副线区分由 handler 读
+``context.messages`` 末条消息是否在树内完成，零状态递归防护），详见
+:func:`use_auto_compact`。
 
 本模块属应用层 / 内置 Composable：随 ``flowing`` 包发布但不自动启用，
 必须由 Agent 开发者在 ``setup()`` 中显式调用。不调用的 Agent 不持有任何
@@ -77,13 +91,23 @@
     持久化入口。
 """
 
+from __future__ import annotations
+
+import copy
+
 from flowing.agent import Agent
+from flowing.context import Context
 from flowing.errors import Intercepted
-from flowing.message import Message, MessageKind, TextBlock
+from flowing.message import (
+    Message,
+    MessageKind,
+    TextBlock,
+    estimate_message_tokens,
+)
 from flowing.parsable import Parsable
 from flowing.providers import ProviderResponse
 
-__all__ = ["use_compact", "DEFAULT_COMPACT_PROMPT"]
+__all__ = ["use_compact", "use_auto_compact", "DEFAULT_COMPACT_PROMPT"]
 
 DEFAULT_COMPACT_PROMPT: str = (
     "You are about to run out of context. Compress the conversation above into a "
@@ -252,3 +276,216 @@ def use_compact(agent: Agent, threshold: float = 0.8) -> None:
     # 唯一 handler，pattern 注册（match_on="by"，"_turn" 精确匹配主回合
     # 来源）；by="compact"，remove_by_owner("compact") 整组移除
     agent.hooks.after_provider_gen["_turn"](_compact_after_provider_gen, by="compact")
+
+
+def use_auto_compact(
+    agent: Agent,
+    *,
+    threshold: float = 0.8,
+    tail_tokens: int = 20_000,
+    head_tokens: int = 10_000,
+    user_instruction_tokens: int = 2_000,
+) -> None:
+    """为单个 Agent 实例启用「请求前头尾保留式自动压缩」策略（可选、非默认）。
+
+    .. rubric:: 功能介绍
+
+    在 ``before_provider_gen`` 上注册检测与压缩 handler
+    （``by="auto_compact"``）：每次主回合 LLM 请求发出**之前**检查上下文
+    占用，超过 ``threshold`` 时在同一 handler 调用内完成压缩——保留链
+    头部（≤ ``head_tokens``）与尾部（≤ ``tail_tokens``）的原始消息，
+    中段压缩为一条「用户指令汇编 + 交接摘要」消息，从前缀末条开分支、
+    后缀深拷贝拼接，再 ``fork`` 换链；本次请求直接携带压缩后的上下文
+    发出（handler 整体改写 ``Context``）。
+
+    与 :func:`use_compact` 的区别：use_compact 在请求**后**触发、全量
+    摘要换新根（工作现场丢失）；本函数在请求**前**触发、头尾保留（开场
+    指令与最近的工具调用现场原样留在上下文里）。两者并存但应二选一——
+    同时启用会在不同触发点各自动作。
+
+    .. rubric:: 使用示例
+
+    .. code-block:: python
+
+        async def setup(self) -> None:
+            use_auto_compact(self)   # 默认 0.8 / 头 10k / 尾 20k / 指令 2k
+
+        async def setup(self) -> None:
+            use_auto_compact(self, threshold=0.9, tail_tokens=40_000)
+
+    .. rubric:: 行为要点
+
+    - 主回合判定：handler 入口读 ``context.messages`` 末条消息——主回合
+      请求的末条消息必在消息树内（入队 / 挂树时已铸自增 id）；副线
+      ``side_query`` 自组装散装 Context（不进树），据此放行。递归防护
+      零状态（压缩自身的 side_query 也被同一规则放行）。
+    - 触发条件：``estimate_context_tokens().usage_ratio > threshold``
+      （严格大于）；``usage_ratio is None``（模型未声明 context_window）
+      时永不触发。
+    - 拦截：压缩前 dispatch ``on_compact``（value 为
+      :class:`flowing.context.ContextUsageEstimate`）；任一 handler
+      ``raise Intercepted`` 则本次取消。
+    - 切割规则：前缀从链头累计 token 取 ≤ ``head_tokens`` 的最长前缀，
+      切割点只允许落在 PROVIDER 消息的**上边界**（ToolCallBlock/TOOL
+      配对天然完整）；后缀从链尾同规则取 ≤ ``tail_tokens``，切割点同样
+      在 PROVIDER 上边界——链尾的非 PROVIDER 连续段（本轮新指令 / 刚落盘
+      的 TOOL 结果）始终保留，含 TOOL 时连同其 PROVIDER 配对锚一起保留
+      （配对完整优先于预算）；与前缀重叠时收缩后缀（前缀优先）。触发点在请求
+      之前，上一轮的工具配对均已闭合挂树。
+    - 中段处理：前后缀之间从前数累计 ≤ ``user_instruction_tokens`` 的
+      USER 消息，紧凑格式化（一个小标题 + 各条 ``---`` 分隔），与
+      ``side_query`` 产出的交接摘要合并为一条 ``SYSTEM`` 消息
+      （``source="auto_compact"``），经 ``chain.branch`` 挂到前缀末条
+      之下。内置 prompt 与格式化文本一律英文。
+    - 后缀拼接：逐条 ``copy.deepcopy`` 后置 ``id=None`` /
+      ``parent_id=None``，链式 ``branch`` 拼接（挂树自动铸新 id，与旧
+      节点无冲突）；旧链物理完整保留（append-only）。
+    - 换链：``fork`` 到后缀末条新 id（无后缀则到压缩消息）；
+      ``before_fork`` 被拦截 → 新分支已落盘而 head 未切（白压一次，
+      安全），本次请求携原上下文发出。
+    - 摘要失败（``side_query`` 异常或返回空文本）→ 不换链、异常不外
+      抛、本次请求照常发出；下一次请求前再试，不会热循环。
+    - 边界情形：链太短（前缀 + 后缀已覆盖全链、无中段）→ 跳过；压缩后
+      仍超窗 → 本次请求照常发出，由
+      :class:`flowing.errors.ContextLengthError` 通道兜底。
+
+    重复调用：不做幂等去重——每次调用各自叠加一个 handler（闭包持有
+    独立参数）。恢复时 ``setup()`` 在新实例上执行，钩子注册表随实例
+    重建，天然不叠加。``remove_by_owner("auto_compact")`` 可整组移除。
+
+    不做什么：不修改 ``agent.model``、不动消息队列、不 abort 回合、不
+    注册工具、不持久化任何压缩状态（消息树变更本身是常规落盘）。
+
+    :param agent: 目标 Agent 实例；标准用法是在 ``setup()`` 中传 ``self``。
+    :param threshold: 触发阈值（``usage_ratio`` 严格大于它时启动压缩），
+        ``0 < threshold <= 1.0``，默认 ``0.8``。
+    :param tail_tokens: 尾部保留的 token 上限，``>= 0``，默认 ``20_000``。
+    :param head_tokens: 头部保留的 token 上限，``>= 0``，默认 ``10_000``。
+    :param user_instruction_tokens: 中段用户指令汇编的 token 上限，
+        ``>= 0``，默认 ``2_000``。
+    :raises ValueError: 参数越界（于注册任何 handler 之前抛出）。
+
+    .. seealso::
+
+        :func:`use_compact` —— 请求后全量换链的同族策略（二选一）。
+        :meth:`flowing.agent.Agent.estimate_context_tokens` —— 阈值检测的
+            数据源。
+        :meth:`flowing.message.estimate_message_tokens` —— 单条消息的
+            估算口径。
+    """
+    # 先校验后注册：非法参数抛 ValueError，不产生任何注册副作用
+    if not 0 < threshold <= 1.0:
+        raise ValueError("threshold must be in (0, 1.0]")
+    for name, value in (("tail_tokens", tail_tokens),
+                        ("head_tokens", head_tokens),
+                        ("user_instruction_tokens", user_instruction_tokens)):
+        if value < 0:
+            raise ValueError(f"{name} must be >= 0")
+
+    # 声明压缩观测/拦截钩子点（与 use_compact 共用；同名同 by 幂等）
+    agent.hooks.declare("on_compact", by="compact")
+
+    # compact_prompt 缺省绑定（开发者已定义优先）
+    if not hasattr(agent, "compact_prompt"):
+        agent.compact_prompt = Parsable(DEFAULT_COMPACT_PROMPT)
+
+    def _cut_prefix(chain: list[Message], budget: int) -> int:
+        """最长前缀的右开边界：累计 ≤ budget，且切割点落在 PROVIDER 上边界。"""
+        cut, total = 0, 0
+        for i, msg in enumerate(chain):
+            total += estimate_message_tokens(msg)
+            if total > budget:
+                break
+            if i + 1 >= len(chain) or chain[i + 1].kind is MessageKind.PROVIDER:
+                cut = i + 1   # 下一条是 PROVIDER（或已到链尾）：合法切割点
+        return cut
+
+    def _cut_suffix(chain: list[Message], budget: int, lo: int) -> int:
+        """最长后缀的起始下标：累计 ≤ budget，切割点落在 PROVIDER 上边界。
+
+        链尾的非 PROVIDER 连续段（本轮新用户指令 / 刚落盘的 TOOL 结果）
+        始终保留——触发压缩的这次请求不能丢掉用户刚发的指令；该段含 TOOL
+        时连同其 PROVIDER（配对锚）一起保留：配对完整优先于预算。
+        """
+        n = len(chain)
+        t = n
+        while t > lo and chain[t - 1].kind is not MessageKind.PROVIDER:
+            t -= 1
+        if t < n and any(m.kind is MessageKind.TOOL for m in chain[t:n]):
+            start = t - 1 if t - 1 >= lo else t   # TOOL 段连同其 PROVIDER
+        else:
+            start = t
+        total = sum(estimate_message_tokens(m) for m in chain[start:])
+        i = start - 1
+        while i >= lo:
+            total += estimate_message_tokens(chain[i])
+            if total > budget:
+                break
+            if chain[i].kind is MessageKind.PROVIDER:
+                start = i   # PROVIDER 上边界：合法的后缀起点
+            i -= 1
+        return start
+
+    async def _auto_compact_before_gen(agent: Agent, context: Context) -> Context:
+        """请求前检测与压缩 handler（内部 API，``by="auto_compact"``）。"""
+        # 主回合判定：末条消息须在消息树内（副线/散装 Context 直接放行）
+        if not context.messages or context.messages[-1].id not in agent._messages:
+            return context
+        estimate = agent.estimate_context_tokens()
+        ratio = estimate.usage_ratio
+        if ratio is None or ratio <= threshold:
+            return context
+        try:
+            await agent.hooks.on_compact.dispatch(agent, estimate)
+            summary = await agent.side_query(agent.compact_prompt.resolve(agent))
+        except Intercepted:
+            return context   # on_compact 取消本次压缩
+        except Exception:
+            return context   # side_query 失败：不动作、不外抛，下次再试
+        if not summary.strip():
+            return context   # 空摘要兜底
+
+        chain = list(agent.chain.walk(agent.current_head_id))[::-1]   # 根 → head
+        cut = _cut_prefix(chain, head_tokens)
+        start = _cut_suffix(chain, tail_tokens, cut)
+        middle = chain[cut:start]
+        if not middle:
+            return context   # 无中段可压（前缀+后缀已覆盖全链）：跳过
+
+        # 中段用户指令汇编（从前数累计 ≤ user_instruction_tokens；--- 分隔）
+        user_parts: list[str] = []
+        used = 0
+        for msg in middle:
+            if msg.kind is not MessageKind.USER:
+                continue
+            cost = estimate_message_tokens(msg)
+            if used + cost > user_instruction_tokens:
+                break
+            used += cost
+            user_parts.append("".join(
+                b.text for b in msg.content if isinstance(b, TextBlock)))
+        sections = ["following are compacted:"]
+        if user_parts:
+            sections.append("## User instructions\n" + "\n---\n".join(user_parts))
+        sections.append("## Compaction summary\n" + summary)
+
+        # 从前缀末条开分支（空前缀 → 新根）；旧链物理完整保留
+        parent_id = chain[cut - 1].id if cut > 0 else None
+        cursor = agent.chain.branch(parent_id, Message(
+            kind=MessageKind.SYSTEM,
+            content=[TextBlock(text="\n\n".join(sections))],
+            source="auto_compact"))
+        # 后缀逐条深拷贝拼接（id/parent_id 置 None，挂树铸新 id）
+        for msg in chain[start:]:
+            twin = copy.deepcopy(msg)
+            twin.id = None
+            twin.parent_id = None
+            cursor = agent.chain.branch(cursor, twin)
+        try:
+            await agent.fork(cursor)   # 切到压缩后分支
+        except Intercepted:
+            return context   # 新分支已落盘而 head 未切：白压一次，安全
+        return agent._assemble_context()   # 本次请求直接携压缩后上下文发出
+
+    # 唯一 handler，普通注册；by="auto_compact"，remove_by_owner 整组移除
+    agent.hooks.before_provider_gen(_auto_compact_before_gen, by="auto_compact")

@@ -4,10 +4,12 @@
 
 Composable 是三层架构中的应用层：普通 Python 函数（命名约定
 ``use_xxx(agent, ...)``），在 Agent 的 ``setup()`` 中被调用，为这一个
-Agent 实例注册钩子 handler 或绑定实例属性。初版内置三个：
+Agent 实例注册钩子 handler 或绑定实例属性。内置四个：
 :func:`use_retry` （:mod:`flowing.composables.retry`，LLM 调用失败退避
-重试）、:func:`use_compact` （:mod:`flowing.composables.compact`，上下文
-占用超阈值自动压缩换链）与 :func:`use_system_reminder`
+重试）、:func:`use_compact` 与 :func:`use_auto_compact`
+（:mod:`flowing.composables.compact`，上下文占用超阈值自动压缩——
+前者请求后全量换链，后者请求前头尾保留，二选一）与
+:func:`use_system_reminder`
 （:mod:`flowing.composables.reminder`，每回合注入系统提醒）。场景类
 Composable（``use_logging`` / ``use_guardrail`` 等）属应用代码，框架
 不预留符号。
@@ -60,7 +62,7 @@ Composable 只做「挂载」：注册钩子 handler、绑定实例属性；不�
 """
 
 from flowing.composables.retry import use_retry
-from flowing.composables.compact import use_compact
+from flowing.composables.compact import use_auto_compact, use_compact
 from flowing.composables.reminder import use_system_reminder
 
-__all__ = ["use_retry", "use_compact", "use_system_reminder"]
+__all__ = ["use_retry", "use_compact", "use_auto_compact", "use_system_reminder"]
