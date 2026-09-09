@@ -56,9 +56,9 @@ Agent 存活）。
 - 错误分类：默认策略只对 :data:`RETRYABLE_ERRORS` 中列出的四种异常
   重试；:data:`NON_RETRYABLE_ERRORS` 中列出的异常与一切未知异常一律
   不重试（凭证错误不会因等待而变对，请求体不会因等待而合法）。
-- :class:`flowing.errors.ContextLengthError` 不经过
-  ``on_provider_error``——它在核心分发之前就被直接上抛，本模块的
-  handler 永远收不到它。
+- :class:`flowing.errors.ContextLengthError` 与其它调用期异常一样经
+  ``on_provider_error`` 分发；默认策略对它不重试（原样重发必然重现），
+  压缩历史 / 换模型由用户 handler 自行实现。
 - 重试发生在逻辑 Turn 内部：不产生任何消息、不写消息级树；重试计数
   随 Turn 边界归零、不落盘、崩溃后不恢复。
 - 同一 Turn 内的多次 ``provider_gen()`` 共享同一重试预算（失败预算不
@@ -84,6 +84,7 @@ from flowing.agent import Agent
 from flowing.errors import (
     AuthenticationError,
     ContentPolicyError,
+    ContextLengthError,
     InvalidRequestError,
     NetworkError,
     QuotaExhaustedError,
@@ -135,25 +136,26 @@ adapter 抛出、且会经过 ``on_provider_error`` 分发；「对它们重试�
 
 NON_RETRYABLE_ERRORS: tuple[type[BaseException], ...] = (
     AuthenticationError,
-    InvalidRequestError,
+    ContextLengthError,
     ContentPolicyError,
+    InvalidRequestError,
     QuotaExhaustedError,
     RequestTooLargeError,
 )
-"""默认策略显式不重试的异常类型元组（凭证类、请求类与配额类错误）。
+"""默认策略显式不重试的异常类型元组（凭证类、请求类、配额类与长度类错误）。
 
 分别是 :class:`flowing.errors.AuthenticationError`、
-:class:`flowing.errors.InvalidRequestError`、
+:class:`flowing.errors.ContextLengthError`、
 :class:`flowing.errors.ContentPolicyError`、
+:class:`flowing.errors.InvalidRequestError`、
 :class:`flowing.errors.QuotaExhaustedError` 与
 :class:`flowing.errors.RequestTooLargeError`。
 
 这些异常到达默认 handler 时被原样放行：不等待、不计数、不改写任何
 字段，``can_continue`` 保持 ``False``，本回合以错误结局终止——重试
 它们不改变结果（凭证不会因等待而变对，请求体不会因等待而合法，余额
-不会因等待而变多）。注意 :class:`flowing.errors.ContextLengthError` 不
-在此列也无需在列：它在核心分发之前就被直接上抛，永远不会到达
-``on_provider_error``。
+不会因等待而变多，上下文不会因等待而变短）。``ContextLengthError`` 的
+恢复（压缩历史 / 换大窗模型）由用户 handler 自行实现，默认策略不涵盖。
 
 .. seealso:: :data:`flowing.composables.retry.RETRYABLE_ERRORS`
 """

@@ -120,8 +120,9 @@ adapter 必须把底层错误归类为 :mod:`flowing.errors` 中的明确类型�
   媒体剥离后重发属 handler 职责）/ ``QuotaExhaustedError`` （429 配额
   耗尽，与瞬时限流的 ``RateLimitedError`` 对偶——内置两个格式家族对
   429 一律归类为 ``RateLimitedError``，不区分配额耗尽）。
-- ``ContextLengthError``：不可重试，且不经过 ``on_provider_error``
-  钩子，直接上抛。
+- ``ContextLengthError``：token 超限；同样经 ``on_provider_error``
+  分发——原样重发必然重现，默认策略（``use_retry``）不重试；压缩历史 /
+  换大窗模型属 handler 职责。
 - ``MissingEnvironmentVariableError``：provider 条目加载时抛出。
 - Provider 调用期异常在逻辑 Turn 层被接住（回合以 error 结局终止，
   不向 ``query()`` 调用方抛异常）——细节见 :mod:`flowing.errors`。

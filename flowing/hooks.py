@@ -134,7 +134,7 @@ dispatch 点为准）：
      - :class:`flowing.agent.ProviderErrorContext`
      - 唯一可决策的错误钩子：handler 在内部执行退避等待（sleep） / 换模型 /
        ``abort_turn()`` 等动作并写 ``ctx.can_continue`` （为 ``True`` 则
-       同一回合内重试）；``ContextLengthError`` 不经过本钩子，直接上抛
+       同一回合内重试）；观察 / 换模型 / 压缩后重试等处置均属 handler 内部逻辑
 
 .. list-table:: 消息队列 / fork / 取消钩子点
    :header-rows: 1

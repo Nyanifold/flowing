@@ -43,7 +43,7 @@ import 期作者笔误刻意用内置 ``ValueError``，不入本层次——如
         │   ├── ResourceNameConflictError
         │   └── ResourceNotFoundError
         ├── ProviderError                # Provider 加载与调用
-        │   ├── ContextLengthError       # 不可重试；不经 on_provider_error，直接上抛
+        │   ├── ContextLengthError       # token 超限；经 on_provider_error 分发，处置属策略
         │   ├── RequestTooLargeError     # 不可重试（HTTP 413 字节超限）
         │   ├── RateLimitedError         # 可重试（HTTP 429 瞬时限流）
         │   ├── QuotaExhaustedError      # 不可重试（429 配额耗尽）
@@ -115,11 +115,11 @@ import 期作者笔误刻意用内置 ``ValueError``，不入本层次——如
   ``AuthenticationError`` / ``InvalidRequestError`` / ``ContentPolicyError``
   不可重试。可重试性只是分类事实：框架核心不内置重试，是否重试、退避多久
   由 ``on_provider_error`` handler（如 ``use_retry()``）决定。
-- ``ContextLengthError`` 是唯一绕过 ``on_provider_error`` 的调用期异常：
-  不可重试是事实而非策略，逻辑 Turn 层直接上抛。其余 Provider 调用期错误
-  经 ``on_provider_error`` 分发：handler 写 ``can_continue=True`` 则同一
-  回合内重试，否则回合以 error 结局终止、Agent 存活；``after_turn`` 收尾
-  钩子在所有路径（含异常路径）照常触发，已产生的消息照常持久化。
+- Provider 调用期错误一律经 ``on_provider_error`` 分发：handler 写
+  ``can_continue=True`` 则同一回合内重试，否则回合以 error 结局终止、
+  Agent 存活；``after_turn`` 收尾钩子在所有路径（含异常路径）照常触发，
+  已产生的消息照常持久化。``ContextLengthError`` 等原样重发必然重现的
+  错误同样分发——压缩 / 换模型 / 仅观察等处置均属 handler 内部逻辑。
 - ``MissingEnvironmentVariableError`` 在 Provider 条目加载时抛出（fail-fast：
   出错即刻抛异常、不静默降级），与调用期异常不在同一时序。
 - 错误钩子只有 ``on_provider_error``：``on_tool_error`` /
@@ -1019,7 +1019,7 @@ class ProviderError(FlowingError):
       不可重试——可重试性只是分类事实，是否重试由 ``on_provider_error`` handler
       （如 ``use_retry()``）决定，框架核心不内置重试。
     - ``provider_gen()`` 不捕获、不重试任何 Provider 异常，统一在逻辑 Turn 层
-      接住（``ContextLengthError`` 除外，不经 ``on_provider_error`` 直接上抛）。
+      接住并经 ``on_provider_error`` 分发（处置属 handler 内部逻辑）。
     - 消息文本面向人读（不回喂 LLM）；结构化字段面向代码。
 
     .. seealso::
@@ -1067,22 +1067,24 @@ class ProviderError(FlowingError):
 
 
 class ContextLengthError(ProviderError):
-    """上下文长度溢出（token 数超限，不可重试、不经 ``on_provider_error``）。
+    """上下文长度溢出（token 数超限；经 ``on_provider_error`` 分发，处置属策略）。
 
     .. rubric:: 功能介绍
 
     组装的 ``Context`` 超出模型 ``context_window`` 时由 adapter 在请求 / 响应
-    解析时抛出。是 Provider 调用期异常中唯一绕过 ``on_provider_error`` 的类型：
-    「上下文太长」重试必然重现同样失败，不可重试是事实而非策略，因此框架把它
-    硬编码为直接上抛，不给策略层误判空间。压缩 / 截断属策略，由钩子层（如
-    ``before_provider_gen`` 中的压缩 Composable）在下一次调用前处理，不在
-    错误路径内自动发生。
+    解析时抛出。与其它 Provider 调用期异常一样经 ``on_provider_error`` 分发：
+    原样重发必然重现同样失败，因此默认策略（``use_retry``）不对它重试；但
+    压缩会话历史、换用更大窗口模型、或仅观察记录，都是 handler 的合法处置。
+    压缩 / 截断属策略，由 handler 在处置中自行完成（如压缩 Composable），
+    不在错误路径内自动发生。
 
     .. rubric:: 行为要点
 
     - 字段继承 ``ProviderError`` （``provider`` / ``model``）。
-    - 不经 ``on_provider_error``：逻辑 Turn 层直接上抛，回合以 error 结局终止
-      （``after_turn`` 收尾钩子照常触发，已产生的消息照常持久化），Agent 存活。
+    - 经 ``on_provider_error`` 分发：默认 ``can_continue=False`` 时回合以
+      error 结局终止（``after_turn`` 收尾钩子照常触发，已产生的消息照常
+      持久化），Agent 存活；handler 完成压缩 / 换模型等动作后可置
+      ``can_continue=True`` 回合内重试。
     - 与 ``RequestTooLargeError`` 区分：本类是 token 数超限，后者是请求体字节数
       超限（HTTP 413），恢复路径不同。
 

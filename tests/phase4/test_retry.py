@@ -115,9 +115,9 @@ async def test_t103_non_retryable_immediate_return(tmp_path):
         await agent.destroy()
 
 
-async def test_t104_context_length_bypasses_hook(tmp_path):
-    """T104：ContextLengthError 不经 on_provider_error 直接上抛（回归
-    验证不被拦截）。"""
+async def test_t104_context_length_dispatched_to_hook(tmp_path):
+    """T104：ContextLengthError 与其它调用期异常一样经 on_provider_error
+    分发；handler 不改写决策字段时回合以 error 收尾、不重试。"""
     runtime, provider = make_composables_harness(tmp_path)
     agent = await runtime.create_agent("test-agent")
     seen = []
@@ -130,7 +130,8 @@ async def test_t104_context_length_bypasses_hook(tmp_path):
         script_provider(provider, ContextLengthError("overflow"))
         result = await agent.query("hi")
         assert result.status == "error"
-        assert seen == []                      # 不经 on_provider_error
+        assert len(seen) == 1                  # 经 on_provider_error 分发
+        assert seen[0].can_continue is False
         assert len(provider.received) == 1
     finally:
         await agent.destroy()

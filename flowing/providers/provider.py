@@ -562,7 +562,8 @@ class Provider(ABC):
         - 不读写消息树、不落盘、不触发钩子（钩子在 Agent 层）。
 
         :raises flowing.errors.ContextLengthError:
-            上下文溢出。不可重试，且不经过 ``on_provider_error``，直接上抛。
+            上下文溢出。与其它调用期异常一样经 ``on_provider_error`` 分发
+            （默认策略不重试；压缩 / 换模型属 handler 职责）。
         :raises flowing.errors.RateLimitedError:
             429 限流。可重试类（是否重试由策略层如 ``use_retry()`` 决定）。
         :raises flowing.errors.ServerError:
