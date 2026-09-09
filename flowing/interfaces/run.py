@@ -23,7 +23,11 @@ def _install_signal_handlers(runtime) -> None:
     import signal
 
     def _handler(signum: int, frame: object) -> None:
-        asyncio.ensure_future(runtime.shutdown())
+        # 信号处理器跑在主线程、事件循环阻塞在 select 时 ensure_future 不会
+        # 唤醒循环（PEP 475 自动重试 select）→ call_soon_threadsafe 经
+        # self-pipe 显式唤醒
+        loop = asyncio.get_running_loop()
+        loop.call_soon_threadsafe(asyncio.ensure_future, runtime.shutdown())
 
     try:
         signal.signal(signal.SIGINT, _handler)

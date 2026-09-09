@@ -34,7 +34,11 @@ def _install_signal_handlers(runtime) -> None:
     import signal
 
     def _handler(signum: int, frame: object) -> None:
-        asyncio.ensure_future(runtime.shutdown())
+        # 信号处理器跑在主线程、事件循环阻塞在 select 时 ensure_future 不会
+        # 唤醒循环（PEP 475 自动重试 select）→ call_soon_threadsafe 经
+        # self-pipe 显式唤醒
+        loop = asyncio.get_running_loop()
+        loop.call_soon_threadsafe(asyncio.ensure_future, runtime.shutdown())
 
     try:
         signal.signal(signal.SIGINT, _handler)
@@ -591,6 +595,7 @@ async def _serve_runtime(runtime: Runtime, app: web.Application, host: str, port
         await runner.cleanup()
         await runtime.shutdown()
         return EXIT_RUNTIME_ERROR
+    print(f"serving on http://{host}:{port} (Ctrl-C to stop)", flush=True)   # 启动提示行（flush：重定向下不丢）
     await runtime   # 阻塞至 shutdown（HTTP server 生命周期挂在 Runtime 上）
     await runner.cleanup()
     return EXIT_OK
@@ -732,6 +737,9 @@ async def cmd_serve(
         print(f"launch failed: {exc}", file=sys.stderr)
         return EXIT_RUNTIME_ERROR
     _install_signal_handlers(runtime)
+    # 访问日志与框架 warning 上屏（aiohttp.access 走 stdlib logging）
+    import logging
+    logging.basicConfig(level=logging.INFO)
     # 第 2–10 步：端点注册表建 app（与 SERVE_ENDPOINTS 一一对应），绑定
     # host:port 开始服务，await runtime 阻塞至 shutdown
     return await _serve_runtime(runtime, _build_app(runtime), host, port)

@@ -52,7 +52,10 @@ def _install_repl_signal_handlers(runtime: Runtime, flags: dict) -> None:
         raise KeyboardInterrupt   # 空闲：中断 input() 当前行
 
     def _sigterm_handler(signum: int, frame: object) -> None:
-        asyncio.ensure_future(runtime.shutdown())
+        # call_soon_threadsafe 经 self-pipe 唤醒阻塞在 select 的事件循环
+        #（ensure_future 不唤醒，shutdown 会挂起——见 run/serve/web 同件）
+        loop = asyncio.get_running_loop()
+        loop.call_soon_threadsafe(asyncio.ensure_future, runtime.shutdown())
 
     try:
         previous = signal.signal(signal.SIGINT, _sigint_handler)
