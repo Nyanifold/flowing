@@ -1,4 +1,4 @@
-"""阶段 1 context.py 测试（T-69 ~ T-82）：PromptBlock 族、Context 容器、用量估计。
+"""阶段 1 context.py 测试（T-69 ~ T-84）：PromptBlock 族、Context 容器、用量估计。
 
 本期无真 Agent：逐块求值经 tests/fakes.py 假 Agent 手工模拟组装
 （真组装 _assemble_context 属阶段 2）。
@@ -161,6 +161,27 @@ def test_t82_usage_ratio():
     no_window = ContextUsageEstimate(tokens=10, measured=None, estimated=10,
                                      anchor_message_id=None, context_window=None)
     assert no_window.usage_ratio is None
+
+
+def test_t83_insert_factory():
+    blocks = _blocks()
+    core = blocks.append("core", Parsable("0"), by="core")
+    mode = blocks.append("mode", Parsable("1"), tags=["mode"])
+    md = blocks.insert(1, "md:AGENTS.md", Parsable("2"),
+                       cache="static", by="md-prompt", tags=["md-prompt"])
+    assert blocks._items == [core, md, mode]  # 插入核心块之后、模式块之前
+    assert md.enabled is True and md.cache == "static"
+    assert md.by == "md-prompt" and md.tags == ["md-prompt"]
+    assert [b.name for b in blocks] == ["core", "md:AGENTS.md", "mode"]
+
+
+def test_t84_insert_before_core_block_allowed():
+    """放松 [0] 约束：允许 insert(0, ...) 插到核心块之前；核心块按 by 定位。"""
+    blocks = _blocks()
+    core = blocks.append("core", Parsable("0"), by="core")
+    blocks.insert(0, "first", Parsable("-1"))
+    assert blocks._items[1] is core  # 核心块位置后移
+    assert blocks._items[0].name == "first"
 
 
 def test_w25_context_container():

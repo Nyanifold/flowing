@@ -335,17 +335,20 @@ class PromptBlockList(ManagedList[PromptBlock]):
     框架核心层容器。每个 Agent 实例持有一个 ``PromptBlockList``：
     ``Agent.__init__`` 注入 ``[0]`` 惰性引用块（``by="core"``），之后
     ``setup()``、Composable、内置扩展按注册顺序追加自己的块。容器语义继承
-    :class:`flowing.lists.ManagedList`：条目有 ``enabled`` / ``by`` / ``tags``
-    三个管理属性；注册顺序即拼接顺序；``disable_*`` 只翻 ``enabled``、条目
+    :class:`flowing.lists.ManagedList`：条目有 ``enabled`` / ``by`` /
+    ``tags`` 三个管理属性；列表顺序即拼接顺序（``append`` 追加尾部、
+    ``insert`` 任意位置插入）；``disable_*`` 只翻 ``enabled``、条目
     保留原位可恢复；``remove_*`` 物理删除、后续条目前移、不可逆；迭代自动
     跳过已停用条目；分组操作无匹配不报错。
 
     ``[0]`` 惰性引用块：指向类属性 ``system_prompt`` 的引用块（内容是
     ``Parsable("{{ self.system_prompt }}")``，不是内容副本）。``system_prompt``
     是 system prompt 内容的唯一数据源：``setup()`` 中改它，下次组装自动
-    反映，引用块无需感知变化。``[0]`` 由框架注入（``by="core"``），应用与
-    扩展不得移除、替换或在它之前插入元素；``remove_by_owner("core")`` 会
-    破坏本约定，属使用错误。
+    反映，引用块无需感知变化。``[0]`` 由框架注入（``by="core"``）；允许经
+    ``insert`` 在它之前插入块（拼接顺序随之变化、核心块位置后移——定位
+    核心块应按 ``by="core"`` 而非固定下标）。移除或替换核心块会使 system
+    prompt 从组装中消失：``remove_by_owner("core")`` 属使用错误，框架不
+    兜底。
 
     .. rubric:: 使用示例
 
@@ -372,11 +375,13 @@ class PromptBlockList(ManagedList[PromptBlock]):
 
     .. rubric:: 行为要点
 
-    - 注册顺序即拼接顺序：组装按列表顺序遍历（跳过已停用块），产出的
-      ``PromptSegment`` 序列与之严格同序。
+    - 列表顺序即拼接顺序：组装按列表顺序遍历（跳过已停用块），产出的
+      ``PromptSegment`` 序列与之严格同序；``append`` 追加尾部，
+      ``insert`` 在任意位置插入。
     - ``__iter__`` 产出的是块对象本身（非求值产物），求值只发生在组装时。
-    - 不用于每 Turn 的内容增删（反模式）：频繁 ``append`` + ``remove_by_tag``
-      破坏注册顺序稳定性。动态内容放进 ``PromptBlock.content`` 的模板引用
+    - 不用于每 Turn 的内容增删（反模式）：频繁 ``append`` / ``insert`` +
+      ``remove_by_tag`` 破坏顺序稳定性。动态内容放进
+      ``PromptBlock.content`` 的模板引用
       里——Parsable 每次组装现场求值，``{{ current_mode }}`` 这类低频变量
       引用自然拿到最新值，不需要增删 block。高频更新值（如当前时间）不应
       进 prompt 块——prompt 变动会破坏 provider 侧前缀缓存；这类信息应走
@@ -385,8 +390,9 @@ class PromptBlockList(ManagedList[PromptBlock]):
       :func:`flowing.composables.reminder.use_system_reminder`）。
     - 分组操作（``*_by_tag`` / ``*_by_owner``）无匹配元素时不报错、无操作；
       对已处于目标状态的元素重复操作不产生任何变化。
-    - ``remove_*`` 物理删除后后续元素前移——依赖固定下标（除 ``[0]`` 约定
-      外）是脆弱的，应用按 ``tags`` / ``by`` 管理。
+    - 依赖固定下标是脆弱的——``remove_*`` 物理删除后后续元素前移，
+      ``insert`` 让既有元素后移；应用按 ``tags`` / ``by`` 管理，定位核心
+      块用 ``by="core"`` 而非下标。
     - 框架核心永不移除 ``[0]`` 块；应用对 ``by="core"`` 做
       ``remove_by_owner`` 属使用错误。
 
@@ -461,6 +467,66 @@ class PromptBlockList(ManagedList[PromptBlock]):
         )
         super().append(block)  # 追加到注册顺序末尾（ManagedList.append）
         return block  # 返回构造产物本身（见行为要点）
+
+    def insert(
+        self,
+        index: int,
+        name: str,
+        content: Parsable,
+        *,
+        cache: Literal["static", "dynamic", "session"] = "dynamic",
+        by: str = "",
+        tags: list[str] | None = None,
+    ) -> PromptBlock:
+        """构造并插入一个 prompt 块到任意位置（工厂式签名），返回构造出的
+        块对象。
+
+        .. rubric:: 功能介绍
+
+        :meth:`append` 的任意位置版本：以零散参数构造 :class:`PromptBlock`
+        并插入到 ``index`` 指定的位置，其后既有块顺移一位。下标语义同
+        ``list.insert``（负下标从尾部倒数、越界向两端收敛）。允许插入到
+        框架注入的核心块（``by="core"``）之前——拼接顺序即列表顺序，核心
+        块位置相应后移。
+
+        .. rubric:: 使用示例
+
+        .. code-block:: python
+
+            # 工作区指令文件块排在核心块之后、其余块之前（无论注册先后）
+            self.prompt_blocks.insert(
+                1, "md:AGENTS.md", Parsable(text),
+                cache="static", by="md-prompt", tags=["md-prompt"])
+
+        :param index: 插入位置（可为负，语义同 ``list.insert``）。
+        :param name: 块名（非唯一键，见 :class:`PromptBlock`）。
+        :param content: 惰性内容（:class:`flowing.parsable.Parsable`）。
+        :param cache: 缓存意图标记，三值之一，默认 ``"dynamic"``。
+        :param by: 来源标识，默认空串 ``""``。
+        :param tags: 分组标签列表，默认 ``None`` （归一化为空列表）。
+        :return: 构造出的块对象（已挂入列表）。
+
+        .. rubric:: 行为要点
+
+        - 插入后既有块顺移；迭代与拼接按列表新顺序（跳过已停用块）。
+        - ``tags=None`` 归一化为 ``[]``；新块 ``enabled=True``。
+        - 不求值 ``content``；不检查 ``name`` 唯一性（同 :meth:`append`）。
+        - 依赖固定下标是脆弱的（``remove_*`` 让后续元素前移）；分组管理
+          优先按 ``tags`` / ``by``。
+
+        .. seealso::
+
+            :meth:`append`
+                追加到尾部的版本。
+            :meth:`flowing.lists.ManagedList.insert`
+                被特化的基类元素式接口。
+        """
+        block = PromptBlock(
+            name=name, content=content, cache=cache, by=by,
+            tags=tags or [],  # 归一化与 append 同口径
+        )
+        self._items.insert(index, block)  # list.insert 语义：负下标倒数、越界收敛
+        return block  # 返回构造产物本身
 
     def disable_by_tag(self, tag: str) -> int:
         """把 ``tags`` 列表中含有 ``tag`` 的全部块从启用改为停用（可逆，条目
@@ -665,9 +731,10 @@ class PromptBlockList(ManagedList[PromptBlock]):
 
         .. rubric:: 行为要点
 
-        - ``[0]`` 恒为框架注入的 ``system_prompt`` 惰性引用块（``by="core"``）：
-          框架注入发生在 ``__init__``、早于一切用户注册，位置由构造顺序结构性
-          保证，不需要按名字查找。
+        - 框架注入的 ``system_prompt`` 惰性引用块（``by="core"``）在
+          ``__init__`` 时位于 ``[0]``（早于一切用户注册）；一旦经
+          :meth:`insert` 在它之前插入块，其位置相应后移——定位核心块应
+          按 ``by="core"`` 而非固定下标。
         - 下标作用于底层列表，包含已停用块——与 ``__iter__`` 的过滤语义正交。
         - 不支持按名字 / 标签索引（那是 ``*_by_tag`` / ``*_by_owner`` 的职责）。
 
@@ -752,8 +819,8 @@ class Context:
     - 副线消息不出现：主流程组装的 ``messages`` 中不含 ``side_query`` 副线
       调用的消息（它们不进树、不落盘）。
     - 框架不对本类做 token 计数、窗口裁剪、长度校验——超长由 Provider
-      adapter 抛 :class:`flowing.errors.ContextLengthError` 兜底（该异常
-      不经过 ``on_provider_error``，直接上抛）。
+      adapter 抛 :class:`flowing.errors.ContextLengthError` 兜底（与其它
+      调用期异常一样经 ``on_provider_error`` 分发，处置属策略）。
     - 框架不为本类做 role 映射：kind→API role 是 adapter 的职责。
     - 改写 ``messages`` 不推荐：``before_provider_gen`` 钩子对 ``messages``
       的直接改动不会进入消息树、不会落盘，下一次组装即丢失。内容增删应

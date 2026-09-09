@@ -105,10 +105,11 @@ class ManagedList(Generic[Tg]):
 
     .. rubric:: 功能介绍
 
-    容器维护一批条目的注册顺序，提供整组操作：``append`` 追加条目；
+    容器维护一批条目的顺序，提供整组操作：``append`` 追加条目、
+    ``insert`` 在任意位置插入条目；
     ``disable_by_tag`` / ``enable_by_tag`` / ``remove_by_tag`` 按标签
     批量操作；``disable_by_owner`` / ``enable_by_owner`` /
-    ``remove_by_owner`` 按来源批量操作；``__iter__`` 按注册顺序产出
+    ``remove_by_owner`` 按来源批量操作；``__iter__`` 按列表顺序产出
     当前启用的条目。框架内 :class:`flowing.hooks.HookList` 与
     :class:`flowing.context.PromptBlockList` 以它为基础；使用者也可以
     直接使用本类管理自己的条目组。
@@ -149,8 +150,9 @@ class ManagedList(Generic[Tg]):
       匹配条目不产生任何变化、不计入返回值，重复调用第二次返回 0。
     - 删除对全部匹配条目计数，与条目当前是否停用无关；没有匹配条目
       时返回 0 且容器内容不变。
-    - 容器内条目的相对顺序等于注册顺序，``disable_*`` / ``enable_*``
-      不改变顺序。
+    - 容器内条目的相对顺序由 ``append`` / ``insert`` 共同决定（纯
+      ``append`` 时等于注册顺序），``disable_*`` / ``enable_*`` 不
+      改变顺序。
 
     .. seealso:: :class:`Togglable`、:class:`flowing.hooks.HookList`、
         :class:`flowing.context.PromptBlockList`
@@ -190,6 +192,41 @@ class ManagedList(Generic[Tg]):
         """
         self._items.append(item)
         return item  # 返回追加的条目本身（不变量：新条目始终是容器最后一个元素）
+
+    def insert(self, index: int, item: Tg) -> Tg:
+        """把一个条目插入到容器的任意位置，并返回该条目本身。
+
+        .. rubric:: 功能介绍
+
+        :meth:`append` 的任意位置版本：条目进入 ``index`` 指定的位置，
+        其后既有条目顺移一位。下标语义同 ``list.insert``：负下标从尾部
+        倒数，越界下标向两端收敛（过小插到最前、过大追加到尾部）。
+        插入后条目参与后续的批量操作与迭代。
+
+        .. rubric:: 使用示例
+
+        .. code-block:: python
+
+            entries.insert(0, Item(by="core"))       # 插到最前
+            entries.insert(1, Item(by="md-prompt"))  # 插到第二位
+
+        :param index: 插入位置（可为负，语义同 ``list.insert``）。
+        :return: 被插入的条目本身，便于链式使用。
+
+        .. rubric:: 行为要点
+
+        - 插入后容器的条目顺序由 ``append`` 与 ``insert`` 共同决定——
+          不再恒等于注册顺序；迭代与消费路径按列表新顺序处理条目。
+        - 与 :meth:`append` 一样不做去重：同一个条目对象可多次插入。
+        - 本方法对子类形态不做约束：子类可把 insert 特化为「构造并
+          插入」的工厂式签名（如 :class:`flowing.context.PromptBlockList`
+          的 ``insert(index, name, content, ...)``）；此时基类的元素式
+          ``insert(index, item)`` 在该子类上不可用，属有意为之。
+
+        .. seealso:: :meth:`append`
+        """
+        self._items.insert(index, item)  # list.insert 语义：负下标倒数、越界向两端收敛
+        return item  # 返回插入的条目本身
 
     def disable_by_tag(self, tag: str) -> int:
         """把 ``tags`` 列表中含有 ``tag`` 的全部条目从启用改为停用。

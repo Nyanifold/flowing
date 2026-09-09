@@ -88,3 +88,36 @@ def test_l6_remove_by_tag_is_permanent():
     before = list(container._items)
     assert container.remove_by_tag("nonexistent") == 0
     assert container._items == before
+
+
+def test_l7_insert_arbitrary_position():
+    """L7：insert 任意位置插入、返回元素本身、迭代反映新顺序。"""
+    container, a, b, c = make_container()
+    d = Item("d")
+    assert container.insert(1, d) is d
+    assert container._items == [a, d, b, c]  # 顺移一位
+    assert [i.name for i in container] == ["a", "d", "b", "c"]
+
+
+def test_l8_insert_index_semantics():
+    """L8：insert 下标语义同 list.insert（负下标倒数、越界向两端收敛），不去重。"""
+    container: ManagedList[Item] = ManagedList()
+    x = Item("x")
+    container.insert(99, x)  # 空容器越界 → 追加
+    assert container._items == [x]
+    y = Item("y")
+    container.insert(-99, y)  # 过小负下标 → 最前
+    assert container._items == [y, x]
+    container.insert(5, x)  # 不去重：同一对象可再次插入
+    assert container._items == [y, x, x]
+
+
+def test_l9_insert_preserves_disabled_state_and_order():
+    """L9：insert 不影响既有条目的启用状态；停用条目仍被迭代跳过。"""
+    container, a, b, c = make_container()
+    container.disable_by_tag("t")  # a、b 停用
+    d = Item("d", tags=["t"])
+    container.insert(1, d)
+    assert d.enabled is True  # 新插入条目默认启用
+    assert a.enabled is False and b.enabled is False  # 既有状态不变
+    assert [i.name for i in container] == ["d", "c"]
