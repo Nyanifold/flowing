@@ -4142,6 +4142,10 @@ class Agent:
                     qctx = await self.hooks.on_provider_error.dispatch(self, qctx)
                     if not qctx.can_continue:
                         error = exc   # 回合中断（Agent 存活）——中断原因即本异常，结局 "error"
+                        _logger.warning(
+                            "agent %s: turn ended with error after on_provider_error "
+                            "(no handler continued): %s: %s",
+                            self.node_id, type(exc).__name__, exc)
                         break
                     continue    # handler 已完成退避/换模型/abort_turn()
                 if response.message is not None:
