@@ -2726,17 +2726,6 @@ TOOL_NAMING = NamingRules(
 """
 
 
-def _launch_project_root() -> "Path | None":
-    """读 launch 上下文的项目根（``runtime._current_project_root``
-    ContextVar）；无 launch 上下文（测试 / 裸用注册表）→ ``None``。
-    内部 API，不属稳定契约。"""
-    try:
-        from flowing.runtime import _current_project_root   # 局部 import：破 tool → runtime 模块级循环边
-        return _current_project_root.get()
-    except Exception:
-        return None
-
-
 def _dir_candidates(name: str) -> list[str]:
     """``<name>/`` 目录内的定向查找链（首个存在者生效）：
     ``TOOL.fya > <name>.tool.fya > <name>.fya > TOOL.py > tool.py >
@@ -2757,7 +2746,8 @@ _TOOL_FYA_RESERVED = frozenset({
 mcp 声明 → ``FormatError`` （见 `_tool_from_fya`）。内部 API。"""
 
 
-def _tool_from_fya(path: Path, identity: str) -> Tool:
+def _tool_from_fya(path: Path, identity: str, *,
+                   project_root: "Path | None" = None) -> Tool:
     """``.fya`` 命中的实例化分派：按 ``type:`` 构造四型工具实例。内部 API。
 
     .. rubric:: 行为要点
@@ -2790,7 +2780,8 @@ def _tool_from_fya(path: Path, identity: str) -> Tool:
         name=identity, description=description or "",
         params_schema=params, output_schema=output_schema)
     if tool_type == "script":
-        tool = _script_tool_from_fya(path, identity, fields, params)
+        tool = _script_tool_from_fya(path, identity, fields, params,
+                                     project_root=project_root)
     elif tool_type == "cli":
         command = fields.get("command")
         if command is None:
@@ -2833,7 +2824,8 @@ def _tool_from_fya(path: Path, identity: str) -> Tool:
 
 def _script_tool_from_fya(
     path: Path, identity: str, fields: dict[str, Any],
-    params: dict[str, dict[str, Any]],
+    params: dict[str, dict[str, Any]], *,
+    project_root: "Path | None" = None,
 ) -> Tool:
     """``type: script`` 的 TOOL.fya 装配：``callable: {路径}::{函数名或类名}``
     指针加载 → `ScriptTool` 子类实例化 / 裸函数提升。内部 API。
@@ -2855,7 +2847,7 @@ def _script_tool_from_fya(
         raise FormatError(
             f"script tool at {path} must declare callable: <path>::<function-or-class-name>")
     path_part, _, symbol = str(callable_ref).partition("::")
-    root = _launch_project_root()
+    root = project_root   # @/ 基准：ToolRegistry 构造时固化的项目根（None → cwd 哑根退化）
     impl_path = resolve_path(
         path_part, project_root=root if root is not None else Path.cwd(),
         source_dir=path.parent)   # callable 路径相对 TOOL.fya 所在目录
@@ -2951,9 +2943,12 @@ class ToolRegistry:
     内部 API，不属稳定契约。
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, project_root: "Path | None" = None) -> None:
         # spec 骨架无显式构造段：空注册表（无启动扫描——「无默认扫描目录」基调）
         self._tools = {}
+        # @/ 引用的解析基准：Runtime 构造时传入固化值（project_root），
+        # 终身有效；裸注册表（测试）为 None——@/ 引用报错、其余形态退化
+        self._project_root = project_root
 
     def register(self, tool: Tool, *, name: str | None = None,
                  namespace: str | None = None) -> None:
@@ -3085,12 +3080,12 @@ class ToolRegistry:
                 if key in self._tools:
                     return self._tools[key]
             raise ToolNotFoundError(f"tool not registered and no lookup chain hit: {name_or_path}")
-        # 路径形态（慢路径，声明期行为）：@/ 锚 launch 上下文项目根（无需
+        # 路径形态（慢路径，声明期行为）：@/ 锚注册表固化的项目根（无需
         # source_dir）；./ ../ 需 source_dir（缺省 -> ValueError，resolve_path
-        # 现有口径）。无 launch 上下文时 @/ 无法锚定 -> ValueError（编程错误）
-        root = _launch_project_root()
+        # 现有口径）。裸注册表（无项目根）时 @/ 无法锚定 -> ValueError（编程错误）
+        root = self._project_root
         if root is None and name_or_path.replace("\\", "/").startswith("@/"):
-            raise ValueError("@/ path resolution requires a launch context (_current_project_root not registered)")
+            raise ValueError("@/ path resolution requires a project root (bare ToolRegistry without project_root)")
         resolved = resolve_path(
             name_or_path,
             project_root=root if root is not None else Path.cwd(),   # 哑根：@/ 已在上方拒绝
@@ -3165,20 +3160,18 @@ class ToolRegistry:
         derived_key = f"{self._derived_namespace(ns_dir)}::{identity}"
         if derived_key in self._tools:
             return self._tools[derived_key]   # 派生键短路复用（文件解析是声明期行为）
-        tool = (_tool_from_fya(hit, identity)
+        tool = (_tool_from_fya(hit, identity, project_root=self._project_root)
                 if hit.name.endswith(".fya") else self._tool_from_py(hit, identity))
         self._tools[derived_key] = tool
         tool.registry_key = derived_key   # 回写全键（Entry 装配落账 name_ori 的依据）
         return tool
 
-    @staticmethod
-    def _derived_namespace(ns_dir: Path) -> str:
+    def _derived_namespace(self, ns_dir: Path) -> str:
         """所在目录 → 派生命名空间字符串（``@/`` 下根相对、根外绝对——
-        :func:`flowing.paths.to_project_path` 口径；无 launch 上下文时退
-        化为绝对路径，与「根外绝对」一致）。内部 API，不属稳定契约。"""
-        root = _launch_project_root()
-        if root is not None:
-            return to_project_path(ns_dir, project_root=root)
+        :func:`flowing.paths.to_project_path` 口径；无项目根（裸注册表）
+        时退化为绝对路径，与「根外绝对」一致）。内部 API，不属稳定契约。"""
+        if self._project_root is not None:
+            return to_project_path(ns_dir, project_root=self._project_root)
         return str(ns_dir)
 
     def _tool_from_py(self, path: Path, identity: str) -> Tool:
@@ -3195,7 +3188,7 @@ class ToolRegistry:
         import importlib.util
 
         spec = importlib.util.spec_from_file_location(
-            path_to_module_name(path, project_root=_launch_project_root(),
+            path_to_module_name(path, project_root=self._project_root,
                                 prefix="flowing_tool_file_"), path)
         module = importlib.util.module_from_spec(spec)   # type: ignore[union-attr]
         spec.loader.exec_module(module)   # type: ignore[union-attr]

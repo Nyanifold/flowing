@@ -3,8 +3,9 @@
 
 提供：phase2 conftest 的 importlib 载入（make_runtime / FakeProvider 脚本
 回放助手）、``project`` fixture 工厂（拷贝 workflows fixtures 到 tmp_path
-并登记 ``@`` 上下文——``resolve_workflow`` 的 ``@/`` 解析依赖
-``_current_project_root`` contextvar）、``EchoTool``（T82/T83/T85 的最小
+并登记 ``@`` 上下文——``make_runtime`` 的真 ``Runtime.__init__`` 仍依赖
+``_current_project_root`` contextvar；``resolve_workflow`` 的 ``@/`` 解析
+基准已改为 ``project_root`` 参数显式传入）、``EchoTool``（T82/T83/T85 的最小
 注册表工具）、``RecorderAgent``（T92 创建管线钩子观测）。
 """
 

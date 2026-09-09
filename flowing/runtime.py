@@ -608,7 +608,7 @@ class Runtime:
             # 可达性的结构保证之一（另一根：根节点 _parent_id 指向本 id）；
             # shutdown 销毁循环须跳过自身（Runtime 无 destroy()）
         self._plugins = {}
-        self.tool_registry = ToolRegistry()
+        self.tool_registry = ToolRegistry(project_root=self.project_root)
         self._agent_types = {}   # 须在 register_builtins 之前初始化（ExploreAgent 注册写本表）
         # 框架自带工具与标准子智能体注册（物理实现全部在
         # flowing.builtins）：核心内置 subagent-invoke / finish + 六个标准

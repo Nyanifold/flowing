@@ -11,7 +11,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from flowing.errors import FlowingError
-from flowing.runtime import resolve
+from flowing.paths import resolve_path
 
 from .workflow import Workflow
 
@@ -40,7 +40,7 @@ class _BareCallRewriter(ast.NodeTransformer):
         return node
 
 
-def resolve_workflow(path: str) -> type[Workflow]:
+def resolve_workflow(path: str, *, project_root: "Path | None" = None) -> type[Workflow]:
     """按路径解析 workflow 定义文件，返回 ``Workflow`` 子类（类对象，不实例化）。
 
     .. rubric:: 功能介绍
@@ -50,8 +50,9 @@ def resolve_workflow(path: str) -> type[Workflow]:
     workflow 文件可以放在任意位置，没有默认目录约定（面对任务即时写下的
     新文件也可以直接引用）。接受两种路径写法：
 
-    - 绝对路径，或 ``@/`` 前缀的项目根相对路径（``@`` 上下文由
-      :func:`flowing.launch` 登记），如 ``"@/flows/verify_fix.py"``；
+    - 绝对路径，或 ``@/`` 前缀的项目根相对路径（基准为 ``project_root``
+      参数——调用方传入 Runtime 固化的 ``project_root``），如
+      ``"@/flows/verify_fix.py"``；
     - 无 ``.py`` 后缀的 kebab-case 路径，如 ``"@/flows/verify-fix"``：
       先按原样补 ``.py`` （``flows/verify-fix.py``），未命中再把连字符转
       下划线补 ``.py`` （``flows/verify_fix.py``）；两个候选同时存在属
@@ -103,20 +104,23 @@ def resolve_workflow(path: str) -> type[Workflow]:
       缺失）。
     - 文件顶层语句随加载执行一次（与 ``.fya`` 加载一致）；每次调用现场
       解析，无缓存。
-    - 未经 :func:`flowing.launch` 登记 ``@`` 上下文（裸进程）时抛
-      ``RuntimeError``。
+    - ``@/`` 前缀且 ``project_root`` 缺失（裸进程直接调用、未传基准）时抛
+      ``ValueError``。
 
     :param path: workflow 定义文件的路径（支持 ``@/`` 前缀）。
+    :param project_root: ``@/`` 前缀的解析基准；缺省为 ``None`` ——此时
+        ``@/`` 路径抛 ``ValueError``，其余形态照常。
     :return: 文件中定义的 ``Workflow`` 子类（类对象，不实例化）。
     :raises flowing.errors.FlowingError: 路径缺失或文件形态不合法时。
-    :raises RuntimeError: 未经 ``launch`` 登记项目上下文时。
+    :raises ValueError: ``@/`` 路径且 ``project_root`` 缺失时。
 
     .. seealso:: :class:`flowing.plugins.workflow.Workflow`、
         :class:`flowing.plugins.workflow.RunWorkflowTool`、
         :meth:`flowing.runtime.Runtime.resolve_path`
     """
-    resolved = resolve(path)  # -> flowing.runtime.resolve（模块级 @/ 解析，读 _current_project_root）
-    # 未 launch 登记（contextvar 为 None）-> RuntimeError（resolve 内部抛出）
+    if path.startswith("@/") and project_root is None:
+        raise ValueError("@/ path resolution requires project_root (pass the Runtime's固化 project_root)")
+    resolved = resolve_path(path, project_root=project_root or Path.cwd())   # 哑根：@/ 已在上方拒绝
     file_path = _locate_file(resolved, raw=path)
     return _load_workflow_class(file_path)
 

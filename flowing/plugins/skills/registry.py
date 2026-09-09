@@ -24,7 +24,13 @@ from flowing.errors import (
 from flowing.params import InjectionKey, expand_args_schema
 from flowing.parsable import PENDING, Parsable
 from flowing.parser import load_fya_yaml, split_fya
-from flowing.paths import classify_ref, infer_name, probe_candidates, resolve_path
+from flowing.paths import (
+    classify_ref,
+    infer_name,
+    probe_candidates,
+    resolve_path,
+    to_project_path,
+)
 from .models import SKILL_NAMING, CatalogTemplate, Skill
 
 
@@ -104,13 +110,18 @@ class SkillRegistry:
     的中段通道；``None`` 表示未设 Runtime 级默认）。运行期只读。
     """
 
-    def __init__(self, *, catalog_template: CatalogTemplate | None = None) -> None:
+    def __init__(self, *, catalog_template: CatalogTemplate | None = None,
+                 project_root: "Path | None" = None) -> None:
         """构造空注册表（可携带 Runtime 级默认渲染模板）。
 
         :param catalog_template: Runtime 级默认渲染模板（缺省 ``None``）。
+        :param project_root: ``@/`` 引用的解析基准（SkillPlugin.install 时
+            传入 Runtime 固化的 ``project_root``，终身有效）；裸注册表
+            （测试）为 ``None``——``@/`` 引用报错、其余形态退化。
         """
         self._skills = {}
         self.catalog_template = catalog_template
+        self._project_root = project_root
 
     def register(self, skill: Skill, *, namespace: str | None = None) -> None:
         """编程式注册 Skill 实例（插件随身携带技能的通道）。
@@ -203,16 +214,18 @@ class SkillRegistry:
             # <name>.fya > SKILL.md > skill.md；目录外 <name>.skill.fya >
             # <name>.fya > <name>.md）后，先按命中文件所在目录算派生键查
             # 注册表：已注册 -> 短路复用现有实例；未注册才解析
-            located = _locate_skill_file(name, source_dir)
+            located = _locate_skill_file(name, source_dir,
+                                         project_root=self._project_root)
             if located is not None:
                 hit, folder_form, _base_dir, _candidates = located
                 identity = infer_name(hit, naming=SKILL_NAMING)
                 ns_dir = hit.parent.parent if folder_form else hit.parent   # 文件夹式取上层目录
-                derived_ns = _derive_namespace(ns_dir)
+                derived_ns = _derive_namespace(ns_dir, self._project_root)
                 derived_key = f"{derived_ns}::{identity}"
                 if derived_key in self._skills:
                     return self._skills[derived_key]   # 派生键短路复用（文件解析是声明期行为）
-                skill = _parse_skill_file(name, source_dir)  # 定位并解析（首个存在者生效）
+                skill = _parse_skill_file(name, source_dir,
+                                          project_root=self._project_root)  # 定位并解析（首个存在者生效）
                 # 解析成功才写缓存；解析失败异常上抛且不写入（下次重试）
                 key = f"{derived_ns}::{skill.name}"
                 self._skills[key] = skill
@@ -241,23 +254,12 @@ def _dir_candidates(name: str) -> list[str]:
             "SKILL.md", "skill.md"]
 
 
-def _derive_namespace(ns_dir: Path) -> str:
-    """所在目录 → 派生命名空间字符串（``@/`` 下根相对、根外绝对）。
-
-    内部 API。与 Tool/Agent 注册表的同名逻辑保持同一份实现——委托
-    ``ToolRegistry._derived_namespace`` （单一来源，不另造轮子）。
-    """
-    from flowing.tool import ToolRegistry   # 局部 import：注册表层对工具层只借这一个符号
-
-    return ToolRegistry._derived_namespace(ns_dir)
-
-
-def _launch_project_root() -> "Path | None":
-    """读 launch 上下文的项目根（委托 ``flowing.tool._launch_project_root``，
-    同一 ContextVar 来源）。内部 API。"""
-    from flowing.tool import _launch_project_root as _impl   # 局部 import：单一来源复用
-
-    return _impl()
+def _derive_namespace(ns_dir: Path, project_root: "Path | None" = None) -> str:
+    """所在目录 → 派生命名空间字符串（``@/`` 下根相对、根外绝对；无项目根
+    （裸注册表）时退化为绝对路径，与「根外绝对」一致）。内部 API。"""
+    if project_root is not None:
+        return to_project_path(ns_dir, project_root=project_root)
+    return str(ns_dir)
 
 
 def _attempted_paths(name: str, source_dir: "Path | None") -> list[Path]:
@@ -270,7 +272,8 @@ def _attempted_paths(name: str, source_dir: "Path | None") -> list[Path]:
 
 
 def _locate_skill_file(
-    ref: str, source_dir: "Path | None"
+    ref: str, source_dir: "Path | None", *,
+    project_root: "Path | None" = None,
 ) -> "tuple[Path, bool, Path, list[str]] | None":
     """按定向查找优先级定位 Skill 定义文件（内部 API）。
 
@@ -280,15 +283,15 @@ def _locate_skill_file(
     - 裸名：``<name>/`` 目录内 6 候选（目录存在但无合法定义文件 → 继续
       向下，仅裸名语境）→ 目录外 ``<name>.skill.fya > <name>.fya >
       <name>.md``；
-    - 路径形态：``@/`` 锚 launch 上下文项目根（无需 ``source_dir``，无
-      上下文时显式 ``ValueError``——与 ``ToolRegistry.get`` 同姿态）；
-      目录 → 目录内 6 候选，无候选直接 ``FormatError`` （定点引用的目录
-      为空几乎必为笔误）；直指文件 → 命中即返回。
+    - 路径形态：``@/`` 锚注册表固化的项目根（无需 ``source_dir``，裸
+      注册表无项目根时显式 ``ValueError``——与 ``ToolRegistry.get``
+      同姿态）；目录 → 目录内 6 候选，无候选直接 ``FormatError``
+      （定点引用的目录为空几乎必为笔误）；直指文件 → 命中即返回。
     """
     if classify_ref(ref) == "path":
-        root = _launch_project_root()
+        root = project_root
         if root is None and ref.replace("\\", "/").startswith("@/"):
-            raise ValueError("@/ path resolution requires a launch context (_current_project_root not registered)")
+            raise ValueError("@/ path resolution requires a project root (bare SkillRegistry without project_root)")
         resolved = resolve_path(
             ref, project_root=root if root is not None else Path.cwd(),   # 哑根：@/ 已在上方拒绝
             source_dir=source_dir)
@@ -320,14 +323,14 @@ def _locate_skill_file(
     return None
 
 
-def _parse_skill_file(name: str, source_dir: Path) -> Skill:
+def _parse_skill_file(name: str, source_dir: Path, *,
+                      project_root: "Path | None" = None) -> Skill:
     """按定向查找优先级定位并解析 Skill 定义文件。
 
     内部 API，不属稳定契约。仅在 :meth:`SkillRegistry.get` 未
     命中缓存时调用；承担三种定义形式（``.md`` frontmatter / ``.skill.fya``
     块结构 / 目录形式）到统一 :class:`Skill` 实例的解析，含 ``$script``
     中 ``on_load`` 的提取与 ``_extra_fields`` 的收纳。
-
     .. rubric:: 行为要点
 
     - 定向查找：按规范名 ``name`` 在 ``source_dir`` 下首个存在者生效——
@@ -350,7 +353,7 @@ def _parse_skill_file(name: str, source_dir: Path) -> Skill:
 
     .. seealso:: :meth:`SkillRegistry.get`
     """
-    located = _locate_skill_file(name, source_dir)
+    located = _locate_skill_file(name, source_dir, project_root=project_root)
     if located is None:
         attempted = _attempted_paths(name, source_dir)
         raise FlowingError(

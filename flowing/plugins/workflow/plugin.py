@@ -100,7 +100,7 @@ class RunWorkflowTool(ScriptTool):
 
         .. seealso:: :func:`resolve_workflow`、:meth:`Workflow.run`
         """
-        wf_class: type[Workflow] = resolve_workflow(path)   # 轻量准备（首 yield 前——出错 → error/blocked 结果）
+        wf_class: type[Workflow] = resolve_workflow(path, project_root=caller.runtime.project_root)   # 轻量准备（首 yield 前——出错 → error/blocked 结果）
         instance = wf_class(caller, caller.runtime)
         yield {"status": "started", "workflow": path}       # ① 收据（pending，TOOL 消息带 path）
         await instance.run(**args)                          # 长任务（后台，由 _drive_asyncgen 驱动；path 不透传）
@@ -242,5 +242,5 @@ class WorkflowPlugin(Plugin):
         if self._runtime is None:
             raise ValueError(
                 "WorkflowPlugin not registered: call runtime.install(WorkflowPlugin()) before launch")
-        workflow_class = resolve_workflow(path)
+        workflow_class = resolve_workflow(path, project_root=self._runtime.project_root)
         return workflow_class(caller=None, runtime=self._runtime)

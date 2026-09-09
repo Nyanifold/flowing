@@ -1,7 +1,8 @@
 """阶段 4 workflow 加载器测试（W33）：测试清单 T84–T87。
 
-fixtures 经 ``project`` fixture 拷入 tmp_path 并登记 ``@`` 上下文；
-T87 的「未经 launch 裸进程」用例刻意不用该 fixture。
+fixtures 经 ``project`` fixture 拷入 tmp_path；``resolve_workflow`` 的
+``@/`` 解析基准经 ``project_root`` 参数显式传入；T87b 的「未传
+project_root」用例刻意不传。
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ from workflow_support import (
 
 async def test_t84_class_form_resolution(project):
     """T84：verify_fix.py 含一个 Workflow 子类 → resolve 返回该类。"""
-    cls = resolve_workflow("@/verify_fix.py")
+    cls = resolve_workflow("@/verify_fix.py", project_root=project)
     assert issubclass(cls, Workflow)
     assert cls.__name__ == "VerifyFixWorkflow"
 
@@ -34,7 +35,7 @@ async def test_t85_function_form_compiles_and_runs(project, tmp_path):
     add_fake_provider(runtime)
     runtime.register_tool(EchoTool())
     try:
-        cls = resolve_workflow("@/quick.py")
+        cls = resolve_workflow("@/quick.py", project_root=project)
         assert issubclass(cls, Workflow)
         assert cls.__name__ == "Quick"          # 类名由文件名推导（PascalCase）
         wf = cls(None, runtime)
@@ -52,12 +53,12 @@ async def test_t86_missing_ambiguous_absent_and_class_priority(project):
     """T86：路径不存在 → FlowingError（含解析后路径）；两个子类 → 歧义；
     既无子类又无顶层 run → 缺失；类形态与顶层 run 并存 → 类优先。"""
     with pytest.raises(FlowingError, match="ghost"):
-        resolve_workflow("@/ghost.py")
+        resolve_workflow("@/ghost.py", project_root=project)
     with pytest.raises(FlowingError, match="ambiguous"):
-        resolve_workflow("@/two_classes.py")
+        resolve_workflow("@/two_classes.py", project_root=project)
     with pytest.raises(FlowingError, match="missing"):
-        resolve_workflow("@/no_run.py")
-    cls = resolve_workflow("@/both.py")
+        resolve_workflow("@/no_run.py", project_root=project)
+    cls = resolve_workflow("@/both.py", project_root=project)
     assert cls.__name__ == "BothWorkflow"   # 类形态优先（顶层 run 被忽略）
 
 
@@ -69,7 +70,7 @@ async def test_t87_kebab_double_candidates_and_bare_process(project, tmp_path):
     (tmp_path / "flows" / "verify_fix.py").write_text(
         (project / "verify_fix.py").read_text(encoding="utf-8"),
         encoding="utf-8")
-    cls = resolve_workflow("@/flows/verify-fix")
+    cls = resolve_workflow("@/flows/verify-fix", project_root=project)
     assert issubclass(cls, Workflow) and cls.__name__ == "VerifyFixWorkflow"
 
     # 双候选都命中 → 歧义
@@ -77,13 +78,10 @@ async def test_t87_kebab_double_candidates_and_bare_process(project, tmp_path):
         (project / "verify_fix.py").read_text(encoding="utf-8"),
         encoding="utf-8")
     with pytest.raises(FlowingError, match="ambiguous"):
-        resolve_workflow("@/flows/verify-fix")
+        resolve_workflow("@/flows/verify-fix", project_root=project)
 
 
-def test_t87b_bare_process_without_launch_raises():
-    """T87 后半：无 launch 登记的 @ 上下文 → RuntimeError。"""
-    from flowing.runtime import _current_project_root
-
-    assert _current_project_root.get() is None   # 前置：确无登记
-    with pytest.raises(RuntimeError):
+def test_t87b_missing_project_root_raises():
+    """T87 后半：@/ 引用且未传 project_root（裸调用）→ ValueError。"""
+    with pytest.raises(ValueError, match="project_root"):
         resolve_workflow("@/verify_fix.py")

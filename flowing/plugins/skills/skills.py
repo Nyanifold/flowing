@@ -555,7 +555,8 @@ class SkillPlugin(Plugin):
 
         .. seealso:: :class:`SkillLoadTool`、:class:`SkillRegistry`
         """
-        registry = SkillRegistry(catalog_template=self.catalog_template)
+        registry = SkillRegistry(catalog_template=self.catalog_template,
+                                 project_root=runtime.project_root)
         runtime.register_tool(SkillLoadTool())
         runtime.provide(skill_registry_key, registry)  # Runtime 级默认模板随注册表注入
         if not hasattr(runtime, "register_skill"):   # 绑函数约定：检查后跳过（不覆盖用户自定义）
