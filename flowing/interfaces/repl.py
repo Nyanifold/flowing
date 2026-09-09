@@ -62,6 +62,32 @@ def _install_repl_signal_handlers(runtime: Runtime, flags: dict) -> None:
         return None   # 非主线程等平台：no-op
 
 
+def _install_readline():
+    """启用行编辑与补全（repl 子命令本地件，不属稳定契约）。
+
+    ``readline`` 可用（tty 交互）时：方向键 / 行编辑 / 会话内历史由
+    ``input()`` 经 readline 天然获得；另装一个顶层 slash 命令的 Tab
+    补全器——仅当当前词以 ``/`` 开头时从 :data:`SLASH_COMMANDS` 补全
+    （命令参数不补全）。``readline`` 不可用（非 Unix / 非 tty 管道输入）
+    时 no-op。返回安装前的 completer，供 cmd_repl 退出时还原（测试进程
+    内反复进出 repl 不串扰）。
+    """
+    try:
+        import readline
+    except ImportError:
+        return None
+
+    def _complete(text: str, state: int):
+        matches = ([c for c in SLASH_COMMANDS if c.startswith(text)]
+                   if text.startswith("/") else [])
+        return matches[state] if state < len(matches) else None
+
+    previous = readline.get_completer()
+    readline.set_completer(_complete)
+    readline.parse_and_bind("tab: complete")
+    return previous
+
+
 SLASH_COMMANDS: tuple[str, ...] = (
     "/help", "/exit", "/quit", "/agent", "/agents", "/new", "/snapshot",
     "/messages", "/model", "/status", "/tasks", "/export", "/rewind",
@@ -298,6 +324,9 @@ async def cmd_repl(
     边界与边缘情况：
 
     - 空行输入跳过，不投递。
+    - 行编辑与补全（``readline`` 可用时）：方向键 / 行编辑 / 会话内历史
+      由 ``input()`` 天然获得；Tab 补全顶层 slash 命令（仅行首 ``/``
+      开头的词，参数不补全）。
     - 未绑定时收到非 ``/`` 输入且池无根条目：打印「无法确定 Agent
       类型」提示，名录保持为空，不退出。
     - 未识别的 ``/xxx``：打印「未知命令，/help 查看可用命令」，
@@ -353,6 +382,8 @@ async def cmd_repl(
     # repl 专用信号语义（不与 run/serve/web 共享优雅关闭桥）：SIGINT 回合
     # 进行中取消当轮、空闲中断当前输入行；SIGTERM 优雅关闭。退出时还原
     _prev_sigint = _install_repl_signal_handlers(runtime, flags)
+    # 行编辑（方向键 / 历史）与顶层 slash 命令 Tab 补全（readline 可用时）
+    _prev_completer = _install_readline()
     # 思考按「灰显增量」上屏（纯增量、不与最终/折叠摘要重复）；非 tty
     # （管道/重定向）时不回填思考，保持 stdout 答案是干净正文，思考留给
     # 折叠摘要兜底显示。
@@ -571,10 +602,14 @@ async def cmd_repl(
                 # 无流式（error / blocked / 空回复 / 非 tty 思考留待摘要）：
                 # 照常打印最终文本；status="error" 时照常打印（可能为空串）
                 print(result.final_text)
-    # 还原 SIGINT 处理器（测试进程内反复进出 repl 不串扰）后优雅关闭
+    # 还原 SIGINT 处理器与 readline completer（测试进程内反复进出 repl
+    # 不串扰）后优雅关闭
     if _prev_sigint is not None:
         import signal
         signal.signal(signal.SIGINT, _prev_sigint)
+    if _prev_completer is not None:
+        import readline
+        readline.set_completer(_prev_completer)
     await runtime.shutdown()
     return EXIT_OK
 

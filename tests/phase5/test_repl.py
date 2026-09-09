@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import asyncio
 import re
+
+import pytest
 from types import SimpleNamespace
 
 from flowing.interfaces import EXIT_OK
@@ -309,3 +311,19 @@ async def test_sigint_aborts_active_turn_not_session():
         assert flags["bound_agent"].aborted
     finally:
         signal.signal(signal.SIGINT, prev)
+
+
+def test_readline_completer_slash_commands():
+    """Tab 补全：行首 / 词从 SLASH_COMMANDS 补全；非斜杠词不补全。"""
+    readline = pytest.importorskip("readline")
+    prev = repl_mod._install_readline()
+    assert prev is not None
+    try:
+        completer = readline.get_completer()
+        assert completer("/he", 0) == "/help"
+        assert completer("/e", 0) in ("/exit", "/export")
+        assert completer("/e", 1) in ("/exit", "/export")
+        assert completer("/e", 2) is None
+        assert completer("hello", 0) is None   # 非斜杠词不补全
+    finally:
+        readline.set_completer(prev)
