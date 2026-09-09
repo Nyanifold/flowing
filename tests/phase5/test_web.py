@@ -9,7 +9,6 @@ from flowing.interfaces import web as web_mod
 from flowing.interfaces.web import (
     WEB_EXTRA_ENDPOINTS,
     FrontendAssets,
-    _APP_JS,
     cmd_web,
     get_frontend_assets,
 )
@@ -27,32 +26,29 @@ def test_t47_assets_cache_stable():
     assert first is second   # 允许返回同一缓存实例
 
 
-def test_t48_asset_reference_key_consistency():
-    """index_html 中全部 /assets/ 引用（去前缀后）都是 assets 的键；
-    键不含前导斜杠与 .. 段。"""
+def test_t48_singlefile_asset_pack():
+    """单文件形态（webui-dist 构建产物全内联）：index_html 非空、assets 表
+    为空（/assets/* 一律 404）、无 /assets/ 引用残留。"""
     assets = get_frontend_assets()
     assert isinstance(assets, FrontendAssets)
     assert assets.index_html.strip()
-    refs = set(re.findall(r"/assets/([\w./-]+)", assets.index_html))
-    assert refs, "index_html 应至少引用一个静态资源"
-    assert refs <= set(assets.assets)   # 引用-键一致性（资产包完整性兜底）
-    for key in assets.assets:
-        assert not key.startswith("/")
-        assert ".." not in key.split("/")
-        assert isinstance(assets.assets[key], bytes)
+    assert assets.assets == {}
+    assert not re.findall(r"/assets/([\w./-]+)", assets.index_html)
 
 
-def test_t48b_frontend_v31_contract_locked():
-    """文本级锁：v3.1 前端须消费 serve 的 message_id 归位、thinking 流、tree/
-    rewind（无浏览器下的契约性兜底；防前端与端点面漂移）。"""
-    assert "message_id" in _APP_JS          # SSE delta/thinking 按 message_id 归位
-    assert "thinking" in _APP_JS           # 消费 thinking 事件
-    assert "tree" in _APP_JS and "rewind" in _APP_JS   # 树子页 + 切分支
+def test_t48b_frontend_contract_locked():
+    """文本级锁：构建产物须消费 serve 的 SSE（stream / thinking /
+    message_id 归位）、tree/rewind、models/model、status（上下文进度条）
+    （无浏览器下的契约性兜底；防前端与端点面漂移）。"""
+    html = get_frontend_assets().index_html
+    for marker in ("stream", "thinking", "message_id", "tree", "rewind",
+                   "model", "status"):
+        assert marker in html, marker
 
 
 async def test_t49_web_index_and_assets(project_ok, persist_dir, monkeypatch):
-    """GET / → 200 text/html；HTML 引用的全部 /assets/* 均可 GET 到 200；
-    未命中键 → 404 不报错退出。"""
+    """GET / → 200 text/html（单文件资产）；未命中 /assets/* → 404 不报错
+    退出。"""
     handle = await start_http(monkeypatch, web_mod, cmd_web, project_ok, persist_dir)
     try:
         r = await handle.client.get("/")
@@ -60,12 +56,7 @@ async def test_t49_web_index_and_assets(project_ok, persist_dir, monkeypatch):
         assert r.headers["Content-Type"].startswith("text/html")
         assert r.text == get_frontend_assets().index_html
 
-        refs = set(re.findall(r"/assets/([\w./-]+)", r.text))
-        for ref in refs:
-            r = await handle.client.get(f"/assets/{ref}")
-            assert r.status_code == 200, ref
-            assert r.content == get_frontend_assets().assets[ref]
-
+        assert not re.findall(r"/assets/([\w./-]+)", r.text)   # 单文件形态无外链资产
         assert (await handle.client.get("/assets/nonexistent.js")).status_code == 404
         assert handle.task.done() is False   # 未命中不报错退出
     finally:

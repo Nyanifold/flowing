@@ -500,8 +500,16 @@ def _build_app(runtime: Runtime, extra_routes: tuple[tuple[str, str, object], ..
 
         def build(mid: str) -> dict:
             m = agent._messages[mid]
+            # 分叉预览：首条文本/思考块的截断摘要（树子页与记录视图的分叉
+            # 折叠卡共用；结构化块计占位符）
+            parts = []
+            for b in m.content:
+                parts.append(getattr(b, "text", None) or getattr(b, "thinking", None)
+                             or f"[{b.type}]")
+            preview = " ".join(p for p in parts if p).replace("\n", " ")[:80]
             return {"id": mid, "kind": m.kind.value,
                     "head": mid == agent.current_head_id,
+                    "preview": preview,
                     "children": [build(c) for c in children.get(mid, [])]}
 
         roots = [mid for mid in agent._messages
