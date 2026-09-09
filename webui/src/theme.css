@@ -1,31 +1,33 @@
 @import "tailwindcss";
 
-/* 亮色主题变量直接借用 kimi-code web 界面（apps/kimi-code dist-web 的
-   index-C8RkgE6U.css :root 变量，kimi-code @ a4a7df2 2026-09-10） */
+/* 语义 token 直接借用 kimi web 的亮色主题（~/agents/kimi-cli/web/src/index.css
+   的 :root oklch 变量组，kimi-code 系 @ 2026-09；组件组织方式对齐其
+   components/ai-elements 与 features/chat/components）。 */
 :root {
-  --canvas: #f9fbfc;
-  --bg: #ffffff;
-  --panel: #f5f5f5;
-  --panel2: rgba(0, 0, 0, .05);
-  --line: rgba(0, 0, 0, .08);
-  --line2: rgba(0, 0, 0, .05);
-  --dim: rgba(0, 0, 0, .6);
-  --muted: rgba(0, 0, 0, .45);
-  --faint: rgba(0, 0, 0, .3);
-  --blue: #1783ff;
-  --soft: #e8f3ff;
-  --bd: rgba(23, 131, 255, .25);
-  --ok: #0e7a38;
-  --warn: #a9610a;
-  --err: #c0392b;
-  --sh: 0 1px 3px rgba(28, 40, 66, .05), 0 6px 18px rgba(28, 40, 66, .06);
+  --radius: 0.5rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.141 0.005 285.823);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.141 0.005 285.823);
+  --muted: oklch(0.967 0.001 286.375);
+  --muted-foreground: oklch(0.552 0.016 285.938);
+  --accent: oklch(0.967 0.001 286.375);
+  --accent-foreground: oklch(0.21 0.006 285.885);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.92 0.004 286.32);
+  --input: oklch(0.92 0.004 286.32);
+  --ring: oklch(0.7 0.15 230);
+  --primary: oklch(0.55 0.18 255);
+  --primary-foreground: oklch(0.985 0 0);
+  --success: oklch(0.6 0.2 145);
+  --warning: oklch(0.7 0.15 75);
   color-scheme: light;
 }
 
 body {
   margin: 0;
-  background: var(--canvas);
-  color: #121212;
+  background: var(--background);
+  color: var(--foreground);
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   font-size: 13px;
 }
@@ -34,24 +36,24 @@ body {
   font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
-/* markdown 正文（react-markdown 容器） */
-.md { line-height: 1.6; font-size: 13.5px; }
-.md p { margin: .25rem 0; }
+/* markdown 正文（react-markdown 容器；对应 kimi 的 MessageResponse 呈现面） */
+.md { line-height: 1.65; font-size: 13.5px; word-break: break-word; }
+.md p { margin: .3rem 0; }
 .md pre {
-  background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  background: var(--muted); border: 1px solid var(--border); border-radius: 8px;
   padding: .55rem .75rem; overflow-x: auto;
 }
 .md code {
   font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 12px;
-  background: var(--panel2); border-radius: 4px; padding: 0 .3em;
+  background: var(--muted); border-radius: 4px; padding: 0 .3em;
 }
 .md pre code { background: none; padding: 0; }
-.md a { color: var(--blue); }
+.md a { color: var(--primary); }
 .md h1, .md h2, .md h3, .md h4 { margin: .5rem 0 .2rem; font-size: 14.5px; }
 .md ul, .md ol { margin: .2rem 0; padding-left: 1.4em; }
 .md blockquote {
-  margin: .3rem 0; padding-left: .7em; border-left: 3px solid var(--bd);
-  color: var(--dim);
+  margin: .3rem 0; padding-left: .7em; border-left: 3px solid var(--border);
+  color: var(--muted-foreground);
 }
 
 /* JSON 高亮 */
@@ -59,3 +61,14 @@ body {
 .j-str { color: #0e7a38; }
 .j-num { color: #8250df; }
 .j-kw  { color: #a9610a; }
+
+/* 流式中的呼吸点（对应 kimi assistant 消息的 glow-pulse） */
+@keyframes glow-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.streaming-dot {
+  background: var(--success);
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.4);
+  animation: glow-pulse 1.5s ease-in-out infinite;
+}

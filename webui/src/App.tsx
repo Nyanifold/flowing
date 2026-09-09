@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { api, AgentInfo, Message, Tree, TreeNode, ContentBlock } from "./api";
-import { Md, JsonView, FoldCard } from "./components";
+import { PlusIcon, ArrowUpIcon, SquareIcon, Loader2Icon } from "lucide-react";
+import { api, AgentInfo, Message, Tree, TreeNode } from "./api";
+import { Md, JsonBlock, FoldCard, Reasoning, ToolCard, MessageResponse, cn } from "./components";
 
 const STORE_KEY = "flowing.web.agent";
 
-// ---- 侧边栏（kimi 风格会话列表：圆角行、hover、选中蓝底、最近回复预览）---------
+// ---- 侧边栏（对应 kimi sessions 侧栏：圆角行 + 标题 + 次级预览行，选中态
+// bg-accent） ---------------------------------------------------------------------
 function Sidebar({ agents, current, onFocus, onNew }: {
   agents: AgentInfo[]; current: string | null;
   onFocus: (id: string) => void; onNew: () => void;
@@ -21,13 +23,14 @@ function Sidebar({ agents, current, onFocus, onNew }: {
       .map((a) => (
         <div key={a.agent_id}>
           <button type="button" onClick={() => onFocus(a.agent_id)}
-            className={`mb-0.5 w-full rounded-lg px-2 py-1.5 text-left transition-colors ${
+            className={cn(
+              "mb-0.5 w-full rounded-md px-2 py-1.5 text-left transition-colors",
               a.agent_id === current
-                ? "bg-[var(--soft)] text-[#0b4a8f]"
-                : "text-[#292929] hover:bg-[var(--panel2)]"}`}
+                ? "bg-[var(--accent)] text-[var(--accent-foreground)]"
+                : "text-[var(--foreground)] hover:bg-[var(--accent)]/60")}
             style={{ paddingLeft: `${8 + depth * 14}px` }}>
             <div className="truncate text-[12.5px] font-medium">{a.name || a.agent_id}</div>
-            <div className="mono truncate text-[10px] text-[var(--faint)]">
+            <div className="mono truncate text-[10px] text-[var(--muted-foreground)]">
               {a.agent_id}{a.last_reply ? ` · ${a.last_reply}` : ""}
             </div>
           </button>
@@ -35,12 +38,12 @@ function Sidebar({ agents, current, onFocus, onNew }: {
         </div>
       ));
   return (
-    <aside className="flex w-[240px] flex-col border-r border-[var(--line)] bg-[var(--panel)]">
-      <div className="flex items-center justify-between px-3 py-2">
-        <span className="text-[13px] font-semibold text-[#121212]">Flowing</span>
+    <aside className="flex w-[248px] flex-col border-r border-[var(--border)] bg-[var(--muted)]/40">
+      <div className="flex items-center justify-between px-3 py-2.5">
+        <span className="text-[13px] font-semibold">Flowing</span>
         <button type="button" onClick={onNew} title="新建 Agent"
-          className="h-[22px] w-[22px] rounded-md border border-[var(--line)] bg-white text-[#292929] hover:border-[var(--blue)]">
-          +
+          className="flex size-[22px] items-center justify-center rounded-md border border-[var(--border)] bg-white hover:border-[var(--primary)]">
+          <PlusIcon className="size-3.5" />
         </button>
       </div>
       <div className="flex-1 overflow-y-auto px-2 pb-2">{renderLevel(null, 0)}</div>
@@ -48,61 +51,46 @@ function Sidebar({ agents, current, onFocus, onNew }: {
   );
 }
 
-// ---- 消息行 -------------------------------------------------------------------
-function toolText(m: Message): unknown {
-  const parts = (m.content || []).map((b) => (b.data !== undefined ? b.data : b.text || ""));
-  return parts.length === 1 ? parts[0] : parts.join("\n");
-}
-
-function MessageRow({ m }: { m: Message }) {
+// ---- 消息行（组织对应 kimi assistant-message：思考 Reasoning / 工具 ToolCard /
+// 正文 MessageResponse；工具调用与返回按 tool_call_id 配对进同一张卡） -----------
+function MessageRow({ m, toolResults }: { m: Message; toolResults: Map<string, Message> }) {
   if (m.kind === "user") {
     return (
       <div className="my-1 flex justify-end">
-        <div className="max-w-[80%] whitespace-pre-wrap rounded-lg bg-[var(--soft)] px-3 py-2 text-[13px] text-[#0b3a6e]">
+        <div className="max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-[#e8f3ff] px-3 py-2 text-[13px] text-[#0b3a6e]">
           {(m.content || []).map((b) => b.text || "").join("")}
         </div>
       </div>
     );
   }
-  if (m.kind === "tool") {
-    return (
-      <div className="my-1">
-        <FoldCard title={`工具返回（${m.tool_status || "?"}）`}>
-          <JsonView value={toolText(m)} />
-        </FoldCard>
-      </div>
-    );
-  }
+  if (m.kind === "tool") return null;   // 结果并入对应 ToolCall 卡，不单独成行
   if (m.kind === "provider") {
     const nodes: React.ReactNode[] = [];
     const texts: string[] = [];
-    (m.content || []).forEach((b: ContentBlock, i: number) => {
+    (m.content || []).forEach((b, i) => {
       if (b.type === "thinking" && b.thinking) {
-        nodes.push(
-          <FoldCard key={i} tone="thinking" title="思考过程">
-            <div className="whitespace-pre-wrap text-[12px] text-[var(--dim)]">{b.thinking}</div>
-          </FoldCard>);
+        nodes.push(<Reasoning key={i} text={b.thinking} />);
       } else if (b.type === "tool_call") {
+        const res = toolResults.get(b.id || "");
+        const out = res
+          ? res.content.map((x) => (x.data !== undefined ? x.data : x.text || ""))
+          : undefined;
         nodes.push(
-          <FoldCard key={i} title={`调用 ${b.name || "tool"}`}
-            sub={JSON.stringify(b.args || {}).slice(0, 80)}>
-            <JsonView value={b.args || {}} />
-          </FoldCard>);
+          <ToolCard key={i} name={b.name || "tool"} args={b.args || {}}
+            status={res ? res.tool_status : "pending"}
+            output={out ? (out.length === 1 ? out[0] : out.join("\n")) : undefined} />);
       } else if (b.text) texts.push(b.text);
       else if (b.data !== undefined) texts.push("```json\n" + JSON.stringify(b.data, null, 2) + "\n```");
     });
     return (
-      <div className="my-1">
-        <div className="flex max-w-[85%] flex-col gap-1.5">
-          {nodes}
-          {texts.join("").trim() && <Md text={texts.join("\n")} />}
-        </div>
+      <div className="my-1.5 flex max-w-[92%] flex-col gap-1">
+        {nodes}
+        {texts.join("").trim() !== "" && <MessageResponse text={texts.join("\n")} />}
       </div>
     );
   }
-  // event / system / 其余：小号 meta 行
   return (
-    <div className="mono mx-auto my-0.5 text-[10.5px] text-[var(--faint)]">
+    <div className="mono mx-auto my-0.5 text-[10.5px] text-[var(--muted-foreground)]">
       [{m.kind}{m.source ? ":" + m.source : ""}]{" "}
       {(m.content || []).map((b) => b.text || "").join("").slice(0, 200)}
     </div>
@@ -112,7 +100,7 @@ function MessageRow({ m }: { m: Message }) {
 /** 不在当前链上的消息（折叠分叉体内）：预览行——每条消息都有预览。 */
 function PreviewRow({ n }: { n: TreeNode }) {
   return (
-    <div className="mono my-0.5 truncate text-[10.5px] text-[var(--faint)]">
+    <div className="mono my-0.5 truncate text-[10.5px] text-[var(--muted-foreground)]">
       {n.kind}:{String(n.id).slice(0, 12)}　{n.preview}
     </div>
   );
@@ -120,6 +108,12 @@ function PreviewRow({ n }: { n: TreeNode }) {
 
 // ---- 记录视图（消息树：仅分叉处缩进；分叉首条消息为可开合的折叠头）--------------
 function RecordView({ tree, byId }: { tree: Tree; byId: Map<string, Message> }) {
+  // tool_call_id → TOOL 消息（当前链配对表）
+  const toolResults = new Map<string, Message>();
+  for (const m of byId.values())
+    if (m.kind === "tool" && (m as unknown as { tool_call_id?: string }).tool_call_id)
+      toolResults.set((m as unknown as { tool_call_id: string }).tool_call_id, m);
+
   const parentOf = new Map<string, string | null>();
   (function collect(nodes: TreeNode[], parent: string | null) {
     for (const n of nodes) { parentOf.set(n.id, parent); collect(n.children || [], n.id); }
@@ -135,13 +129,15 @@ function RecordView({ tree, byId }: { tree: Tree; byId: Map<string, Message> }) 
       if (list.length === 1) {
         const n = list[0];
         const m = byId.get(String(n.id));
-        out.push(m ? <MessageRow key={n.id} m={m} /> : <PreviewRow key={n.id} n={n} />);
+        if (n.kind === "tool") { list = n.children || []; continue; }   // 已并入 ToolCard
+        out.push(m
+          ? <MessageRow key={n.id} m={m} toolResults={toolResults} />
+          : <PreviewRow key={n.id} n={n} />);
         list = n.children || [];
         continue;
       }
-      // 分叉：每支一个折叠段（首条消息为折叠头），当前路径所在支默认展开
       out.push(
-        <div key={`${keyPrefix}-fork-${guard}`} className="my-1 ml-3 border-l-2 border-[var(--bd)] pl-2">
+        <div key={`${keyPrefix}-fork-${guard}`} className="my-1 ml-3 border-l-2 border-[rgba(23,131,255,.25)] pl-2">
           {list.map((branch) => {
             const onThis = onPath.has(branch.id);
             const bm = byId.get(String(branch.id));
@@ -149,7 +145,7 @@ function RecordView({ tree, byId }: { tree: Tree; byId: Map<string, Message> }) 
               <FoldCard key={branch.id} defaultOpen={onThis}
                 title={`分支 ${branch.kind}:${String(branch.id).slice(0, 12)}`}
                 sub={branch.preview}>
-                {bm ? <MessageRow m={bm} /> : <PreviewRow n={branch} />}
+                {bm ? <MessageRow m={bm} toolResults={toolResults} /> : <PreviewRow n={branch} />}
                 {onThis && renderSeq(branch.children || [], `${keyPrefix}-${branch.id}`)}
               </FoldCard>
             );
@@ -167,13 +163,13 @@ function TreeView({ tree, onRewind }: { tree: Tree; onRewind: (id: string) => vo
   const nodeEl = (n: TreeNode): React.ReactNode => (
     <li key={n.id}>
       <button type="button" title={n.id} onClick={() => onRewind(n.id)}
-        className={`mono rounded px-1 py-0.5 text-left text-[11px] hover:bg-[var(--panel2)] ${
-          n.head ? "font-bold text-[var(--blue)]" : "text-[var(--dim)]"}`}>
+        className={cn("mono rounded px-1 py-0.5 text-left text-[11px] hover:bg-[var(--accent)]",
+          n.head ? "font-bold text-[var(--primary)]" : "text-[var(--muted-foreground)]")}>
         {n.kind}:{String(n.id).slice(0, 12)}{n.head ? " ←head" : ""}
-        <span className="ml-2 font-normal text-[var(--faint)]">{n.preview}</span>
+        <span className="ml-2 font-normal text-[var(--muted-foreground)]">{n.preview}</span>
       </button>
       {n.children?.length > 0 && (
-        <ul className="ml-4 list-none border-l border-[var(--line)] pl-2">
+        <ul className="ml-4 list-none border-l border-[var(--border)] pl-2">
           {n.children.map(nodeEl)}
         </ul>
       )}
@@ -181,13 +177,13 @@ function TreeView({ tree, onRewind }: { tree: Tree; onRewind: (id: string) => vo
   );
   return (
     <div className="flex-1 overflow-auto p-4">
-      <div className="mono mb-2 text-[10.5px] text-[var(--faint)]">head={tree.head}</div>
+      <div className="mono mb-2 text-[10.5px] text-[var(--muted-foreground)]">head={tree.head}</div>
       <ul className="list-none">{tree.roots.map(nodeEl)}</ul>
     </div>
   );
 }
 
-// ---- 主界面 ---------------------------------------------------------------------
+// ---- 主界面（头部 = chat-workspace-header 形态；底部 = prompt-composer 形态）------
 export default function App() {
   const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [current, setCurrent] = useState<string | null>(null);
@@ -225,7 +221,6 @@ export default function App() {
     try { setModels(await api.models(id)); } catch { setModels({ current: null, model_tags: [] }); }
   }, []);
 
-  // SSE：流式增量进 liveRef，message 事件触发记录重载
   const openStream = useCallback((id: string) => {
     esRef.current?.close();
     liveRef.current.clear();
@@ -248,7 +243,7 @@ export default function App() {
       const m = JSON.parse(e.data);
       liveRef.current.delete(String(m.id));
       setBusy(false);
-      loadRecord(id);   // 落定后整体重载（分叉结构可能变化）
+      loadRecord(id);
     });
     es.addEventListener("turn_end", () => { setBusy(false); refreshCtx(id); });
     es.onerror = () => { es.close(); setBusy(false); };
@@ -313,7 +308,6 @@ export default function App() {
     setBusy(true);
     try { await api.send(current, text); } finally { setBusy(false); }
     refreshCtx(current);
-    // 新消息经 SSE message 事件落行（loadRecord 重载）；user 行由重载兜底
     loadRecord(current);
   };
 
@@ -331,67 +325,70 @@ export default function App() {
   return (
     <div className="flex h-screen w-full">
       <Sidebar agents={agents} current={current} onFocus={focus} onNew={newAgent} />
-      <main className="flex min-w-0 flex-1 flex-col bg-[var(--bg)]">
-        <header className="flex items-center gap-3 border-b border-[var(--line)] bg-[var(--panel)] px-4 py-2">
+      <main className="flex min-w-0 flex-1 flex-col bg-[var(--background)]">
+        {/* 头部（chat-workspace-header 形态） */}
+        <header className="flex items-center gap-3 border-b border-[var(--border)] px-4 py-2">
           <span>
             {(["record", "tree"] as const).map((v) => (
               <button key={v} type="button" onClick={() => setView(v)}
-                className={`mr-1 rounded-md border px-2.5 py-1 text-[12px] ${
+                className={cn("mr-1 rounded-md border px-2.5 py-1 text-[12px]",
                   view === v
-                    ? "border-[var(--bd)] bg-[var(--soft)] text-[#0b4a8f]"
-                    : "border-[var(--line)] bg-white text-[var(--muted)]"}`}>
+                    ? "border-[var(--primary)]/30 bg-[var(--accent)] text-[var(--accent-foreground)]"
+                    : "border-[var(--border)] bg-white text-[var(--muted-foreground)]")}>
                 {v === "record" ? "记录" : "树"}
               </button>
             ))}
           </span>
-          <span className="mono text-[11px] text-[var(--faint)]">{current || ""}</span>
+          <span className="mono text-[11px] text-[var(--muted-foreground)]">{current || ""}</span>
           <span className="flex-1" />
           {models.model_tags.length > 0 && (
             <select value={models.current || ""} title="模型选择"
               onChange={(e) => current && api.setModel(current, e.target.value).then(() => refreshModels(current))}
-              className="rounded-md border border-[var(--line)] bg-white px-1.5 py-1 text-[12px] text-[#292929]">
+              className="rounded-md border border-[var(--input)] bg-white px-1.5 py-1 text-[12px]">
               {models.model_tags.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           )}
-          {busy && <span className="text-[12px] text-[var(--blue)]">生成中…</span>}
+          {busy && (
+            <span className="flex items-center gap-1 text-[12px] text-[var(--primary)]">
+              <Loader2Icon className="size-3 animate-spin" />生成中…
+            </span>
+          )}
         </header>
 
         {view === "record" ? (
           <div ref={convRef} className="flex-1 overflow-y-auto px-5 py-3">
             {tree && <RecordView tree={tree} byId={byId} />}
             {live.map(([mid, buf]) => (
-              <div key={mid} className="my-1 flex max-w-[85%] flex-col gap-1.5">
-                {buf.thinking && (
-                  <FoldCard tone="thinking" title="思考过程" defaultOpen>
-                    <div className="whitespace-pre-wrap text-[12px] text-[var(--dim)]">{buf.thinking}</div>
-                  </FoldCard>)}
-                {buf.text && <div className="whitespace-pre-wrap text-[13px]">{buf.text}</div>}
+              <div key={mid} className="my-1.5 flex max-w-[92%] flex-col gap-1">
+                {buf.thinking && <Reasoning text={buf.thinking} streaming />}
+                {buf.text && <MessageResponse text={buf.text} streaming />}
               </div>
             ))}
-            {!current && <p className="mt-16 text-center text-[var(--faint)]">选择左侧一个 Agent，或新建。</p>}
+            {!current && <p className="mt-16 text-center text-[var(--muted-foreground)]">选择左侧一个 Agent，或新建。</p>}
           </div>
         ) : (
           tree && <TreeView tree={tree} onRewind={rewind} />
         )}
 
         {metaLines.length > 0 && (
-          <pre className="mono max-h-[30%] overflow-auto border-t border-[var(--line)] bg-[var(--panel)] px-4 py-2 text-[11px] text-[var(--dim)]">
+          <pre className="mono max-h-[30%] overflow-auto border-t border-[var(--border)] bg-[var(--muted)]/50 px-4 py-2 text-[11px] text-[var(--muted-foreground)]">
             {metaLines.join("\n")}
           </pre>
         )}
 
-        <footer className="border-t border-[var(--line)] bg-[var(--panel)] px-4 pb-3 pt-2">
-          <div className="relative mb-2 h-[14px] overflow-hidden rounded-full border border-[var(--line)] bg-white"
+        {/* 底部（chat-prompt-composer 形态：上下文进度条 + 圆角输入条） */}
+        <footer className="px-4 pb-3 pt-1">
+          <div className="relative mb-1.5 h-[14px] overflow-hidden rounded-full border border-[var(--border)] bg-white"
             title="上下文占用">
             <div className="h-full transition-[width] duration-300"
-              style={{ width: `${pct}%`, background: ratio != null && ratio > 0.8 ? "#d29922" : "#1783ff" }} />
-            <span className="mono absolute inset-0 flex items-center justify-center text-[10px] text-[var(--muted)]">
+              style={{ width: `${pct}%`, background: ratio != null && ratio > 0.8 ? "var(--warning)" : "var(--primary)" }} />
+            <span className="mono absolute inset-0 flex items-center justify-center text-[10px] text-[var(--muted-foreground)]">
               {ratio == null
                 ? "ctx n/a"
                 : `${((ctx?.tokens ?? 0) / 1000).toFixed(1)}k / ${((ctx?.context_window ?? 0) / 1000).toFixed(0)}k (${pct}%)`}
             </span>
           </div>
-          <div className="flex items-end gap-2">
+          <div className="flex items-end gap-2 rounded-xl border border-[var(--input)] bg-white p-2 shadow-sm focus-within:border-[var(--ring)]">
             <textarea value={input} rows={1} autoFocus spellCheck={false}
               placeholder="输入消息；以 / 开头使用 repl 指令（Enter 发送，Shift+Enter 换行）"
               onChange={(e) => {
@@ -402,11 +399,19 @@ export default function App() {
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
               }}
-              className="max-h-[160px] flex-1 resize-none rounded-lg border border-[var(--line)] bg-white px-3 py-2 text-[13px] text-[#121212] outline-none focus:border-[var(--blue)]" />
-            <button type="button" onClick={send}
-              className="rounded-lg border border-[var(--bd)] bg-[var(--soft)] px-4 py-2 text-[13px] text-[#0b4a8f] hover:bg-[#d6e9ff]">
-              发送
-            </button>
+              className="max-h-[160px] flex-1 resize-none bg-transparent px-1 py-1 text-[13px] outline-none" />
+            {busy ? (
+              <button type="button" title="取消当前回合"
+                onClick={() => current && api.command(current, "/cancel")}
+                className="flex size-8 items-center justify-center rounded-lg bg-[var(--muted)] text-[var(--muted-foreground)] hover:bg-[var(--accent)]">
+                <SquareIcon className="size-3.5" />
+              </button>
+            ) : (
+              <button type="button" onClick={send} title="发送"
+                className="flex size-8 items-center justify-center rounded-lg bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90">
+                <ArrowUpIcon className="size-4" />
+              </button>
+            )}
           </div>
         </footer>
       </main>

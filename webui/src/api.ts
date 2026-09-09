@@ -9,6 +9,7 @@ export interface AgentInfo {
 
 export interface ContentBlock {
   type: string;
+  id?: string;            // tool_call
   text?: string;
   thinking?: string;
   name?: string;          // tool_call
