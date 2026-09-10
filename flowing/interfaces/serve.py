@@ -448,7 +448,13 @@ def _build_app(runtime: Runtime, extra_routes: tuple[tuple[str, str, object], ..
             return agent
         snap = agent.snapshot(keys={"model", "paused", "message_queue", "current_turn",
                                     "executions", "context_usage"})
-        return _json(dataclasses.asdict(snap))
+        body = dataclasses.asdict(snap)
+        cu = body.get("context_usage")
+        if cu is not None:
+            # usage_ratio 是 ContextUsageEstimate 的 @property，asdict 不序列化——补
+            cu["usage_ratio"] = (cu["tokens"] / cu["context_window"]
+                                 if cu.get("context_window") else None)
+        return _json(body)
 
     async def _tasks(request: web.Request) -> web.Response:
         agent = await _resolve_agent(runtime, request.match_info["agent_id"])

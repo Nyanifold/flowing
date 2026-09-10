@@ -321,7 +321,10 @@ export default function App() {
   };
 
   const live = [...liveRef.current.entries()];
-  const ratio = ctx?.usage_ratio ?? null;
+  // usage_ratio 缺失时前端兜底：tokens / context_window（serve 已补字段，
+  // 旧版 serve 无此字段时此处兜底）
+  const ratio = ctx?.usage_ratio
+    ?? (ctx?.context_window ? ctx.tokens / ctx.context_window : null);
   const pct = ratio == null ? 0 : Math.min(100, Math.round(ratio * 100));
 
   return (
