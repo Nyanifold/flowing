@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { PlusIcon, ArrowUpIcon, SquareIcon, Loader2Icon } from "lucide-react";
 import { api, AgentInfo, Message, Tree, TreeNode } from "./api";
-import { Md, JsonBlock, FoldCard, Reasoning, ToolCard, MessageResponse, cn } from "./components";
+import { Reasoning, ToolCard, MessageResponse, cn } from "./components";
 
 const STORE_KEY = "flowing.web.agent";
 
@@ -108,68 +108,21 @@ function MessageRow({ m, toolResults }: { m: Message; toolResults: Map<string, M
   );
 }
 
-/** 不在当前链上的消息（折叠分叉体内）：预览行——每条消息都有预览。 */
-function PreviewRow({ n }: { n: TreeNode }) {
-  return (
-    <div className="mono my-0.5 truncate text-[10.5px] text-[var(--muted-foreground)]">
-      {n.kind}:{String(n.id).slice(0, 12)}　{n.preview}
-    </div>
-  );
-}
-
-// ---- 记录视图（消息树：仅分叉处缩进；分叉首条消息为可开合的折叠头）--------------
-function RecordView({ tree, byId }: { tree: Tree; byId: Map<string, Message> }) {
+// ---- 记录视图（纯链：只展示从当前 head 上溯的消息序列，不含任何树的
+// 元素——分叉/分支只出现在「树」页签） -------------------------------------------
+function RecordView({ messages }: { messages: Message[] }) {
   // tool_call_id → TOOL 消息（当前链配对表）
   const toolResults = new Map<string, Message>();
-  for (const m of byId.values())
+  for (const m of messages)
     if (m.kind === "tool" && (m as unknown as { tool_call_id?: string }).tool_call_id)
       toolResults.set((m as unknown as { tool_call_id: string }).tool_call_id, m);
-
-  const parentOf = new Map<string, string | null>();
-  (function collect(nodes: TreeNode[], parent: string | null) {
-    for (const n of nodes) { parentOf.set(n.id, parent); collect(n.children || [], n.id); }
-  })(tree.roots, null);
-  const onPath = new Set<string>();
-  for (let cur: string | null = tree.head; cur != null; cur = parentOf.get(cur) ?? null) onPath.add(cur);
-
-  const renderSeq = (nodes: TreeNode[], keyPrefix: string): React.ReactNode => {
-    const out: React.ReactNode[] = [];
-    let list = nodes;
-    let guard = 0;
-    while (list.length && guard++ < 10000) {
-      if (list.length === 1) {
-        const n = list[0];
-        // 线性链只在当前路径上渲染：离径（rewind 切走的旧尾/离线延续）即
-        // 止步——离线内容只出现在分叉折叠段里，不整段铺预览行
-        if (!onPath.has(n.id)) break;
-        const m = byId.get(String(n.id));
-        if (n.kind === "tool") { list = n.children || []; continue; }   // 已并入 ToolCard
-        out.push(m
-          ? <MessageRow key={n.id} m={m} toolResults={toolResults} />
-          : <PreviewRow key={n.id} n={n} />);
-        list = n.children || [];
-        continue;
-      }
-      out.push(
-        <div key={`${keyPrefix}-fork-${guard}`} className="my-1 ml-3 border-l-2 border-[rgba(23,131,255,.25)] pl-2">
-          {list.map((branch) => {
-            const onThis = onPath.has(branch.id);
-            const bm = byId.get(String(branch.id));
-            return (
-              <FoldCard key={branch.id} defaultOpen={onThis}
-                title={`分支 ${branch.kind}:${String(branch.id).slice(0, 12)}`}
-                sub={branch.preview}>
-                {bm ? <MessageRow m={bm} toolResults={toolResults} /> : <PreviewRow n={branch} />}
-                {onThis && renderSeq(branch.children || [], `${keyPrefix}-${branch.id}`)}
-              </FoldCard>
-            );
-          })}
-        </div>);
-      return out;
-    }
-    return out;
-  };
-  return <>{renderSeq(tree.roots, "root")}</>;
+  return (
+    <>
+      {messages
+        .filter((m) => m.kind !== "tool")   // 结果并入 ToolCard，不单独成行
+        .map((m) => <MessageRow key={m.id} m={m} toolResults={toolResults} />)}
+    </>
+  );
 }
 
 // ---- 树子页（DFS 序排列；分叉首条消息带展开/坍缩箭头，箭头槽即缩进锚点；
@@ -248,7 +201,7 @@ export default function App() {
   const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [current, setCurrent] = useState<string | null>(null);
   const [view, setView] = useState<"record" | "tree">("record");
-  const [byId, setById] = useState<Map<string, Message>>(new Map());
+  const [messages, setMessages] = useState<Message[]>([]);
   const [tree, setTree] = useState<Tree | null>(null);
   const [models, setModels] = useState<{ current: string | null; model_tags: string[] }>({ current: null, model_tags: [] });
   const [ctx, setCtx] = useState<{ tokens: number; usage_ratio: number | null; context_window: number | null } | null>(null);
@@ -268,7 +221,7 @@ export default function App() {
 
   const loadRecord = useCallback(async (id: string) => {
     const [msgs, t] = await Promise.all([api.messages(id), api.tree(id)]);
-    setById(new Map(msgs.map((m) => [String(m.id), m])));
+    setMessages(msgs);
     setTree(t);
     scrollDown();
   }, []);
@@ -420,7 +373,7 @@ export default function App() {
 
         {view === "record" ? (
           <div ref={convRef} className="flex-1 overflow-y-auto px-5 py-3">
-            {tree && <RecordView tree={tree} byId={byId} />}
+            <RecordView messages={messages} />
             {live.map(([mid, buf]) => (
               <div key={mid} className="my-1.5 flex max-w-[92%] flex-col gap-1">
                 {buf.thinking && <Reasoning text={buf.thinking} streaming />}
