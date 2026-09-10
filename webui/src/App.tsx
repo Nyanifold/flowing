@@ -139,6 +139,9 @@ function RecordView({ tree, byId }: { tree: Tree; byId: Map<string, Message> }) 
     while (list.length && guard++ < 10000) {
       if (list.length === 1) {
         const n = list[0];
+        // 线性链只在当前路径上渲染：离径（rewind 切走的旧尾/离线延续）即
+        // 止步——离线内容只出现在分叉折叠段里，不整段铺预览行
+        if (!onPath.has(n.id)) break;
         const m = byId.get(String(n.id));
         if (n.kind === "tool") { list = n.children || []; continue; }   // 已并入 ToolCard
         out.push(m
