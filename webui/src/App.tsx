@@ -5,6 +5,15 @@ import { Md, JsonBlock, FoldCard, Reasoning, ToolCard, MessageResponse, cn } fro
 
 const STORE_KEY = "flowing.web.agent";
 
+/** 窗口容量格式化：>=1M 以 M 显示，小数位非 0 时保留一位（1M / 1.5M）。 */
+function fmtWindow(w: number): string {
+  if (w >= 1_000_000) {
+    const m = w / 1_000_000;
+    return (m % 1 === 0 ? m.toFixed(0) : m.toFixed(1)) + "M";
+  }
+  return (w / 1000).toFixed(0) + "k";
+}
+
 // ---- 侧边栏（对应 kimi sessions 侧栏：圆角行 + 标题 + 次级预览行，选中态
 // bg-accent） ---------------------------------------------------------------------
 function Sidebar({ agents, current, onFocus, onNew }: {
@@ -390,7 +399,7 @@ export default function App() {
             <span className="mono absolute inset-0 flex items-center justify-center text-[10px] text-[var(--muted-foreground)]">
               {ratio == null
                 ? "ctx n/a"
-                : `${((ctx?.tokens ?? 0) / 1000).toFixed(1)}k / ${((ctx?.context_window ?? 0) / 1000).toFixed(0)}k (${pct}%)`}
+                : `${((ctx?.tokens ?? 0) / 1000).toFixed(1)}k / ${fmtWindow(ctx?.context_window ?? 0)} (${pct}%)`}
             </span>
           </div>
           <div className="flex items-end gap-2 rounded-xl border border-[var(--input)] bg-white p-2 shadow-sm focus-within:border-[var(--ring)]">
