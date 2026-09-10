@@ -87,22 +87,59 @@ export function Reasoning({ text, streaming }: { text: string; streaming?: boole
 }
 
 // ---- CodeBlock + JSON 高亮 -----------------------------------------------------
+// 线性状态机扫描（无回溯）：历史教训——正则「懒惰量词 + 可选组」在真实工具
+// 返回（长字符串、嵌套 JSON、大量 & 实体）上病态回溯，页面直接卡死
+function escHtml(s: string): string {
+  return s.replace(/[&<>"]/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+}
+
+function highlightJson(text: string): string {
+  const out: string[] = [];
+  const n = text.length;
+  let i = 0;
+  while (i < n) {
+    const c = text[i];
+    if (c === '"') {   // 字符串：扫描到未转义的闭引号
+      let j = i + 1;
+      while (j < n) {
+        if (text[j] === "\\") { j += 2; continue; }
+        if (text[j] === '"') { j++; break; }
+        j++;
+      }
+      // key 判定：跳过空白看下一字符是否 ':'
+      let k = j;
+      while (text[k] === " " || text[k] === "\n" || text[k] === "\t" || text[k] === "\r") k++;
+      const cls = text[k] === ":" ? "j-key" : "j-str";
+      out.push(`<span class="${cls}">${escHtml(text.slice(i, j))}</span>`);
+      i = j;
+      continue;
+    }
+    const rest = text.slice(i, i + 16);   // 数字/关键字着色（短窗，线性）
+    const m = /^(true|false|null|-?\d+(?:\.\d+)?)/.exec(rest);
+    if (m && (i === 0 || /[\s,[\]{:]/.test(text[i - 1]))) {
+      const cls = m[1] === "true" || m[1] === "false" || m[1] === "null" ? "j-kw" : "j-num";
+      out.push(`<span class="${cls}">${m[1]}</span>`);
+      i += m[1].length;
+      continue;
+    }
+    out.push(escHtml(c));
+    i++;
+  }
+  return out.join("");
+}
+
 export function JsonBlock({ label, value }: { label?: string; value: unknown }) {
-  const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
-  const html = text
-    .replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!)
-    .replace(
-      /(&quot;(?:\\.|[^&])*?&quot;)(\s*:)?|\b(true|false|null)\b|-?\b\d+(?:\.\d+)?\b/g,
-      (m, str, colon) => {
-        if (str) return colon ? `<span class="j-key">${str}</span>${colon}` : `<span class="j-str">${str}</span>`;
-        if (/^(true|false|null)$/.test(m)) return `<span class="j-kw">${m}</span>`;
-        return `<span class="j-num">${m}</span>`;
-      });
+  const raw = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  const MAX = 200_000;   // 超大工具返回截断展示（保 DOM 规模可控）
+  const text = raw.length > MAX
+    ? raw.slice(0, MAX) + `\n… (truncated, ${raw.length - MAX} more chars)`
+    : raw;
   return (
     <div>
       {label && <div className="mono mb-1 text-[10px] uppercase tracking-wide text-[var(--faint)]">{label}</div>}
       <pre className="mono m-0 overflow-x-auto rounded-md border border-[var(--border)] bg-[var(--muted)] p-2 text-[11px] leading-relaxed"
-        dangerouslySetInnerHTML={{ __html: html }} />
+        dangerouslySetInnerHTML={{ __html: highlightJson(text) }} />
     </div>
   );
 }

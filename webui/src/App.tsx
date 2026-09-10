@@ -13,7 +13,9 @@ function Sidebar({ agents, current, onFocus, onNew }: {
 }) {
   const children = new Map<string | null, AgentInfo[]>();
   for (const a of agents) {
-    const p = a.parent_agent_id || null;
+    // 根 Agent 的 parent_agent_id 是 Runtime 的 node_id（"runtime-0"），
+    // 归一化为 null 作为侧栏根层
+    const p = a.parent_agent_id && a.parent_agent_id !== "runtime-0" ? a.parent_agent_id : null;
     if (!children.has(p)) children.set(p, []);
     children.get(p)!.push(a);
   }
