@@ -169,27 +169,73 @@ function RecordView({ tree, byId }: { tree: Tree; byId: Map<string, Message> }) 
   return <>{renderSeq(tree.roots, "root")}</>;
 }
 
-// ---- 树子页（只读结构 + 每条消息预览 + 点击切分支） ------------------------------
+// ---- 树子页（DFS 序排列；分叉首条消息带展开/坍缩箭头，箭头槽即缩进锚点；
+// 不分叉的线性链不缩进、与分叉头同位对齐） -------------------------------------
 function TreeView({ tree, onRewind }: { tree: Tree; onRewind: (id: string) => void }) {
-  const nodeEl = (n: TreeNode): React.ReactNode => (
-    <li key={n.id}>
-      <button type="button" title={n.id} onClick={() => onRewind(n.id)}
-        className={cn("mono rounded px-1 py-0.5 text-left text-[11px] hover:bg-[var(--accent)]",
-          n.head ? "font-bold text-[var(--primary)]" : "text-[var(--muted-foreground)]")}>
-        {n.kind}:{String(n.id).slice(0, 12)}{n.head ? " ←head" : ""}
-        <span className="ml-2 font-normal text-[var(--muted-foreground)]">{n.preview}</span>
-      </button>
-      {n.children?.length > 0 && (
-        <ul className="ml-4 list-none border-l border-[var(--border)] pl-2">
-          {n.children.map(nodeEl)}
-        </ul>
-      )}
-    </li>
-  );
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const toggle = (id: string) =>
+    setCollapsed((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+
+  const Row = ({ n, forkHead }: { n: TreeNode; forkHead: boolean }) => {
+    const hasKids = (n.children?.length ?? 0) > 0;
+    const isCollapsed = collapsed.has(n.id);
+    return (
+      <div className="flex items-center gap-0.5">
+        {/* 只有「分叉出的首条消息」渲染箭头（有子消息才可开合）；线性链
+            不占箭头槽、不缩进 */}
+        {forkHead && hasKids ? (
+          <button type="button" onClick={() => toggle(n.id)} title={isCollapsed ? "展开" : "坍缩"}
+            className="flex w-[16px] shrink-0 items-center justify-center rounded text-[10px] font-bold text-[var(--primary)] hover:bg-[var(--accent)]">
+            {isCollapsed ? "▸" : "▾"}
+          </button>
+        ) : forkHead ? (
+          <span className="w-[16px] shrink-0" />
+        ) : null}
+        <button type="button" title={n.id} onClick={() => onRewind(n.id)}
+          className={cn("mono rounded px-1 py-0.5 text-left text-[11px] hover:bg-[var(--accent)]",
+            n.head ? "font-bold text-[var(--primary)]" : "text-[var(--muted-foreground)]",
+            forkHead && "text-[var(--foreground)]")}>
+          {n.kind}:{String(n.id).slice(0, 12)}{n.head ? " ←head" : ""}
+          <span className="ml-2 font-normal text-[var(--muted-foreground)]">{n.preview}</span>
+        </button>
+      </div>
+    );
+  };
+
+  const renderNodes = (nodes: TreeNode[]): React.ReactNode => {
+    if (nodes.length === 0) return null;
+    if (nodes.length === 1) {
+      // 线性链：同位渲染，不缩进
+      const n = nodes[0];
+      return (
+        <div key={n.id}>
+          <Row n={n} forkHead={false} />
+          {renderNodes(n.children || [])}
+        </div>
+      );
+    }
+    // 分叉：每条分支的首条消息带箭头；其子树缩进一格（对齐箭头后文字起点）
+    return nodes.map((n) => {
+      const isCollapsed = collapsed.has(n.id);
+      return (
+        <div key={n.id}>
+          <Row n={n} forkHead />
+          {!isCollapsed && (
+            <div className="ml-[16px]">{renderNodes(n.children || [])}</div>
+          )}
+        </div>
+      );
+    });
+  };
+
   return (
     <div className="flex-1 overflow-auto p-4">
       <div className="mono mb-2 text-[10.5px] text-[var(--muted-foreground)]">head={tree.head}</div>
-      <ul className="list-none">{tree.roots.map(nodeEl)}</ul>
+      {renderNodes(tree.roots)}
     </div>
   );
 }
