@@ -1868,11 +1868,13 @@ class Agent:
 
         .. rubric:: 行为要点
 
-        - 吸收语义：STEER 消息在回合内层循环每轮 ``provider_gen`` 前被
-          drain 挂树，当轮 context 即可见；不打断当前回合（对比
-          ``INTERRUPT`` 的 abort 语义）。
+        - 吸收语义：STEER 消息的两个消费路径——随出队批次进入回合
+          （队首 INTERRUPT/STEER 连续段并入下一逻辑回合的消费批次，
+          见 :meth:`_dequeue`），或回合内层循环每轮 ``provider_gen``
+          前被 drain 挂树、当轮 context 即可见；两条路径都不打断当前
+          回合（对比 ``INTERRUPT`` 的 abort 语义）。
         - fire-and-forget：不注册 ``_pending_turns``、不等待回合产物。
-        - 不保证被哪个回合消费：若当前回合已收尾，由下一回合的首轮吸收。
+        - 不保证被哪个回合消费：若当前回合已收尾，由下一回合消费。
 
         .. seealso::
 
@@ -4045,23 +4047,30 @@ class Agent:
                 _logger.exception("agent %s: turn crashed", self.node_id)
 
     async def _dequeue(self) -> list[Message]:
-        """出队扩展点：核心默认一条，可覆写实现 drain / 合并策略（内部 API）。
+        """出队扩展点：构造一个逻辑回合的消费批次，可覆写实现 drain /
+        合并策略（内部 API）。
 
-        默认实现：阻塞到队列非空 → dispatch ``before_dequeue`` → 非阻塞
-        取一条（返回 ``None`` = 钩子在此窗口扔掉了消息 → 重新等待并再次
-        派发 before）→ dispatch ``after_dequeue`` （可变换返回的消息列表）。
+        默认批次语义：阻塞到队列非空 → dispatch ``before_dequeue`` →
+        取队首 INTERRUPT/STEER 连续段（``take_while(priority <= STEER)``）
+        → 再取其后的第一条非紧急消息（若有；队首即非紧急时批次为单条）
+        → dispatch ``after_dequeue`` （可变换返回的消息列表）。取出空
+        批次（钩子在此窗口扔掉了全部候选）→ 重新等待并再次派发 before。
 
         覆写管「多条 / 策略」（``drain_all()`` 合并、批量、按来源分组），
-        钩子管「观察 / 变换」——分工不混。覆写批量后核心通用收尾天然兼容
-        （resolve 回合内所有等待者，共享同一 ``TurnResult``）。
+        钩子管「观察 / 变换」——分工不混。批次内各消息的等待者随回合
+        收尾共享同一 ``TurnResult`` 并全部 resolve。
         """
-        while True:   # 等消息与取消息拆分；钩子扔消息则重新等待
+        while True:   # 等消息与取消息拆分；钩子扔光候选则重新等待
             await self._message_queue.wait_not_empty()   # 阻塞到非空
             await self.hooks.before_dequeue.dispatch(self)   # 即将出队时派发（观察队列，无 value）
-            msg = self._message_queue.dequeue_nowait()   # 非阻塞取；None = 钩子扔掉了 -> 重等
-            if msg is not None:
+            msgs = self._message_queue.take_while(   # 队首 INTERRUPT/STEER 连续段
+                lambda m: m.priority <= MessagePriority.STEER)
+            nxt = self._message_queue.dequeue_nowait()   # 其后第一条非紧急消息（若有）
+            if nxt is not None:
+                msgs.append(nxt)
+            if msgs:   # 空批次 = 钩子在此窗口扔掉了全部候选 -> 重等
                 break
-        msgs = await self.hooks.after_dequeue.dispatch(self, [msg])   # 可变换返回的消息列表
+        msgs = await self.hooks.after_dequeue.dispatch(self, msgs)   # 可变换返回的消息列表
         return msgs
 
     async def _run_turn(

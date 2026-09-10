@@ -1205,3 +1205,107 @@ async def test_t07_stream_fallback_matches_nonstream(agent, provider):
     assert stream_resp.finish is True and nonstream_resp.finish is True
     assert (stream_resp.message.usage.total_tokens
             == nonstream_resp.message.usage.total_tokens == 5)
+
+
+# ---------------------------------------------------------------------------
+# 默认出队批次：队首 INTERRUPT/STEER 连续段 + 首条非紧急消息
+# ---------------------------------------------------------------------------
+
+
+async def test_dequeue_batch_urgent_prefix_merges(agent, provider):
+    """[steer, steer, user1, user2] → 第一回合消费前三条（紧急段 + 首条
+    非紧急），第二回合消费 user2（非紧急不继续合并）。"""
+    batches: list[list[str]] = []
+
+    async def _record(a, turn):
+        batches.append([getattr(m.content[0], "text", "")
+                        for m in turn.pending_messages])
+        return turn
+
+    agent.hooks.before_turn(_record)
+    # 出队闸门：before_dequeue handler 挂住工作循环的出队动作，直到四条
+    # 消息全部入队（pause 不能拦住已 parked 在 wait_not_empty 的出队，
+    # 批次形成的确定性用闸门保证）
+    gate = asyncio.Event()
+
+    async def _hold(a, _value=None):   # 无 value 钩子点同样收 (agent, value)
+        await gate.wait()
+
+    agent.hooks.before_dequeue(_hold)
+    script_provider(provider, text_response("r1"), text_response("r2"))
+    await agent.steer("导向一")
+    await agent.steer("导向二")
+    q1 = asyncio.create_task(agent.query("问题一"))
+    q2 = asyncio.create_task(agent.query("问题二"))
+    for _ in range(100):   # 等两个 query 完成打包入队
+        if len(agent._message_queue) == 4:
+            break
+        await asyncio.sleep(0)
+    assert len(agent._message_queue) == 4
+    gate.set()
+    r1, r2 = await asyncio.gather(q1, q2)
+    assert batches[0] == ["导向一", "导向二", "问题一"]   # 紧急段 + 首条非紧急
+    assert batches[1] == ["问题二"]                        # 非紧急不继续合并
+    assert r1.status == r2.status == "completed"
+    # steer 与触发消息同批挂树：首个回合 context 已可见
+    first_ctx = provider.received[0]
+    assert any("导向一" in getattr(b, "text", "")
+               for m in first_ctx.messages for b in m.content)
+
+
+async def test_dequeue_batch_urgent_only(agent, provider):
+    """队中全是 STEER：整段为一个批次——单回合、provider 只调一次、
+    两条 steer 均挂树。"""
+    batches: list[int] = []
+
+    async def _record(a, turn):
+        batches.append(len(turn.pending_messages))
+        return turn
+
+    agent.hooks.before_turn(_record)
+    gate = asyncio.Event()   # 出队闸门（同 test_dequeue_batch_urgent_prefix_merges）
+
+    async def _hold(a, _value=None):   # 无 value 钩子点同样收 (agent, value)
+        await gate.wait()
+
+    agent.hooks.before_dequeue(_hold)
+    script_provider(provider, text_response("ok"))
+    await agent.steer("导向一")
+    await agent.steer("导向二")
+    for _ in range(100):
+        if len(agent._message_queue) == 2:
+            break
+        await asyncio.sleep(0)
+    assert len(agent._message_queue) == 2
+    gate.set()
+    await _yield(10)  # 等回合跑完
+    assert batches == [2]                 # 两条 STEER 并入同一回合批次
+    assert len(provider.received) == 1    # 只开一次 LLM 调用
+    steer_texts = [getattr(b, "text", "")
+                   for m in agent._messages.values() for b in m.content]
+    assert "导向一" in steer_texts and "导向二" in steer_texts
+
+
+async def test_dequeue_batch_single_when_no_urgent(agent, provider):
+    """无紧急前缀时批次为单条：两条普通 USER 排队 → 两个独立回合。"""
+    batches: list[list[str]] = []
+
+    async def _record(a, turn):
+        batches.append([getattr(m.content[0], "text", "")
+                        for m in turn.pending_messages])
+        return turn
+
+    agent.hooks.before_turn(_record)
+    script_provider(provider, text_response("r1"), text_response("r2"))
+    agent.pause()
+    q1 = asyncio.create_task(agent.query("问题一"))
+    q2 = asyncio.create_task(agent.query("问题二"))
+    for _ in range(100):   # 等两个 query 完成打包入队（工作循环仍暂停）
+        if len(agent._message_queue) == 2:
+            break
+        await asyncio.sleep(0)
+    assert len(agent._message_queue) == 2
+    agent.resume()
+    r1, r2 = await asyncio.gather(q1, q2)
+    assert batches == [["问题一"], ["问题二"]]
+    assert r1.status == r2.status == "completed"

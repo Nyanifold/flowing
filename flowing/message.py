@@ -1181,9 +1181,10 @@ class MessageQueue:
 
     每个 Agent 一个独立队列（``Agent._message_queue``），是外部消息进入
     逻辑 turn 循环的唯一通道。工作循环经 ``Agent._dequeue()`` 消费——
-    核心默认一条一条（最安全），drain / 合并 / 按来源分组等策略由覆写
-    ``_dequeue()`` 实现，本类提供 ``drain_all`` / ``take_while`` 等批量
-    取出原语支撑覆写。
+    默认批次为「队首 INTERRUPT/STEER 连续段 + 其后第一条非紧急消息」
+    （队首即非紧急时批次为单条），drain / 合并 / 按来源分组等更宽的
+    批量策略由覆写 ``_dequeue()`` 实现，本类提供 ``drain_all`` /
+    ``take_while`` 等批量取出原语支撑默认批次与覆写。
 
     队列只承诺最小调度语义：按 ``MessagePriority`` 数值升序、同级按入队
     顺序 FIFO。防饿死、来源加权等策略不在框架核心。忙时不拒绝：活跃
@@ -1290,7 +1291,7 @@ class MessageQueue:
         与 :meth:`wait_not_empty` 配套：``Agent._dequeue`` 在
         ``before_dequeue`` 派发后用它取消息——钩子在此窗口把消息移除
         （``cancel_queued`` / ``remove``）时返回 ``None``，调用方重新
-        等待并重新派发 ``before_dequeue`` （每条真正出队的消息之前恰好
+        等待并重新派发 ``before_dequeue`` （每批真正出队的消息之前恰好
         一次 before 派发）。
         """
         if not self._items:
@@ -1308,10 +1309,11 @@ class MessageQueue:
         队列空时挂起等待，直到有消息入队。本方法是「等消息 + 取消息」合体
         的便捷原语；``Agent._dequeue()`` 的默认实现不使用它——为了把
         ``before_dequeue`` 的派发点移到「队列确实非空、即将出队」的时刻
-        （每条真正出队的消息之前恰好一次 before 派发），默认实现改用
-        :meth:`wait_not_empty` + :meth:`dequeue_nowait` 的拆分组合
-        （见 :meth:`flowing.agent.Agent._dequeue`）。不需要该钩子时序语义
-        的直接消费方（如自定义 ``_dequeue()`` 覆写）可用本方法。
+        （每批真正出队的消息之前恰好一次 before 派发），默认实现改用
+        :meth:`wait_not_empty` + :meth:`take_while` / :meth:`dequeue_nowait`
+        的拆分组合（见 :meth:`flowing.agent.Agent._dequeue`）。不需要该
+        钩子时序语义的直接消费方（如自定义 ``_dequeue()`` 覆写）可用本
+        方法。
 
         .. rubric:: 行为要点
 
