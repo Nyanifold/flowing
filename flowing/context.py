@@ -6,8 +6,9 @@
 这条链路上的全部数据结构：
 
 - :class:`PromptBlock`：一段 system prompt 的注册声明。记录惰性内容
-  （``content`` 为 :class:`flowing.parsable.Parsable`，注册时不解析）与
-  管理元数据（``cache`` / ``tags`` / ``by`` / ``enabled``）。
+  （``content`` 为 :class:`flowing.parsable.Parsable` 或普通字符串——
+  字符串在构造期归一化为 Parsable，注册时不解析）与管理元数据
+  （``cache`` / ``tags`` / ``by`` / ``enabled``）。
 - :class:`PromptBlockList`：Agent 级有序容器（每个 Agent 实例一个，即
   ``agent.prompt_blocks``），语义继承 :class:`flowing.lists.ManagedList`。
 - :class:`PromptSegment`：单个块在一次组装中求值后的产物（已解析字符串
@@ -140,14 +141,15 @@ class PromptBlock:
     .. rubric:: 功能介绍
 
     框架核心层数据结构。一个 ``PromptBlock`` 是「一段 system prompt 的注册
-    声明」：``content`` 是惰性内容（:class:`flowing.parsable.Parsable`），
-    ``cache`` / ``tags`` / ``by`` / ``enabled`` 是管理元数据。注册时不解析
+    声明」：``content`` 是惰性内容（:class:`flowing.parsable.Parsable`
+    或普通字符串——字符串在构造期归一化为 Parsable），``cache`` /
+    ``tags`` / ``by`` / ``enabled`` 是管理元数据。注册时不解析
     内容，直到每次组装（``Agent._assemble_context()``）现场求值，产出
     :class:`PromptSegment`。
 
     system prompt 从「一段完整文本」变为「按注册顺序拼接的分层片段」，使
     框架骨架（``by="core"``）、内置扩展与应用代码能各自注册、各自管理自己
-    的片段，互不感知。内容用 ``Parsable`` 承载是因为惰性求值是功能正确性
+    的片段，互不感知。内容用惰性求值承载是因为惰性求值是功能正确性
     的前提：注册时环境变量、配置值、实例属性可能尚不存在，只有使用时才能
     解析。
 
@@ -203,9 +205,11 @@ class PromptBlock:
     .. seealso:: :attr:`PromptSegment.name`
     """
 
-    content: Parsable
-    """惰性内容（:class:`flowing.parsable.Parsable`）：注册时不解析，使块可以
-    引用注册时尚不存在的实例属性 / 环境变量 / 配置。
+    content: str | Parsable
+    """惰性内容：:class:`flowing.parsable.Parsable` 或普通字符串（构造期
+    归一化为 Parsable——常量、``{{ }}`` 模板与 ``$`` 引用走同一条组装期
+    求值路径）。注册时不解析，使块可以引用注册时尚不存在的实例属性 /
+    环境变量 / 配置。
 
     行为边界：组装时由框架自动 ``resolve()``；用户不应在注册前手动求值
     （那会把动态内容固化成静态字符串）。
@@ -253,6 +257,12 @@ class PromptBlock:
 
     .. seealso:: :class:`flowing.lists.ManagedList`
     """
+
+    def __post_init__(self) -> None:
+        # 普通字符串归一化为 Parsable：常量、{{ }} 模板与 $ 引用与显式
+        # Parsable 走同一条组装期求值路径（resolve 在组装时现场执行）
+        if isinstance(self.content, str):
+            self.content = Parsable(self.content)
 
 
 @dataclass
@@ -409,7 +419,7 @@ class PromptBlockList(ManagedList[PromptBlock]):
     def append(
         self,
         name: str,
-        content: Parsable,
+        content: str | Parsable,
         *,
         cache: Literal["static", "dynamic", "session"] = "dynamic",
         by: str = "",
@@ -438,7 +448,8 @@ class PromptBlockList(ManagedList[PromptBlock]):
             block.enabled   # True
 
         :param name: 块名（非唯一键，见 :class:`PromptBlock`）。
-        :param content: 惰性内容（:class:`flowing.parsable.Parsable`）。
+        :param content: 惰性内容（:class:`flowing.parsable.Parsable`
+        或普通字符串——字符串在构造期归一化为 Parsable，组装时正常求值）。
         :param cache: 缓存意图标记，三值之一，默认 ``"dynamic"``。
         :param by: 来源标识，默认空串 ``""``。
         :param tags: 分组标签列表，默认 ``None`` （归一化为空列表）。
@@ -472,7 +483,7 @@ class PromptBlockList(ManagedList[PromptBlock]):
         self,
         index: int,
         name: str,
-        content: Parsable,
+        content: str | Parsable,
         *,
         cache: Literal["static", "dynamic", "session"] = "dynamic",
         by: str = "",
@@ -500,7 +511,8 @@ class PromptBlockList(ManagedList[PromptBlock]):
 
         :param index: 插入位置（可为负，语义同 ``list.insert``）。
         :param name: 块名（非唯一键，见 :class:`PromptBlock`）。
-        :param content: 惰性内容（:class:`flowing.parsable.Parsable`）。
+        :param content: 惰性内容（:class:`flowing.parsable.Parsable`
+        或普通字符串——字符串在构造期归一化为 Parsable，组装时正常求值）。
         :param cache: 缓存意图标记，三值之一，默认 ``"dynamic"``。
         :param by: 来源标识，默认空串 ``""``。
         :param tags: 分组标签列表，默认 ``None`` （归一化为空列表）。

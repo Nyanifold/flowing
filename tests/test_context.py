@@ -188,3 +188,41 @@ def test_w25_context_container():
     ctx = Context(system_prompt=[PromptSegment(content="s", cache="dynamic", name="n")],
                   tools=[], messages=[])
     assert len(ctx.system_prompt) == 1 and ctx.tools == [] and ctx.messages == []
+
+
+def test_t85_str_content_normalized(tmp_path):
+    """普通字符串块内容：构造期归一化为 Parsable，常量文本原样通过组装。"""
+    rt = FakeRuntime(tmp_path)
+    agent = FakeAgent(rt, source_dir=tmp_path)
+    block = PromptBlock(name="b", content="纯文本", cache="dynamic", tags=[])
+    assert isinstance(block.content, Parsable)   # 归一化发生在构造期
+    seg = PromptSegment(content=block.content.resolve(agent),
+                        cache=block.cache, name=block.name)
+    assert seg.content == "纯文本"
+
+
+def test_t86_str_template_resolved_at_assembly(tmp_path):
+    """字符串块内容含 {{ }} 模板：与显式 Parsable 同路径现场求值，
+    反映最新实例状态。"""
+    rt = FakeRuntime(tmp_path)
+    agent = FakeAgent(rt, source_dir=tmp_path)
+    agent.mode = "甲"
+    block = PromptBlock(name="b", content="模式：{{ mode }}",
+                        cache="dynamic", tags=[])
+    assert PromptSegment(content=block.content.resolve(agent),
+                         cache=block.cache, name=block.name
+                         ).content == "模式：甲"
+    agent.mode = "乙"
+    assert PromptSegment(content=block.content.resolve(agent),
+                         cache=block.cache, name=block.name
+                         ).content == "模式：乙"   # 每次组装现场求值
+
+
+def test_t87_append_insert_accept_str():
+    """append / insert 工厂直接接受普通字符串（归一化由 PromptBlock
+    构造期承担）。"""
+    blocks = PromptBlockList()
+    a = blocks.append("a", "字符串块")
+    b = blocks.insert(0, "b", "另一个 {{ x }}")
+    assert isinstance(a.content, Parsable) and isinstance(b.content, Parsable)
+    assert [x.name for x in blocks] == ["b", "a"]
