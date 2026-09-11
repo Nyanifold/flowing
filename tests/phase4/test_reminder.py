@@ -255,3 +255,86 @@ async def test_error_turn_with_cleaned_reminder_no_crash(tmp_path):
         ReminderAgent.reminder_args = []
         ReminderAgent.reminder_kwargs = {}
         await agent.destroy()
+
+
+# ---------------------------------------------------------------------------
+# 三态条目与活列表（contents 持有引用 / Parsable 归一化 / None 跳过）
+# ---------------------------------------------------------------------------
+
+
+async def test_t127_attribute_form_template_resolution(tmp_path):
+    """属性形态：字符串条目在初始化归一为 Parsable；模板随注入现场求值，
+    反映最新实例属性。"""
+    from flowing.composables import use_system_reminder
+    from flowing.parsable import Parsable
+    from composables_support import SimpleAgent
+
+    runtime, provider = make_composables_harness(tmp_path,
+                                                 agent_cls=SimpleAgent)
+    agent = await runtime.create_agent("test-agent")
+    agent.system_reminders = ["当前模式：{{ mode }}"]
+    use_system_reminder(agent, agent.system_reminders)
+    assert isinstance(agent.system_reminders[0], Parsable)   # init 归一化
+
+    agent.mode = "甲"
+    script_provider(provider, text_response("r1"), text_response("r2"))
+    result = await agent.query("第一轮")
+    reminders = _reminders_in_turn(agent, result.turn)
+    assert [b.text for b in reminders[0].content] == ["当前模式：甲"]
+
+    agent.mode = "乙"   # 实例属性变更 → 下次注入现场求值
+    result = await agent.query("第二轮")
+    reminders = _reminders_in_turn(agent, result.turn)
+    assert [b.text for b in reminders[0].content] == ["当前模式：乙"]
+
+
+async def test_t128_callable_returning_none_skips(tmp_path):
+    """callable 返回 None / 空串 → 跳过该条目，其余条目照常注入。"""
+    runtime, provider = make_composables_harness(tmp_path,
+                                                 agent_cls=ReminderAgent)
+    ReminderAgent.reminder_args = [
+        [lambda a: None, lambda a: "", "常驻提醒"]]
+    try:
+        agent = await runtime.create_agent("test-agent")
+        script_provider(provider, text_response("r1"))
+        result = await agent.query("hi")
+        reminders = _reminders_in_turn(agent, result.turn)
+        assert [b.text for b in reminders[0].content] == ["常驻提醒"]
+    finally:
+        ReminderAgent.reminder_args = []
+
+
+async def test_t129_live_list_runtime_append(tmp_path):
+    """活列表：运行期 append 的裸字符串在注入期惰性兼容（模板正常求值）。"""
+    from flowing.composables import use_system_reminder
+    from composables_support import SimpleAgent
+
+    runtime, provider = make_composables_harness(tmp_path,
+                                                 agent_cls=SimpleAgent)
+    agent = await runtime.create_agent("test-agent")
+    agent.system_reminders = ["第一条"]
+    use_system_reminder(agent, agent.system_reminders)
+
+    script_provider(provider, text_response("r1"), text_response("r2"))
+    result = await agent.query("第一轮")
+    reminders = _reminders_in_turn(agent, result.turn)
+    assert [b.text for b in reminders[0].content] == ["第一条"]
+
+    agent.system_reminders.append("节点：{{ node_id }}")   # 扫描后的裸 str
+    result = await agent.query("第二轮")
+    reminders = _reminders_in_turn(agent, result.turn)
+    assert [b.text for b in reminders[0].content] == [
+        "第一条", f"节点：{agent.node_id}"]
+
+
+async def test_t130_fourth_type_fails_fast(tmp_path):
+    """第四类条目（非 callable / Parsable / str）→ 调用时 TypeError。"""
+    import pytest
+    from flowing.composables import use_system_reminder
+    from composables_support import SimpleAgent
+
+    runtime, provider = make_composables_harness(tmp_path,
+                                                 agent_cls=SimpleAgent)
+    agent = await runtime.create_agent("test-agent")
+    with pytest.raises(TypeError):
+        use_system_reminder(agent, [123])

@@ -49,9 +49,19 @@ docstring）；消息通道（历史尾部追加）是正确位置。
   ``kind=EVENT``、``source="system-reminder"``、
   ``tags=["system-reminder"]``，内容为多个 ``TextBlock`` 合并——附加到
   ``pending_messages`` 末尾（排在触发消息之后），随批次挂树并持久化。
-- 内容求值：``contents`` 各项为 ``(agent) -> str`` 回调或静态字符串，
-  每次注入现场求值；空字符串条目剔除；清单为空（含缺省 ``None``）或
-  全部条目为空串时本回合不注入。
+- 内容求值：``contents`` 各项为三态之一——``(agent) -> str | None``
+  回调（返回 ``None`` / 空串时跳过该条目）、
+  :class:`flowing.parsable.Parsable`（注入时以当前 Agent 为上下文
+  ``resolve()``）、普通字符串（初始化扫描时原地归一为 Parsable——
+  ``{{ }}`` 模板与 ``$`` 引用随每次注入现场求值，无标记的字符串是
+  字面量常量）。空结果条目剔除；清单为空（含缺省 ``None``）或全部
+  条目为空结果时本回合不注入。
+- ``contents`` 列表被**持有引用**（不拷贝）：典型形态
+  ``use_system_reminder(self, self.system_reminders)``——此后对列表的
+  增删直接反映到注入。初始化扫描只归一化已有条目（幂等：已是
+  Parsable 的不重复包装）；扫描后 append 的裸字符串在注入期惰性兼容
+  （按 Parsable 求值）。第四类条目（非 callable / Parsable / str）
+  在初始化扫描时 ``TypeError`` fail fast。
 - 间隔判定：``message_interval`` 与 ``time_interval`` 是与关系——任一
   不满足即跳过（默认两者均为 0：每回合都注入）；首次注入不受间隔限制。
 - 清理语义：``clean=True`` 时每回合收尾按 ``tags`` 擦除本回合注入的
@@ -75,6 +85,7 @@ import time
 from typing import TYPE_CHECKING
 
 from flowing.message import Message, MessageKind, TextBlock
+from flowing.parsable import Parsable
 
 if TYPE_CHECKING:
     from flowing.agent import Agent, TurnContext
@@ -101,6 +112,11 @@ def use_system_reminder(
     ``clean=True`` 时再注册 ``after_turn`` 清理 handler（同 ``by``），
     每回合收尾按 ``tags`` 擦除本回合注入的提醒。
 
+    ``contents`` 的条目是三态（回调 / Parsable / 普通字符串）且列表被
+    持有引用——提醒内容因此可以作为 Agent 实例属性上的纯数据维护
+    （如 ``self.system_reminders = [...]`` 后透传），模板随注入现场
+    求值。
+
     本函数是双层启用的阶段二入口，只能在 ``setup()`` （或实例存活期内
     的任意代码）中对已完成初始化的实例调用。
 
@@ -119,11 +135,20 @@ def use_system_reminder(
                 message_interval=4,   # 至少隔 4 条新消息再注入
             )
 
+        # 属性形态：提醒内容是实例属性上的纯数据（模板随注入现场求值）
+        async def setup(self) -> None:
+            self.system_reminders = ["当前模式：{{ current_mode }}"]
+            use_system_reminder(self, self.system_reminders)
+
     .. rubric:: 行为要点
 
-    - ``contents``：提醒内容清单，各项为 ``(agent) -> str`` 回调或静态
-      字符串，每次注入现场求值；空字符串条目剔除；清单为空（含缺省
-      ``None``）或全部条目为空串时本回合不注入。
+    - ``contents``：提醒内容清单，各项为三态之一——``(agent) ->
+      str | None`` 回调（``None`` / 空串跳过该条目）、
+      :class:`~flowing.parsable.Parsable`（注入时 ``resolve(agent)``）、
+      普通字符串（调用时原地归一为 Parsable）。空结果条目剔除；清单
+      为空（含缺省 ``None``）或全部条目为空结果时本回合不注入。列表
+      被持有引用（不拷贝），此后的增删直接反映到注入；第四类条目
+      （非 callable / Parsable / str）调用时 ``TypeError`` fail fast。
     - 注入条件：距上次注入后新增消息数 ``>= message_interval`` 且距上次
       注入的墙钟间隔 ``>= time_interval`` （秒）——两者是与关系，任一不
       满足即跳过；两者均为 0（默认）时每回合都注入；首次注入不受间隔
@@ -141,8 +166,10 @@ def use_system_reminder(
       ``agent.model``、不持久化任何状态。
 
     :param agent: 目标 Agent 实例；标准用法是在 ``setup()`` 中传 ``self``。
-    :param contents: 提醒内容清单（``(agent) -> str`` 回调或静态字符串）；
-        缺省 ``None`` 视为空清单。
+    :param contents: 提醒内容清单（三态条目：``(agent) -> str | None``
+        回调 / :class:`~flowing.parsable.Parsable` / 普通字符串）；缺省
+        ``None`` 视为空清单。列表被持有引用——传入
+        ``agent.system_reminders`` 这类实例属性后，运行期增删即生效。
     :param clean: 为 ``True`` 时每回合收尾按 ``tags`` 擦除本回合注入的
         提醒；为 ``False`` （默认）时提醒留在树上（持久化、崩溃可恢复）。
     :param message_interval: 距上次注入后新增消息数达到该值才再次注入，
@@ -155,7 +182,19 @@ def use_system_reminder(
         :class:`flowing.agent.TurnContext` —— ``pending_messages`` 附加式
         注入的载体。
     """
-    items = list(contents or [])
+    # contents 持有引用（不拷贝）：此后对列表的增删直接反映到注入；
+    # 非列表容器（tuple 等）无法持有可变引用，拷贝归一
+    items: list = contents if isinstance(contents, list) else list(contents or [])
+    # 初始化扫描：非 callable 且非 Parsable 的条目原地归一为 Parsable
+    # （幂等——已是 Parsable 的不重复包装；第四类 fail fast）
+    for i, item in enumerate(items):
+        if callable(item) or isinstance(item, Parsable):
+            continue
+        if not isinstance(item, str):
+            raise TypeError(
+                "reminder content items must be callable / Parsable / str, "
+                f"got {type(item).__name__}")
+        items[i] = Parsable(item)
     # 间隔判定状态：闭包持有，纯运行期——不落盘、不进 state 袋
     state: dict = {"last_count": None, "last_fired": None}
 
@@ -182,7 +221,17 @@ def use_system_reminder(
         # contents 现场求值：callable 或静态串；空串条目剔除，全空不注入
         texts = []
         for c in items:
-            text = c(agent) if callable(c) else c
+            if callable(c):
+                text = c(agent)   # 返回 None / 空串 → 跳过该条目
+            elif isinstance(c, Parsable):
+                text = c.resolve(agent)   # 注入时以当前 Agent 为上下文求值
+            elif isinstance(c, str):
+                # 初始化扫描后 append 的裸字符串：惰性兼容（同归一化语义）
+                text = Parsable(c).resolve(agent)
+            else:
+                raise TypeError(
+                    "reminder content items must be callable / Parsable / str, "
+                    f"got {type(c).__name__}")
             if text:
                 texts.append(text)
         if not texts:
