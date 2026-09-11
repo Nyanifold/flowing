@@ -140,6 +140,13 @@ def use_system_reminder(
             self.system_reminders = ["当前模式：{{ current_mode }}"]
             use_system_reminder(self, self.system_reminders)
 
+        # .fya 形态：YAML 头部直接声明（未知字段落 ``_extra``，装配层在
+        # 用户 setup 前合入实例）——setup 里一行透传
+        #   system_reminders:
+        #     - "当前模式：{{ current_mode }}"
+        async def setup(self) -> None:
+            use_system_reminder(self, self._extra["system_reminders"])
+
     .. rubric:: 行为要点
 
     - ``contents``：提醒内容清单，各项为三态之一——``(agent) ->
