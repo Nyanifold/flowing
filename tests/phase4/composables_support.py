@@ -29,7 +29,12 @@ script_provider = _mod.script_provider
 text_response = _mod.text_response
 tool_call_response = _mod.tool_call_response
 
-from flowing.composables import use_compact, use_retry, use_system_reminder
+from flowing.composables import (
+    use_compact,
+    use_prompt_until,
+    use_retry,
+    use_system_reminder,
+)
 from flowing.providers import FakeProvider
 
 
@@ -64,6 +69,16 @@ class ReminderAgent(SimpleAgent):
         await super().setup(**kwargs)
         use_system_reminder(self, *type(self).reminder_args,
                             **type(self).reminder_kwargs)
+
+
+class PromptUntilAgent(SimpleAgent):
+    """setup 中 ``use_prompt_until``（类属性 ``prompt_until_args`` 透传）。"""
+
+    prompt_until_args: ClassVar[list] = []
+
+    async def setup(self, **kwargs: Any) -> None:
+        await super().setup(**kwargs)
+        use_prompt_until(self, *type(self).prompt_until_args)
 
 
 def make_composables_harness(
