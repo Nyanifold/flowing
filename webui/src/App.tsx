@@ -52,7 +52,7 @@ function Sidebar({ agents, current, onFocus, onNew }: {
     <aside className="flex w-[248px] flex-col border-r border-[var(--border)] bg-[var(--muted)]/40">
       <div className="flex items-center justify-between px-3 py-2.5">
         <span className="text-[13px] font-semibold">Flowing</span>
-        <button type="button" onClick={onNew} title="新建 Agent"
+        <button type="button" onClick={onNew} title="New agent"
           className="flex size-[22px] items-center justify-center rounded-md border border-[var(--border)] bg-white hover:border-[var(--primary)]">
           <PlusIcon className="size-3.5" />
         </button>
@@ -144,7 +144,7 @@ function TreeView({ tree, onRewind }: { tree: Tree; onRewind: (id: string) => vo
         {/* 只有「分叉出的首条消息」渲染箭头（有子消息才可开合）；线性链
             不占箭头槽、不缩进 */}
         {forkHead && hasKids ? (
-          <button type="button" onClick={() => toggle(n.id)} title={isCollapsed ? "展开" : "坍缩"}
+          <button type="button" onClick={() => toggle(n.id)} title={isCollapsed ? "Expand" : "Collapse"}
             className="flex w-[16px] shrink-0 items-center justify-center rounded text-[10px] font-bold text-[var(--primary)] hover:bg-[var(--accent)]">
             {isCollapsed ? "▸" : "▾"}
           </button>
@@ -351,14 +351,14 @@ export default function App() {
                   view === v
                     ? "border-[var(--primary)]/30 bg-[var(--accent)] text-[var(--accent-foreground)]"
                     : "border-[var(--border)] bg-white text-[var(--muted-foreground)]")}>
-                {v === "record" ? "记录" : "树"}
+                {v === "record" ? "Record" : "Tree"}
               </button>
             ))}
           </span>
           <span className="mono text-[11px] text-[var(--muted-foreground)]">{current || ""}</span>
           <span className="flex-1" />
           {models.model_tags.length > 0 && (
-            <select value={models.current || ""} title="模型选择"
+            <select value={models.current || ""} title="Select model"
               onChange={(e) => current && api.setModel(current, e.target.value).then(() => refreshModels(current))}
               className="rounded-md border border-[var(--input)] bg-white px-1.5 py-1 text-[12px]">
               {models.model_tags.map((t) => <option key={t} value={t}>{t}</option>)}
@@ -366,7 +366,7 @@ export default function App() {
           )}
           {busy && (
             <span className="flex items-center gap-1 text-[12px] text-[var(--primary)]">
-              <Loader2Icon className="size-3 animate-spin" />生成中…
+              <Loader2Icon className="size-3 animate-spin" />Generating…
             </span>
           )}
         </header>
@@ -380,7 +380,7 @@ export default function App() {
                 {buf.text && <MessageResponse text={buf.text} streaming />}
               </div>
             ))}
-            {!current && <p className="mt-16 text-center text-[var(--muted-foreground)]">选择左侧一个 Agent，或新建。</p>}
+            {!current && <p className="mt-16 text-center text-[var(--muted-foreground)]">Select an agent on the left, or create a new one.</p>}
           </div>
         ) : (
           tree && <TreeView tree={tree} onRewind={rewind} />
@@ -395,7 +395,7 @@ export default function App() {
         {/* 底部（chat-prompt-composer 形态：上下文进度条 + 圆角输入条） */}
         <footer className="px-4 pb-3 pt-1">
           <div className="relative mb-1.5 h-[14px] overflow-hidden rounded-full border border-[var(--border)] bg-white"
-            title="上下文占用">
+            title="Context usage">
             <div className="h-full transition-[width] duration-300"
               style={{ width: `${pct}%`, background: ratio != null && ratio > 0.8 ? "var(--warning)" : "var(--primary)" }} />
             <span className="mono absolute inset-0 flex items-center justify-center text-[10px] text-[var(--muted-foreground)]">
@@ -406,7 +406,7 @@ export default function App() {
           </div>
           <div className="flex items-end gap-2 rounded-xl border border-[var(--input)] bg-white p-2 shadow-sm focus-within:border-[var(--ring)]">
             <textarea value={input} rows={1} autoFocus spellCheck={false}
-              placeholder="输入消息；以 / 开头使用 repl 指令（Enter 发送，Shift+Enter 换行）"
+              placeholder="Type a message; start with / for repl commands (Enter to send, Shift+Enter for newline)"
               onChange={(e) => {
                 setInput(e.target.value);
                 e.target.style.height = "auto";
@@ -417,13 +417,13 @@ export default function App() {
               }}
               className="max-h-[160px] flex-1 resize-none bg-transparent px-1 py-1 text-[13px] outline-none" />
             {busy ? (
-              <button type="button" title="取消当前回合"
+              <button type="button" title="Cancel current turn"
                 onClick={() => current && api.command(current, "/cancel")}
                 className="flex size-8 items-center justify-center rounded-lg bg-[var(--muted)] text-[var(--muted-foreground)] hover:bg-[var(--accent)]">
                 <SquareIcon className="size-3.5" />
               </button>
             ) : (
-              <button type="button" onClick={send} title="发送"
+              <button type="button" onClick={send} title="Send"
                 className="flex size-8 items-center justify-center rounded-lg bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90">
                 <ArrowUpIcon className="size-4" />
               </button>
