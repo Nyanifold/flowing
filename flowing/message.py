@@ -1501,6 +1501,20 @@ class MessageQueue:
         """
         return len(self._items)
 
+    def is_empty(self) -> bool:
+        """队列是否为空（观测用途，无同步语义）。
+
+        .. rubric:: 行为要点
+
+        - 与 :meth:`__len__` 同口径的观测原语：``is_empty()`` 等价于
+          ``len(self) == 0``；单事件循环内是调用时刻的精确值，跨 Task
+          观察时是瞬时值，不得据此做互斥决策。
+        - 典型用途：回合收尾期判断「是否已有待消费消息」——非空时工作
+          循环自然开下一回合，外部续跑策略（如 prompt until）无需再
+          入队导向消息。
+        """
+        return not self._items
+
 
 class MessageChain:
     """消息级树的任意手术入口（``Agent.chain``）：写手术五 op 最小完备集 + 只读 ``get``/``walk``。

@@ -326,6 +326,16 @@ class TestMessageQueue:
         assert q.dequeue_nowait() is m
         assert q.dequeue_nowait() is None
 
+    async def test_is_empty(self):
+        """is_empty 与 len 同口径：空 → True；入队 → False；取空 → True。"""
+        q = MessageQueue()
+        assert q.is_empty() is True
+        m = self.msg()
+        q.enqueue(m)
+        assert q.is_empty() is False
+        assert await q.dequeue() is m
+        assert q.is_empty() is True
+
 
 class _StubOwner:
     """MessageChain 的属主 stub：只暴露 _messages / _persist_message /
