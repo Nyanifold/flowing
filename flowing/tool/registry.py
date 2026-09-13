@@ -376,8 +376,8 @@ class ToolRegistry:
           :class:`flowing.errors.NameMismatchError`；``<name>`` 的推断
           本体为 :func:`flowing.paths.infer_name` （规则表
           :data:`TOOL_NAMING`）。
-        - 不做 glob 展开（``tools:`` 条目的 glob 在装配层展开后逐条进本
-          方法）。
+        - 不做 glob 展开（``tools:`` 条目的 glob 在装配层展开——命中先经
+          :func:`_tool_glob_accept` 名字过滤——后逐条进本方法）。
 
         :param name_or_path: 规范名（裸名）、限定名（``ns::name``）或
           路径形态字符串。
