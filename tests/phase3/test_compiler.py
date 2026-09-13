@@ -433,84 +433,81 @@ def test_glob_prescan_passes_malformed_items_through(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# tools: / subagents: glob 命中形态过滤（glob_accept）与字段分派 naming
+# tools: / subagents: glob 命中过滤（glob_accept，只看名字）与字段分派 naming
 # ---------------------------------------------------------------------------
 
-def _write_mixed_goal_dir(base: Path) -> Path:
-    """混合工具目录：两件显式形态（.tool.fya / 有入口子目录）+ 打标 .py
-    应保留；impl.py（无标记）/ agent.fya / note.md / 空子目录应跳过。"""
-    d = base / "goal"
-    (d / "extra").mkdir(parents=True)
-    (d / "junk").mkdir()
-    (d / "impl.py").write_text(
-        "async def set_goal(*, goal: str, caller):\n    return {'goal': goal}\n",
-        encoding="utf-8")
-    (d / "set-goal.tool.fya").write_text(
-        "name: set-goal\ntype: script\ndescription: 设定目标\n"
-        "callable: ./impl.py::set_goal\n"
-        "args:\n  goal: {type: string, description: 目标}\n",
-        encoding="utf-8")
-    (d / "marked.py").write_text(
-        "from flowing import flowing_tool\n\n\n@flowing_tool\n"
-        "async def marked(*, caller):\n    return {'ok': True}\n",
-        encoding="utf-8")
-    (d / "agent.fya").write_text(
-        "description: 混进来的智能体定义\n---\n$system_prompt:\n你好。\n",
-        encoding="utf-8")
-    (d / "note.md").write_text("# 便签\n", encoding="utf-8")
-    (d / "extra" / "TOOL.fya").write_text(
-        "name: extra\ntype: cli\ndescription: 子目录工具\n"
-        "command: echo hi\nargs:\n  x: {type: string, default: a}\n",
-        encoding="utf-8")
-    return d
-
-
-def test_tools_glob_accept_filters_mixed_dir(tmp_path, caplog):
-    """tools: glob 命中过滤：.tool.fya / 有入口目录 / 打标 .py 保留；
-    无标记 .py / 智能体定义 .fya / .md / 无入口子目录跳过并打 warning。"""
+def test_tools_glob_accept_name_only_rules(tmp_path, caplog):
+    """tools: glob 过滤只看名字：目录探测工具候选链；显式标记仅纳入
+    .tool.fya；其余单段文件名（裸 fya / .py / 通用名）直接纳入。"""
     import logging
 
     from flowing.tool.core import TOOL_NAMING
     from flowing.tool.registry import _tool_glob_accept
 
-    _write_mixed_goal_dir(tmp_path)
+    d = tmp_path / "goal"
+    (d / "extra").mkdir(parents=True)          # 有入口子目录 → 纳入
+    (d / "extra" / "TOOL.fya").write_text(
+        "name: extra\ntype: cli\ndescription: 子目录工具\n"
+        "command: echo hi\nargs:\n  x: {type: string, default: a}\n",
+        encoding="utf-8")
+    (d / "junk").mkdir()                        # 无入口子目录 → 跳过
+    (d / "set-goal.tool.fya").write_text(       # 显式工具标记 → 纳入
+        "name: set-goal\ntype: script\ndescription: 设定目标\n"
+        "callable: ./impl.py::set_goal\n"
+        "args:\n  goal: {type: string, description: 目标}\n",
+        encoding="utf-8")
+    (d / "x.agent.fya").write_text(             # 显式 agent 标记 → 跳过
+        "description: 智能体\n---\n$system_prompt:\n你好。\n", encoding="utf-8")
+    (d / "plain.fya").write_text(               # 未标明 → 直接纳入
+        "description: 裸 fya\n---\n$system_prompt:\n你好。\n", encoding="utf-8")
+    (d / "impl.py").write_text(                 # 未标明 → 直接纳入
+        "async def set_goal(*, goal: str, caller):\n    return {'goal': goal}\n",
+        encoding="utf-8")
     with caplog.at_level(logging.WARNING, logger="flowing.subagents"):
         refs = _expand_glob_entries(
             ["@/goal/*"], naming=TOOL_NAMING,
             source_dir=tmp_path, project_root=tmp_path,
             glob_accept=_tool_glob_accept)
-    assert sorted(r.alias for r in refs) == ["extra", "marked", "set-goal"]
+    assert sorted(r.alias for r in refs) == [
+        "extra", "impl", "plain", "set-goal"]
     skipped = [r.message for r in caplog.records if "glob hit skipped" in r.message]
-    assert len(skipped) == 4   # impl.py / agent.fya / note.md / junk/
+    assert len(skipped) == 2   # junk/（无入口目录）与 x.agent.fya（显式 agent 标记）
 
 
-def test_subagents_glob_accept_filters_mixed_dir(tmp_path):
-    """subagents: glob 命中过滤（与 tools 对称）：有 agent 入口目录 /
-    .agent.fya / 含 Agent 子类的 .py 保留；.tool.fya / 无标记 .py /
-    空目录跳过。"""
+def test_subagents_glob_accept_name_only_rules(tmp_path, caplog):
+    """subagents: glob 过滤与 tools 对称：目录探测 agent 候选链；显式标记
+    仅纳入 .agent.fya；其余单段文件名直接纳入。"""
+    import logging
+
     from flowing.agent_registry import _agent_glob_accept
 
     d = tmp_path / "agents"
-    (d / "a").mkdir(parents=True)
+    (d / "a").mkdir(parents=True)               # 有入口子目录 → 纳入
     (d / "a" / "agent.fya").write_text(
         "description: a\n---\n$system_prompt:\n你是 a。\n", encoding="utf-8")
-    (d / "empty").mkdir()
-    (d / "thing.tool.fya").write_text(
+    (d / "empty").mkdir()                       # 无入口子目录 → 跳过
+    (d / "thing.tool.fya").write_text(          # 显式工具标记 → 跳过
         "name: thing\ntype: cli\ndescription: 工具\ncommand: echo x\n"
         "args:\n  x: {type: string, default: a}\n", encoding="utf-8")
-    (d / "worker.py").write_text(
-        "from flowing import Agent\n\n\nclass Worker(Agent):\n    pass\n",
+    (d / "b.agent.fya").write_text(             # 显式 agent 标记 → 纳入
+        "description: b\n---\n$system_prompt:\n你是 b。\n", encoding="utf-8")
+    (d / "plain.fya").write_text(               # 未标明 → 直接纳入
+        "name: plain\ntype: cli\ndescription: 裸 fya 工具\n"
+        "command: echo hi\nargs:\n  x: {type: string, default: a}\n",
         encoding="utf-8")
-    (d / "helper.py").write_text("X = 1\n", encoding="utf-8")
-    refs = _expand_glob_entries(
-        ["@/agents/*"], naming=AGENT_NAMING,
-        source_dir=tmp_path, project_root=tmp_path,
-        glob_accept=_agent_glob_accept)
-    assert sorted(r.alias for r in refs) == ["a", "worker"]
+    (d / "helper.py").write_text("X = 1\n", encoding="utf-8")   # 同上
+    with caplog.at_level(logging.WARNING, logger="flowing.subagents"):
+        refs = _expand_glob_entries(
+            ["@/agents/*"], naming=AGENT_NAMING,
+            source_dir=tmp_path, project_root=tmp_path,
+            glob_accept=_agent_glob_accept)
+    assert sorted(r.alias for r in refs) == ["a", "b", "helper", "plain"]
+    skipped = [r.message for r in caplog.records if "glob hit skipped" in r.message]
+    assert len(skipped) == 2   # empty/ 与 thing.tool.fya
 
 
 def test_tool_fya_malformed_still_fails_fast(tmp_path):
-    """显式工具形态（.tool.fya）不被过滤吞掉：内容损坏照常 FormatError。"""
+    """显式工具形态（.tool.fya）内容损坏照常 FormatError（定点解析不变）。"""
     from flowing.tool.registry import ToolRegistry
 
     bad = tmp_path / "bad.tool.fya"
@@ -519,22 +516,42 @@ def test_tool_fya_malformed_still_fails_fast(tmp_path):
         ToolRegistry(project_root=tmp_path).get(str(bad))
 
 
-def test_build_tools_glob_uses_tool_naming_and_filter(tmp_path, caplog):
+def test_build_tools_glob_uses_tool_naming(tmp_path):
     """端到端（_build）：tools: glob 的别名推断走 TOOL_NAMING（.tool.fya
-    剥出合法别名 set-goal，而非 .tool 残留导致 FormatError），形态过滤
-    接入装配层（impl.py 等跳过、告警）。"""
-    import logging
+    剥出合法别名 set-goal，而非 .tool 残留导致 FormatError）。"""
+    d = tmp_path / "goal"
+    d.mkdir()
+    (d / "impl.py").write_text(
+        "async def set_goal(*, goal: str, caller):\n    return {'goal': goal}\n",
+        encoding="utf-8")
+    (d / "set-goal.tool.fya").write_text(
+        "name: set-goal\ntype: script\ndescription: 设定目标\n"
+        "callable: ./impl.py::set_goal\n"
+        "args:\n  goal: {type: string, description: 目标}\n",
+        encoding="utf-8")
+    top = tmp_path / "top.fya"
+    top.write_text("tools:\n  - ./goal/*.tool.fya\n---\n$system_prompt:\n调度。\n",
+                   encoding="utf-8")
+    asm = _build(top)
+    assert "alias='set-goal'" in asm.source
+    assert asm.source.count("EntryRef(") == 1
 
-    _write_mixed_goal_dir(tmp_path)
+
+async def test_glob_included_invalid_resource_fails_at_creation(tmp_path):
+    """glob 层不过滤内容：未标明身份的非资源文件（impl.py）被纳入后，
+    在 Agent 创建期 eager 解析抛 FormatError（fail-fast 时点 = mount）。"""
+    d = tmp_path / "goal"
+    d.mkdir()
+    (d / "impl.py").write_text("X = 1\n", encoding="utf-8")   # 无打标无子类
     top = tmp_path / "top.fya"
     top.write_text("tools:\n  - ./goal/*\n---\n$system_prompt:\n调度。\n",
                    encoding="utf-8")
-    with caplog.at_level(logging.WARNING, logger="flowing.subagents"):
-        asm = _build(top)
-    assert "alias='set-goal'" in asm.source
-    assert "alias='extra'" in asm.source and "alias='marked'" in asm.source
-    assert asm.source.count("EntryRef(") == 3   # impl.py / agent.fya / note.md / junk 均未进
-    assert "glob hit skipped" in caplog.text
+    runtime = make_runtime(tmp_path)
+    try:
+        with pytest.raises(FormatError, match="no @flowing_tool-marked"):
+            await runtime.create_agent("@/top.fya")
+    finally:
+        await runtime.shutdown()
 
 
 # ---------------------------------------------------------------------------

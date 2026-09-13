@@ -7,7 +7,6 @@
 
 from __future__ import annotations   # 注解延迟求值，配合 TYPE_CHECKING 破注解级循环边
 
-import ast
 import warnings
 
 from collections.abc import Iterator
@@ -66,64 +65,27 @@ _TOOL_FYA_RESERVED = frozenset({
 mcp 声明 → ``FormatError`` （见 `_tool_from_fya`）。内部 API。"""
 
 
-def _py_may_define_tool(path: Path) -> bool:
-    """AST 嗅探：``.py`` 文件顶层是否可能定义工具（不 exec 模块）。内部 API。
-
-    判定规则（纯语法层，任一命中即 ``True``）：
-
-    - 顶层函数（含 async）带 ``@flowing_tool`` 打标装饰器（``Name`` /
-      ``Attribute`` 形态，含 ``@flowing_tool(...)`` 调用形态）；
-    - 顶层类的基类含 ``ScriptTool``（``Name`` / ``Attribute`` 形态）。
-
-    文件不可读 / 语法错误 → ``False``（按「不可能产生工具」跳过处理）。
-    嗅探只做「可能性」粗判：多重打标 / 多子类等冲突不在此报，保留后由
-    :meth:`ToolRegistry._tool_from_py` 照常 fail-fast。
-    """
-    try:
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-    except (OSError, SyntaxError, ValueError):
-        return False
-
-    def _named(node: ast.expr, name: str) -> bool:
-        return (isinstance(node, ast.Name) and node.id == name) or (
-            isinstance(node, ast.Attribute) and node.attr == name)
-
-    for node in tree.body:
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            for dec in node.decorator_list:
-                target = dec.func if isinstance(dec, ast.Call) else dec
-                if _named(target, "flowing_tool"):
-                    return True
-        elif isinstance(node, ast.ClassDef):
-            if any(_named(base, "ScriptTool") for base in node.bases):
-                return True
-    return False
-
-
 def _tool_glob_accept(path: Path) -> bool:
     """``tools:`` 字段 glob 命中的工具形态判定（``glob_accept`` 回调）。内部 API。
 
-    只回答「该命中是否可能是工具资源」，不做内容校验：
+    与 :func:`flowing.agent_registry._agent_glob_accept` 同构。规则刻意
+    最简——glob 层只看名字，不读内容：
 
     - 目录：探测目录内候选链（``TOOL.fya`` / ``<名>.tool.fya`` / …），
       有合法入口 → ``True``；无 → ``False``（杂项子目录跳过）；
-    - 显式工具形态文件：``*.tool.fya`` / 通用名（``TOOL.fya`` 等，
-      :data:`TOOL_NAMING` 的 ``generic_names``）→ ``True``——保留后
-      解析失败照常 :class:`flowing.errors.FormatError` fail-fast；
-    - 其它 ``.fya``（如智能体定义 ``agent.fya``）→ ``False``；
-    - ``.py``：经 :func:`_py_may_define_tool` AST 嗅探，可能定义工具
-      → ``True``；纯实现散文件（无打标函数 / 无 ScriptTool 子类，如
-      共享 ``impl.py``）→ ``False``；
-    - 其余后缀（``.md`` 等）→ ``False``。
+    - 显式标记只纳入 ``*.tool.fya`` 一种（带其它显式标记的，如
+      ``*.agent.fya``，不属工具面）；
+    - 其余一切文件（裸 ``foo.fya``、``TOOL.fya`` 等通用名、``foo.py``……
+      单段文件名）→ ``True`` 直接纳入，不做内容判定。通用名文件的设计
+      用途是独居叶目录（目录形态资源），glob 命中的本来就是目录本身，
+      无需特判；未标明身份的 ``.fya`` / ``.py`` 是否合法工具资源，
+      留给创建期的 eager 解析 fail-fast（如 ``impl.py`` 会在
+      ``add_tool`` 时抛 :class:`flowing.errors.FormatError`）。
     """
     if path.is_dir():
         return probe_candidates(
             path, _dir_candidates(infer_name(path, naming=TOOL_NAMING))) is not None
-    if path.name in TOOL_NAMING.generic_names or path.name.endswith(".tool.fya"):
-        return True
-    if path.suffix == ".py":
-        return _py_may_define_tool(path)
-    return False
+    return not path.name.endswith(".agent.fya")
 
 
 def _tool_from_fya(path: Path, identity: str, *,
