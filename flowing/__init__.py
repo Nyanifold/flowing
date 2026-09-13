@@ -6,8 +6,8 @@ Flowing 的核心立场是「框架只提供机制，不提供策略」。包结
 
 - **框架核心**：``runtime`` / ``agent`` / ``agent_registry`` /
   ``subagents`` / ``message`` / ``context`` /
-  ``parsable`` / ``params`` / ``tool`` / ``model`` / ``hooks`` / ``lists`` /
-  ``errors`` /
+  ``parsable`` / ``params`` / ``tool``（子包）/ ``media`` / ``model`` /
+  ``hooks`` / ``lists`` / ``errors`` /
   ``snapshot`` / ``providers`` / ``persistence`` / ``parser`` / ``paths`` /
   ``provide`` / ``compiler`` —— 本模块顶层导出其中面向日常使用的符号。
 - **内置扩展**：``flowing.plugins``（``skills`` / ``comm`` / ``cron`` /
