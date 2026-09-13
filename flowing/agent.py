@@ -3475,7 +3475,11 @@ class Agent:
           语义，「都报错不覆盖」）。
         - glob 显式优先：``tools:`` 装配层展开 glob 时，与已显式声明条目
           规范名相同的同一资源跳过；只有不同资源得到同一 alias 时，才按
-          上一条报 ``EntryNameConflictError``。
+          上一条报 ``EntryNameConflictError``。glob 命中先经工具形态过滤
+          （``*.tool.fya`` / 通用名 / 有入口目录 / AST 嗅探可产工具的
+          ``.py`` 才保留；散文件与无入口子目录跳过并告警——见
+          :func:`flowing.tool.registry._tool_glob_accept`），保留命中的
+          解析失败照常 fail-fast。
         - body 判别（本方法体内，单点维护）：键集固定为 ``description`` /
           ``args`` / ``output`` / ``enabled``；未知键 →
           :class:`flowing.errors.FormatError` （含旧 ``inject`` 键——已

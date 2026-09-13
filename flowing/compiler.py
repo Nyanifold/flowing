@@ -494,15 +494,25 @@ def _build(fya_path: Path, *,
     root = project_root if project_root is not None else _project_root()   # @/ 基准（F3）
 
     # 资源列表字段：形态校验 + glob 展开（先显式后 glob、同资源跳过——
-    # _expand_glob_entries 入参是规范化之前的原始 YAML 列表项）
+    # _expand_glob_entries 入参是规范化之前的原始 YAML 列表项）；
+    # tools / subagents 字段各接资源形态过滤（非本字段形态的 glob 命中
+    # 跳过 + 告警，如共享 impl.py / 工具定义 .tool.fya / 无入口子目录），
+    # 别名推断的 naming 规则表同样按字段分派（.tool.fya 需 TOOL_NAMING
+    # 才能剥出合法别名——用 AGENT_NAMING 会残留 .tool 段报 FormatError）
+    from flowing.agent_registry import _agent_glob_accept   # 函数内 import：模块头依赖图保持单向
+    from flowing.tool.core import TOOL_NAMING   # 同上
+    from flowing.tool.registry import _tool_glob_accept   # 同上
+    _FIELD_NAMING = {"tools": TOOL_NAMING, "subagents": _agent_naming()}
+    _GLOB_ACCEPT = {"tools": _tool_glob_accept, "subagents": _agent_glob_accept}
     for field_name in _ENTRY_FIELDS:
         if field_name in fields:
             items = fields[field_name]
             if not isinstance(items, list):
                 raise FormatError(f"resource list field {field_name!r} must be a YAML list")
             fields[field_name] = _expand_glob_entries(
-                items, naming=_agent_naming(), source_dir=fya_path.parent,
-                project_root=root)
+                items, naming=_FIELD_NAMING[field_name],
+                source_dir=fya_path.parent, project_root=root,
+                glob_accept=_GLOB_ACCEPT[field_name])
 
     # 装配：具名块填回（四条导航规则）
     _merge_named_blocks(fields, doc.blocks)

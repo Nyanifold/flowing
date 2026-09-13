@@ -45,8 +45,9 @@ catalog 渲染留在 :mod:`flowing.agent`——本模块只定义管线操作的
 
 from __future__ import annotations   # 注解延迟求值：Agent 仅 TYPE_CHECKING 引用，破注解级循环边
 
+import logging
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -498,6 +499,8 @@ def _entry_params_xml(entry: SubagentEntry, cls: "type[Agent]") -> str:
 _GLOB_META = re.compile(r"[*?\[]")
 """glob 元字符判别（条目 ``raw`` 是否 glob 模式）。"""
 
+_logger = logging.getLogger("flowing.subagents")
+
 
 def _expand_glob_entries(
     items: list[Any],
@@ -505,6 +508,7 @@ def _expand_glob_entries(
     naming: NamingRules,
     source_dir: Path,
     project_root: Path | None = None,
+    glob_accept: "Callable[[Path], bool] | None" = None,
 ) -> "list[EntryRef]":
     """装配层的条目列表 glob 展开（「glob 显式优先」规则的落点）。
 
@@ -527,6 +531,15 @@ def _expand_glob_entries(
       别名才由下游 ``add_agent`` / ``add_tool`` 抛
       ``EntryNameConflictError`` （本层不做别名查重）。
     - 稳定序：glob 命中按路径排序。
+    - ``glob_accept`` 命中过滤：提供时每个 glob 命中先经该回调判定
+      （``tools:`` 传 ``flowing.tool.registry._tool_glob_accept``、
+      ``subagents:`` 传 ``flowing.agent_registry._agent_glob_accept``
+      ——非本字段资源形态的命中（散文件 ``impl.py``、他类定义
+      ``.fya``、无入口子目录）跳过并打 warning，只有显式资源形态才进
+      条目流；过滤只决定「是否可能是该字段的资源」，保留命中仍由下游
+      加载器校验，损坏的显式形态（如解析失败的 ``.tool.fya``）照常
+      fail-fast）。缺省 ``None`` 不过滤（调用方自管命中面）。过滤只
+      作用于 glob 命中；显式条目不受影响（定点引用错误照常报错）。
 
     .. seealso:: :class:`SubagentEntry` 行为要点「同 alias 重复」的例外
         条款（规则文本的权威出处）。
@@ -573,6 +586,12 @@ def _expand_glob_entries(
             base, pattern = source_dir, pattern_raw.removeprefix("./")
         for hit in sorted(base.glob(pattern)):   # 稳定序
             resolved = hit.resolve()
+            if glob_accept is not None and not glob_accept(hit):
+                # 非本字段资源形态的命中（如 tools: 下的 impl.py / agent.fya /
+                # 无入口子目录）：跳过并告警，不进条目流；显式条目不受影响
+                _logger.warning(
+                    "glob hit skipped (not a valid resource shape for this field): %s", hit)
+                continue
             if resolved in seen:   # 与已收条目同一资源 → 跳过（glob 显式优先）
                 continue
             seen.add(resolved)

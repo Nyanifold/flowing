@@ -23,6 +23,7 @@ Agent 实例化时只记元信息，创建 / invoke 时才加载类）。
 
 from __future__ import annotations   # 注解延迟求值，配合 TYPE_CHECKING 破注解级循环边
 
+import ast
 import importlib.util
 import warnings
 
@@ -63,6 +64,60 @@ AGENT_NAMING = NamingRules(
 name 断言的推断侧。兼容出口：``flowing.runtime.AGENT_NAMING`` 为本常量的
 re-export。
 """
+
+
+def _py_may_define_agent(path: Path) -> bool:
+    """AST 嗅探：``.py`` 文件顶层是否可能定义 Agent 子类（不 exec 模块）。内部 API。
+
+    判定规则（纯语法层）：顶层类的基类含 ``Agent``（``Name`` /
+    ``Attribute`` 形态，如 ``class Foo(Agent)`` / ``class Foo(flowing.Agent)``）
+    即 ``True``。文件不可读 / 语法错误 → ``False``（按「不可能产生
+    Agent 类型」跳过处理）。嗅探只做「可能性」粗判：间接基类
+    （``class Foo(SomeAgent)``）判不出、``__module__`` 过滤与「恰好一个
+    子类」语义不在此落实——保留后由
+    :meth:`AgentRegistry._load_agent_from_py` 照常 fail-fast。
+    """
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError, ValueError):
+        return False
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef):
+            for base in node.bases:
+                if (isinstance(base, ast.Name) and base.id == "Agent") or (
+                        isinstance(base, ast.Attribute) and base.attr == "Agent"):
+                    return True
+    return False
+
+
+def _agent_glob_accept(path: Path) -> bool:
+    """``subagents:`` 字段 glob 命中的 Agent 资源形态判定（``glob_accept``
+    回调）。内部 API。
+
+    与 :func:`flowing.tool.registry._tool_glob_accept` 同构，只回答「该命中
+    是否可能是 Agent 资源」，不做内容校验：
+
+    - 目录：探测目录内候选链（``AGENT.fya > agent.fya > <名>.agent.fya >
+      <名>.fya``，只含 ``.fya``——与解析口径一致），有合法入口 →
+      ``True``；无 → ``False``（杂项子目录跳过）；
+    - 显式 Agent 形态文件：``*.agent.fya`` / 通用名（``agent.fya`` /
+      ``AGENT.fya``）→ ``True``——保留后编译 / 解析失败照常
+      fail-fast；
+    - 其它 ``.fya``（如工具定义 ``*.tool.fya``）→ ``False``；
+    - ``.py``：经 :func:`_py_may_define_agent` AST 嗅探，可能定义 Agent
+      子类 → ``True``；否则（纯辅助散文件）→ ``False``；
+    - 其余后缀（``.md`` 等）→ ``False``。
+    """
+    if path.is_dir():
+        name = _infer_name(path, naming=AGENT_NAMING)   # 目录：basename 即目录名
+        return _probe_candidates(
+            path, ["AGENT.fya", "agent.fya", f"{name}.agent.fya", f"{name}.fya"]
+        ) is not None
+    if path.name in AGENT_NAMING.generic_names or path.name.endswith(".agent.fya"):
+        return True
+    if path.suffix == ".py":
+        return _py_may_define_agent(path)
+    return False
 
 
 class AgentRegistry:
@@ -166,7 +221,8 @@ class AgentRegistry:
           ``resolve_path`` 定位 ``.fya`` 或手写 ``.py`` 后编译 / 加载
           （``@/`` 锚 ``project_root`` 无需 ``source_dir``；``./`` / ``../``
           缺省 ``source_dir`` 报错）。不做 glob 展开（``subagents:`` 条目
-          的 glob 在装配层 ``_expand_glob_entries`` 展开后逐条进本方法）。
+          的 glob 在装配层 ``_expand_glob_entries`` 展开——命中先经
+          :func:`_agent_glob_accept` 形态过滤——后逐条进本方法）。
 
         路径形态细则：
 
