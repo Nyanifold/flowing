@@ -42,7 +42,7 @@ async def test_use_cron_independent_of_plugin(tmp_path):
 async def test_zero_overhead_without_use_cron(tmp_path):
     """未 use_cron：无钩子点、无运行时槽；调模块 API 抛 ValueError。"""
     runtime = HarnessRuntime(tmp_path)
-    runtime.register_agent_type("test-agent", SimpleAgent)
+    runtime.register_agent_type(SimpleAgent, name="test-agent")
     agent = await runtime.create_agent("test-agent", start_loop=False)
     try:
         assert "on_cron_trigger" not in agent.hooks._hook_points

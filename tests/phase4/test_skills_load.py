@@ -222,7 +222,7 @@ async def test_t28_after_hook_rewrites_body(tmp_path):
 
 async def test_t29_missing_plugin_raises(tmp_path):
     runtime = HarnessRuntime(tmp_path)
-    runtime.register_agent_type("test-agent", SimpleAgent)
+    runtime.register_agent_type(SimpleAgent, name="test-agent")
     agent = await runtime.create_agent("test-agent", start_loop=False)
     with pytest.raises(MissingProvideError):
         use_skill(agent)
@@ -303,7 +303,7 @@ class _CustomLoadAgent(SkillHostAgent):
 
 async def test_t34_user_defined_skill_load_preserved(tmp_path):
     runtime = make_skill_runtime(tmp_path)
-    runtime.register_agent_type("custom-load", _CustomLoadAgent)
+    runtime.register_agent_type(_CustomLoadAgent, name="custom-load")
     agent = await runtime.create_agent("custom-load", start_loop=False, skills=["sum"])
     use_skill(agent)
     assert await agent.skill_load("sum") == "custom:sum"   # 用户定义保留（含类级方法探测）

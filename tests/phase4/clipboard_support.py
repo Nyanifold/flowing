@@ -51,7 +51,7 @@ def make_clipboard_harness(
     """HarnessRuntime + 已安装 ClipboardPlugin 与 clipboard-agent 类型。"""
     runtime = HarnessRuntime(tmp_path)
     ClipboardPlugin().install(runtime)
-    runtime.register_agent_type("clipboard-agent", agent_cls)
+    runtime.register_agent_type(agent_cls, name="clipboard-agent")
     return runtime
 
 

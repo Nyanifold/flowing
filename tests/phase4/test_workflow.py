@@ -204,7 +204,7 @@ async def test_t92_create_agent_no_dedup_only_create_hooks(tmp_path):
     before/after_subagent_invoke。"""
     runtime = make_runtime(tmp_path)
     add_fake_provider(runtime)
-    runtime.register_agent_type("recorder", RecorderAgent)
+    runtime.register_agent_type(RecorderAgent, name="recorder")
     RecorderAgent.fired = []
     wf = DemoWorkflow(caller=None, runtime=runtime)
     try:

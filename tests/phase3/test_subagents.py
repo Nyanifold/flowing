@@ -60,7 +60,7 @@ class PaymentAgent(Agent):
 async def runtime(tmp_path):
     """HarnessRuntime 实例（收尾销毁全部存活 Agent，防跨测试泄漏）。"""
     rt = HarnessRuntime(tmp_path)
-    rt.register_agent_type("test-agent", SimpleAgent)
+    rt.register_agent_type(SimpleAgent, name="test-agent")
     yield rt
     for node_id, node in list(rt._nodes.items()):
         if node is rt:
@@ -74,7 +74,7 @@ async def runtime(tmp_path):
 @pytest.fixture
 async def parent(runtime):
     """已注册 ``payment`` 子类型、并已启动的亲代 Agent。"""
-    runtime.register_agent_type("payment", PaymentAgent)
+    runtime.register_agent_type(PaymentAgent, name="payment")
     runtime.provide("user_id", "alice")   # provide 链（inject 上溯终点）
     return await runtime.create_agent("test-agent")
 
@@ -170,8 +170,8 @@ async def test_duplicate_inferred_alias_conflict(parent):
     refs = normalize_entries(["./a/payment", "./b/payment"], naming=AGENT_NAMING)
     assert [r.alias for r in refs] == ["payment", "payment"]   # 推断撞名（本层不报）
     # 装配层：两处目标分别注册（替身注册表以 raw 为键，代替文件链命中）
-    parent.runtime.register_agent_type("./a/payment", PaymentAgent)
-    parent.runtime.register_agent_type("./b/payment", PaymentAgent)
+    parent.runtime.register_agent_type(PaymentAgent, name="./a/payment")
+    parent.runtime.register_agent_type(PaymentAgent, name="./b/payment")
     parent.add_agent(refs[0])
     with pytest.raises(EntryNameConflictError):
         parent.add_agent(refs[1])

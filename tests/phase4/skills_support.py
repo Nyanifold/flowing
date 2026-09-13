@@ -68,5 +68,5 @@ def make_skill_runtime(
     runtime = HarnessRuntime(tmp_path)
     SkillPlugin(catalog_template=catalog_template).install(runtime)
     if with_fixtures:
-        runtime.register_agent_type("skill-host", SkillHostAgent)
+        runtime.register_agent_type(SkillHostAgent, name="skill-host")
     return runtime

@@ -117,5 +117,5 @@ def make_cron_harness(
     runtime = HarnessRuntime(tmp_path)
     if install_plugin:
         CronPlugin().install(runtime)
-    runtime.register_agent_type("cron-agent", agent_cls)
+    runtime.register_agent_type(agent_cls, name="cron-agent")
     return runtime

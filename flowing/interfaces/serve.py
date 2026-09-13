@@ -13,6 +13,7 @@ from uuid import uuid4
 from aiohttp import web
 
 from flowing.agent import Agent, TurnContext, TurnResult, build_turn_result
+from flowing.errors import AgentTypeNotFoundError
 from flowing.interfaces.controls import slash_lines
 from flowing.message import Message, TextBlock, to_record
 from flowing.providers import ProviderDelta
@@ -250,7 +251,7 @@ def _build_app(runtime: Runtime, extra_routes: tuple[tuple[str, str, object], ..
                 return _error(400, "cannot determine the default agent type (no root record in the pool)")
         try:
             agent = await runtime.create_agent(agent_type, **args)
-        except KeyError:
+        except AgentTypeNotFoundError:
             return _error(400, f"unknown agent_type: {agent_type!r}")
         except Exception as exc:
             # setup 抛异常：创建管线在注册前先跑 setup，池无半注册实例

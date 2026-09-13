@@ -37,7 +37,7 @@ async def test_restart_recover_sweep(tmp_path):
     JOBS._now = lambda: base
     rt1 = make_runtime(tmp_path)
     rt1.install(CronPlugin())
-    rt1.register_agent_type("cron-agent", CronAgent)
+    rt1.register_agent_type(CronAgent, name="cron-agent")
     add_fake_provider(rt1)
     agent = await rt1.create_agent("cron-agent")
     aid = agent.node_id
@@ -53,7 +53,7 @@ async def test_restart_recover_sweep(tmp_path):
     JOBS._now = lambda: fixed
     rt2 = make_runtime(tmp_path)
     rt2.install(CronPlugin())
-    rt2.register_agent_type("cron-agent", CronAgent)
+    rt2.register_agent_type(CronAgent, name="cron-agent")
     script_provider(add_fake_provider(rt2), text_response("ok"))
     try:
         agent2 = await rt2.recover_agent(aid)
@@ -79,7 +79,7 @@ async def test_recover_coalesced_from_fixture(tmp_path):
     CronAgent.captured = []
     rt1 = make_runtime(tmp_path)
     rt1.install(CronPlugin())
-    rt1.register_agent_type("cron-agent", CronAgent)
+    rt1.register_agent_type(CronAgent, name="cron-agent")
     add_fake_provider(rt1)
     agent = await rt1.create_agent("cron-agent")
     aid, session_dir = agent.node_id, agent._session_dir
@@ -95,7 +95,7 @@ async def test_recover_coalesced_from_fixture(tmp_path):
     JOBS._now = lambda: fixed
     rt2 = make_runtime(tmp_path)
     rt2.install(CronPlugin())
-    rt2.register_agent_type("cron-agent", CronAgent)
+    rt2.register_agent_type(CronAgent, name="cron-agent")
     script_provider(add_fake_provider(rt2), text_response("ok"))
     try:
         agent2 = await rt2.recover_agent(aid)

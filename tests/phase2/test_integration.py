@@ -98,7 +98,7 @@ async def test_t125_full_chain(tmp_path):
             runtime = Runtime(persist_dir="@/sessions")
             runtime.set_models("@/models.yaml")
             runtime.set_model_tags("@/model-tags.yaml")
-            runtime.register_agent_type("main-agent", MainAgent)
+            runtime.register_agent_type(MainAgent, name="main-agent")
             runtime.provider_registry._instances["fake"] = FakeProvider()
             runtime.provide("launch_flag", flag)   # kwargs 原样透传验证
             return runtime
@@ -245,9 +245,9 @@ async def test_t126_no_write_gate_whole_lifecycle(tmp_path):
     不抛错（阶段 A 管线未重排，该写会被 _restore 重放覆盖——阶段 B 重排后可见）。"""
     runtime = make_runtime(tmp_path)
     add_fake_provider(runtime)
-    runtime.register_agent_type("gate-write", GateWriteAgent)
-    runtime.register_agent_type("sub-in-setup", SubInSetupAgent)
-    runtime.register_agent_type("recover-gate", RecoverGateAgent)
+    runtime.register_agent_type(GateWriteAgent, name="gate-write")
+    runtime.register_agent_type(SubInSetupAgent, name="sub-in-setup")
+    runtime.register_agent_type(RecoverGateAgent, name="recover-gate")
     # setup 中写 state → 合法（写透落盘）
     agent = await runtime.create_agent("gate-write")
     assert agent.state.illegal == 1
@@ -396,7 +396,7 @@ async def test_t90_recover_state_replay_migration_corruption(tmp_path, copy_fixt
             self.state.register("n", 0)
             self.state.register("s", "default-s")
 
-    runtime.register_agent_type("state-agent", StateAgent)
+    runtime.register_agent_type(StateAgent, name="state-agent")
 
     async def _recover_with(fixture_name: str):
         agent = await runtime.create_agent("state-agent")
@@ -532,7 +532,7 @@ async def test_meta_json_written_before_setup(tmp_path):
         async def setup(self, **kwargs):
             pass
 
-    runtime.register_agent_type("meta-agent", MetaAgent)
+    runtime.register_agent_type(MetaAgent, name="meta-agent")
     agent = await runtime.create_agent("meta-agent", order_id="x")
     assert set(seen["meta"]) == {"agent_type", "parent_agent_id", "created_at", "args"}
     assert seen["meta"]["agent_type"] == "meta-agent"
@@ -557,7 +557,7 @@ async def test_recover_restore_before_setup(tmp_path):
         async def setup(self, **kwargs):
             seen.append(("setup", self.state.get("n")))
 
-    runtime.register_agent_type("restore-first", RestoreFirstAgent)
+    runtime.register_agent_type(RestoreFirstAgent, name="restore-first")
     agent = await runtime.create_agent("restore-first")
     agent.state.n = 5
     await agent.destroy()

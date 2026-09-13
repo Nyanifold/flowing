@@ -21,12 +21,16 @@ import flowing.runtime
 from flowing import launch, on
 from flowing.agent import Agent
 from flowing.errors import (
+    AgentTypeConflictError,
+    AgentTypeNotFoundError,
     ConfigNamespaceConflictError,
     ConfigNotReadyError,
     DependencyError,
     FormatError,
     MissingFieldError,
     MissingProvideError,
+    NameMismatchError,
+    RegistryConflictError,
     ResourceNameConflictError,
     ResourceNotFoundError,
     UnknownHookPointError,
@@ -414,7 +418,7 @@ async def test_t107_before_create_rewrites_kwargs(tmp_path):
     """T107：before_create 改写 kwargs → setup 收到改写值、池元数据 args 同步。"""
     runtime = make_runtime(tmp_path)
     add_fake_provider(runtime)
-    runtime.register_agent_type("rewrite-agent", RewriteAgent)
+    runtime.register_agent_type(RewriteAgent, name="rewrite-agent")
     agent = await runtime.create_agent("rewrite-agent", order_id="orig")
     assert agent.order_id == "rewritten"
     assert runtime._agent_pool[agent.node_id]["args"]["order_id"] == "rewritten"
@@ -491,8 +495,8 @@ async def test_t40_pending_checkpoint(tmp_path):
     after_create 不触发、_nodes/池无半注册。"""
     PendingAgent.fired_after_create = []
     runtime = make_runtime(tmp_path)
-    runtime.register_agent_type("pending-agent", PendingAgent)
-    runtime.register_agent_type("pending-wrapped", PendingWrappedAgent)
+    runtime.register_agent_type(PendingAgent, name="pending-agent")
+    runtime.register_agent_type(PendingWrappedAgent, name="pending-wrapped")
     nodes_before = set(runtime._nodes)
     with pytest.raises(MissingFieldError) as exc_info:
         await runtime.create_agent("pending-agent")
@@ -514,7 +518,7 @@ async def test_t41_recover_reruns_setup_idempotent(tmp_path):
     行为一致（计数器逐回合 +1 而非 +2），持久化 state 延续。"""
     runtime = make_runtime(tmp_path)
     provider = add_fake_provider(runtime)
-    runtime.register_agent_type("counting-agent", CountingAgent)
+    runtime.register_agent_type(CountingAgent, name="counting-agent")
     script_provider(provider, text_response("r1"), text_response("r2"))
     agent = await runtime.create_agent("counting-agent")
     r1 = await agent.query("一")
@@ -534,7 +538,7 @@ async def test_t110_unknown_hook_point(tmp_path):
     """T110：@on 暂记未结算 → create 第 6 步 UnknownHookPointError，
     消息列出 hook_name 与方法名。"""
     runtime = make_runtime(tmp_path)
-    runtime.register_agent_type("bad-hook", BadHookAgent)
+    runtime.register_agent_type(BadHookAgent, name="bad-hook")
     with pytest.raises(UnknownHookPointError) as exc_info:
         await runtime.create_agent("bad-hook")
     assert "no_such_hook_point" in str(exc_info.value)
@@ -565,7 +569,7 @@ async def test_t112_recover_hook_pairs_not_mixed(tmp_path):
     HookLogAgent.events = []
     runtime = make_runtime(tmp_path)
     add_fake_provider(runtime)
-    runtime.register_agent_type("hook-log", HookLogAgent)
+    runtime.register_agent_type(HookLogAgent, name="hook-log")
     agent = await runtime.create_agent("hook-log")
     assert HookLogAgent.events == ["before_create", "after_create"]
     await agent.destroy()
@@ -616,19 +620,19 @@ class OtherAgent(Agent):
 
 
 async def test_t124_get_agent_class_registry_forms(tmp_path):
-    """T124：限定名只查注册表；裸名 default:: 优先 builtin::；不命中 KeyError。"""
+    """T124：限定名只查注册表；裸名 default:: 优先 builtin::；不命中 AgentTypeNotFoundError。"""
     runtime = make_runtime(tmp_path)
-    runtime.register_agent_type("payment-agent", PayAgent, namespace="myplugin")
+    runtime.register_agent_type(PayAgent, name="payment-agent", namespace="myplugin")
     assert runtime.get_agent_class("myplugin::payment-agent") is PayAgent
-    with pytest.raises(KeyError):
+    with pytest.raises(AgentTypeNotFoundError):
         runtime.get_agent_class("myplugin::ghost")   # 限定名不走文件查找链
     # 裸名视图：default 优先 builtin（插件覆盖原生行为的通道）
-    runtime.register_agent_type("x-agent", PayAgent, namespace="builtin")
-    runtime.register_agent_type("x-agent", OtherAgent)   # 缺省 default::
+    runtime.register_agent_type(PayAgent, name="x-agent", namespace="builtin")
+    runtime.register_agent_type(OtherAgent, name="x-agent")   # 缺省 default::
     assert runtime.get_agent_class("x-agent") is OtherAgent
     assert runtime.get_agent_class("builtin::x-agent") is PayAgent
     assert OtherAgent.registry_key == "default::x-agent"
-    with pytest.raises(KeyError):
+    with pytest.raises(AgentTypeNotFoundError):
         runtime.get_agent_class("ghost")
     await runtime.shutdown()
 
@@ -682,16 +686,98 @@ async def test_t124b_get_agent_class_py_path_form(tmp_path):
     assert issubclass(x_cls, Agent) and x_cls.__name__ == "XAgent"
     assert x_cls.registry_key == "@/::x"   # 派生键回写（与 .py 通道同构）
     assert runtime.get_agent_class("x", source_dir=tmp_path) is x_cls   # 裸名文件链经派生键短路复用
-    # 目录形态：存在但无候选 → KeyError；含 .fya 候选 → 编译装配
+    # 目录形态：存在但无候选 → AgentTypeNotFoundError；含 .fya 候选 → 编译装配
     (tmp_path / "emptydir").mkdir()
-    with pytest.raises(KeyError):
+    with pytest.raises(AgentTypeNotFoundError):
         runtime.get_agent_class("@/emptydir")
     agent_dir = tmp_path / "myagent"
     agent_dir.mkdir()
     (agent_dir / "agent.fya").write_text("", encoding="utf-8")
     my_cls = runtime.get_agent_class("@/myagent")
     assert issubclass(my_cls, Agent) and my_cls.__name__ == "MyagentAgent"
-    # 不存在的路径 → KeyError
-    with pytest.raises(KeyError):
+    # 不存在的路径 → AgentTypeNotFoundError
+    with pytest.raises(AgentTypeNotFoundError):
         runtime.get_agent_class("@/missing.py")
+    await runtime.shutdown()
+
+
+async def test_t124c_register_name_inference_conflict_and_contains(tmp_path):
+    """T124 补：name 缺省从类名推断（PascalCase → kebab-case）；同键冲突 →
+    AgentTypeConflictError；类体 name 仅作一致性断言（不符 → NameMismatchError）；
+    AgentRegistry.__contains__ 纯存在性检查（仅认全限定键）。"""
+    runtime = make_runtime(tmp_path)
+    # name 缺省 → 类名推断
+    runtime.register_agent_type(PayAgent)
+    assert runtime.get_agent_class("pay-agent") is PayAgent
+    assert PayAgent.registry_key == "default::pay-agent"
+    # 同键冲突 → 后注册者报错（AgentTypeConflictError 挂 RegistryConflictError）
+    with pytest.raises(AgentTypeConflictError) as exc_info:
+        runtime.register_agent_type(OtherAgent, name="pay-agent")
+    assert exc_info.value.key == "default::pay-agent"
+    assert isinstance(exc_info.value, RegistryConflictError)
+    # 不同命名空间同名允许共存
+    runtime.register_agent_type(OtherAgent, name="pay-agent", namespace="myplugin")
+    assert runtime.get_agent_class("myplugin::pay-agent") is OtherAgent
+    # 类体 name 与注册名不符 → NameMismatchError（含显式 name 覆写形态）
+    class WiredNameAgent(Agent):
+        name = "wired-name"
+        system_prompt = Parsable("x")
+
+        async def setup(self, **kwargs) -> None:
+            pass
+
+    with pytest.raises(NameMismatchError):
+        runtime.register_agent_type(WiredNameAgent)   # 推断 wired-name-agent ≠ 声明
+    # __contains__：仅认全限定键
+    assert "default::pay-agent" in runtime.agent_registry
+    assert "pay-agent" not in runtime.agent_registry   # 裸名不认
+    assert "default::ghost" not in runtime.agent_registry
+    await runtime.shutdown()
+
+
+async def test_t124d_register_agent_type_file_string_form(tmp_path):
+    """T124 补：register_agent_type 收文件路径字符串（与 register_tool 同律）——
+    @/ 形态经解析链加载并按目录派生键注册；显式 name/namespace 时追加显式键。"""
+    runtime = make_runtime(tmp_path)
+    (tmp_path / "file_agent.py").write_text(textwrap.dedent("""\
+        from flowing import Agent
+        from flowing.parsable import Parsable
+
+        class FileAgent(Agent):
+            system_prompt = Parsable("f")
+            async def setup(self, **kwargs):
+                pass
+        """), encoding="utf-8")
+    # 纯文件形态：派生键注册，不再二次注册
+    runtime.register_agent_type("@/file_agent.py")
+    cls = runtime.get_agent_class("@/file_agent.py")
+    assert cls.__name__ == "FileAgent" and cls.registry_key == "@/::file-agent"
+    assert "@/::file-agent" in runtime.agent_registry
+    # 文件形态 + 显式键：追加注册，同一类两键可达
+    runtime.register_agent_type("@/file_agent.py", name="file-agent", namespace="myplugin")
+    assert runtime.get_agent_class("myplugin::file-agent") is cls
+    await runtime.shutdown()
+
+
+async def test_t124e_bare_name_outside_dir_agent_fya_candidate(tmp_path):
+    """T124 补：裸名目录外候选链纳入 <name>.agent.fya（与目录内链、Tool 侧
+    <name>.tool.fya 对称）——<name>.agent.fya > <name>.fya > <name_snake>.py。"""
+    runtime = make_runtime(tmp_path)
+    (tmp_path / "solo.agent.fya").write_text("", encoding="utf-8")
+    cls = runtime.get_agent_class("solo", source_dir=tmp_path)
+    assert issubclass(cls, Agent) and cls.registry_key == "@/::solo"
+    # 链上顺序：<name>.agent.fya 优先于 <name_snake>.py（并存 → 告警 + .fya 优先）
+    (tmp_path / "chain.agent.fya").write_text("", encoding="utf-8")
+    (tmp_path / "chain.py").write_text(textwrap.dedent("""\
+        from flowing import Agent
+        from flowing.parsable import Parsable
+
+        class ChainAgent(Agent):
+            system_prompt = Parsable("c")
+            async def setup(self, **kwargs):
+                pass
+        """), encoding="utf-8")
+    with pytest.warns(UserWarning, match="coexist"):
+        cls2 = runtime.get_agent_class("chain", source_dir=tmp_path)
+    assert cls2.__name__ == "ChainAgent" and cls2.registry_key == "@/::chain"   # .fya 命中（编译产物类名 ChainAgent）
     await runtime.shutdown()

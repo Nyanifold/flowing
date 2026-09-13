@@ -143,21 +143,13 @@ from flowing.errors import (
     ConfigNamespaceConflictError,
     ConfigNotReadyError,
     DependencyError,
-    FormatError,
     MissingFieldError,
     MissingProvideError,
-    NameMismatchError,
     ResourceNameConflictError,
     ResourceNotFoundError,
     UnknownHookPointError,
 )
 from flowing.params import ConfigKey, InjectionKey
-from flowing.paths import NamingRules
-from flowing.paths import classify_ref as _classify_ref
-from flowing.paths import infer_name as _infer_name
-from flowing.paths import kebab_to_snake as _kebab_to_snake
-from flowing.paths import path_to_module_name as _path_to_module_name
-from flowing.paths import probe_candidates as _probe_candidates
 from flowing.paths import resolve_path as _paths_resolve_path
 from flowing.paths import to_project_path as _paths_to_project_path
 from flowing.provide import ProvideNode, inject_from
@@ -165,6 +157,7 @@ from flowing.providers import ProviderRegistry, load_provider_candidates
 from flowing.snapshot import AgentInfo, NodeInfo, RuntimeSnapshot
 from flowing.builtins import register_builtins
 from flowing.tool import Tool, ToolRegistry
+from flowing.agent_registry import AGENT_NAMING, AgentRegistry   # AGENT_NAMING 为兼容 re-export（定义已迁 agent_registry；compiler/parser/agent 的局部 import 仍指向本模块）
 
 if TYPE_CHECKING:
     from flowing.agent import Agent
@@ -182,19 +175,6 @@ __all__ = [
 T = TypeVar("T")
 
 _logger = logging.getLogger("flowing.runtime")
-
-AGENT_NAMING = NamingRules(
-    suffixes=(".agent.fya", ".fya", ".py"),
-    generic_names=frozenset({"agent.fya", "AGENT.fya"}),
-)
-"""Agent 资源的路径形态身份名推断规则表（:class:`flowing.paths.NamingRules`）。
-
-紧邻候选链声明（:meth:`Runtime.get_agent_class`）：命中通用名候选
-（``agent.fya`` / ``AGENT.fya``）→ 身份名取目录名；否则文件名去首个
-匹配后缀、snake→kebab。供 agent 装配层调
-:func:`flowing.parser.parse_fya` 时传入 ``naming=AGENT_NAMING``，以及
-name 断言的推断侧。
-"""
 
 _FRAMEWORK_CONFIG_DEFAULTS: dict[str, Any] = {
     "agent": {"timeout": 60, "max_turns": 20, "max_depth": 10},
@@ -498,11 +478,11 @@ class Runtime:
     池 key 的唯一权威来源是全局 ``core`` 名录（见 ``archive_agent`` /
     ``recover_agent``）；value 是元数据不是实例。内部 API，不属稳定契约。
     """
-    _agent_types: dict[str, type[Agent]]
+    agent_registry: AgentRegistry
     """子 Agent 类型注册表（``ns::注册名`` → Agent 类；裸名视图 =
-    ``default::`` / ``builtin::``，见 ``get_agent_class``）；
+    ``default::`` / ``builtin::``，见 :class:`flowing.agent_registry.AgentRegistry`）；
     ``register_agent_type`` 的写入目标，``get_agent_class`` 的查找源。
-    内部 API，不属稳定契约。
+    每个 Runtime 持有一个实例。
     """
     _states: dict[str, StateView]
     """全局持久化状态命名空间表（命名空间 → ``StateView``）；
@@ -609,7 +589,7 @@ class Runtime:
             # shutdown 销毁循环须跳过自身（Runtime 无 destroy()）
         self._plugins = {}
         self.tool_registry = ToolRegistry(project_root=self.project_root)
-        self._agent_types = {}   # 须在 register_builtins 之前初始化（ExploreAgent 注册写本表）
+        self.agent_registry = AgentRegistry(project_root=self.project_root)   # 须在 register_builtins 之前初始化（ExploreAgent 注册写本表）
         # 框架自带工具与标准子智能体注册（物理实现全部在
         # flowing.builtins）：核心内置 subagent-invoke / finish + 六个标准
         # 文件/shell 工具 + ExploreAgent，随 Runtime 天生在场，归属
@@ -989,7 +969,8 @@ class Runtime:
         :param kwargs: 实例化参数，透传 ``before_create`` → ``setup(**kwargs)``，
             并作为 args 持久化。
         :return: 创建并注册完毕的 Agent。
-        :raises KeyError: ``agent_type`` 无法解析（注册表与路径均不命中）时。
+        :raises flowing.errors.AgentTypeNotFoundError: ``agent_type`` 无法
+            解析（注册表与路径均不命中）时。
         :raises ValueError: ``agent_id`` 指定且已存在于池注册表或活体表时。
         :raises FileExistsError: 指定 id 不在池 / 活体表但 session 目录已
             存在时（归档留档态或指定错误）。
@@ -1742,16 +1723,27 @@ class Runtime:
                 return   # get 已按目录派生注册，不再二次注册
         self.tool_registry.register(tool, namespace=namespace)   # ns::name 完整键（含命名空间）冲突时后注册者报错（由 ToolRegistry.register 承载）
 
-    def register_agent_type(self, name: str, agent_class: type[Agent], *,
+    def register_agent_type(self, agent: type[Agent] | str, *,
+                            name: str | None = None,
                             namespace: str | None = None) -> None:
         """注册子 Agent 类型（``ns::注册名`` → Agent 类），使任何 Agent 可以引用。
 
         .. rubric:: 功能介绍
 
-        插件三类资源注册之一（插件 ``install`` 中的注册通道）。注册表
-        条目同样惰性——``get_agent_class`` 在 invoke / 创建时才解析类。
-        注册表 key 为 ``ns::注册名``；名称格式（kebab / snake / Pascal）
-        由框架自动转化。
+        插件三类资源注册之一（插件 ``install`` 中的注册通道）；薄委托
+        :meth:`flowing.agent_registry.AgentRegistry.register` / ``get``。
+        注册表条目惰性——``get_agent_class`` 在 invoke / 创建时才解析类。
+        注册表 key 为 ``ns::注册名``。两种入参形态（与 ``register_tool``
+        同律）：
+
+        - Agent 子类——直接注册；``name`` 缺省时从类名推断
+          （``__name__``，PascalCase → kebab-case）；
+        - 文件路径字符串（``.fya`` / ``.py``，``@/`` 前缀锚项目根）——
+          先经 ``AgentRegistry.get`` 的文件解析链加载出类并按目录派生键
+          注册；``name`` / ``namespace`` 显式给出时再按显式键追加注册
+          （覆盖目录派生，与 ``register_tool`` 的显式 ``namespace`` 同义；
+          ``./`` / ``../`` 形态无基准目录可用，会报错，插件随身文件请用
+          ``@/`` 或绝对路径）。
 
         .. rubric:: 使用示例
 
@@ -1759,29 +1751,43 @@ class Runtime:
 
             class MyPlugin(Plugin):
                 def install(self, runtime: Runtime) -> None:
-                    runtime.register_agent_type("payment-agent", PaymentAgent,
+                    runtime.register_agent_type(PaymentAgent)   # name 缺省 → 类名推断 payment-agent
+                    runtime.register_agent_type(PaymentAgent, name="payment-agent",
                                                 namespace="myplugin")
                     # 引用方需写 myplugin::payment-agent
 
         .. rubric:: 行为要点
 
-        - ``ns::name`` 完整键（含命名空间）冲突时后注册者报错；注册只在 ``install`` 发生。
+        - ``ns::name`` 完整键（含命名空间）冲突时后注册者抛
+          ``AgentTypeConflictError``；注册只在 ``install`` 发生。
+        - 类体写了 ``name`` 仅作一致性断言——与注册名（显式参数或类名
+          推断值）不符抛 ``NameMismatchError``。
         - 命名空间：缺省落入 ``default::`` （裸名视图优先层，同名即覆盖
           核心内置类型）；建议（非强制）插件用自身注册名作命名空间
           （``myplugin::xxx``）；自定义命名空间的类型只能以全限定名引用
           （命名空间规则见 :meth:`get_agent_class`）。
 
-        :param name: 注册名（身份名推断的锚点）。
-        :param agent_class: Agent 子类。
-        :param namespace: 命名空间（缺省 ``"default"``）。
+        :param agent: Agent 子类，或 Agent 定义文件路径字符串
+            （``.fya`` / ``.py``）。
+        :param name: 注册名覆写；``None`` → 类形态从类名推断 /
+            文件形态按文件身份。
+        :param namespace: 命名空间（缺省 ``"default"``；文件形态缺省时
+            按目录派生）。
 
         .. seealso:: :meth:`flowing.runtime.Runtime.get_agent_class`、
+            :class:`flowing.agent_registry.AgentRegistry`、
             :class:`flowing.agent.Agent`
         """
-        # ns::name 完整键（含命名空间）冲突时后注册者报错（注册表 = 类注解 _agent_types）
-        key = f"{namespace or 'default'}::{name}"
-        self._agent_types[key] = agent_class   # 条目惰性：get_agent_class 在 invoke/创建时才解析
-        agent_class.registry_key = key   # 回写（与 Tool/Skill.registry_key 同构；文件派生注册点同律）
+        if isinstance(agent, str):
+            # 文件形态：经 AgentRegistry.get 的文件解析链加载并注册
+            # （@/ 锚项目根，不经 Agent source_dir 链）；get 内部已按目录
+            # 派生键注册，name/namespace 全缺省时不再二次注册
+            cls = self.agent_registry.get(agent)   # 文件 → Agent 类（惰性解析链）
+            if name is None and namespace is None:
+                return   # get 已按目录派生注册
+            self.agent_registry.register(cls, name=name, namespace=namespace)   # 显式键追加注册（覆盖目录派生）
+            return
+        self.agent_registry.register(agent, name=name, namespace=namespace)   # ns::name 完整键冲突 → AgentTypeConflictError（由 AgentRegistry.register 承载）
 
     def register_config_namespace(self, name: str, schema: Any) -> None:
         """声明扩展的配置命名空间（「谁负责校验」的声明，非访问控制）。
@@ -2382,8 +2388,9 @@ class Runtime:
         .. rubric:: 功能介绍
 
         创建 / 恢复管线的第一步；也是插件 / 用户代码取类对象的公开入口。
-        与 ``ToolRegistry.get`` / ``SkillRegistry.get`` 同构。形态判别委托
-        :func:`flowing.paths.classify_ref` （词法唯一来源），三种引用形态：
+        薄委托 :meth:`flowing.agent_registry.AgentRegistry.get`——解析本体
+        （三形态分流、文件查找链、目录派生键注册）在注册表类中，与
+        ``ToolRegistry.get`` / ``SkillRegistry.get`` 同构。三种引用形态：
 
         - 限定名（含 ``::``，如 ``myplugin::payment-agent``）：只查注册表
           精确键，不走文件查找链；
@@ -2393,34 +2400,21 @@ class Runtime:
           ``builtin::`` （插件覆盖原生行为的通道）。需要文件上下文的调用
           走 :meth:`flowing.agent.Agent.get_agent_class` （自动携带
           ``source_dir``）；
-        - 路径形态（``./`` / ``@/`` / glob）经 ``resolve_path`` 定位
-          ``.fya`` 或手写 ``.py`` 后编译 / 加载（``@/`` 锚 ``project_root``
-          无需 ``source_dir``；``./`` / ``../`` 缺省 ``source_dir`` 报错）。
+        - 路径形态（``./`` / ``@/`` / 绝对路径 / ``文件::类名``）经
+          ``resolve_path`` 定位 ``.fya`` 或手写 ``.py`` 后编译 / 加载
+          （``@/`` 锚 ``project_root`` 无需 ``source_dir``；``./`` / ``../``
+          缺省 ``source_dir`` 报错）。不做 glob 展开（``subagents:`` 条目
+          的 glob 在装配层 ``_expand_glob_entries`` 展开后逐条进解析）。
 
-        路径形态细则：
-
-        - 目录形态候选链 ``AGENT.fya`` > ``agent.fya`` > ``<name>.agent.fya``
-          > ``<name>.fya``，探测循环委托 :func:`flowing.paths.probe_candidates`、
-          首个存在者生效（目录存在但无任一候选 → ``KeyError``；链上顺序
-          只是确定性的消歧规则，不推荐同一链路真的同时存在多个候选文件）；
-          同名 ``.fya`` 单文件与文件夹并存时文件夹优先；``.fya`` 与手写
-          子类同名并存时 ``.fya`` 优先并告警。
-        - 指向手写 ``.py`` 文件时，模块内需恰好一个 Agent 子类（与
-          Workflow 定义文件的约定同构）；零个 →
-          :class:`flowing.errors.FormatError`；多个 → 用 ``路径::ClassName``
-          形态消歧（左段含路径特征——``/`` / 反斜杠 / ``.py`` 结尾——时
-          按「文件::类名」解析，绕开「恰好一个子类」限制；与命名空间
-          限定名 ``ns::name`` 的区分在 ``flowing.paths.classify_ref`` 词法
-          层完成）。
-        - 目录候选链只含 ``.fya``——不接管手写类的目录组织（手写类的
-          目录组织走标准 Python 包机制 + ``register_agent_type``）。
-        - 文件解析产物的命名空间从所在目录派生（``@/`` 下相对、根外绝对，
-          文件夹式取上层目录），仅作内部身份标识，引用写法不变。
-        - 两级惰性：亲代 Agent 实例化时只记元信息，创建 / invoke 时才加载类。
+        候选链与消歧细则（目录形态 ``AGENT.fya`` > ``agent.fya`` >
+        ``<name>.agent.fya`` > ``<name>.fya``；裸名目录外
+        ``<name>.agent.fya`` > ``<name>.fya`` > ``<name_snake>.py``；手写
+        ``.py`` 恰好一个子类、``路径::ClassName`` 消歧等）见
+        :meth:`flowing.agent_registry.AgentRegistry.get`。
 
         .. rubric:: 行为要点
 
-        - 解析失败抛 ``KeyError``。
+        - 解析失败抛 :class:`flowing.errors.AgentTypeNotFoundError`。
         - 身份名一律推断（路径文件名 / 目录名、注册名、类名 ``__name__``）；
           ``.fya`` 或手写子类中写了 ``name`` 仅作一致性断言——与推断值
           不符抛 :class:`flowing.errors.NameMismatchError`；``class_name``
@@ -2429,7 +2423,8 @@ class Runtime:
         :param agent_type: 类型名字符串（限定名 / 裸名 / 路径形态）。
         :param source_dir: 裸名与 ``./`` / ``../`` 路径形态的基准目录。
         :return: Agent 类。
-        :raises KeyError: 注册表与文件链均无法解析时。
+        :raises flowing.errors.AgentTypeNotFoundError: 注册表与文件链均无法
+            解析时。
         :raises flowing.errors.FormatError: 手写 ``.py`` 模块内 Agent 子类
             数量不为恰好一个、且未用 ``路径::ClassName`` 消歧时。
         :raises flowing.errors.NameMismatchError: 声明 ``name`` 与推断身份
@@ -2437,195 +2432,10 @@ class Runtime:
 
         .. seealso:: :meth:`flowing.runtime.Runtime.register_agent_type`、
             :meth:`flowing.runtime.Runtime.create_agent`、
+            :class:`flowing.agent_registry.AgentRegistry` —— 解析本体、
             :meth:`flowing.tool.ToolRegistry.get` —— 同构的 Tool 解析入口
         """
-        # 精确键短路（先于形态判别）：文件派生限定键的命名空间含路径特征
-        # （目录派生，如 "@/order-agent::payment"），过不了 classify_ref 的
-        # 限定名判别（左段含 / 判成路径形态）——注册表在场证据优先于词法
-        # 分流（与 ToolRegistry.get 同口径）
-        if agent_type in self._agent_types:
-            return self._agent_types[agent_type]
-        # 形态判别委托 classify_ref（词法唯一来源）——注意不能用
-        # `"::" in agent_type` 粗判：「文件::类名」（R21 消歧形态）也含 ::，
-        # 但属路径形态（左段含路径特征时 classify_ref 判 "path"）
-        form = _classify_ref(agent_type)
-        if form == "qualified":
-            # 限定名（ns::name）：只查注册表精确键，不走文件查找链
-            if agent_type in self._agent_types:
-                return self._agent_types[agent_type]
-            raise KeyError(agent_type)
-        if form == "bare":
-            # 裸名：source_dir 提供时先走文件查找链（相对 source_dir——文件
-            # 覆盖注册表）；缺省时跳过文件链
-            if source_dir is not None:
-                loaded = self._load_agent_from_name_chain(agent_type, source_dir)
-                if loaded is not None:
-                    return loaded
-            # 注册表裸名视图：default:: 优先于 builtin::（插件覆盖原生行为通道）
-            for key in (f"default::{agent_type}", f"builtin::{agent_type}"):
-                if key in self._agent_types:
-                    return self._agent_types[key]
-            raise KeyError(agent_type)
-        # 路径形态（./ @/ 绝对路径 / 含分隔符的相对路径 / 文件::类名）：
-        # @/ 锚 project_root 无需 source_dir；./ ../ 缺省 source_dir 报错
-        # （resolve_path 现有口径）
-        path_part, sep, class_name = agent_type.partition("::")
-        resolved = self.resolve_path(path_part, source_dir=source_dir)
-        return self._load_agent_from_path(
-            resolved, class_name if sep else None, ref=agent_type)
-
-    def _load_agent_from_name_chain(
-        self, name: str, source_dir: Path
-    ) -> "type[Agent] | None":
-        """裸名的定向文件查找链（内部 API）。
-
-        相对 ``source_dir`` 探测：目录形态 ``<name>/`` 优先（候选链只含
-        ``.fya``：``AGENT.fya > agent.fya > <name>.agent.fya > <name>.fya``，
-        首个存在者生效）；目录外依次 ``<name>.fya`` 单文件、
-        ``<name_snake>.py`` 手写文件。``.fya`` 命中经
-        :meth:`_load_agent_from_fya` 编译装配；``.fya`` 与同名 ``.py`` 并存
-        → 告警且 ``.fya`` 优先。全部未命中 → ``None`` （调用方继续查注册表
-        裸名视图）。
-        """
-        directory = source_dir / name
-        if directory.is_dir():
-            hit = _probe_candidates(
-                directory,
-                ["AGENT.fya", "agent.fya", f"{name}.agent.fya", f"{name}.fya"])
-            if hit is not None:
-                return self._load_agent_from_fya(hit, ref=name)
-        fya_file = source_dir / f"{name}.fya"
-        py_file = source_dir / f"{_kebab_to_snake(name)}.py"
-        if fya_file.exists():
-            if py_file.exists():
-                warnings.warn(
-                    f"a same-name .fya and a handwritten .py coexist; the .fya wins: {fya_file} / {py_file}")
-            return self._load_agent_from_fya(fya_file, ref=name)
-        if py_file.exists():
-            return self._load_agent_from_py(py_file, None, ref=name)
-        return None
-
-    def _load_agent_from_path(
-        self, resolved: Path, class_name: "str | None", *, ref: str
-    ) -> "type[Agent]":
-        """路径形态的编译 / 加载（内部 API）。
-
-        目录 → 候选链探测（只含 ``.fya``；无任一候选 → ``KeyError``）；
-        ``.fya`` 文件 → :meth:`_load_agent_from_fya` 编译装配；
-        手写 ``.py`` → :meth:`_load_agent_from_py`；不存在 / 其它后缀 →
-        ``KeyError`` （解析失败的统一口径）。
-        """
-        if resolved.is_dir():
-            name = _infer_name(resolved, naming=AGENT_NAMING)   # 目录：basename 即目录名
-            hit = _probe_candidates(
-                resolved,
-                ["AGENT.fya", "agent.fya", f"{name}.agent.fya", f"{name}.fya"])
-            if hit is None:
-                raise KeyError(ref)   # 目录存在但无任一候选 → 解析失败
-            return self._load_agent_from_fya(hit, ref=ref)
-        if not resolved.exists():
-            raise KeyError(ref)
-        if resolved.suffix == ".fya":
-            return self._load_agent_from_fya(resolved, class_name, ref=ref)
-        if resolved.suffix == ".py":
-            return self._load_agent_from_py(resolved, class_name, ref=ref)
-        raise KeyError(ref)
-
-    def _load_agent_from_fya(
-        self, path: Path, class_name: "str | None" = None, *, ref: str
-    ) -> "type[Agent]":
-        """``.fya`` 命中的编译装配与派生注册（内部 API）。
-
-        经 :func:`flowing.compiler.compile_fya_class` 现场合成 Agent 子类
-        （``name`` 一致性断言在合成层完成）。派生注册与
-        :meth:`_load_agent_from_py` 同范式：派生键
-        ``to_project_path(dir)::infer_name`` + ``registry_key`` 回写 +
-        派生键已在注册表 → 短路复用（不重复合成）。``class_name``
-        （``路径::ClassName`` 形态）对 ``.fya`` 仅作一致性断言——单文件
-        只合成一个类，不符 → :class:`flowing.errors.FormatError`。
-        """
-        from flowing.compiler import compile_fya_class   # 局部 import：模块头依赖图保持单向
-
-        name = _infer_name(path, naming=AGENT_NAMING)   # 身份名推断（通用名取目录名）
-        derived_key = f"{self.to_project_path(path.parent)}::{name}"   # 目录派生命名空间
-        if derived_key in self._agent_types:
-            cls = self._agent_types[derived_key]   # 派生键短路复用（文件解析是声明期行为）
-            # 短路同样过 class_name 一致性断言——不得静默返回不符的已注册类
-            if class_name is not None and cls.__name__ != class_name:
-                raise FormatError(
-                    f"registered synthesized class of {path} is {cls.__name__}, not {class_name!r}"
-                    " (.fya files synthesize exactly one class per file; :: disambiguation is the mechanism for handwritten .py multi-class files)")
-            return cls
-        cls = compile_fya_class(path, project_root=self.project_root)  # F3：运行时编译自带项目根
-        if class_name is not None and cls.__name__ != class_name:
-            raise FormatError(
-                f"synthesized class of {path} is {cls.__name__}, not {class_name!r}"
-                " (.fya files synthesize exactly one class per file; :: disambiguation is the mechanism for handwritten .py multi-class files)")
-        cls.registry_key = derived_key   # 回写（与 _load_agent_from_py 同构）
-        self._agent_types[derived_key] = cls
-        return cls
-
-    def _load_agent_from_py(
-        self, path: Path, class_name: "str | None", *, ref: str
-    ) -> "type[Agent]":
-        """加载手写 ``.py`` 中的 Agent 子类（内部 API）。
-
-        模块内需恰好一个本文件定义的 Agent 子类（``__module__`` 过滤掉
-        import 进来的）；零个 → ``FormatError``；多个 → ``FormatError``
-        （消息指明用 ``路径::ClassName`` 消歧）；``class_name`` 指定时
-        直接按名取（绕开「恰好一个」限制）。命中后注册到派生键（命名空间
-        从所在目录派生：``@/`` 下根相对、根外绝对——``to_project_path``
-        形式，仅作内部身份标识）并回写 ``cls.registry_key``；派生键已在
-        注册表 → 短路复用（不重复加载）。``::ClassName`` 消歧形态的派生键
-        含类名（``<目录键>::<身份名>::<类名>``——每类一键，否则同一多类
-        文件先注册 ``::A`` 后 ``::B`` 会误短路返回 A）；无 ``class_name``
-        时为 ``<目录键>::<身份名>``。类体写了 ``name`` 仅作一致性断言：
-        与推断值不符抛 ``NameMismatchError``。
-        """
-        import importlib.util
-
-        from flowing.agent import Agent   # 局部 import：模块头依赖图保持单向
-
-        name = _infer_name(path, naming=AGENT_NAMING)   # 身份名推断（文件名去后缀、snake→kebab）
-        base_key = f"{self.to_project_path(path.parent)}::{name}"   # 目录派生命名空间（内部身份标识）
-        # ::ClassName 消歧形态的派生键含类名（每类一键）——同一多类文件
-        # 先 ::A 后 ::B 时，B 不得误命中 A 的短路
-        derived_key = f"{base_key}::{class_name}" if class_name is not None else base_key
-        if derived_key in self._agent_types:
-            return self._agent_types[derived_key]   # 派生键短路复用（文件解析是声明期行为）
-        spec = importlib.util.spec_from_file_location(
-            _path_to_module_name(path, project_root=self.project_root,
-                                 prefix="flowing_agent_file_"), path)
-        module = importlib.util.module_from_spec(spec)   # type: ignore[union-attr]
-        spec.loader.exec_module(module)   # type: ignore[union-attr]
-        if class_name is not None:
-            cls = getattr(module, class_name, None)
-            if not (isinstance(cls, type) and issubclass(cls, Agent)):
-                raise FormatError(
-                    f"no Agent subclass {class_name} in {path} (file::ClassName disambiguation failed)")
-        else:
-            candidates = [
-                obj for obj in vars(module).values()
-                if isinstance(obj, type) and issubclass(obj, Agent)
-                and obj is not Agent and obj.__module__ == module.__name__
-            ]
-            if not candidates:
-                raise FormatError(
-                    f"no Agent subclass in {path} — handwritten .py files must define exactly one")
-            if len(candidates) > 1:
-                raise FormatError(
-                    f"{path} contains multiple Agent subclasses"
-                    f"（{', '.join(c.__name__ for c in candidates)}）——"
-                    " — disambiguate with the path::ClassName form")
-            cls = candidates[0]
-        explicit_name = cls.__dict__.get("name")   # name 非机制字段：写了仅作一致性断言
-        if explicit_name is not None and explicit_name != name:
-            raise NameMismatchError(
-                f"{cls.__name__} in {path} declares name={explicit_name!r}, "
-                f"which does not match the inferred identity name {name!r}")
-        cls.registry_key = derived_key   # 回写（与 register_agent_type 同构）
-        self._agent_types[derived_key] = cls
-        return cls
+        return self.agent_registry.get(agent_type, source_dir=source_dir)   # 薄委托：解析本体在 AgentRegistry
 
     def _resolve_session_dir(self, session_dir: str | Path | None, node_id: str) -> Path:
         """解析 agent 级 session 目录（内部 API，不属稳定契约）。

@@ -41,7 +41,7 @@ async def test_t74_install_surface_and_zero_cost_without_plugin(tmp_path):
 
     # 未安装插件 → setup() 中的 use_comm 在 inject 处断（双层启用零开销）
     harness = HarnessRuntime(tmp_path / "no-plugin")
-    harness.register_agent_type("comm-agent", CommAgent)
+    harness.register_agent_type(CommAgent, name="comm-agent")
     with pytest.raises(MissingProvideError):
         await harness.create_agent("comm-agent", start_loop=False)
 
@@ -106,7 +106,7 @@ async def test_t77_agent_without_use_comm_is_invisible(tmp_path):
     """T77：Agent 未调 use_comm → 无 comm_handler 属性；向其 node_id
     发信号抛 SignalDeliveryError（零开销不变量）。"""
     runtime, bus = make_comm_harness(tmp_path)
-    runtime.register_agent_type("plain-agent", SimpleAgent)
+    runtime.register_agent_type(SimpleAgent, name="plain-agent")
     agent = await runtime.create_agent("plain-agent")
     try:
         assert not hasattr(agent, "comm_handler")

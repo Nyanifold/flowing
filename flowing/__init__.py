@@ -4,8 +4,8 @@
 
 Flowing 的核心立场是「框架只提供机制，不提供策略」。包结构三层：
 
-- **框架核心**：``runtime`` / ``agent`` / ``subagents`` / ``message`` /
-  ``context`` /
+- **框架核心**：``runtime`` / ``agent`` / ``agent_registry`` /
+  ``subagents`` / ``message`` / ``context`` /
   ``parsable`` / ``params`` / ``tool`` / ``model`` / ``hooks`` / ``lists`` /
   ``errors`` /
   ``snapshot`` / ``providers`` / ``persistence`` / ``parser`` / ``paths`` /
@@ -63,6 +63,7 @@ from flowing.agent import (
     TurnContext,
     TurnResult,
 )
+from flowing.agent_registry import AgentRegistry
 from flowing.context import Context, PromptBlock, PromptBlockList, PromptSegment
 from flowing.errors import FlowingError, Intercepted
 from flowing.hooks import HookRegistry, on
@@ -119,6 +120,7 @@ from flowing.tool import (
 
 __all__ = [
     "Agent",
+    "AgentRegistry",
     "Audio",
     "CancelContext",
     "ConfigKey",

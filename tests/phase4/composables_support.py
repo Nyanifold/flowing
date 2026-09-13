@@ -92,7 +92,7 @@ def make_composables_harness(
     脚本回放。
     """
     runtime = HarnessRuntime(tmp_path)
-    runtime.register_agent_type("test-agent", agent_cls)
+    runtime.register_agent_type(agent_cls, name="test-agent")
     provider = add_fake_provider(runtime)
     return runtime, provider
 

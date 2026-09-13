@@ -12,7 +12,13 @@ from pathlib import Path
 
 import pytest
 
-from flowing.errors import FlowingError, MissingFieldError, NameMismatchError
+from flowing.errors import (
+    FlowingError,
+    MissingFieldError,
+    NameMismatchError,
+    SkillNameConflictError,
+    SkillNotFoundError,
+)
 from flowing.parsable import Parsable
 from flowing.plugins.skills import Skill, SkillRegistry
 
@@ -60,13 +66,13 @@ def test_t07_register_and_bare_name_hit(registry):
 
 
 # ---------------------------------------------------------------------------
-# T08：同 ns::name 再注册 → FlowingError（消息含全键）
+# T08：同 ns::name 再注册 → SkillNameConflictError（字段含全键）
 # ---------------------------------------------------------------------------
 
 
 def test_t08_duplicate_register_raises(registry):
     registry.register(Skill(name="report", content="x"))
-    with pytest.raises(FlowingError, match="default::report"):
+    with pytest.raises(SkillNameConflictError, match="default::report"):
         registry.register(Skill(name="report", content="y"))
     # 不同命名空间的同名技能允许共存
     registry.register(Skill(name="report", content="z"), namespace="myplugin")
@@ -121,12 +127,12 @@ def test_t12_generic_name_takes_directory_name(registry):
 
 
 # ---------------------------------------------------------------------------
-# T13：全部候选位置无合法定义文件 → FlowingError（含规范名与已尝试路径）
+# T13：全部候选位置无合法定义文件 → SkillNotFoundError（含规范名与已尝试路径）
 # ---------------------------------------------------------------------------
 
 
 def test_t13_not_found_error_lists_attempted_paths(registry):
-    with pytest.raises(FlowingError) as exc_info:
+    with pytest.raises(SkillNotFoundError) as exc_info:
         registry.get("ghost", FIXTURES_SKILLS)
     message = str(exc_info.value)
     assert "ghost" in message

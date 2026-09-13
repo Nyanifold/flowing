@@ -88,8 +88,8 @@ async def test_t123_clean_semantics(tmp_path):
 
     # clean=False：留树 + 崩溃重放可恢复（真 Runtime + 真 recover 管线）
     ReminderAgent.reminder_args = [["持久提醒"]]
-    rt1 = make_runtime(tmp_path / "persist")
-    rt1.register_agent_type("test-agent", ReminderAgent)
+    rt1 = make_runtime(tmp_path / "persist", register_default_type=False)
+    rt1.register_agent_type(ReminderAgent, name="test-agent")
     provider1 = add_fake_provider(rt1)
     script_provider(provider1, text_response("r1"))
     agent1 = await rt1.create_agent("test-agent")
@@ -98,8 +98,8 @@ async def test_t123_clean_semantics(tmp_path):
     agent_id = agent1.node_id
     await rt1.shutdown()
 
-    rt2 = make_runtime(tmp_path / "persist")
-    rt2.register_agent_type("test-agent", ReminderAgent)
+    rt2 = make_runtime(tmp_path / "persist", register_default_type=False)
+    rt2.register_agent_type(ReminderAgent, name="test-agent")
     add_fake_provider(rt2)
     try:
         recovered = await rt2.recover_agent(agent_id)

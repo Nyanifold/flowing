@@ -187,7 +187,7 @@ async def test_t41_create_failures(project_ok, persist_dir, monkeypatch):
             async def setup(self, **kwargs) -> None:
                 raise RuntimeError("setup boom")
 
-        runtime.register_agent_type("boom", Boom)
+        runtime.register_agent_type(Boom, name="boom")
         r = await handle.client.post("/agents", json={"agent_type": "boom"})
         assert r.status_code == 500
         assert "setup boom" in r.json()["error"]

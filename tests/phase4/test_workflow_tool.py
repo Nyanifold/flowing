@@ -136,7 +136,7 @@ async def test_t90_resolve_failure_wrapped_run_failure_contained(
     的 LLM 可见结果（首 yield 前异常，B2）；后台运行段失败 → 框架投递
     EVENT 错误块（LLM 可见）+ flowing.tool 日志（B3，双通道）。"""
     runtime = make_runtime(tmp_path, register_default_type=False)
-    runtime.register_agent_type("caller-agent", SimpleAgent)
+    runtime.register_agent_type(SimpleAgent, name="caller-agent")
     # 刻意不注册 "test-agent"：quick.py 的 run 在后台任务内失败
     runtime.install(WorkflowPlugin())
     provider = add_fake_provider(runtime)

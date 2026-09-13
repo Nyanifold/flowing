@@ -51,8 +51,8 @@ def _sys_text(context) -> str:
 @pytest.fixture
 async def runtime(tmp_path):
     rt = HarnessRuntime(tmp_path)
-    rt.register_agent_type("test-agent", SimpleAgent)
-    rt.register_agent_type("worker", WorkerAgent)
+    rt.register_agent_type(SimpleAgent, name="test-agent")
+    rt.register_agent_type(WorkerAgent, name="worker")
     yield rt
     for node_id, node in list(rt._nodes.items()):
         if node is rt:

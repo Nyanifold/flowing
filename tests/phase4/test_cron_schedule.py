@@ -64,7 +64,7 @@ async def test_schedule_validation_boundary(tmp_path):
     try:
         # 未 use_cron
         rt2 = make_cron_harness(tmp_path / "b", install_plugin=False)
-        rt2.register_agent_type("test-agent", SimpleAgent)
+        rt2.register_agent_type(SimpleAgent, name="test-agent")
         plain = await rt2.create_agent("test-agent", start_loop=False)
         try:
             with pytest.raises(ValueError):

@@ -934,8 +934,8 @@ class Agent:
     只读，实例化后不可变。
     """
     registry_key: ClassVar[str | None] = None
-    """注册表键回写——``Runtime`` 注册本类时写入（``register_agent_type``
-    与文件派生注册两处）：``ns::name`` 全限定键；从未注册的手写子类为
+    """注册表键回写——``AgentRegistry`` 注册本类时写入（``register`` 与
+    文件派生注册两处）：``ns::name`` 全限定键；从未注册的手写子类为
     ``None``。与 ``Tool.registry_key`` / ``Skill.registry_key`` 同构，
     供 ``add_agent`` 落账 ``name_ori``。内部 API，不属稳定契约。
     """
@@ -3409,7 +3409,8 @@ class Agent:
 
         .. rubric:: 行为要点
 
-        - 未找到 → 抛 ``KeyError`` （``get_agent_class`` 的失败形态）。
+        - 未找到 → 抛 :class:`flowing.errors.AgentTypeNotFoundError`
+          （``get_agent_class`` 的失败形态）。
 
         .. seealso:: :meth:`flowing.runtime.Runtime.get_agent_class`、
             :meth:`flowing.runtime.Runtime.get_agent`
@@ -3643,7 +3644,8 @@ class Agent:
           时序约束，与 tool 侧同律）。
         - 边缘情况：``name`` / ``ref.raw`` 未命中 → 经 :meth:`get_agent_class`
           （携带 ``source_dir``）走文件链惰性解析——文件覆盖
-          ``default::`` / ``builtin::``；仍不命中抛 ``KeyError``。
+          ``default::`` / ``builtin::``；仍不命中抛
+          :class:`flowing.errors.AgentTypeNotFoundError`。
         - entry 不持有子 Agent 类引用以外的任何实例状态；不写持久化
           （条目表由声明 / ``setup()`` 重建）。
 
@@ -3656,7 +3658,8 @@ class Agent:
         :raises flowing.errors.EntryNameConflictError: 同 alias 条目已存在。
         :raises flowing.errors.FormatError: EntryRef 与 ``alias`` / ``body``
             重复给值；``body`` 含未知键或非法形态。
-        :raises KeyError: 引用在注册表与文件链均不命中。
+        :raises flowing.errors.AgentTypeNotFoundError: 引用在注册表与文件链
+            均不命中。
 
         .. seealso:: :class:`flowing.subagents.SubagentEntry`、
             :meth:`invoke_subagent`、:meth:`add_tool` （同构管线）
@@ -3670,7 +3673,7 @@ class Agent:
             from flowing.runtime import AGENT_NAMING   # 局部 import 破环（agent ↔ runtime）
             item = {f"{name} as {alias}" if alias is not None else name: body or {}}
             ref = normalize_entries([item], naming=AGENT_NAMING)[0]
-        cls = self.get_agent_class(ref.raw)   # 存在性解析（文件链命中则此刻编译/注册，文件覆盖 default::/builtin::；未命中抛 KeyError）
+        cls = self.get_agent_class(ref.raw)   # 存在性解析（文件链命中则此刻编译/注册，文件覆盖 default::/builtin::；未命中抛 AgentTypeNotFoundError）
         # 落账 name_ori：文件派生类型记派生限定键（cls.registry_key，注册时回写）；
         # 注册表命中（default::/builtin::）保持裸名；registry_key 缺失（未注册手写类）回退 ref.raw
         name_ori = (

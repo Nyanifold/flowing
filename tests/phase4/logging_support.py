@@ -64,7 +64,7 @@ def make_logging_runtime(
     runtime = make_runtime(project_root)
     runtime.install(*pre_plugins, LoggingPlugin(level=level,
                                             max_value_repr=max_value_repr))
-    runtime.register_agent_type("log-agent", agent_cls)
+    runtime.register_agent_type(agent_cls, name="log-agent")
     provider = add_fake_provider(runtime)
     return runtime, provider
 

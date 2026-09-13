@@ -164,6 +164,12 @@ __all__ = [
     "HookError",
     "UnknownHookPointError",
     "DuplicateHookPointError",
+    "RegistryNotFoundError",
+    "RegistryConflictError",
+    "AgentTypeNotFoundError",
+    "AgentTypeConflictError",
+    "SkillNotFoundError",
+    "SkillNameConflictError",
     "ToolError",
     "MissingSchemaError",
     "ToolNotFoundError",
@@ -546,6 +552,221 @@ class DuplicateHookPointError(HookError):
 
 
 # ---------------------------------------------------------------------------
+# 注册表类
+# ---------------------------------------------------------------------------
+
+
+class RegistryConflictError(FlowingError):
+    """注册表键冲突异常的分类中间层（Tool / Agent 类型 / Skill 注册表共用）。
+
+    .. rubric:: 功能介绍
+
+    各资源注册表（``ToolRegistry`` / ``AgentRegistry`` / ``SkillRegistry``）
+    注册通道的键冲突异常公共基类：``ns::name`` 全限定键重名注册时抛出的
+    是本类的某个具体子类（``ToolNameConflictError`` /
+    ``AgentTypeConflictError`` / ``SkillNameConflictError``）。按类别捕获
+    用 ``except RegistryConflictError``，精确捕获用具体子类。
+
+    .. rubric:: 行为要点
+
+    - 本类是分类中间层：框架实际抛出的是其具体子类；本类自身不定义
+      字段，冲突键由各子类的字段承载。
+    - 冲突按 ``ns::name`` 全限定键判定：不同命名空间的同名资源允许共存。
+    - 安装期错误：调用方不捕获；不提供覆盖开关。
+    - Agent 绑定层的别名冲突不在本层：同 alias 重复绑定是
+      ``EntryNameConflictError``（per-Agent、LLM 视角），与本层（注册
+      表层、全局）分层。
+
+    .. seealso::
+
+        :class:`flowing.errors.AgentTypeConflictError`
+        :class:`flowing.errors.SkillNameConflictError`
+        :class:`flowing.errors.ToolNameConflictError`
+        :class:`flowing.errors.RegistryNotFoundError`
+    """
+
+
+class RegistryNotFoundError(FlowingError):
+    """注册表查找未命中异常的分类中间层（Tool / Agent 类型 / Skill 注册表共用）。
+
+    .. rubric:: 功能介绍
+
+    各资源注册表（``ToolRegistry`` / ``AgentRegistry`` / ``SkillRegistry``）
+    查找通道的未命中异常公共基类：按规范名 / 限定名 / 路径形态引用一个
+    注册表与文件查找链均无法解析的资源时，抛出的是本类的某个具体子类
+    （``ToolNotFoundError`` / ``AgentTypeNotFoundError`` /
+    ``SkillNotFoundError``）。按类别捕获用 ``except RegistryNotFoundError``
+    （如「先探测再注册」的通用试探逻辑），精确捕获用具体子类。
+
+    .. rubric:: 行为要点
+
+    - 本类是分类中间层：框架实际抛出的是其具体子类；本类自身不定义
+      字段，未命中的引用串由各子类的 ``name`` 字段承载。
+    - 查找失败显式报错而非静默返回 ``None``；注册表内容在运行期不自动
+      变化，不可重试。
+    - 别名声道的未命中不在本层：Agent 绑定层按别名查找失败是
+      ``UnknownToolError`` 等绑定层异常，与本层（注册表层规范名 /
+      限定名）分层。
+
+    .. seealso::
+
+        :class:`flowing.errors.AgentTypeNotFoundError`
+        :class:`flowing.errors.SkillNotFoundError`
+        :class:`flowing.errors.ToolNotFoundError`
+    """
+
+
+class AgentTypeNotFoundError(RegistryNotFoundError):
+    """Agent 类型引用在注册表与文件查找链均无法解析时抛出。
+
+    .. rubric:: 功能介绍
+
+    ``AgentRegistry.get()`` （``Runtime.get_agent_class()`` 的解析本体）
+    对限定名 / 裸名 / 路径形态三种引用均无法解析时抛出——限定名只查
+    注册表精确键；裸名查注册表裸名视图（``default::`` 优先
+    ``builtin::``）与定向文件查找链；路径形态经候选链定位 ``.fya`` /
+    手写 ``.py``。创建 / 恢复管线（``create_agent`` / ``recover_agent``）
+    与 ``subagent-invoke`` 的类型解析失败即本异常。
+
+    .. rubric:: 行为要点
+
+    - ``name`` 字段为未命中的引用串原样（限定名 / 裸名 / 路径形态）。
+    - 解析失败显式报错而非静默返回 ``None``；调用方可按需捕获（如先
+      探测再注册，探测也可用 ``AgentRegistry.__contains__``）。
+    - 不可重试：注册表内容在运行期不自动变化。
+
+    .. seealso::
+
+        :class:`flowing.agent_registry.AgentRegistry`
+        :meth:`flowing.runtime.Runtime.get_agent_class`
+        :class:`flowing.errors.RegistryNotFoundError`
+    """
+
+    name: str
+    """未命中的 Agent 类型引用串（限定名 / 裸名 / 路径形态原样）。"""
+
+    def __init__(self, name: str) -> None:
+        """构造异常实例。
+
+        :param name: 未命中的 Agent 类型引用串；与 ``name`` 字段一致。
+        """
+        # 消息为自然语言关键提示，结构化字段为权威
+        super().__init__(f"Agent type not found in registry: {name!r}")
+        self.name = name
+
+
+class AgentTypeConflictError(RegistryConflictError):
+    """Agent 类型注册键（``ns::name`` 全限定键）重名注册时抛出。
+
+    .. rubric:: 功能介绍
+
+    ``AgentRegistry.register()`` （``Runtime.register_agent_type()`` 的
+    注册本体）检测到同键已存在时抛出。注册键是注册表唯一键：静默覆盖
+    会让先注册方的全部引用（含已落账 ``registry_key`` 的 Entry 装配）
+    指向被换掉的实现；需要替换实现时应换键注册而非覆盖。
+
+    与 ``EntryNameConflictError`` 分层：本类管注册表层的全限定键冲突
+    （全局、跨 Agent）；它管 Agent 绑定层的别名冲突（per-Agent）。
+
+    .. rubric:: 行为要点
+
+    - ``key`` 字段为发生冲突的注册表全限定键（``ns::name``）。
+    - 不同命名空间的同名类型允许共存（冲突按全限定键判定）。
+    - 安装期错误：调用方不捕获；不提供覆盖开关。
+
+    .. seealso::
+
+        :meth:`flowing.agent_registry.AgentRegistry.register`
+        :class:`flowing.errors.ToolNameConflictError`
+        :class:`flowing.errors.EntryNameConflictError`
+    """
+
+    key: str
+    """发生冲突的注册表全限定键（``ns::name``）。"""
+
+    def __init__(self, key: str) -> None:
+        """构造异常实例。
+
+        :param key: 发生冲突的注册表全限定键；与 ``key`` 字段一致。
+        """
+        # 消息为自然语言关键提示，结构化字段为权威
+        super().__init__(f"Agent type conflict: {key!r} is already registered")
+        self.key = key
+
+
+class SkillNameConflictError(RegistryConflictError):
+    """Skill 注册键（``ns::name`` 全限定键）重名注册时抛出。
+
+    .. rubric:: 功能介绍
+
+    ``SkillRegistry.register()`` 检测到同键已存在时抛出。注册键是注册表
+    唯一键：静默覆盖会让先注册方的全部引用指向被换掉的实现；需要替换
+    实现时应换键注册而非覆盖。
+
+    .. rubric:: 行为要点
+
+    - ``key`` 字段为发生冲突的注册表全限定键（``ns::name``）。
+    - 不同命名空间的同名技能允许共存（冲突按全限定键判定）。
+    - 安装期错误：调用方不捕获；不提供覆盖开关。
+
+    .. seealso::
+
+        :class:`flowing.plugins.skills.registry.SkillRegistry`
+        :class:`flowing.errors.RegistryConflictError`
+    """
+
+    key: str
+    """发生冲突的注册表全限定键（``ns::name``）。"""
+
+    def __init__(self, key: str) -> None:
+        """构造异常实例。
+
+        :param key: 发生冲突的注册表全限定键；与 ``key`` 字段一致。
+        """
+        # 消息为自然语言关键提示，结构化字段为权威
+        super().__init__(f"Skill name conflict: {key!r} is already registered")
+        self.key = key
+
+
+class SkillNotFoundError(RegistryNotFoundError):
+    """Skill 引用在技能注册表与文件查找链均无法解析时抛出。
+
+    .. rubric:: 功能介绍
+
+    ``SkillRegistry.get()`` 对限定名 / 裸名 / 路径形态三种引用均无法
+    解析时抛出（含显式路径指向的定义文件不存在或形态非法）。
+    ``use_skill`` 装配与 ``SkillLoadTool`` 的解析失败即本异常。
+
+    .. rubric:: 行为要点
+
+    - ``name`` 字段为未命中的引用串原样。
+    - 不可重试：注册表内容在运行期不自动变化。
+
+    .. seealso::
+
+        :class:`flowing.plugins.skills.registry.SkillRegistry`
+        :class:`flowing.errors.RegistryNotFoundError`
+    """
+
+    name: str
+    """未命中的 Skill 引用串（限定名 / 裸名 / 路径形态原样）。"""
+    detail: str | None
+    """补充诊断（如已尝试的查找路径清单）；无补充时为 ``None``。"""
+
+    def __init__(self, name: str, detail: str | None = None) -> None:
+        """构造异常实例。
+
+        :param name: 未命中的 Skill 引用串；与 ``name`` 字段一致。
+        :param detail: 补充诊断文本（缺省 ``None``）。
+        """
+        # 消息为自然语言关键提示，结构化字段为权威
+        super().__init__(f"Skill not found in registry: {name!r}"
+                         + (f" ({detail})" if detail else ""))
+        self.name = name
+        self.detail = detail
+
+
+# ---------------------------------------------------------------------------
 # 工具类
 # ---------------------------------------------------------------------------
 
@@ -618,14 +839,16 @@ class MissingSchemaError(ToolError):
         self.param = param
 
 
-class ToolNotFoundError(ToolError):
+class ToolNotFoundError(ToolError, RegistryNotFoundError):
     """按规范名在工具注册表中找不到工具时抛出。
 
     .. rubric:: 功能介绍
 
     ``ToolRegistry.get()`` 按规范名查找已注册工具失败时抛出。规范名是注册时的
     唯一标识；Agent 绑定层的别名（``ToolEntry`` 的 ``name_alias``）是另一个
-    命名空间——按别名查找失败的异常是 ``UnknownToolError``。
+    命名空间——按别名查找失败的异常是 ``UnknownToolError``。双挂
+    ``RegistryNotFoundError``：跨注册表的统一探测可 ``except
+    RegistryNotFoundError`` 一网打尽。
 
     .. rubric:: 行为要点
 
@@ -637,6 +860,7 @@ class ToolNotFoundError(ToolError):
 
         :class:`flowing.tool.ToolRegistry`
         :class:`flowing.errors.UnknownToolError`
+        :class:`flowing.errors.RegistryNotFoundError`
     """
 
     name: str
@@ -652,7 +876,7 @@ class ToolNotFoundError(ToolError):
         self.name = name
 
 
-class ToolNameConflictError(ToolError):
+class ToolNameConflictError(ToolError, RegistryConflictError):
     """工具规范名重名注册时抛出。
 
     .. rubric:: 功能介绍
@@ -660,7 +884,8 @@ class ToolNameConflictError(ToolError):
     ``ToolRegistry.register()`` 检测到同名规范名时抛出。重名一律不允许，无论
     工具类型——包括同一 MCP 服务器不同配置的场景（须用不同规范名）。规范名是
     注册表唯一键：静默覆盖会让先注册方的所有 Agent 绑定指向被换掉的实现；需要
-    相同实例时应复用已有注册而非重复注册。
+    相同实例时应复用已有注册而非重复注册。双挂 ``RegistryConflictError``：跨
+    注册表的统一冲突捕获可 ``except RegistryConflictError`` 一网打尽。
 
     Agent 绑定层的别名冲突（同 alias）由 ``EntryNameConflictError`` 承载，与本
     类（注册表层规范名冲突）分层。

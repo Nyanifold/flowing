@@ -65,10 +65,12 @@ class HarnessRuntime(FakeRuntime):
                       namespace: str | None = None) -> None:
         self.tool_registry.register(tool, name=name, namespace=namespace)
 
-    def register_agent_type(self, name: str, cls: type[Agent],
-                            *, namespace: str = "default") -> None:
-        cls.registry_key = f"{namespace}::{name}"
-        self._agent_classes[name] = cls
+    def register_agent_type(self, agent: Any, *, name: str | None = None,
+                            namespace: str = "default") -> None:
+        from flowing.paths import pascal_to_kebab
+        bare = name if name is not None else pascal_to_kebab(agent.__name__)
+        agent.registry_key = f"{namespace}::{bare}"
+        self._agent_classes[bare] = agent
 
     def get_agent_class(self, agent_type: str, *, source_dir: Path | None = None) -> type[Agent]:
         return self._agent_classes[agent_type]   # 裸名只查注册表；KeyError 口径
@@ -204,7 +206,7 @@ def script_provider(provider: FakeProvider, *steps: Any) -> None:
 @pytest.fixture
 async def runtime(tmp_path):
     rt = HarnessRuntime(tmp_path)
-    rt.register_agent_type("test-agent", SimpleAgent)
+    rt.register_agent_type(SimpleAgent, name="test-agent")
     yield rt
     # 收尾：销毁全部存活 Agent（关 store、停 drain 任务），防跨测试泄漏
     for node_id, node in list(rt._nodes.items()):
@@ -273,7 +275,7 @@ def make_runtime(
         rt.set_models(root / "models.yaml")
         rt.set_model_tags(root / "model-tags.yaml")
     if register_default_type:
-        rt.register_agent_type("test-agent", SimpleAgent)
+        rt.register_agent_type(SimpleAgent, name="test-agent")
     return rt
 
 

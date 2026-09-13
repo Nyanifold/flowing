@@ -576,8 +576,8 @@ async def test_g11_subagent_invoke_background_failure(tmp_path):
     通道投递（不重复错误块）——``_run_subagent`` 四态契约不抛，
     ``_drive_asyncgen`` 的 ``except Exception`` 兜底不触发。"""
     runtime = make_runtime(tmp_path, register_default_type=False)
-    runtime.register_agent_type("test-agent", SimpleAgent)
-    runtime.register_agent_type("worker", _WorkerAgent)
+    runtime.register_agent_type(SimpleAgent, name="test-agent")
+    runtime.register_agent_type(_WorkerAgent, name="worker")
     provider = add_fake_provider(runtime)
     agent = await runtime.create_agent("test-agent")
     agent.add_agent("worker")

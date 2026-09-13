@@ -43,6 +43,6 @@ def make_comm_harness(tmp_path: Path) -> tuple[Any, Any]:
     """HarnessRuntime + 已安装 CommPlugin；返回 ``(runtime, bus)``。"""
     runtime = HarnessRuntime(tmp_path)
     CommPlugin().install(runtime)
-    runtime.register_agent_type("comm-agent", CommAgent)
+    runtime.register_agent_type(CommAgent, name="comm-agent")
     bus = runtime.inject(communication_key)
     return runtime, bus

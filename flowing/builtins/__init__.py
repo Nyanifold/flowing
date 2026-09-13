@@ -79,8 +79,8 @@ def register_builtins(runtime) -> None:
 
     ``Runtime.__init__`` 的唯一调用点：八个内置工具经
     ``runtime.register_tool(..., namespace="builtin")`` 注册，
-    ``ExploreAgent`` 经 ``runtime.register_agent_type("explore-agent",
-    ExploreAgent, namespace="builtin")`` 注册。
+    ``ExploreAgent`` 经 ``runtime.register_agent_type(ExploreAgent,
+    namespace="builtin")`` 注册（name 缺省 → 类名推断 ``explore-agent``）。
 
     .. rubric:: 行为要点
 
@@ -98,5 +98,4 @@ def register_builtins(runtime) -> None:
                  WriteTool(), BashTool(), EditTool(), GrepTool(),
                  GlobTool()):
         runtime.register_tool(tool, namespace="builtin")
-    runtime.register_agent_type("explore-agent", ExploreAgent,
-                                namespace="builtin")
+    runtime.register_agent_type(ExploreAgent, namespace="builtin")   # name 缺省 → 类名推断 explore-agent

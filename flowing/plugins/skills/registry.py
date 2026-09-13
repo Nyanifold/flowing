@@ -16,10 +16,11 @@ from pathlib import Path
 from typing import Any
 
 from flowing.errors import (
-    FlowingError,
     FormatError,
     MissingFieldError,
     NameMismatchError,
+    SkillNameConflictError,
+    SkillNotFoundError,
 )
 from flowing.params import InjectionKey, expand_args_schema
 from flowing.parsable import PENDING, Parsable
@@ -137,8 +138,8 @@ class SkillRegistry:
 
         .. rubric:: 行为要点
 
-        - ``ns::name`` 全键冲突 → 抛 :class:`flowing.errors.FlowingError`
-          （消息含全键；后注册者报错，与工具 / agent 类型注册同口径）。
+        - ``ns::name`` 全键冲突 → 抛 :class:`flowing.errors.SkillNameConflictError`
+          （后注册者报错，与工具 / agent 类型注册同口径）。
         - 注册只在插件 ``install()`` 发生（运行时不增删）。
         - 不做文件 IO；不校验字段完整性（字段契约是 :class:`Skill`
           构造方的责任）。
@@ -150,7 +151,7 @@ class SkillRegistry:
         """
         key = f"{namespace or 'default'}::{skill.name}"
         if key in self._skills:
-            raise FlowingError(f"skill already registered: {key}")  # 全键重名永远不允许
+            raise SkillNameConflictError(key)  # 全键重名永远不允许
         self._skills[key] = skill
         skill.registry_key = key   # 落账时回写全键（与 get 的解析通道同口径）
 
@@ -181,16 +182,16 @@ class SkillRegistry:
 
         - 返回的 ``Skill`` 是注册表共享实例；调用方不得修改。
         - 全部候选位置都不存在合法定义文件 → 抛
-          :class:`flowing.errors.FlowingError` （消息含规范名与已尝试的
-          查找路径）；定义文件存在但解析失败（缺 ``description``、YAML
-          语法错误等）→ 解析异常上抛，不写入缓存。
+          :class:`flowing.errors.SkillNotFoundError` （``detail`` 字段含
+          已尝试的查找路径）；定义文件存在但解析失败（缺 ``description``、
+          YAML 语法错误等）→ 解析异常上抛，不写入缓存。
         - 不校验 ``name`` 是否被任何 Agent 声明——注册表对声明无感知
           （声明是 ``SkillEntry`` 层的事）。
 
         :param name: 规范名（裸名 / ``ns::name`` 限定名 / 路径引用）。
         :param source_dir: 定向查找根；``None`` → 纯注册表查询。
         :return: 共享的 ``Skill`` 实例。
-        :raises flowing.errors.FlowingError: 按 ``name`` 在
+        :raises flowing.errors.SkillNotFoundError: 按 ``name`` 在
             ``source_dir`` 下找不到任何合法定义文件（含 ``source_dir``
             缺省时注册表不命中）时。
         :raises flowing.errors.FormatError: 定义文件存在但缺少必填
@@ -205,7 +206,7 @@ class SkillRegistry:
         if name in self._skills:
             return self._skills[name]
         if "::" in name:  # 限定名:只查注册表精确键(插件注册通道),不走文件查找链
-            raise FlowingError(f"skill not registered: {name}")
+            raise SkillNotFoundError(name)
         if classify_ref(name) == "path" or source_dir is not None:
             # 路径形态恒走文件定位（@/ 无需 source_dir；./ ../ 缺省时报错，
             # resolve_path 现有口径——与 ToolRegistry.get 同姿态）；裸名 +
@@ -237,11 +238,11 @@ class SkillRegistry:
             if key in self._skills:
                 return self._skills[key]
         if classify_ref(name) == "path":
-            # 路径形态：文件定位未命中（不存在或后缀非法）——报文含原引用串
-            raise FlowingError(f"skill definition file does not exist or has an invalid form: {name}")
+            # 路径形态：文件定位未命中（不存在或后缀非法）——name 字段含原引用串
+            raise SkillNotFoundError(name, detail="definition file does not exist or has an invalid form")
         attempted = _attempted_paths(name, source_dir)
-        raise FlowingError(
-            f"skill not registered and no lookup chain hit: {name} (tried: "
+        raise SkillNotFoundError(
+            name, detail="no lookup chain hit (tried: "
             + (", ".join(str(p) for p in attempted) if attempted else "registry bare-name view only")
             + ")")
 
@@ -339,7 +340,7 @@ def _parse_skill_file(name: str, source_dir: Path, *,
       继续向下；显式路径目录无候选 → ``FormatError``，定位层分流）→
       目录外 ``<name>.skill.fya > <name>.fya > <name>.md``；``.fya`` 系
       与 ``.md`` 并存 → 告警且 ``.fya`` 系优先；通用名命中 → 规范名取
-      目录名。全部不存在 → ``FlowingError`` （消息含规范名与已尝试路径）。
+      目录名。全部不存在 → ``SkillNotFoundError`` （``detail`` 字段含已尝试路径）。
     - 解析：``.md`` 形式为 YAML frontmatter（``description`` 必填，缺 →
       ``MissingFieldError``；``name`` 仅作一致性断言，不符 →
       ``NameMismatchError``）和 Markdown 正文（即 ``content``）；
@@ -356,8 +357,8 @@ def _parse_skill_file(name: str, source_dir: Path, *,
     located = _locate_skill_file(name, source_dir, project_root=project_root)
     if located is None:
         attempted = _attempted_paths(name, source_dir)
-        raise FlowingError(
-            f"no valid skill definition file found for {name!r} (tried: "
+        raise SkillNotFoundError(
+            name, detail="no valid skill definition file found (tried: "
             + (", ".join(str(p) for p in attempted) if attempted else str(name))
             + ")")
     hit, _folder_form, base_dir, candidates = located

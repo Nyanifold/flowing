@@ -225,7 +225,7 @@ async def test_t33_catalog_template_three_level_resolution(tmp_path):
     copy_skills_fixtures(root3)
     rt3 = HarnessRuntime(root3)
     SkillPlugin().install(rt3)   # 无 catalog_template 构造参数
-    rt3.register_agent_type("skill-host", SkillHostAgent)
+    rt3.register_agent_type(SkillHostAgent, name="skill-host")
     agent3 = await rt3.create_agent("skill-host", start_loop=False, skills=["sum"])
     use_skill(agent3)
     catalog3 = _catalog_text(agent3)

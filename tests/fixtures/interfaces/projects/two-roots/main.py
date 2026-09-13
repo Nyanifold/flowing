@@ -105,7 +105,7 @@ async def main(persist: str | None = None, scenario: str = "ok") -> Runtime:
     runtime.set_model_tags(flowing.resolve("@/model-tags.yaml"))
     runtime.provider_registry._instances["fake-a"] = _make_provider("alpha-reply", scenario)
     runtime.provider_registry._instances["fake-b"] = _make_provider("beta-reply", scenario)
-    runtime.register_agent_type("root", RootAgent)
+    runtime.register_agent_type(RootAgent, name="root")
     if scenario == "tool":
         runtime.register_tool(Echo())
     if not runtime._agent_pool:

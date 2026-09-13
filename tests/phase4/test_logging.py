@@ -264,7 +264,7 @@ async def test_t131_missing_plugin_and_zero_cost(tmp_path):
     无 logging.jsonl 文件（零开销）。"""
     # 未安装插件（HarnessRuntime：install 不发生，无需 get_plugin 面）
     harness = HarnessRuntime(tmp_path / "no-plugin")
-    harness.register_agent_type("log-agent", LogAgent)
+    harness.register_agent_type(LogAgent, name="log-agent")
     with pytest.raises(MissingProvideError):
         await harness.create_agent("log-agent", start_loop=False)
 
