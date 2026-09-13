@@ -534,12 +534,12 @@ def _expand_glob_entries(
     - ``glob_accept`` 命中过滤：提供时每个 glob 命中先经该回调判定
       （``tools:`` 传 ``flowing.tool.registry._tool_glob_accept``、
       ``subagents:`` 传 ``flowing.agent_registry._agent_glob_accept``）。
-      两回调只看名字不读内容：目录探测本字段候选链（无入口跳过）；
-      显式标记各纳各的（``*.tool.fya`` / ``*.agent.fya``）；其余单段
-      文件名直接纳入——是否合法资源留给创建期 eager 解析 fail-fast。
-      不通过的命中跳过并打 warning。缺省 ``None`` 不过滤（调用方自管
-      命中面）。过滤只作用于 glob 命中；显式条目不受影响（定点引用
-      错误照常报错）。
+      两回调只做纯名字分析：目录探测本字段候选链（无入口跳过）；
+      显式标记各纳各的（``*.tool.fya`` / ``*.agent.fya``）；其余
+      ``.fya`` / ``.py`` 直接纳入——是否合法资源留给创建期 eager
+      解析 fail-fast；其它后缀跳过。不通过的命中跳过并打 warning。
+      缺省 ``None`` 不过滤（调用方自管命中面）。过滤只作用于 glob
+      命中；显式条目不受影响（定点引用错误照常报错）。
 
     .. seealso:: :class:`SubagentEntry` 行为要点「同 alias 重复」的例外
         条款（规则文本的权威出处）。

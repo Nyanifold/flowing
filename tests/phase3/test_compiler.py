@@ -437,8 +437,9 @@ def test_glob_prescan_passes_malformed_items_through(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_tools_glob_accept_name_only_rules(tmp_path, caplog):
-    """tools: glob 过滤只看名字：目录探测工具候选链；显式标记仅纳入
-    .tool.fya；其余单段文件名（裸 fya / .py / 通用名）直接纳入。"""
+    """tools: glob 过滤为纯名字分析：目录探测工具候选链；显式标记仅纳入
+    .tool.fya；其余 .fya / .py（含无标记的 impl.py）直接纳入；其它后缀
+    跳过。"""
     import logging
 
     from flowing.tool.core import TOOL_NAMING
@@ -458,11 +459,12 @@ def test_tools_glob_accept_name_only_rules(tmp_path, caplog):
         encoding="utf-8")
     (d / "x.agent.fya").write_text(             # 显式 agent 标记 → 跳过
         "description: 智能体\n---\n$system_prompt:\n你好。\n", encoding="utf-8")
-    (d / "plain.fya").write_text(               # 未标明 → 直接纳入
+    (d / "plain.fya").write_text(               # 裸 fya → 纳入
         "description: 裸 fya\n---\n$system_prompt:\n你好。\n", encoding="utf-8")
-    (d / "impl.py").write_text(                 # 未标明 → 直接纳入
+    (d / "impl.py").write_text(                 # .py → 纳入（不做内容嗅探）
         "async def set_goal(*, goal: str, caller):\n    return {'goal': goal}\n",
         encoding="utf-8")
+    (d / "note.md").write_text("# 便签\n", encoding="utf-8")   # 其它后缀 → 跳过
     with caplog.at_level(logging.WARNING, logger="flowing.subagents"):
         refs = _expand_glob_entries(
             ["@/goal/*"], naming=TOOL_NAMING,
@@ -471,12 +473,12 @@ def test_tools_glob_accept_name_only_rules(tmp_path, caplog):
     assert sorted(r.alias for r in refs) == [
         "extra", "impl", "plain", "set-goal"]
     skipped = [r.message for r in caplog.records if "glob hit skipped" in r.message]
-    assert len(skipped) == 2   # junk/（无入口目录）与 x.agent.fya（显式 agent 标记）
+    assert len(skipped) == 3   # junk/、x.agent.fya、note.md
 
 
 def test_subagents_glob_accept_name_only_rules(tmp_path, caplog):
     """subagents: glob 过滤与 tools 对称：目录探测 agent 候选链；显式标记
-    仅纳入 .agent.fya；其余单段文件名直接纳入。"""
+    仅纳入 .agent.fya；其余 .fya / .py 直接纳入；其它后缀跳过。"""
     import logging
 
     from flowing.agent_registry import _agent_glob_accept
@@ -491,9 +493,12 @@ def test_subagents_glob_accept_name_only_rules(tmp_path, caplog):
         "args:\n  x: {type: string, default: a}\n", encoding="utf-8")
     (d / "b.agent.fya").write_text(             # 显式 agent 标记 → 纳入
         "description: b\n---\n$system_prompt:\n你是 b。\n", encoding="utf-8")
-    (d / "plain.fya").write_text(               # 未标明 → 直接纳入
+    (d / "plain.fya").write_text(               # 裸 fya → 纳入
         "name: plain\ntype: cli\ndescription: 裸 fya 工具\n"
         "command: echo hi\nargs:\n  x: {type: string, default: a}\n",
+        encoding="utf-8")
+    (d / "worker.py").write_text(               # .py → 纳入（不做内容嗅探）
+        "from flowing import Agent\n\n\nclass Worker(Agent):\n    pass\n",
         encoding="utf-8")
     (d / "helper.py").write_text("X = 1\n", encoding="utf-8")   # 同上
     with caplog.at_level(logging.WARNING, logger="flowing.subagents"):
@@ -501,9 +506,9 @@ def test_subagents_glob_accept_name_only_rules(tmp_path, caplog):
             ["@/agents/*"], naming=AGENT_NAMING,
             source_dir=tmp_path, project_root=tmp_path,
             glob_accept=_agent_glob_accept)
-    assert sorted(r.alias for r in refs) == ["a", "b", "helper", "plain"]
+    assert sorted(r.alias for r in refs) == ["a", "b", "helper", "plain", "worker"]
     skipped = [r.message for r in caplog.records if "glob hit skipped" in r.message]
-    assert len(skipped) == 2   # empty/ 与 thing.tool.fya
+    assert len(skipped) == 2   # empty/、thing.tool.fya
 
 
 def test_tool_fya_malformed_still_fails_fast(tmp_path):
@@ -538,8 +543,8 @@ def test_build_tools_glob_uses_tool_naming(tmp_path):
 
 
 async def test_glob_included_invalid_resource_fails_at_creation(tmp_path):
-    """glob 层不过滤内容：未标明身份的非资源文件（impl.py）被纳入后，
-    在 Agent 创建期 eager 解析抛 FormatError（fail-fast 时点 = mount）。"""
+    """glob 层不做内容校验：无标记的 impl.py 按名字规则纳入后，在 Agent
+    创建期 eager 解析抛 FormatError（fail-fast 时点 = mount）。"""
     d = tmp_path / "goal"
     d.mkdir()
     (d / "impl.py").write_text("X = 1\n", encoding="utf-8")   # 无打标无子类

@@ -66,26 +66,27 @@ mcp 声明 → ``FormatError`` （见 `_tool_from_fya`）。内部 API。"""
 
 
 def _tool_glob_accept(path: Path) -> bool:
-    """``tools:`` 字段 glob 命中的工具形态判定（``glob_accept`` 回调）。内部 API。
+    """``tools:`` 字段 glob 命中的过滤（``glob_accept`` 回调）。内部 API。
 
-    与 :func:`flowing.agent_registry._agent_glob_accept` 同构。规则刻意
-    最简——glob 层只看名字，不读内容：
+    与 :func:`flowing.agent_registry._agent_glob_accept` 同构。纯名字
+    分析，不做任何语义嗅探：
 
-    - 目录：探测目录内候选链（``TOOL.fya`` / ``<名>.tool.fya`` / …），
-      有合法入口 → ``True``；无 → ``False``（杂项子目录跳过）；
+    - 目录：探测目录内工具候选链（``TOOL.fya`` / ``<名>.tool.fya`` /
+      …），有合法入口 → ``True``；无 → ``False``（杂项子目录跳过）；
     - 显式标记只纳入 ``*.tool.fya`` 一种（带其它显式标记的，如
       ``*.agent.fya``，不属工具面）；
-    - 其余一切文件（裸 ``foo.fya``、``TOOL.fya`` 等通用名、``foo.py``……
-      单段文件名）→ ``True`` 直接纳入，不做内容判定。通用名文件的设计
-      用途是独居叶目录（目录形态资源），glob 命中的本来就是目录本身，
-      无需特判；未标明身份的 ``.fya`` / ``.py`` 是否合法工具资源，
-      留给创建期的 eager 解析 fail-fast（如 ``impl.py`` 会在
-      ``add_tool`` 时抛 :class:`flowing.errors.FormatError`）。
+    - 其余 ``.fya`` / ``.py`` 文件（裸 ``foo.fya``、``TOOL.fya`` 等
+      通用名、``impl.py``）→ ``True`` 直接纳入——是否合法工具资源
+      留给创建期的 eager 解析 fail-fast。通用名文件的设计用途是独居
+      叶目录（目录形态资源），glob 命中的本来就是目录本身，无需特判；
+    - 其它后缀（``.md`` 等）→ ``False``。
     """
     if path.is_dir():
         return probe_candidates(
             path, _dir_candidates(infer_name(path, naming=TOOL_NAMING))) is not None
-    return not path.name.endswith(".agent.fya")
+    if path.name.endswith(".agent.fya"):
+        return False
+    return path.suffix in (".fya", ".py")
 
 
 def _tool_from_fya(path: Path, identity: str, *,

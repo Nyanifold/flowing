@@ -66,29 +66,30 @@ re-export。
 
 
 def _agent_glob_accept(path: Path) -> bool:
-    """``subagents:`` 字段 glob 命中的 Agent 资源形态判定（``glob_accept``
-    回调）。内部 API。
+    """``subagents:`` 字段 glob 命中的过滤（``glob_accept`` 回调）。内部 API。
 
-    与 :func:`flowing.tool.registry._tool_glob_accept` 同构。glob 层只看
-    名字，不读内容：
+    与 :func:`flowing.tool.registry._tool_glob_accept` 同构。纯名字分析，
+    不做任何语义嗅探：
 
     - 目录：探测目录内候选链（``AGENT.fya > agent.fya > <名>.agent.fya >
       <名>.fya``，只含 ``.fya``——与解析口径一致），有合法入口 →
       ``True``；无 → ``False``（杂项子目录跳过）；
     - 显式标记只纳入 ``*.agent.fya`` 一种（带其它显式标记的，如
       ``*.tool.fya``，不属智能体面）；
-    - 其余一切文件（裸 ``foo.fya``、``agent.fya`` 等通用名、``foo.py``……
-      单段文件名）→ ``True`` 直接纳入，不做内容判定。通用名文件的设计
-      用途是独居叶目录（目录形态资源），glob 命中的本来就是目录本身，
-      无需特判；未标明身份的 ``.fya`` / ``.py`` 是否合法 Agent 资源，
-      留给创建期的 eager 解析 fail-fast。
+    - 其余 ``.fya`` / ``.py`` 文件（裸 ``foo.fya``、``agent.fya`` 等
+      通用名、``foo.py``）→ ``True`` 直接纳入——是否合法 Agent 资源
+      留给创建期的 eager 解析 fail-fast。通用名文件的设计用途是独居
+      叶目录（目录形态资源），glob 命中的本来就是目录本身，无需特判；
+    - 其它后缀（``.md`` 等）→ ``False``。
     """
     if path.is_dir():
         name = _infer_name(path, naming=AGENT_NAMING)   # 目录：basename 即目录名
         return _probe_candidates(
             path, ["AGENT.fya", "agent.fya", f"{name}.agent.fya", f"{name}.fya"]
         ) is not None
-    return not path.name.endswith(".tool.fya")
+    if path.name.endswith(".tool.fya"):
+        return False
+    return path.suffix in (".fya", ".py")
 
 
 class AgentRegistry:
