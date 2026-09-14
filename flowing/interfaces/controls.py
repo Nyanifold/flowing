@@ -29,7 +29,7 @@ import time
 
 from flowing.agent import Agent, _estimate_tool_schema_tokens
 from flowing.interfaces import _default_agent_type, _list_agent_records
-from flowing.message import Message, TextBlock, _text_tokens, estimate_message_tokens
+from flowing.message import Message, TextBlock, _text_tokens, estimate_block_tokens
 from flowing.runtime import Runtime
 
 
@@ -145,10 +145,7 @@ async def slash_lines(cmd: str, arg: str, agent: Agent | None,
         for m in reversed(list(agent.chain.walk(agent.current_head_id))):
             for block in m.content:
                 key = f"{m.kind.value}/{type(block).__name__}"
-                # 单块临时 Message 喂 estimate_message_tokens：逐块口径与
-                # 总体估算的逐条规则保持同一来源，不复制规则
-                parts[key] = (parts.get(key, 0) + estimate_message_tokens(
-                    Message(kind=m.kind, content=[block])))
+                parts[key] = parts.get(key, 0) + estimate_block_tokens(block)   # 逐块规则的单一来源（与总体估算同口径）
         raw = sum(parts.values())
         for label, n in parts.items():
             share = n / raw if raw else 0.0

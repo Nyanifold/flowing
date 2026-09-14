@@ -15,12 +15,15 @@ from types import SimpleNamespace
 
 from flowing.interfaces import EXIT_OK
 from flowing.interfaces import repl as repl_mod
+from flowing.interfaces.controls import slash_lines
 from flowing.interfaces.repl import SLASH_COMMANDS, _default_agent, cmd_repl
+from flowing.tool import Tool, ToolDefinition
 
 from .support import (
     add_fake_provider,
     drive_input,
     make_runtime,
+    phase2_conftest,
     read_tree_records,
     script_lines,
     spy_get_agent,
@@ -306,6 +309,36 @@ async def test_context_command(project_ok, persist_dir, monkeypatch, capsys):
     assert "provider/TextBlock" in out
     assert "normalized to tokens=" in out    # 重归一化注脚
     assert "(%)" in out or "%)" in out       # 占比百分比
+
+
+class _EchoTool(Tool):
+    definition = ToolDefinition(
+        name="echo", description="回显参数",
+        params_schema={"text": {"type": "string"}})
+
+    async def execute(self, *, text: str) -> str:
+        return text
+
+
+async def test_context_verbose_with_tool_messages(tmp_path):
+    """回归：链上含 TOOL 消息时 /context v 正常输出分类表（此前 breakdown
+    用「单块临时 Message 保留原 kind」复用逐块估算，kind=TOOL 触发
+    __post_init__ 双字段不变量 ValueError；提取 estimate_block_tokens
+    后不再需要临时消息）。"""
+    rt = make_runtime(tmp_path)
+    provider = add_fake_provider(rt)
+    agent = await rt.create_agent("test-agent")
+    rt.tool_registry.register(_EchoTool())
+    agent.add_tool("echo")
+    step1, _ = phase2_conftest.tool_call_response(("echo", {"text": "你好"}))
+    phase2_conftest.script_provider(
+        provider, step1, phase2_conftest.text_response("完成"))
+    result = await agent.query("开始")
+    assert result.status == "completed"   # 链上已挂 TOOL 消息
+    lines = await slash_lines("/context", "v", agent, rt)
+    assert any("tool/TextBlock" in line for line in lines)   # TOOL 消息的分类行
+    assert any("normalized to tokens=" in line for line in lines)
+    await rt.shutdown()
 
 
 async def test_sigint_aborts_active_turn_not_session():

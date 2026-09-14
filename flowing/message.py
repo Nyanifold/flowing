@@ -213,6 +213,7 @@ __all__ = [
     "MessageQueue",
     "MessageChain",
     "MEDIA_TOKEN_ESTIMATE",
+    "estimate_block_tokens",
     "estimate_message_tokens",
     "to_record",
     "from_record",
@@ -1108,19 +1109,62 @@ MEDIA_TOKEN_ESTIMATE: int = 2000
 """
 
 
+def estimate_block_tokens(block: ContentBlock) -> int:
+    """估算单个内容块的 token 数（字符启发式，逐块规则的单一来源）。
+
+    .. rubric:: 功能介绍
+
+    :func:`estimate_message_tokens` 的逐块循环体提取——一条消息的估算
+    就是其各内容块估算之和。需要块级粒度的观测方（如 ``/context v``
+    的分类占比）直接调用本函数，无需为复用规则构造临时消息。
+
+    .. rubric:: 使用示例
+
+    .. code-block:: python
+
+        estimate_block_tokens(TextBlock(text="你好"))   # 纯函数，随时可调用
+
+    .. rubric:: 行为要点
+
+    - 同步纯函数：只读 ``block``，无副作用、无缓存，每次现场求值。
+    - 逐块规则：文本类块（``TextBlock.text`` / ``ThinkingBlock.thinking``）
+      按字符启发式（ASCII 字符数 ÷ 4 + 非 ASCII 字符数，向上取整）；
+      ``ToolCallBlock`` 计 ``name`` 与 ``args`` JSON 序列化后的字符
+      启发式之和；``StructBlock`` 计 ``json.dumps(ensure_ascii=False)``
+      结果的字符启发式；``MediaBlock`` 族固定
+      :data:`MEDIA_TOKEN_ESTIMATE`（不读 base64 ``data``）；未知块类型
+      按「无文本内容」计 0。
+
+    .. seealso::
+
+        :func:`estimate_message_tokens` —— 消息级求和（本函数的调用方）。
+        :data:`MEDIA_TOKEN_ESTIMATE` —— 媒体块固定估算值。
+    """
+    if isinstance(block, MediaBlock):
+        # 媒体固定估算，不读 base64 data（token 成本由 provider 按规格定档）
+        return MEDIA_TOKEN_ESTIMATE
+    if isinstance(block, TextBlock):
+        return _text_tokens(block.text)
+    if isinstance(block, ThinkingBlock):
+        return _text_tokens(block.thinking)
+    if isinstance(block, ToolCallBlock):
+        return (_text_tokens(block.name)
+                + _text_tokens(json.dumps(block.args, ensure_ascii=False)))
+    if isinstance(block, StructBlock):
+        return _text_tokens(json.dumps(block.data, ensure_ascii=False))
+    return 0   # 未知块类型按「无文本内容」计 0
+
+
 def estimate_message_tokens(msg: Message) -> int:
     """估算一条消息的 token 数（字符启发式，仅供上下文窗口预算观测）。
 
     .. rubric:: 功能介绍
 
-    对消息逐块展开的本地估算：文本类块（``TextBlock.text`` /
-    ``ThinkingBlock.thinking``）与 ``ToolCallBlock`` 的 ``name`` +
-    JSON 序列化参数、``StructBlock`` 的 ``json.dumps`` 序列化长度均按
-    字符启发式计；``MediaBlock`` 及其子类固定计
-    :data:`MEDIA_TOKEN_ESTIMATE`。被
-    :meth:`flowing.agent.Agent.estimate_context_tokens` 用于估算——
-    锚点指最近一条携带实测用量（``Message.usage``）的消息，估算覆盖
-    锚点之后（或无锚点时全部）路径上的消息。
+    对消息逐块展开的本地估算：``content`` 各内容块经
+    :func:`estimate_block_tokens` 估算后求和（逐块规则以该函数为单一
+    来源）。被 :meth:`flowing.agent.Agent.estimate_context_tokens` 用于
+    估算——锚点指最近一条携带实测用量（``Message.usage``）的消息，
+    估算覆盖锚点之后（或无锚点时全部）路径上的消息。
 
     字符启发式口径：ASCII 约 4 字符/token、非 ASCII（CJK 等）约 1
     字符/token——中文场景下远优于统一除以 4。不用 tokenizer：估算只
@@ -1137,35 +1181,18 @@ def estimate_message_tokens(msg: Message) -> int:
     .. rubric:: 行为要点
 
     - 同步纯函数：只读 ``msg``，无副作用、无缓存，每次现场求值。
-    - 逐块规则：文本类块按（ASCII 字符数 ÷ 4 + 非 ASCII 字符数）向上
-      取整；``ToolCallBlock`` 计 ``name`` 与 ``args`` JSON 序列化后的
-      字符启发式之和；``StructBlock`` 计
-      ``json.dumps(ensure_ascii=False)`` 结果的字符启发式；``MediaBlock``
-      族固定 ``MEDIA_TOKEN_ESTIMATE``，不读 base64 ``data``。
+    - 逐块规则：对 ``content`` 逐块调用 :func:`estimate_block_tokens`
+      求和（规则细节以该函数为单一来源）。
     - 不计入：消息元数据（``id`` / ``source`` / ``tags`` 等）不进 LLM
       上下文，不参与估算。
-    - 边缘情况：空 ``content`` 返回 0；未知块类型按「无文本内容」计 0。
+    - 边缘情况：空 ``content`` 返回 0。
 
     .. seealso::
        :data:`MEDIA_TOKEN_ESTIMATE`、
+       :func:`estimate_block_tokens`、
        :meth:`flowing.agent.Agent.estimate_context_tokens`。
     """
-    total = 0
-    for block in msg.content:
-        if isinstance(block, MediaBlock):
-            # 媒体固定估算，不读 base64 data（token 成本由 provider 按规格定档）
-            total += MEDIA_TOKEN_ESTIMATE
-        elif isinstance(block, TextBlock):
-            total += _text_tokens(block.text)
-        elif isinstance(block, ThinkingBlock):
-            total += _text_tokens(block.thinking)
-        elif isinstance(block, ToolCallBlock):
-            total += _text_tokens(block.name)
-            total += _text_tokens(json.dumps(block.args, ensure_ascii=False))
-        elif isinstance(block, StructBlock):
-            total += _text_tokens(json.dumps(block.data, ensure_ascii=False))
-        # 未知块类型按「无文本内容」计 0
-    return total
+    return sum(estimate_block_tokens(block) for block in msg.content)
 
 
 def _text_tokens(text: str) -> int:
