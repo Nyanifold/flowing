@@ -118,6 +118,47 @@ async def test_trigger_before_request_full_sequence(tmp_path):
         await agent.destroy()
 
 
+async def test_custom_compact_template(tmp_path):
+    """compact_template 开发者定义优先（类属性 Parsable）：压缩消息按自定义
+    模板拼装；模板经 self 读实例状态。"""
+    from flowing.parsable import Parsable
+
+    class CustomTmplAgent(AutoCompactAgent):
+        compact_template = Parsable(
+            "COMPACTED\n## Compaction summary\n{{ summary }}"
+            "{% if self.todos %}\n\n## Task list\n{{ self.todos }}{% endif %}")
+        auto_kwargs: ClassVar[dict[str, Any]] = {
+            "head_tokens": 350, "tail_tokens": 400}
+
+        async def setup(self, **kwargs: Any) -> None:
+            self.todos = "[ ] 改代码"
+            await super().setup(**kwargs)
+
+    runtime, provider = make_composables_harness(tmp_path,
+                                                 agent_cls=CustomTmplAgent)
+    agent = await runtime.create_agent(
+        "test-agent",
+        model=ModelConfig(model="fake-model", provider="fake",
+                          context_window=WINDOW, max_output_tokens=100))
+    try:
+        _push_user(agent, "原始指令" * 75)
+        _push_provider(agent, "旧回复一" * 75)
+        _push_user(agent, "中段指令" * 75)
+        _push_provider(agent, "旧回复二" * 75)
+        script_provider(provider, text_response("SUMMARY"),
+                        text_response("final"))
+        r = await agent.query("继续做")
+        assert r.status == "completed"
+        [compacted] = _compacted(agent)
+        text = compacted.content[0].text
+        assert text.startswith("COMPACTED")         # 自定义模板，非缺省格式
+        assert "## Compaction summary\nSUMMARY" in text
+        assert "\n\n## Task list\n[ ] 改代码" in text   # 模板经 self 读状态
+        assert "following are compacted:" not in text
+    finally:
+        await agent.destroy()
+
+
 async def test_prefix_suffix_cut_at_provider_boundary(tmp_path):
     """前缀/后缀切割点都在 PROVIDER 上边界：前缀共享原节点、新链无孤儿 TOOL。"""
     runtime, provider, agent = await _make(

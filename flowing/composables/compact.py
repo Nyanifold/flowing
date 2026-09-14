@@ -107,7 +107,8 @@ from flowing.message import (
 from flowing.parsable import Parsable
 from flowing.providers import ProviderResponse
 
-__all__ = ["use_compact", "use_auto_compact", "DEFAULT_COMPACT_PROMPT"]
+__all__ = ["use_compact", "use_auto_compact", "DEFAULT_COMPACT_PROMPT",
+           "DEFAULT_COMPACT_TEMPLATE"]
 
 DEFAULT_COMPACT_PROMPT: str = (
     "You are about to run out of context. Compress the conversation above into a "
@@ -125,6 +126,27 @@ DEFAULT_COMPACT_PROMPT: str = (
 行为边界：仅在 Agent 上尚无 ``compact_prompt`` 属性时由 ``use_compact``
 绑定为实例属性（开发者已定义的优先，不覆盖）；这是策略的一部分，随
 ``use_compact`` 整体可被替换。
+"""
+
+DEFAULT_COMPACT_TEMPLATE: str = (
+    "following are compacted:\n\n"
+    "{% if user_instructions %}## User instructions\n"
+    "{{ user_instructions }}\n\n{% endif %}"
+    "## Compaction summary\n{{ summary }}"
+)
+"""压缩消息的拼装模板（``compact_template`` 的缺省值，仅 ``use_auto_compact`` 用）。
+
+``use_auto_compact`` 把压缩产物拼装为一条 SYSTEM 消息挂树时，经
+``agent.compact_template``（Parsable）现场渲染。模板上下文：
+``user_instructions``（中段用户指令汇编，``---`` 分隔的字符串，无中段
+用户指令时为 ``None``）、``summary``（``side_query`` 产出的交接摘要）、
+``self`` / ``agent``（当前 Agent——模板可经 ``{{ self.xxx }}`` 读取
+状态袋等实例状态，如附加任务清单）。
+
+行为边界：仅在 Agent 上尚无 ``compact_template`` 属性时由
+``use_auto_compact`` 绑定为实例属性（开发者已定义的优先，不覆盖）；
+渲染以 Mapping 为上下文基底（见 :meth:`flowing.parsable.Parsable.resolve`），
+模板引用未定义变量按 Jinja2 默认行为渲染为空。
 """
 
 
@@ -334,9 +356,13 @@ def use_auto_compact(
       之前，上一轮的工具配对均已闭合挂树。
     - 中段处理：前后缀之间从前数累计 ≤ ``user_instruction_tokens`` 的
       USER 消息，紧凑格式化（一个小标题 + 各条 ``---`` 分隔），与
-      ``side_query`` 产出的交接摘要合并为一条 ``SYSTEM`` 消息
-      （``source="auto_compact"``），经 ``chain.branch`` 挂到前缀末条
-      之下。内置 prompt 与格式化文本一律英文。
+      ``side_query`` 产出的交接摘要一起经 ``agent.compact_template``
+      （Parsable，缺省 :data:`DEFAULT_COMPACT_TEMPLATE`，开发者已定义
+      优先——与 ``compact_prompt`` 同律）现场渲染为一条 ``SYSTEM``
+      消息（``source="auto_compact"``），经 ``chain.branch`` 挂到前缀
+      末条之下。模板上下文：``user_instructions`` / ``summary`` /
+      ``self``（当前 Agent，模板可读状态袋等实例状态）。内置 prompt
+      与模板文本一律英文。
     - 后缀拼接：逐条 ``copy.deepcopy`` 后置 ``id=None`` /
       ``parent_id=None``，链式 ``branch`` 拼接（挂树自动铸新 id，与旧
       节点无冲突）；旧链物理完整保留（append-only）。
@@ -385,9 +411,11 @@ def use_auto_compact(
     # 声明压缩观测/拦截钩子点（与 use_compact 共用；同名同 by 幂等）
     agent.hooks.declare("on_compact", by="compact")
 
-    # compact_prompt 缺省绑定（开发者已定义优先）
+    # compact_prompt / compact_template 缺省绑定（开发者已定义优先）
     if not hasattr(agent, "compact_prompt"):
         agent.compact_prompt = Parsable(DEFAULT_COMPACT_PROMPT)
+    if not hasattr(agent, "compact_template"):
+        agent.compact_template = Parsable(DEFAULT_COMPACT_TEMPLATE)
 
     def _cut_prefix(chain: list[Message], budget: int) -> int:
         """最长前缀的右开边界：累计 ≤ budget，且切割点落在 PROVIDER 上边界。"""
@@ -464,16 +492,19 @@ def use_auto_compact(
             used += cost
             user_parts.append("".join(
                 b.text for b in msg.content if isinstance(b, TextBlock)))
-        sections = ["following are compacted:"]
-        if user_parts:
-            sections.append("## User instructions\n" + "\n---\n".join(user_parts))
-        sections.append("## Compaction summary\n" + summary)
+        # 压缩消息内容：经 compact_template 现场渲染（Mapping 上下文基底）
+        compacted_text = agent.compact_template.resolve({
+            "self": agent, "agent": agent,
+            "user_instructions": ("\n---\n".join(user_parts)
+                                  if user_parts else None),
+            "summary": summary,
+        })
 
         # 从前缀末条开分支（空前缀 → 新根）；旧链物理完整保留
         parent_id = chain[cut - 1].id if cut > 0 else None
         cursor = agent.chain.branch(parent_id, Message(
             kind=MessageKind.SYSTEM,
-            content=[TextBlock(text="\n\n".join(sections))],
+            content=[TextBlock(text=compacted_text)],
             source="auto_compact"))
         # 后缀逐条深拷贝拼接（id/parent_id 置 None，挂树铸新 id）
         for msg in chain[start:]:
