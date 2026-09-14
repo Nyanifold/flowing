@@ -93,8 +93,8 @@ def _install_readline():
 
 SLASH_COMMANDS: tuple[str, ...] = (
     "/help", "/exit", "/quit", "/agent", "/agents", "/new", "/snapshot",
-    "/messages", "/model", "/status", "/tasks", "/export", "/rewind",
-    "/cancel", "/pause", "/resume",
+    "/messages", "/model", "/context", "/status", "/tasks", "/export",
+    "/rewind", "/cancel", "/pause", "/resume",
 )
 """repl 内 slash-command 的封闭集合：以 ``/`` 开头的输入是控制命令，
 不是发给 LLM 的消息。固定集合保证默认 repl 这个冷启动观察窗口的
@@ -114,9 +114,9 @@ SLASH_COMMANDS: tuple[str, ...] = (
   最后修改时间；数据源与懒读规则见 :func:`cmd_repl`）。
 - ``/agent <id>``：切换绑定目标（未激活 id 经
   :meth:`flowing.runtime.Runtime.get_agent` 现场恢复；未知 id 提示，
-  绑定不变）。其余命令（``messages`` / ``model`` / ``status`` /
-  ``tasks`` / ``export`` / ``rewind`` / ``cancel`` / ``pause`` /
-  ``resume``）经 ``slash_lines`` 执行，语义见
+  绑定不变）。其余命令（``messages`` / ``model`` / ``context`` /
+  ``status`` / ``tasks`` / ``export`` / ``rewind`` / ``cancel`` /
+  ``pause`` / ``resume``）经 ``slash_lines`` 执行，语义见
   :mod:`flowing.interfaces.controls`。
 
 未识别的 ``/xxx`` 输入：打印「未知命令，/help 查看可用命令」，
@@ -134,6 +134,7 @@ _HELP_LINES: tuple[str, ...] = (
     "/snapshot            print a read-only snapshot of the current Runtime",
     "/messages            print the bound Agent's message chain (current head up)",
     "/model [tag]         show or switch the bound Agent's model_tag",
+    "/context [v]         show context window usage estimate (v = per-part breakdown)",
     "/status              print a status rollup of the bound Agent",
     "/tasks [cancel <id>] list background tasks / cancel one",
     "/export [format]     export the bound Agent's message chain (md default)",

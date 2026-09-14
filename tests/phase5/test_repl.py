@@ -33,8 +33,8 @@ def test_slash_commands_closed_set():
     """v3 slash-command 封闭集：含新命令组、不含 /use(已更名 /agent) 与
     /abort /enqueue /steer。"""
     expected = ("/help", "/exit", "/quit", "/agent", "/agents", "/new",
-                "/snapshot", "/messages", "/model", "/status", "/tasks",
-                "/export", "/rewind", "/cancel", "/pause", "/resume")
+                "/snapshot", "/messages", "/model", "/context", "/status",
+                "/tasks", "/export", "/rewind", "/cancel", "/pause", "/resume")
     assert SLASH_COMMANDS == expected
     assert "/use" not in SLASH_COMMANDS
     assert not {"abort", "enqueue", "steer"} & {c.lstrip("/") for c in SLASH_COMMANDS}
@@ -288,6 +288,24 @@ async def test_v3_new_commands(project_ok, persist_dir, monkeypatch, capsys):
     assert "alpha-reply" in out               # 回合回复（流式）与 /export md 均含
     assert "/agent <agent_id>" in out         # /help 列出新命令
     assert "/use" not in out.splitlines()[0] if out else True   # /help 不列 /use
+
+
+async def test_context_command(project_ok, persist_dir, monkeypatch, capsys):
+    """/context：窗口 / 估计占用 / 使用率三要素；/context v 追加分类占比
+    （system prompt、tools、各 MessageKind×block type）并重归一化到总体。"""
+    spy_launch(monkeypatch, repl_mod)
+    drive_input(monkeypatch, ["你好", "/context", "/context v", "/exit"])
+    rc = await cmd_repl(str(project_ok), persist=str(persist_dir))
+    assert rc == EXIT_OK
+    out = capsys.readouterr().out
+    assert "context_window=100000" in out    # 窗口大小（fixture models.yaml）
+    assert "tokens=" in out and "usage=" in out   # 估计占用与使用率
+    assert "measured=" in out and "anchor=" in out
+    assert "system prompt" in out            # verbose 分类：system prompt
+    assert "user/TextBlock" in out           # verbose 分类：MessageKind × block type
+    assert "provider/TextBlock" in out
+    assert "normalized to tokens=" in out    # 重归一化注脚
+    assert "(%)" in out or "%)" in out       # 占比百分比
 
 
 async def test_sigint_aborts_active_turn_not_session():

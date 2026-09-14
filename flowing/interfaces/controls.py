@@ -11,8 +11,8 @@ repl 输入框与 web 输入框都以 ``/cmd [arg]`` 形式接受控制命令。
 
 命令按目标分为两类：
 - **runtime 级**（不需 agent）：``help / agents / snapshot``；
-- **agent 级**（作用于给定 agent）：``messages / model / status / tasks /
-  export / rewind / cancel / pause / resume``。
+- **agent 级**（作用于给定 agent）：``messages / model / context / status /
+  tasks / export / rewind / cancel / pause / resume``。
 
 约定：本目录只含「作用于显式目标并返回文本」的命令；前台绑定切换（``agent``/
 ``new``）与进程退出（``exit / quit``）是交互壳自身行为，不在此列。
@@ -27,9 +27,9 @@ from __future__ import annotations
 
 import time
 
-from flowing.agent import Agent
+from flowing.agent import Agent, _estimate_tool_schema_tokens
 from flowing.interfaces import _default_agent_type, _list_agent_records
-from flowing.message import Message, TextBlock
+from flowing.message import Message, TextBlock, _text_tokens, estimate_message_tokens
 from flowing.runtime import Runtime
 
 
@@ -42,6 +42,7 @@ HELP_LINES: tuple[str, ...] = (
     "/snapshot            print a read-only snapshot of the current Runtime",
     "/messages            print the bound Agent's message chain (current head up)",
     "/model [tag]         show or switch the bound Agent's model_tag",
+    "/context [v]         show context window usage estimate (v = per-part breakdown)",
     "/status              print a status rollup of the bound Agent",
     "/tasks [cancel <id>] list background tasks / cancel one",
     "/export [format]     export the bound Agent's message chain (md default)",
@@ -113,6 +114,48 @@ async def slash_lines(cmd: str, arg: str, agent: Agent | None,
             return [f"model_tag -> {arg}"]
         except Exception as exc:
             return [f"failed to set model_tag: {exc}"]
+
+    if name == "context":
+        if arg and arg not in ("v", "verbose"):
+            return ["usage: /context [v|verbose]"]
+        est = agent.estimate_context_tokens()
+        ratio = est.usage_ratio
+        lines = [
+            f"context_window={est.context_window if est.context_window is not None else '?'}  "
+            f"tokens={est.tokens}  "
+            f"usage={f'{ratio:.1%}' if ratio is not None else 'n/a'}",
+            f"measured={est.measured}  estimated={est.estimated}  "
+            f"anchor={est.anchor_message_id}",
+        ]
+        if arg not in ("v", "verbose"):
+            return lines
+        # verbose：分类独立估算——每段 system prompt / 每个启用工具 schema /
+        # 每条消息的每个 block 都走本地启发式（不吃锚点实测，故分类和 ≠
+        # 总体估计是常态）；算比例后重归一化到 est.tokens 展示
+        parts: dict[str, int] = {}
+        sys_tokens = sum(_text_tokens(str(block.content.resolve(agent)))
+                         for block in agent.prompt_blocks)
+        if sys_tokens:
+            parts["system prompt"] = sys_tokens
+        tool_tokens = sum(
+            _estimate_tool_schema_tokens(entry.llm_definition(runtime, agent))
+            for entry in agent._tool_entries.values() if entry.enabled)
+        if tool_tokens:
+            parts["tools"] = tool_tokens
+        for m in reversed(list(agent.chain.walk(agent.current_head_id))):
+            for block in m.content:
+                key = f"{m.kind.value}/{type(block).__name__}"
+                # 单块临时 Message 喂 estimate_message_tokens：逐块口径与
+                # 总体估算的逐条规则保持同一来源，不复制规则
+                parts[key] = (parts.get(key, 0) + estimate_message_tokens(
+                    Message(kind=m.kind, content=[block])))
+        raw = sum(parts.values())
+        for label, n in parts.items():
+            share = n / raw if raw else 0.0
+            lines.append(
+                f"{label:<26} {round(share * est.tokens):>8}  ({share:.1%})")
+        lines.append(f"breakdown raw={raw}  normalized to tokens={est.tokens}")
+        return lines
 
     if name == "status":
         return [f"agent_id={agent.node_id}",
