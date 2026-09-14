@@ -2225,6 +2225,41 @@ class Agent:
                 f"model tag {tag!r} points to model entry {entry_name!r} which is not in the models table")
         return config
 
+    async def _race_cancel(
+        self, awaitable: Awaitable[Any], execution: Execution
+    ) -> tuple[bool, Any]:
+        """Provider 在途调用与取消信号的竞速：``(False, 结果)`` / ``(True, None)``。
+
+        把 ``awaitable`` 包成 Task，与 ``_turn_abort`` / ``execution.cancel``
+        两个信号的等待 Task 做 FIRST_COMPLETED 竞速：调用先完成 →
+        ``(False, result)`` （调用异常经 ``task.result()`` 原样上抛，含
+        ``StopAsyncIteration``——「不捕获任何异常」契约不受影响）；信号先
+        置位 → ``cancel()`` 在途 Task（``CancelledError`` 注入 adapter 的
+        HTTP await 点，adapter 不捕获、原样透传），suppress 收尾后返回
+        ``(True, None)``，由调用方合成 cancelled 响应（cancel 是正常终止
+        不是错误）。竞速本身被外部取消（如 ``destroy()`` 的
+        ``task.cancel()``）时，在途 Task 一并 cancel，不泄漏。
+        """
+        call_task = asyncio.ensure_future(awaitable)
+        signal_waits = [asyncio.ensure_future(self._turn_abort.wait()),
+                        asyncio.ensure_future(execution.cancel.wait())]
+        try:
+            done, _pending = await asyncio.wait(
+                {call_task, *signal_waits}, return_when=asyncio.FIRST_COMPLETED)
+            if call_task in done:
+                return False, call_task.result()   # 调用异常原样上抛（不捕获契约）
+            call_task.cancel()   # 信号先赢：CancelledError 注入在途调用的 await 点
+            with contextlib.suppress(asyncio.CancelledError):
+                await call_task
+            return True, None
+        finally:
+            for wait_task in signal_waits:
+                wait_task.cancel()
+            if not call_task.done():
+                call_task.cancel()   # 竞速被外部取消：在途调用一并取消，不泄漏
+                with contextlib.suppress(asyncio.CancelledError):
+                    await call_task   # 等其收尾：async generator 脱离 running 态（调用方 aclose 的前提）
+
     async def provider_gen(
         self, context: Context, *, stream: bool = True, by: str | None = None
     ) -> ProviderResponse:
@@ -2237,7 +2272,8 @@ class Agent:
         不抛异常）→ ``self.model.resolve(self)`` 字段级惰性求值 → provider
         懒获取（``provider_registry.get(model.provider)``）→ dispatch
         ``before_provider_gen`` （可改写完整 ``Context``）→ Provider 调用
-        （注册 ``Execution(kind="request")``）→ dispatch
+        （注册 ``Execution(kind="request")``；在途期间与取消信号竞速，
+        可被 ``cancel()`` / ``abort_turn()`` 当场中断）→ dispatch
         ``after_provider_gen`` （可改写 ``ProviderResponse``）→ 返回。
 
         .. rubric:: 使用示例
@@ -2256,7 +2292,8 @@ class Agent:
           ``after_provider_gen`` 改整条消息；delta 本身不落盘）；
           ``stream=False``：非流式一次性请求，拿到完整响应后合成一条
           全量 delta 同样 dispatch——两种路径的 delta 数据格式完全一致，
-          订阅者永远可以依赖「每次 ``provider_gen`` 至少一条 delta」。
+          订阅者永远可以依赖「每次正常完成的 ``provider_gen`` 至少一条
+          delta」（在途被取消的调用除外：无任何 delta、``message=None``）。
         - ``by``：来源标记，透写到每条 ``ProviderDelta`` 与返回的
           ``ProviderResponse`` （adapter 不填，由本方法盖写）。主 Turn
           内层循环传 ``"_turn"``，``side_query`` 传 ``"_side"``；下划线
@@ -2266,15 +2303,21 @@ class Agent:
           ``by``），handler 可按来源模式过滤注册。
         - 流式中断（abort）：已累积内容保留为 ``partial=True`` 的消息
           随响应返回（保留落盘），``cancelled=True``；取消点起不再
-          dispatch delta。
+          dispatch delta；底层流立即 ``aclose()``（HTTP 连接不滞留）。
+          取消检测点 = 每个 delta 之间 + 等待下一 delta 期间（竞速），
+          停滞的流同样可中断。
         - 不捕获任何异常：Provider 异常分类（``RateLimitedError`` /
           ``ContextLengthError`` 等）原样上抛给回合层（统一经
           ``on_provider_error`` 分发）。
         - 不重试、不缓存、不聚合用量——回合级聚合是回合执行体的职责；
           本方法只保证响应消息上附着的 ``message.usage`` 原样抵达
           ``after_provider_gen`` 钩子与调用方。
-        - 边缘情况：abort 于 Provider 调用期间——adapter 检测信号返回空
-          响应而非抛异常（cancel 是正常终止不是错误）。
+        - 边缘情况：取消信号于 Provider 调用在途期间置位——
+          :meth:`_race_cancel` 竞速 cancel 在途调用（``CancelledError``
+          注入 adapter 的 HTTP await 点，adapter 不捕获、原样透传），
+          非流式返回 ``ProviderResponse(message=None, finish=False,
+          cancelled=True)`` 而非抛异常（cancel 是正常终止不是错误）；
+          流式按上条的中断规则收尾。
 
         .. seealso::
 
@@ -2294,20 +2337,29 @@ class Agent:
         self._executions[execution.id] = execution   # 注册，finally 清理
         try:
             if not stream:
-                # 非流式：一次性请求；拿到完整响应后合成一条全量 delta 同样
+                # 非流式：一次性请求（经 _race_cancel 与取消信号竞速，在途
+                # 可取消）；拿到完整响应后合成一条全量 delta 同样
                 # dispatch（两种路径 delta 数据格式一致，订阅者永远能依赖
-                # 「每次 provider_gen 至少一条 delta」）
-                response = await provider.generate(context, model)
-                if response.message is not None:
-                    if response.message.id is None:
-                        response.message.id = self._next_message_id()   # 铸造先于 delta dispatch（观察者按 id 归组）
-                    full_text = "".join(
-                        b.text for b in response.message.content
-                        if isinstance(b, TextBlock))
-                    await self.hooks.on_provider_delta.dispatch(
-                        self, ProviderDelta(kind="text", text=full_text,
-                                            content_index=0, by=by,
-                                            message_id=response.message.id))
+                # 「每次 provider_gen 至少一条 delta」——在途被取消的调用
+                # 除外：无任何 delta、message=None）
+                cancelled, result = await self._race_cancel(
+                    provider.generate(context, model), execution)
+                if cancelled:
+                    # cancel 是正常终止不是错误（与预检 abort 同一响应形态）
+                    response = ProviderResponse(message=None, finish=False,
+                                                cancelled=True)
+                else:
+                    response = result
+                    if response.message is not None:
+                        if response.message.id is None:
+                            response.message.id = self._next_message_id()   # 铸造先于 delta dispatch（观察者按 id 归组）
+                        full_text = "".join(
+                            b.text for b in response.message.content
+                            if isinstance(b, TextBlock))
+                        await self.hooks.on_provider_delta.dispatch(
+                            self, ProviderDelta(kind="text", text=full_text,
+                                                content_index=0, by=by,
+                                                message_id=response.message.id))
             else:
                 # 流式：list[ContentBlock] 累积器按
                 # content_index 归位——text/thinking delta 逐段拼接进对应块；
@@ -2320,36 +2372,50 @@ class Agent:
                 final_provider_data: dict[str, Any] = {}
                 interrupted = False
                 resp_id = self._next_message_id()   # agent 预铸本 assistant 消息 id：先于流式，逐 delta 携带
-                async for delta in provider.generate_stream(context, model):
-                    # 取消点起不再 dispatch delta（abort/cancel 均为协作式信号）
-                    if self._turn_abort.is_set() or execution.cancel.is_set():
-                        interrupted = True
-                        break
-                    delta.by = by   # 来源标记盖写（adapter 不填、无法伪造）
-                    delta.message_id = resp_id   # agent 盖写（adapter 不填），观察者实时归组依据
-                    if delta.block is not None:
-                        accumulated[delta.content_index] = delta.block
-                    elif delta.kind == "thinking":
-                        existing = accumulated.get(delta.content_index)
-                        if isinstance(existing, ThinkingBlock):
-                            thinking = existing.thinking + delta.text
-                            # 首见签名保留（Anthropic 多轮回放必需）；后续片段不覆盖
-                            sig = existing.signature or delta.signature
-                        else:
-                            thinking = delta.text
-                            sig = delta.signature
-                        accumulated[delta.content_index] = ThinkingBlock(
-                            thinking=thinking, signature=sig)
-                    elif delta.text or delta.content_index in accumulated:
-                        existing = accumulated.get(delta.content_index)
-                        text = ((existing.text if isinstance(existing, TextBlock) else "")
-                                + delta.text)
-                        accumulated[delta.content_index] = TextBlock(text=text)
-                    if delta.usage is not None:
-                        final_usage = delta.usage   # 仅末帧携带
-                    if delta.provider_data is not None:
-                        final_provider_data = delta.provider_data   # 仅末帧携带
-                    await self.hooks.on_provider_delta.dispatch(self, delta)   # 纯观察，返回值丢弃不回写
+                agen = provider.generate_stream(context, model)
+                try:
+                    while True:
+                        try:
+                            cancelled, delta = await self._race_cancel(
+                                agen.__anext__(), execution)   # 等待下一 delta 期间同样竞速取消（停滞流可中断）
+                        except StopAsyncIteration:
+                            break   # 流自然耗尽
+                        if cancelled:
+                            interrupted = True
+                            break
+                        # 取消点起不再 dispatch delta（abort/cancel 均为协作式信号）
+                        if self._turn_abort.is_set() or execution.cancel.is_set():
+                            interrupted = True
+                            break
+                        delta.by = by   # 来源标记盖写（adapter 不填、无法伪造）
+                        delta.message_id = resp_id   # agent 盖写（adapter 不填），观察者实时归组依据
+                        if delta.block is not None:
+                            accumulated[delta.content_index] = delta.block
+                        elif delta.kind == "thinking":
+                            existing = accumulated.get(delta.content_index)
+                            if isinstance(existing, ThinkingBlock):
+                                thinking = existing.thinking + delta.text
+                                # 首见签名保留（Anthropic 多轮回放必需）；后续片段不覆盖
+                                sig = existing.signature or delta.signature
+                            else:
+                                thinking = delta.text
+                                sig = delta.signature
+                            accumulated[delta.content_index] = ThinkingBlock(
+                                thinking=thinking, signature=sig)
+                        elif delta.text or delta.content_index in accumulated:
+                            existing = accumulated.get(delta.content_index)
+                            text = ((existing.text if isinstance(existing, TextBlock) else "")
+                                    + delta.text)
+                            accumulated[delta.content_index] = TextBlock(text=text)
+                        if delta.usage is not None:
+                            final_usage = delta.usage   # 仅末帧携带
+                        if delta.provider_data is not None:
+                            final_provider_data = delta.provider_data   # 仅末帧携带
+                        await self.hooks.on_provider_delta.dispatch(self, delta)   # 纯观察，返回值丢弃不回写
+                finally:
+                    aclose = getattr(agen, "aclose", None)
+                    if aclose is not None:
+                        await aclose()   # 中断时立即关闭底层流（HTTP 连接不滞留）；自然耗尽时为 no-op
                 message = Message(
                     kind=MessageKind.PROVIDER,
                     content=[accumulated[i] for i in sorted(accumulated)],

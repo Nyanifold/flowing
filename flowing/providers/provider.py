@@ -554,9 +554,12 @@ class Provider(ABC):
           落盘）；provider 未返回用量时 ``message.usage`` 保持
           ``None``。``message`` 为 ``None`` （abort）时本次用量无载体、
           不留痕。
-        - abort 语义：调用期间检测到 abort（如 HTTP 会话被取消）时，
-          返回 ``ProviderResponse(message=None, finish=False, cancelled=True)``
-          而非抛异常——cancel 是正常终止。
+        - abort 语义：取消信号的检测在调用方
+          （``Agent.provider_gen()``）以竞速完成——在途调用被 cancel 时
+          ``asyncio.CancelledError`` 注入本方法的 await 点，adapter 不做
+          捕获、原样透传（``CancelledError`` 继承 ``BaseException``，
+          常规 ``except Exception`` 分类 catch 不会截获）；cancelled
+          响应由调用方合成——cancel 是正常终止。
         - 异常：底层错误必须归类为 :mod:`flowing.errors` 的明确类型
           上抛（分类表见包 docstring）；本方法不做兜底捕获、不重试。
         - 不读写消息树、不落盘、不触发钩子（钩子在 Agent 层）。
@@ -619,8 +622,11 @@ class Provider(ABC):
         .. rubric:: 行为要点
 
         - 覆写方职责：按到达顺序产出 delta；``content_index`` 单调不减；
-          abort 由 ``provider_gen()`` 在每个 delta 之间检查，adapter
-          无需自查（但能提前终止时应终止迭代）。
+          abort 由 ``provider_gen()`` 在每个 delta 之间检查、并在等待
+          下一 delta 期间竞速取消（在途 ``__anext__`` 被 cancel 时
+          ``CancelledError`` 注入生成器的 await 点，迭代终止时
+          ``provider_gen()`` 调用 ``aclose()``——两条路径都应让底层
+          HTTP 流随之关闭），adapter 无需自查信号。
         - 默认实现行为：等价于 ``generate()`` 成功后把消息文本包成一条
           ``ProviderDelta(kind="text", ...)`` 产出；结构化 block（无
           ``text`` 属性者）逐块补发 ``block`` delta。

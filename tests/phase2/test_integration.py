@@ -156,8 +156,7 @@ async def test_t125_full_chain(tmp_path):
 
     agent.hooks.after_tool_call(_pause_once)
     task4 = asyncio.create_task(agent.query("开始4"))
-    await _yield(8)
-    assert agent.paused
+    await _wait_until(lambda: agent.paused)
     frozen = len(provider.received)
     await _yield(3)
     assert len(provider.received) == frozen   # 调用计数冻结

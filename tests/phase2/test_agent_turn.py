@@ -4,7 +4,7 @@
 side_query 边界（T55–T57）、fork（T58–T60）、pause/resume/cancel 族
 （T61–T66）、②.5 urgent 吸收（T67–T69）、工具循环（T70–T72、T74–T79）、
 空 turn 边缘（T73）、上下文估算（T80–T82）、树手术 head 语义（T83）、
-钩子异常不楔死（T84）。
+钩子异常不楔死（T84）、provider_gen 在途取消竞速（T141–T143）。
 """
 
 from __future__ import annotations
@@ -119,6 +119,14 @@ async def _yield(n: int = 3) -> None:
         await asyncio.sleep(0)
 
 
+async def _wait_until(pred, timeout: float = 2.0) -> None:
+    deadline = asyncio.get_running_loop().time() + timeout
+    while not pred():
+        if asyncio.get_running_loop().time() > deadline:
+            raise AssertionError("等待条件超时")
+        await asyncio.sleep(0.01)
+
+
 # ---------------------------------------------------------------------------
 # T44 / T45：query 的等待语义
 # ---------------------------------------------------------------------------
@@ -221,7 +229,7 @@ async def test_t48_set_queued_priority(agent, provider):
     m2 = await agent.message("普通-后入")
     assert agent.set_queued_priority(m2, MessagePriority.HIGH) is True
     agent.resume()
-    await _yield(6)   # 等两回合跑完
+    await _wait_until(lambda: len(seen_texts) >= 2)   # 等两回合跑完
     assert seen_texts[:2] == ["普通-后入", "普通-先入"]   # 提升后先消费
     assert agent.set_queued_priority(m1, MessagePriority.LOW) is False   # 已出队
 
@@ -320,6 +328,81 @@ async def test_t54_stream_abort_partial_kept(agent, provider):
     assert msg.turn_end is True   # 取消关闭（S-14）
     await agent._tree_store.drain()
     assert '"partial": true' in (agent._session_dir / "tree.jsonl").read_text()   # 落盘保留
+
+
+# ---------------------------------------------------------------------------
+# T141–T143：provider_gen 在途取消竞速（cancel 信号取消进行中的 Provider 调用）
+# ---------------------------------------------------------------------------
+
+
+async def test_t141_nonstream_inflight_cancel(agent, provider):
+    """T141：非流式 generate 在途（永不返回）→ cancel() 竞速取消：provider_gen
+    及时返回 cancelled 响应（不等 HTTP 完成），在途调用被 CancelledError 注入。"""
+    started = asyncio.Event()
+    cancelled: list[bool] = []
+
+    async def _hang(context, model):
+        started.set()
+        try:
+            await asyncio.Event().wait()   # 永不置位：模拟停滞的在途请求
+        except asyncio.CancelledError:
+            cancelled.append(True)
+            raise
+
+    provider.generate_fn = _hang
+    context = agent._assemble_context()
+    gen = asyncio.create_task(agent.provider_gen(context, stream=False))
+    await started.wait()
+    await agent.cancel()
+    response = await asyncio.wait_for(gen, 2)
+    assert response.cancelled is True
+    assert response.message is None and response.finish is False
+    assert cancelled == [True]   # 在途调用被 cancel（CancelledError 注入 await 点）
+    assert agent._executions == {}   # Execution 注册 finally 清理不变量
+    agent._turn_abort.clear()   # 复原，避免影响 fixture 收尾
+
+
+async def test_t142_stream_stalled_inflight_cancel(agent, provider):
+    """T142：流式在途停滞（delta 后永不产出）→ cancel() 竞速取消：及时返回
+    partial=True + cancelled=True 响应（已累积内容保留），底层流被 aclose。"""
+    started = asyncio.Event()
+    closed: list[bool] = []
+
+    async def _stream(context, model):
+        try:
+            yield ProviderDelta(kind="text", text="已累积", content_index=0)
+            started.set()
+            await asyncio.Event().wait()   # 停滞：不再有 delta 到达
+        finally:
+            closed.append(True)   # anext 被 cancel / aclose 触发底层清理
+
+    provider.stream_fn = _stream
+    context = agent._assemble_context()
+    gen = asyncio.create_task(agent.provider_gen(context))   # 默认流式
+    await started.wait()
+    await agent.cancel()
+    response = await asyncio.wait_for(gen, 2)
+    assert response.cancelled is True
+    assert response.message is not None and response.message.partial is True
+    assert "".join(b.text for b in response.message.content) == "已累积"
+    assert closed == [True]   # 底层流被关闭（连接不滞留）
+    agent._turn_abort.clear()
+
+
+async def test_t143_side_query_inflight_cancel(agent, provider):
+    """T143：side_query 在途取消 → 及时返回空文本（非流式竞速覆盖副线）。"""
+    started = asyncio.Event()
+
+    async def _hang(context, model):
+        started.set()
+        await asyncio.Event().wait()   # 永不置位
+
+    provider.generate_fn = _hang
+    side = asyncio.create_task(agent.side_query("副线问题"))
+    await started.wait()
+    await agent.cancel()
+    assert await asyncio.wait_for(side, 2) == ""   # abort 时返回空文本，不抛异常
+    agent._turn_abort.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -498,8 +581,7 @@ async def test_t61_pause_in_tool_loop(runtime, provider):
 
     agent.hooks.after_tool_call(_pause_after_first)
     task = asyncio.create_task(agent.query("开始"))
-    await _yield(8)
-    assert agent.paused
+    await _wait_until(lambda: agent.paused)
     assert len(provider.received) == 1   # 挂在检查点 ②：provider 调用计数冻结
     agent.resume()
     result = await asyncio.wait_for(task, 2)
