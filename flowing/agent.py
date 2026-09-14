@@ -221,13 +221,15 @@ class _LlmViewValidationError(FlowingError):
 def _estimate_tool_schema_tokens(definition: ToolDefinition) -> int:
     """工具 schema 的 token 补估（内部 API，不属稳定契约）。
 
-    ``llm_definition()`` 产物的 JSON 序列化长度除以 4，与消息估算的
-    「4 字符 / token」口径一致；``estimate_context_tokens`` 的「锚点后
-    新增工具补估」与「无锚点全估」共用。
+    ``llm_definition()`` 产物的 JSON 序列化经
+    :func:`flowing.message._text_tokens` 估算（ASCII ÷ 4 + 非 ASCII × 1，
+    向上取整），与消息 / system prompt 估算同一字符启发式口径——中文
+    描述不再被统一除 4 系统性低估；``estimate_context_tokens`` 的
+    「锚点后新增工具补估」与「无锚点全估」共用。
     """
     from dataclasses import asdict
 
-    return len(json.dumps(asdict(definition), ensure_ascii=False)) // 4
+    return _text_tokens(json.dumps(asdict(definition), ensure_ascii=False))
 
 
 def _as_parsable_patch(value: Any) -> Parsable | None:
