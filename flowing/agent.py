@@ -23,7 +23,7 @@
 :class:`flowing.subagents.SubagentInvocation` /
 :class:`flowing.subagents.SubagentResult`）拆在
 :mod:`flowing.subagents`；持久化机制（``FileRecordStore`` write-behind
-落盘）在 :mod:`flowing.persistence`；27 个核心钩子点的触发时机 / value
+落盘）在 :mod:`flowing.persistence`；23 个核心钩子点的触发时机 / value
 类型 / handler 能力见 :mod:`flowing.hooks` 模块 docstring 的全集表。
 
 本模块遵循「框架只提供机制，不提供策略」：核心只做错误分类、钩子点
