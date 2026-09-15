@@ -18,7 +18,7 @@
 - :class:`flowing.persistence.StateView` —— 持久化状态袋视图（声明经
   ``Agent.register_state``、读写统一经 ``Agent.state``）。
 
-子 Agent 绑定的三正交条目与唤起 / 结果结构
+子 Agent 绑定条目（三层能力描述的绑定层）与唤起 / 结果结构
 （:class:`flowing.subagents.SubagentEntry` /
 :class:`flowing.subagents.SubagentInvocation` /
 :class:`flowing.subagents.SubagentResult`）拆在
@@ -1037,7 +1037,7 @@ class Agent:
     - 不变量：``self.model`` 永远是 ``ModelConfig``；Agent 对模型结构体
       只做持有与机械传递，不解释字段。
     - 不变量：创建即注册（``_nodes``）；亲节点销毁 → 子递归销毁；destroy
-      后实例不再可用（从 ``_nodes`` 摘除、三正交结构均清空），但 session
+      后实例不再可用（从 ``_nodes`` 摘除、三层能力描述结构均清空），但 session
       记录保留、可现场恢复。
 
     .. seealso::

@@ -1,6 +1,6 @@
 """``flowing.tool.core`` —— Tool 基类与调用四件：``ToolCall`` / ``ToolResult`` / ``ToolDefinition`` / ``ToolEntry``。
 
-能力三正交的 Tool 维度核心：可执行对象（:class:`Tool` 基类）、LLM 可见
+三层能力描述的 Tool 形态核心：可执行对象（:class:`Tool` 基类）、LLM 可见
 声明（:class:`ToolDefinition`）、Agent 级绑定（:class:`ToolEntry`）、
 调用与结果（:class:`ToolCall` / :class:`ToolResult`，状态四值见
 :data:`ToolStatus`、类型判别值 :data:`ToolType`）。另承载子系统共享的
@@ -453,7 +453,7 @@ class ToolDefinition:
 
     .. rubric:: 功能介绍
 
-    三正交中的「LLM 可见声明」层：字段为 ``name`` / ``description`` /
+    三层能力描述中的「LLM 可见声明」层：字段为 ``name`` / ``description`` /
     ``params_schema`` / ``output_schema`` / ``strict``。它出现在
     ``Context.tools`` 中，是 Provider adapter 组装各家 function-calling
     schema 的唯一来源（adapter 为白名单语义——只取 ``name`` /
@@ -650,7 +650,7 @@ def _apply_param_aliases(
 
 @dataclass
 class ToolEntry:
-    """Agent 对工具的一次「用法声明」——三正交中的 Agent 级绑定层。
+    """Agent 对工具的一次「用法声明」——三层能力描述中的 Agent 级绑定层。
 
     .. rubric:: 功能介绍
 
@@ -864,7 +864,7 @@ class ToolEntry:
 
 
 class Tool:
-    """可执行对象基类——三正交中的「执行」层。
+    """可执行对象基类——三层能力描述中的「执行」层。
 
     .. rubric:: 功能介绍
 

@@ -79,7 +79,7 @@ class Skill:
 
     .. rubric:: 功能介绍
 
-    能力三正交中 Skill 的「可执行对象」层：:class:`SkillRegistry` 把
+    三层能力描述中 Skill 的「可执行对象」层：:class:`SkillRegistry` 把
     三种定义形式（``.md`` / ``.skill.fya`` / 目录，见模块 docstring
     「Skill 定义文件与查找规则」）统一解析为本类的实例。框架核心不
     认识本类——它由 ``SkillPlugin`` 定义与消费。所有 Skill 同一个类，
@@ -266,7 +266,7 @@ class Skill:
 
 @dataclass
 class SkillEntry:
-    """Skill 的 Agent 级绑定——能力三正交中的「绑定」层。
+    """Skill 的 Agent 级绑定——三层能力描述中的「绑定」层。
 
     .. rubric:: 功能介绍
 

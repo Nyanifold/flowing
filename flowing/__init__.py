@@ -16,7 +16,7 @@ Flowing 的核心立场是「框架只提供机制，不提供策略」。包结
 
 运行模型锚点：消息级树（``Message.id`` + ``parent_id`` 链，
 ``current_head_id`` 指向消息 id）；Turn 仅为逻辑执行阶段（执行期载体
-:class:`flowing.agent.TurnContext`，不落盘、不进树）；能力三正交
+:class:`flowing.agent.TurnContext`，不落盘、不进树）；三层能力描述
 （可执行对象 / LLM 可见声明 / Agent 级绑定，推广到 Tool / 子 Agent /
 Skill）；provide-inject 沿 ``_parent_id`` 链上溯；实例级钩子系统。
 

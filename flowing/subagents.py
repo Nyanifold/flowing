@@ -5,7 +5,7 @@
 本模块承载子智能体（子 Agent）子系统的绑定与结果类型：
 
 - :class:`SubagentEntry` —— Agent 对子 Agent 类型的一次「用法声明」，
-  能力三正交（可执行对象 / LLM 可见声明 / Agent 级绑定三个维度）的
+  三层能力描述（可执行对象 / LLM 可见声明 / Agent 级绑定三层）的
   Agent 级绑定层（与 :class:`flowing.tool.ToolEntry` 同构）：LLM 看到
   的别名与描述、参数覆写 / 指定值 / 注入。
 - :class:`SubagentInvocation` —— ``on_subagent_invoke`` /
@@ -190,7 +190,7 @@ class SubagentInvocation:
 
 @dataclass
 class SubagentEntry:
-    """Agent 对子 Agent 类型的一次「用法声明」——能力三正交的 Agent 级绑定层。
+    """Agent 对子 Agent 类型的一次「用法声明」——三层能力描述的 Agent 级绑定层。
 
     .. rubric:: 功能介绍
 

@@ -929,7 +929,7 @@ class EntryNameConflictError(FlowingError):
 
     .. rubric:: 功能介绍
 
-    能力三正交的 Agent 级绑定层（tool / skill / subagent 条目，key 均为别名）
+    三层能力描述的 Agent 级绑定层（tool / skill / subagent 条目，key 均为别名）
     中，同一 Agent 内同 alias 重复声明或添加时抛出。覆盖两条入口：声明式
     （``.fya`` 的 ``tools:`` / ``skills:`` / ``subagents:`` 列表出现两条同
     alias 条目）与编程式（``Agent.add_tool()`` 等）。同一生命周期内重复永远

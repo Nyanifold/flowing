@@ -245,7 +245,7 @@ class EntryInfo:
     .. rubric:: 功能介绍
 
     ``AgentSnapshot.tool_entries`` 与 ``AgentSnapshot.subagent_entries``
-    的元素类型：能力三正交中「Agent 级绑定」层的投影——同一个可执行对象在
+    的元素类型：三层能力描述中「Agent 级绑定」层的投影——同一个可执行对象在
     不同 Agent 上可经 entry 覆写别名与启用状态，快照呈现的是本 Agent 上的
     绑定结果，而非全局注册表。
 

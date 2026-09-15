@@ -1,4 +1,4 @@
-"""``flowing.tool`` —— 工具子系统：能力三正交中的 Tool 维度。
+"""``flowing.tool`` —— 工具子系统：三层能力描述的 Tool 形态。
 
 .. rubric:: 功能介绍
 
@@ -18,7 +18,7 @@ re-export）。
 框架自带的出厂内置工具（核心 ``SubagentInvokeTool`` 与标准件
 ``FinishTool`` 等）定义在 :mod:`flowing.builtins`，不在本模块。
 
-能力三正交（Tool / 子 Agent / Skill 共享同一模式，三个维度各自独立
+三层能力描述（Tool / 子 Agent / Skill 共享同一模式，三层各自独立
 演化、互不侵入）：
 
 .. list-table::

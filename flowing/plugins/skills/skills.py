@@ -380,7 +380,7 @@ class SkillLoadTool(Tool):
 
     .. rubric:: 功能介绍
 
-    能力三正交中 Skill 的「LLM 可见声明」执行侧：LLM 从
+    三层能力描述中 Skill 的「LLM 可见声明」执行侧：LLM 从
     ``<available_skills>`` catalog 选择技能后调用本工具，工具按名
     透传给 ``caller.skill_load()``。工具级 schema 只声明 ``name``
     ——LLM 不给 skill 传参，保证 LLM 入口与代码入口行为完全一致。
