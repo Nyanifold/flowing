@@ -3,13 +3,13 @@
 .. rubric:: 功能介绍
 
 本模块定义 Flowing 框架的全部具名异常类型，是框架核心层（非扩展、非应用层）
-的公共契约。``FlowingError`` 是统一根，向下按职责分为十个类别：配置、注入、
-钩子、工具、资源、Provider、依赖、通信、格式、编译；另有三个异常直接挂根、
-不属任何类别——``EntryNameConflictError`` （Agent 绑定层别名冲突）、
-``FormatVersionError`` 与 ``CorruptionError`` （jsonl 持久化文件；与声明式
-文件格式的 ``FormatError`` 分层，持久化层不专设中间层）。外加一个刻意游离
-于普通错误语义之外的信号类 ``Intercepted`` （钩子 handler 的有意硬阻断信号，
-刻意不继承 ``FlowingError``）。
+的公共契约。``FlowingError`` 是统一根，向下按职责分为十一个类别：配置、
+注入、钩子、工具、注册表、资源、Provider、依赖、通信、格式、编译；另有
+三个异常直接挂根、不属任何类别——``EntryNameConflictError`` （Agent 绑定
+层别名冲突）、``FormatVersionError`` 与 ``CorruptionError`` （jsonl 持久化
+文件；与声明式文件格式的 ``FormatError`` 分层，持久化层不专设中间层）。
+外加一个刻意游离于普通错误语义之外的信号类 ``Intercepted`` （钩子 handler
+的有意硬阻断信号，刻意不继承 ``FlowingError``）。
 
 import 期作者笔误刻意用内置 ``ValueError``，不入本层次——如
 ``register_provider`` 装饰到非 ``Provider`` 子类或缺少非空 ``name`` 类属性
@@ -33,12 +33,20 @@ import 期作者笔误刻意用内置 ``ValueError``，不入本层次——如
         │   └── DuplicateHookPointError
         ├── ToolError                    # 工具定义 / 注册 / 查找
         │   ├── MissingSchemaError
-        │   ├── ToolNotFoundError
-        │   ├── ToolNameConflictError
+        │   ├── ToolNotFoundError      # 同挂 RegistryNotFoundError（多继承）
+        │   ├── ToolNameConflictError  # 同挂 RegistryConflictError（多继承）
         │   ├── UnknownToolError
         │   ├── AmbiguousToolError
         │   ├── AmbiguousMcpSourceError
         │   └── MissingMcpSourceError
+        ├── RegistryNotFoundError      # 注册表查找未命中（三注册表共用中间层）
+        │   ├── AgentTypeNotFoundError
+        │   ├── SkillNotFoundError
+        │   └── ToolNotFoundError      # 同挂 ToolError（多继承）
+        ├── RegistryConflictError      # 注册表键冲突（三注册表共用中间层）
+        │   ├── AgentTypeConflictError
+        │   ├── SkillNameConflictError
+        │   └── ToolNameConflictError  # 同挂 ToolError（多继承）
         ├── ResourceError                # Resource 注册与访问
         │   ├── ResourceNameConflictError
         │   └── ResourceNotFoundError
