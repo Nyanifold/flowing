@@ -33,7 +33,7 @@ from flowing.providers import (
     register_provider,
 )
 from flowing.providers.provider import _provider_adapters
-from flowing.providers.openai import OpenAICompletionsProvider
+from flowing.providers.openai_completions import OpenAICompletionsProvider
 
 from flowing.context import Context
 from flowing.message import Message, MessageKind, TextBlock
@@ -190,7 +190,7 @@ def test_t13_failure_not_cached():
 
 async def test_t05_rate_limited_no_retry():
     """T05：mock transport 429 → RateLimitedError，不自动重试。"""
-    from flowing.providers.openai import _HttpResponseError
+    from flowing.providers.openai_completions import _HttpResponseError
 
     calls = []
 

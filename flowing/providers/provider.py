@@ -11,7 +11,8 @@
 :func:`load_provider_candidates`。
 
 adapter 继承树的两个格式家族基类与内置厂商 adapter 分别在
-:mod:`flowing.providers.openai` 与 :mod:`flowing.providers.anthropic`；
+:mod:`flowing.providers.openai_completions` 与
+:mod:`flowing.providers.anthropic_messages`；
 包级契约（显式继承树、懒创建、adapter 与条目两层术语、providers.yaml
 schema、异常分类、凭证安全边界）见 :mod:`flowing.providers` 包
 docstring。

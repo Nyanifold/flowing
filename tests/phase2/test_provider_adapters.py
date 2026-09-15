@@ -9,8 +9,9 @@ from flowing.errors import InvalidRequestError
 from flowing.message import Message, MessageKind, TextBlock, ToolCallBlock
 from flowing.model import ModelConfig
 from flowing.providers import ProviderConfig
-from flowing.providers.anthropic import AnthropicMessagesProvider
-from flowing.providers.openai import DeepSeekProvider, OpenAICompletionsProvider
+from flowing.providers.anthropic_messages import AnthropicMessagesProvider
+from flowing.providers.deepseek import DeepSeekProvider
+from flowing.providers.openai_completions import OpenAICompletionsProvider
 
 
 def _model() -> ModelConfig:

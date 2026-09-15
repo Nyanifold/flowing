@@ -21,11 +21,9 @@ from flowing.context import Context, PromptSegment
 from flowing.message import ImageBlock, Message, MessageKind, TextBlock
 from flowing.model import ModelConfig
 from flowing.providers import ProviderConfig
-from flowing.providers.anthropic import (
-    AnthropicMessagesProvider,
-    DeepSeekAnthropicProvider,
-)
-from flowing.providers.openai import DeepSeekProvider
+from flowing.providers.anthropic_messages import AnthropicMessagesProvider
+from flowing.providers.deepseek import DeepSeekProvider
+from flowing.providers.deepseek_anthropic import DeepSeekAnthropicProvider
 from flowing.errors import AuthenticationError
 from flowing.tool import ToolDefinition
 
@@ -264,3 +262,4 @@ async def test_t140_anthropic_vision_smoke():
         text = "".join(b.text for b in response.message.content if b.type == "text")
         assert any(k in text for k in keywords), \
             f"{image} 识别结果未命中候选词：{text[:200]}"
+

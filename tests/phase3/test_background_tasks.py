@@ -628,8 +628,8 @@ async def test_provider_pending_receipt_mapping():
     改动，仅验证）。"""
     from flowing.message import Message, MessageKind as _MK
     from flowing.providers import ProviderConfig
-    from flowing.providers.anthropic import AnthropicMessagesProvider
-    from flowing.providers.openai import OpenAICompletionsProvider
+    from flowing.providers.anthropic_messages import AnthropicMessagesProvider
+    from flowing.providers.openai_completions import OpenAICompletionsProvider
 
     msg = Message(
         kind=_MK.TOOL,

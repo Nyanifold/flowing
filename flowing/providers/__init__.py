@@ -3,8 +3,8 @@
 .. rubric:: 功能介绍
 
 本包承载 Provider 侧的全部契约：抽象基类 :class:`Provider` 及内置
-adapter 继承树（:mod:`flowing.providers.openai` /
-:mod:`flowing.providers.anthropic` 两个格式家族）、调用产物
+adapter 继承树（:mod:`flowing.providers.openai_completions` /
+:mod:`flowing.providers.anthropic_messages` 两个格式家族）、调用产物
 :class:`ProviderResponse` / :class:`ProviderDelta` / 一次调用的 token
 用量记录 :class:`Usage`、条目配置 :class:`ProviderConfig`、adapter
 注册装饰器 :func:`register_provider`、Runtime 级懒实例化表
@@ -186,18 +186,15 @@ API key 等凭证只存在于 :class:`ProviderConfig` 与 Provider 实例内部�
         ``provider_registry`` （懒创建候选清单）的宿主。
 """
 
-from flowing.providers.anthropic import (
-    AnthropicMessagesProvider,
-    AnthropicProvider,
-    BedrockProvider,
-)
-from flowing.providers.openai import (
-    DeepSeekProvider,
-    GroqProvider,
-    KimiProvider,
-    OpenAICompletionsProvider,
-    OpenRouterProvider,
-)
+from flowing.providers.anthropic import AnthropicProvider
+from flowing.providers.anthropic_messages import AnthropicMessagesProvider
+from flowing.providers.bedrock import BedrockProvider
+from flowing.providers.deepseek import DeepSeekProvider
+from flowing.providers.deepseek_anthropic import DeepSeekAnthropicProvider
+from flowing.providers.groq import GroqProvider
+from flowing.providers.kimi import KimiProvider
+from flowing.providers.openai_completions import OpenAICompletionsProvider
+from flowing.providers.openrouter import OpenRouterProvider
 from flowing.providers.provider import (
     FakeProvider,
     Provider,

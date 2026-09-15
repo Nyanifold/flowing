@@ -1,4 +1,4 @@
-"""``flowing.providers.openai`` —— OpenAI Completions 格式家族。
+"""``flowing.providers.openai_completions`` —— OpenAI Completions 格式家族。
 
 .. rubric:: 功能介绍
 
@@ -23,7 +23,7 @@ tool 消息的合成 user 消息（固定措辞提示）。
 
 .. seealso::
 
-    :mod:`flowing.providers.anthropic` 另一格式家族。
+    :mod:`flowing.providers.anthropic_messages` 另一格式家族。
     :class:`flowing.providers.Provider` 抽象契约。
 """
 
@@ -62,7 +62,6 @@ from flowing.providers.provider import (
     ProviderDelta,
     ProviderResponse,
     Usage,
-    register_provider,
 )
 
 
@@ -140,7 +139,7 @@ class OpenAICompletionsProvider(Provider):
     .. seealso::
 
         :class:`flowing.providers.Provider` 抽象契约。
-        :class:`flowing.providers.anthropic.AnthropicMessagesProvider`
+        :class:`flowing.providers.anthropic_messages.AnthropicMessagesProvider`
             另一格式家族基类。
     """
 
@@ -648,191 +647,3 @@ class OpenAICompletionsProvider(Provider):
             usage=self._usage_from_raw(last_usage) if last_usage else None,
             provider_data={"stop_reason": finish_reason},
         )
-
-
-@register_provider
-class DeepSeekProvider(OpenAICompletionsProvider):
-    """DeepSeek 内置 adapter（``name="deepseek"``）。
-
-    .. rubric:: 功能介绍
-
-    DeepSeek 官方端点的 OpenAI 兼容实现；随框架发布、import 期经
-    :func:`register_provider` 进程级注册。providers.yaml 条目把
-    ``adapter`` 字段设为 ``"deepseek"`` 即可选用。
-
-    .. rubric:: 使用示例
-
-    .. code-block:: yaml
-
-        # providers.yaml
-        deepseek-personal:
-          adapter: deepseek
-          api_key: "{{env.DEEPSEEK_API_KEY}}"
-
-        # models.yaml
-        deepseek-v4:
-          provider: deepseek-personal
-          model: deepseek-v4-pro
-          thinking: enabled          # 思考开关（或 disabled，或 dict 原样透传）
-          reasoning_effort: high     # 思考强度（low/high/max）
-
-    .. rubric:: 行为要点
-
-    - 默认端点 ``https://api.deepseek.com``；条目配 ``base_url`` 时以
-      条目为准（代理场景）。
-    - 凭证取条目 ``api_key``；DeepSeek 的前缀缓存由服务端自动处理
-      （要求前缀字节稳定），adapter 不发送缓存标记；缓存命中统计
-      （如 ``prompt_cache_hit_tokens``）保留在 ``Usage.raw``。
-    - 思考开关：models.yaml 条目中的 ``thinking`` 字段（进
-      ``ModelConfig._extra``）按官方形态映射——字符串
-      （``"enabled"`` / ``"disabled"``）包装为 ``{"type": ...}``，
-      dict 原样透传；缺省不发送 ``thinking`` 字段（取服务端缺省）。
-      adapter 不校验取值、由服务端校验。DeepSeek 端点没有数值预算
-      概念，本 adapter **不消费** ``ModelConfig.thinking_budget``
-      （该内建字段的预算语义仅 Anthropic adapter 使用）。
-    - 思考强度：models.yaml 条目中的 ``reasoning_effort`` 字段进
-      ``ModelConfig._extra``，本 adapter 原样透传为请求体顶层
-      ``reasoning_effort``；官方取值为 ``"low"`` / ``"high"`` /
-      ``"max"``，adapter 不校验枚举、由服务端校验；缺省不发送。
-    - 其余厂商私有参数走基类 ``extra_body`` 通用透传（见
-      :class:`OpenAICompletionsProvider`）；本 adapter 的思考字段在
-      ``extra_body`` 合入之后写入，同名键以本 adapter 为准。
-    - 本 adapter 只覆盖 DeepSeek 的 OpenAI 兼容端点；DeepSeek 另提供
-      Anthropic 格式端点（强度参数为 ``output_config.effort``，与本
-      框架 Anthropic 原生 adapter 的 ``budget_tokens`` 形态不同），
-      接入时需另写子类，本 adapter 不涉及。
-
-    .. seealso::
-
-        :class:`OpenAICompletionsProvider` 格式实现来源。
-    """
-
-    name: ClassVar[str] = "deepseek"
-    known_model_fields: ClassVar[frozenset[str]] = frozenset(
-        {"thinking", "reasoning_effort"})
-    default_base_url: ClassVar[str | None] = "https://api.deepseek.com"
-
-    def _build_request(self, context: Context, model: ModelConfig) -> dict:
-        """在基类请求体上补 DeepSeek 思考参数（见类 docstring 行为要点）。"""
-        body = super()._build_request(context, model)
-        thinking = model._extra.get("thinking")
-        if thinking is not None:
-            if isinstance(thinking, str):
-                body["thinking"] = {"type": thinking}
-            elif isinstance(thinking, dict):
-                body["thinking"] = thinking
-            else:
-                raise InvalidRequestError(
-                    f"models.yaml thinking must be a string or mapping, "
-                    f"got {type(thinking).__name__}")
-        effort = model._extra.get("reasoning_effort")
-        if effort is not None:
-            body["reasoning_effort"] = effort
-        return body
-
-
-@register_provider
-class KimiProvider(OpenAICompletionsProvider):
-    """Kimi（Moonshot）内置 adapter（``name="kimi"``）。
-
-    .. rubric:: 功能介绍
-
-    Kimi 官方端点的 OpenAI 兼容实现；随框架发布、import 期经
-    :func:`register_provider` 进程级注册。providers.yaml 条目把
-    ``adapter`` 字段设为 ``"kimi"`` 即可选用。
-
-    .. rubric:: 使用示例
-
-    .. code-block:: yaml
-
-        # providers.yaml
-        kimi:
-          adapter: kimi
-          api_key: "{{env.MOONSHOT_API_KEY}}"
-
-    .. rubric:: 行为要点
-
-    - 默认端点 ``https://api.moonshot.cn/v1``；条目配 ``base_url`` 时
-      以条目为准（代理场景）。
-    - 格式映射与 Usage 归一继承自 :class:`OpenAICompletionsProvider`。
-
-    .. seealso::
-
-        :class:`OpenAICompletionsProvider` 格式实现来源。
-    """
-
-    name: ClassVar[str] = "kimi"
-    default_base_url: ClassVar[str | None] = "https://api.moonshot.cn/v1"
-
-
-@register_provider
-class GroqProvider(OpenAICompletionsProvider):
-    """Groq 内置 adapter（``name="groq"``）。
-
-    .. rubric:: 功能介绍
-
-    Groq 端点的 OpenAI 兼容实现；随框架发布、import 期经
-    :func:`register_provider` 进程级注册。providers.yaml 条目把
-    ``adapter`` 字段设为 ``"groq"`` 即可选用。
-
-    .. rubric:: 使用示例
-
-    .. code-block:: yaml
-
-        # providers.yaml
-        groq:
-          adapter: groq
-          api_key: "{{env.GROQ_API_KEY}}"
-
-    .. rubric:: 行为要点
-
-    - 默认端点 ``https://api.groq.com/openai/v1``。
-    - 不做能力校验：模型是否存在于 Groq 由 API 调用时报错。
-
-    .. seealso::
-
-        :class:`OpenAICompletionsProvider` 格式实现来源。
-    """
-
-    name: ClassVar[str] = "groq"
-    default_base_url: ClassVar[str | None] = "https://api.groq.com/openai/v1"
-
-
-@register_provider
-class OpenRouterProvider(OpenAICompletionsProvider):
-    """OpenRouter 内置 adapter（``name="openrouter"``）。
-
-    .. rubric:: 功能介绍
-
-    OpenRouter 聚合端点的 OpenAI 兼容实现；随框架发布、import 期经
-    :func:`register_provider` 进程级注册。providers.yaml 条目把
-    ``adapter`` 字段设为 ``"openrouter"`` 即可选用。
-
-    .. rubric:: 使用示例
-
-    .. code-block:: yaml
-
-        # providers.yaml
-        openrouter:
-          adapter: openrouter
-          api_key: "{{env.OPENROUTER_API_KEY}}"
-
-    .. rubric:: 行为要点
-
-    - 默认端点 ``https://openrouter.ai/api/v1``。
-    - 请求侧模型 ID 与响应侧模型 ID 可以不同（如 ``model="auto"`` 时
-      实际由 OpenRouter 路由到具体模型）：``ProviderResponse.model``
-      填实际响应的模型 ID；路由信息（如 provider 路由选择）保留在
-      ``provider_data``。
-    - 模型路由是 OpenRouter 服务端行为，本 adapter 不做本地路由 /
-      fallback 链。
-
-    .. seealso::
-
-        :class:`OpenAICompletionsProvider` 格式实现来源。
-        :attr:`flowing.providers.ProviderResponse.model`
-            响应侧模型 ID 语义。
-    """
-
-    name: ClassVar[str] = "openrouter"
-    default_base_url: ClassVar[str | None] = "https://openrouter.ai/api/v1"

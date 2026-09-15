@@ -11,7 +11,7 @@ import pytest
 from flowing.context import Context
 from flowing.message import ThinkingBlock, ToolCallBlock
 from flowing.model import ModelConfig
-from flowing.providers.openai import DeepSeekProvider
+from flowing.providers.deepseek import DeepSeekProvider
 from flowing.providers.provider import ProviderDelta
 
 
