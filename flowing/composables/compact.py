@@ -208,7 +208,7 @@ def use_compact(agent: Agent, threshold: float = 0.8) -> None:
     - 摘要失败（``side_query`` 抛异常或返回空文本）→ 不换链、异常不外
       抛、本回合正常收尾；下一次超阈值的主回合 ``provider_gen`` 后再试
       ——两次尝试之间至少隔着一次主循环调用，不会热循环。
-    - ``before_fork`` 被拦截 → 新根已落盘而 head 未切：本次压缩白做
+    - ``on_fork`` 被拦截 → 新根已落盘而 head 未切：本次压缩白做
       一次（安全，下次超阈值重来）。
 
     检测口径：handler 运行时本轮响应尚未挂树，估计值不含它——比率按
@@ -268,7 +268,7 @@ def use_compact(agent: Agent, threshold: float = 0.8) -> None:
         ``<= threshold`` 时不动作；超过阈值时依次 dispatch ``on_compact``
         （``Intercepted`` 取消本次：不建根、不换链）、``side_query`` 取
         摘要（异常或空文本：不换链、不外抛，下一次超阈值的主回合后再试）
-        、摘要非空则挂新根后 ``fork`` （``before_fork`` 拦截时新根已落盘
+        、摘要非空则挂新根后 ``fork`` （``on_fork`` 拦截时新根已落盘
         而 head 未切，安全）。检测口径：本轮响应尚未挂树，估计不含它。
         """
         # 无来源判断：pattern 注册（after_provider_gen["_turn"]）保证只有主回合响应会被分发到
@@ -290,7 +290,7 @@ def use_compact(agent: Agent, threshold: float = 0.8) -> None:
             kind=MessageKind.SYSTEM, content=[TextBlock(text=summary)],
             source="compact"))   # 新根：id 重新分配，旧链完整保留
         try:
-            await agent.fork(new_root_id)   # 干净点（配对完整、响应未挂树）；before_fork 拦截属开发者责任
+            await agent.fork(new_root_id)   # 干净点（配对完整、响应未挂树）；on_fork 拦截属开发者责任
         except Intercepted:
             pass   # 新根已落盘而 head 未切：白压缩一次，安全
         return response
@@ -367,7 +367,7 @@ def use_auto_compact(
       ``parent_id=None``，链式 ``branch`` 拼接（挂树自动铸新 id，与旧
       节点无冲突）；旧链物理完整保留（append-only）。
     - 换链：``fork`` 到后缀末条新 id（无后缀则到压缩消息）；
-      ``before_fork`` 被拦截 → 新分支已落盘而 head 未切（白压一次，
+      ``on_fork`` 被拦截 → 新分支已落盘而 head 未切（白压一次，
       安全），本次请求携原上下文发出。
     - 摘要失败（``side_query`` 异常或返回空文本）→ 不换链、异常不外
       抛、本次请求照常发出；下一次请求前再试，不会热循环。

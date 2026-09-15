@@ -160,14 +160,10 @@ dispatch 点为准）：
      - 出队之后、回合开始之前
      - ``list[Message]``
      - 可改写（变换本逻辑 turn 消费的消息列表）
-   * - ``before_fork``
-     - ``fork()`` 切换 head 之前
-     - ``str`` （目标消息 id）
-     - 可改写 target；``raise Intercepted`` 阻止切换
-   * - ``after_fork``
-     - ``fork()`` 切换 head 之后
-     - ``str`` （切换前的原 head 消息 id）
-     - 纯观察（日志 / 通知 UI 刷新）
+   * - ``on_fork``
+     - ``fork()`` 合法性检查与切换 head 之前
+     - :class:`flowing.agent.ForkContext`
+     - 可改写 ``target_message_id``；``raise Intercepted`` 阻止切换
    * - ``before_cancel``
      - ``cancel()`` / ``stop()`` 置位取消信号之前
      - :class:`flowing.agent.CancelContext`
@@ -864,8 +860,7 @@ class HookRegistry:
         self._hook_points["after_enqueue"] = HookList("after_enqueue", by="core")
         self._hook_points["before_dequeue"] = HookList("before_dequeue", by="core")
         self._hook_points["after_dequeue"] = HookList("after_dequeue", by="core")
-        self._hook_points["before_fork"] = HookList("before_fork", by="core")
-        self._hook_points["after_fork"] = HookList("after_fork", by="core")
+        self._hook_points["on_fork"] = HookList("on_fork", by="core")
         self._hook_points["before_cancel"] = HookList("before_cancel", by="core")
         self._hook_points["after_cancel"] = HookList("after_cancel", by="core")
 

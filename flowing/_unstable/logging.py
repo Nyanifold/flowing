@@ -63,7 +63,7 @@
   ``on_provider_error``）、工具调用边界（``before_tool_call`` /
   ``after_tool_call``）、子 Agent（``before_subagent_invoke`` /
   ``after_subagent_invoke``）、取消与 fork（``before_cancel`` /
-  ``after_cancel`` / ``before_fork`` / ``after_fork``）——共 21 点。
+  ``after_cancel`` / ``on_fork``）——共 20 点。
   value 只记摘要（类型名 + 标识字段，如工具名 / 消息 id）。
 - ``"DEBUG"``：在 INFO 基础上，该 Agent 实例上存在的全部钩子点都
   输出（枚举 ``agent.hooks`` 的已声明点），value 记 ``repr`` 截断
@@ -141,9 +141,9 @@ _INFO_HOOK_POINTS: tuple[str, ...] = (
     "before_subagent_invoke", "after_subagent_invoke",
     # 取消与 fork
     "before_cancel", "after_cancel",
-    "before_fork", "after_fork",
+    "on_fork",
 )
-"""INFO 级关键节点清单（21 点，``use_logging`` 立即挂钩；模块 docstring
+"""INFO 级关键节点清单（20 点，``use_logging`` 立即挂钩；模块 docstring
 「等级语义」的落地名表）。"""
 
 _EXTENSION_HOOK_POINTS: dict[str, tuple[str, ...]] = {

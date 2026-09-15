@@ -152,7 +152,7 @@ async def test_t128_info_key_nodes(tmp_path):
             "before_tool_call", "after_tool_call",        # 工具边界
             "before_subagent_invoke", "after_subagent_invoke",
             "before_cancel", "after_cancel",
-            "before_fork", "after_fork",
+            "on_fork",
         }
         assert expected <= triggered
         # INFO 不覆盖全集：非关键节点无输出

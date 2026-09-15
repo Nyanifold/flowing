@@ -647,6 +647,43 @@ class CancelContext:
     """
 
 
+@dataclass
+class ForkContext:
+    """``on_fork`` 钩子点的 value——一次 head 切换的上下文（换前 / 换后两个 id）。
+
+    .. rubric:: 功能介绍
+
+    ``fork()`` 在合法性检查与切换落盘之前 dispatch ``on_fork``：handler
+    可改写 ``target_message_id`` 改变切换落点（``None`` = 悬置游标），
+    或 ``raise Intercepted`` 阻止本次切换；纯观察用途（日志 / 通知 UI
+    刷新分支列表）读换前 / 换后两个 id 即得一次切换的完整信息。
+
+    .. rubric:: 行为要点
+
+    - ``previous_head_id`` 是切换前一刻的 ``current_head_id`` （空树 /
+      已悬置为 ``None``）——信息性字段，改写它不影响任何行为。
+    - ``target_message_id`` 是切换目标，可改写——合法性检查与实际切换
+      均以改写后的值为准；``None`` 合法，语义同 ``fork(None)``。
+    - dispatch 发生在切换落盘之前：``Intercepted`` 与合法性检查失败都
+      使 head 原地不动，树与游标零副作用。
+    - handler 普通异常 → 直接上抛给 ``fork()`` 调用方，不切换。
+
+    .. seealso::
+
+        - :meth:`Agent.fork` —— 触发点。
+        - :class:`flowing.errors.Intercepted` —— 阻断信号。
+    """
+
+    previous_head_id: str | None
+    """切换前一刻的 ``current_head_id`` （换前；空树 / 已悬置为
+    ``None``）。信息性字段，改写不影响行为。
+    """
+    target_message_id: str | None
+    """切换目标消息 id（换后）；``None`` = 游标悬置。可改写——合法性
+    检查与实际切换均以改写后的值为准。
+    """
+
+
 def build_turn_result(turn: TurnContext, agent: "Agent", *,
                       intercepted: bool = False,
                       error: BaseException | None = None,
@@ -2704,16 +2741,22 @@ class Agent:
 
     # ────────────────────────── fork 与暂停 ───────────────────────────────
 
-    async def fork(self, target_message_id: str) -> None:
-        """消息级 fork：把 ``current_head_id`` 切到任意历史消息。
+    async def fork(self, target_message_id: str | None) -> None:
+        """消息级 fork：把 ``current_head_id`` 切到任意历史消息，或悬置游标。
 
         .. rubric:: 功能介绍
 
         消息上下文最基本的组织方式（核心机制，非扩展特性）。时序：
-        dispatch ``before_fork`` （可改写 target / ``raise Intercepted``
-        阻止）→ 目标合法性检查 → 记录切换前的原 head → 切换
-        ``current_head_id`` → dispatch ``after_fork`` （纯观察，日志 /
-        通知 UI 刷新分支列表）。
+        dispatch ``on_fork`` （value 为 :class:`ForkContext`——换前 /
+        换后两个 id；可改写 ``target_message_id`` ／ ``raise
+        Intercepted`` 阻止）→ 目标合法性检查 → 切换
+        ``current_head_id`` （落盘）。
+
+        ``target_message_id=None``：游标悬置——head 置为 ``None``，上下
+        文组装为空路径（``chain.walk(None)`` 空迭代），此后第一条挂树消
+        息以 ``parent_id=None`` 成为新根开新链（:meth:`push` 的既有行
+        为）；既有树完整保留，不做任何删除。这是清空活跃上下文视角的
+        通道。
 
         fork 是纯上下文操作，不碰执行：正在运行的工具 / 子 Agent 继续
         运行、结果照常交付；执行追踪、生命周期子树、prompt 块、provide
@@ -2730,6 +2773,9 @@ class Agent:
             await agent.cancel()   # 协作式置位——回合自行走向收尾，此调用返回 ≠ 收尾完成
             # …等待回合收尾完成（如 await 该回合 query() 的 TurnResult）…
             await agent.fork(msg_id)
+
+            # 清空活跃上下文视角：旧树完整保留，下一条消息开新根
+            await agent.fork(None)
 
         .. rubric:: 行为要点
 
@@ -2748,9 +2794,9 @@ class Agent:
           方法切换 head，旧分支保留完整历史；何时压缩、如何摘要是
           Composable / 应用层策略（内置 ``flowing.composables.compact``），
           fork 只提供机制。
-        - :raises ValueError: ``target_message_id`` 不在 ``_messages``
-          中（含已被 ``chain.remove`` 移除的 id）。
-        - :raises flowing.errors.Intercepted: ``before_fork`` handler
+        - :raises ValueError: ``target_message_id`` 非 ``None`` 且不在
+          ``_messages`` 中（含已被 ``chain.remove`` 移除的 id）。
+        - :raises flowing.errors.Intercepted: ``on_fork`` handler
           阻止 fork。
         - 不换 Agent 类型（换类型 = 换身份 = 子 Agent）；不创建第二个
           实例、不在两个分支上同时运行（需要并行用子 Agent）；不复制 /
@@ -2764,12 +2810,13 @@ class Agent:
             - :class:`flowing.message.MessageChain` —— 修改历史结构的
               手术入口（与 fork 改视角正交）。
         """
-        target_message_id = await self.hooks.before_fork.dispatch(self, target_message_id)   # 可改写 target / Intercepted 阻止
-        if target_message_id not in self._messages:
-            raise ValueError(target_message_id)   # 含已被 chain.remove 移除的 id
-        previous_head_id = self.current_head_id
-        self._core_state["current_head_id"] = target_message_id   # 纯上下文操作：只切换游标（落盘）
-        await self.hooks.after_fork.dispatch(self, previous_head_id)   # 纯观察（value 为原 head id）
+        context = await self.hooks.on_fork.dispatch(
+            self, ForkContext(previous_head_id=self.current_head_id,
+                              target_message_id=target_message_id))   # 可改写 target_message_id / Intercepted 阻止
+        if (context.target_message_id is not None
+                and context.target_message_id not in self._messages):
+            raise ValueError(context.target_message_id)   # 非 None 目标须在树（含已被 chain.remove 移除的 id）
+        self._core_state["current_head_id"] = context.target_message_id   # 纯上下文操作：只切换游标（落盘）；None = 悬置
 
     def pause(self) -> None:
         """协作式暂停：关闭工作循环 gate。

@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 from flowing.errors import Intercepted, InvalidRequestError
-from flowing.agent import Execution
+from flowing.agent import Execution, ForkContext
 from flowing.message import (
     Message,
     MessageKind,
@@ -486,7 +486,7 @@ async def test_t58_fork_switches_branch(agent, provider):
     path_ids = [m.id for m in agent._assemble_context().messages]
     assert "m8" in path_ids and "m7" not in path_ids   # 组装路径含 m8 不含 m7
 
-    # 错误路径：目标不在树中 -> ValueError；before_fork 拦截 -> Intercepted 上抛
+    # 错误路径：目标不在树中 -> ValueError；on_fork 拦截 -> Intercepted 上抛
     with pytest.raises(ValueError):
         await agent.fork("ghost")
     with pytest.raises(ValueError):
@@ -494,10 +494,10 @@ async def test_t58_fork_switches_branch(agent, provider):
     await agent.fork("m7")   # 兄弟分支可切
     assert agent.current_head_id == "m7"
 
-    async def _veto(a, target):
+    async def _veto(a, ctx):
         raise Intercepted("不许 fork")
 
-    agent.hooks.before_fork(_veto)
+    agent.hooks.on_fork(_veto)
     with pytest.raises(Intercepted):
         await agent.fork("m6")
     assert agent.current_head_id == "m7"   # 被拦截，游标不动
@@ -554,6 +554,44 @@ async def test_t60_fork_dangling_tool_call(agent, provider):
     # 旧链数据完好（append-only）
     assert agent._messages["p-call"].content[0].id == "c-x"
     assert agent._messages["u"].content[0].text == "问"
+
+
+async def test_t144_fork_none_suspends_head(agent, provider):
+    """T144：fork(None) = 游标悬置——head 置 None、上下文组装为空路径，
+    此后第一条挂树消息以 parent_id=None 开新根（旧树完整保留为森林）；
+    on_fork 可双向改写换后 id ↔ None；非 None 目标仍须在树。"""
+    script_provider(provider, text_response("ok"))
+    await agent.query("hi")
+    old_head = agent.current_head_id
+    assert old_head is not None
+
+    await agent.fork(None)
+    assert agent.current_head_id is None
+    assert list(agent.chain.walk(agent.current_head_id)) == []   # 空路径
+    assert agent._assemble_context().messages == []
+    assert old_head in agent._messages   # 悬置不删除：旧树完整保留
+
+    # 悬置后第一条挂树消息开新根（push 既有行为），与旧链并存为森林
+    new_id = agent.push(Message(kind=MessageKind.USER,
+                                content=[TextBlock(text="重新开始")]))
+    assert agent._messages[new_id].parent_id is None
+    assert agent.current_head_id == new_id
+    assert [m.id for m in agent._assemble_context().messages] == [new_id]   # 新链不回溯旧链
+
+    # 非 None 目标仍须在树（含已被移除的 id）
+    with pytest.raises(ValueError):
+        await agent.fork("ghost")
+
+    # on_fork 双向改写换后 id：id → None、None → id（注册序链式生效）
+    agent.hooks.on_fork(
+        lambda a, c: ForkContext(c.previous_head_id, None), by="to-none")
+    await agent.fork(old_head)   # 换后被改写为 None → 悬置
+    assert agent.current_head_id is None
+    agent.hooks.on_fork(
+        lambda a, c: (ForkContext(c.previous_head_id, new_id)
+                      if c.target_message_id is None else c), by="to-id")
+    await agent.fork(None)   # to-none 保持 None，to-id 改写为 new_id
+    assert agent.current_head_id == new_id
 
 
 # ---------------------------------------------------------------------------

@@ -534,6 +534,28 @@ async def test_t41_recover_reruns_setup_idempotent(tmp_path):
     await runtime.shutdown()
 
 
+async def test_t145_recover_suspended_head(tmp_path):
+    """T145：fork(None) 悬置游标经落盘恢复后 head 仍为 None（袋值权威）、
+    旧树完整；恢复后新消息以 parent_id=None 开新根。"""
+    runtime = make_runtime(tmp_path)
+    provider = add_fake_provider(runtime)
+    script_provider(provider, text_response("ok"))
+    agent = await runtime.create_agent("test-agent")
+    await agent.query("hi")
+    old_head = agent.current_head_id
+    await agent.fork(None)
+    await agent.destroy()
+    recovered = await runtime.recover_agent(agent.node_id)
+    assert recovered.current_head_id is None   # 悬置态落盘恢复（袋值权威）
+    assert old_head in recovered._messages   # 旧树完整保留
+    script_provider(provider, text_response("new"))
+    r = await recovered.query("重新开始")
+    assert r.status == "completed"
+    trigger = recovered._messages[r.turn.message_ids[0]]
+    assert trigger.parent_id is None   # 恢复后第一条挂树消息开新根
+    await runtime.shutdown()
+
+
 async def test_t110_unknown_hook_point(tmp_path):
     """T110：@on 暂记未结算 → create 第 6 步 UnknownHookPointError，
     消息列出 hook_name 与方法名。"""

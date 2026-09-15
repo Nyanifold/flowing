@@ -263,31 +263,26 @@ async def test_t120_developer_compact_prompt_wins(tmp_path):
 
 async def test_t121_append_only_and_fork_hooks(tmp_path):
     """T121：压缩完成后旧链消息全部仍在 _messages / tree.jsonl
-    （append-only 无 tombstone）；fork 经 before_fork / after_fork
-    正常钩子路径；before_fork 拦截 → 新根已落盘而 head 未切
-    （白压缩一次，安全）。"""
+    （append-only 无 tombstone）；fork 经 on_fork 正常钩子路径；
+    on_fork 拦截 → 新根已落盘而 head 未切（白压缩一次，安全）。"""
     # 子例 1：正常路径——append-only + fork 钩子路径
     runtime, provider, agent = await _two_turn_setup(
         tmp_path, script_tail=(text_response("r2", usage=BIG_USAGE),
                                text_response("摘要")))
     fork_calls = []
     try:
-        def _before(a, target):
-            fork_calls.append(("before", target))
-            return target
+        def _on_fork(a, ctx):
+            fork_calls.append((ctx.previous_head_id, ctx.target_message_id))
+            return ctx
 
-        def _after(a, target):
-            fork_calls.append(("after", target))
-            return target
-
-        agent.hooks.before_fork(_before, by="test")
-        agent.hooks.after_fork(_after, by="test")
+        agent.hooks.on_fork(_on_fork, by="test")
         old_ids = set(agent._messages)
         r2 = await agent.query("第二轮")
         assert r2.status == "completed"
         roots = _compact_roots(agent)
         assert len(roots) == 1
-        assert [c[0] for c in fork_calls] == ["before", "after"]
+        assert len(fork_calls) == 1   # on_fork 恰好一次
+        assert fork_calls[0][1] == roots[0].id   # 换后 = 压缩新根
         assert set(agent._messages) >= old_ids   # 旧链仍在内存树
 
         # tree.jsonl：append-only——旧链消息行俱在，无 tombstone
@@ -300,12 +295,12 @@ async def test_t121_append_only_and_fork_hooks(tmp_path):
         for mid in old_ids:
             assert mid in persisted
 
-        # 子例 2：before_fork 拦截 → 新根已落盘而 head 未切
+        # 子例 2：on_fork 拦截 → 新根已落盘而 head 未切
         # （r2 带大 usage：第三轮 anchored 估计仍超阈值，二次触发压缩）
-        def _veto(a, target):
+        def _veto(a, ctx):
             raise Intercepted("不许切")
 
-        agent.hooks.before_fork(_veto, by="test-veto")   # 排在观测 handler 之后
+        agent.hooks.on_fork(_veto, by="test-veto")   # 排在观测 handler 之后
         script_provider(provider, text_response("r3"), text_response("摘要3"))
         head_before = agent.current_head_id
         r3 = await agent.query("第三轮")
