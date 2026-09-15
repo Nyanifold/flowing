@@ -13,7 +13,9 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
+from flowing.agent import _start_background_drive
 from flowing.errors import Intercepted, MissingFieldError, MissingSchemaError
+from flowing.hooks import HookRegistry
 from flowing.message import MessageKind, TextBlock
 from flowing.tool import (
     ScriptTool,
@@ -29,10 +31,15 @@ class _FakeCaller:
     def __init__(self) -> None:
         self.messages: list = []
         self._background_tasks: dict[str, asyncio.Task] = {}
+        self.hooks = HookRegistry()
 
     async def enqueue_message(self, msg) -> str:
         self.messages.append(msg)
         return msg.id
+
+    def _drive_background(self, tool, source, form, tool_call=None) -> str:
+        """与 Agent._drive_background 同一接缝（委托同一实现）。"""
+        return _start_background_drive(self, tool, source, form, tool_call)
 
     def track_background_task(self, task: asyncio.Task) -> str:
         """B9 注册表 stub（与 Agent.track_background_task 同构，测试替身用）。"""

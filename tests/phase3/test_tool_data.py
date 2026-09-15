@@ -261,3 +261,9 @@ class TestOutputToBlocks:
         assert output_to_blocks({"tx": "abc"}, error="x") == [
             StructBlock(data={"tx": "abc"}), TextBlock(text="x")]
         assert output_to_blocks(None, error="x") == [TextBlock(text="x")]
+
+    def test_t24b_deep_buried_non_json_honest_failure(self):
+        """深层埋藏的非 JSON 对象：归一期放行，塑形期 StructBlock 构造
+        校验诚实失败（ValueError，框架错误通道）。"""
+        with pytest.raises(ValueError):
+            output_to_blocks({"a": object()})

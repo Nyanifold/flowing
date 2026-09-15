@@ -57,9 +57,13 @@ re-export）。
 （handler 可改写 `ToolCall` 的参数；把 `ToolResult` 放进 ``shortcut``
 字段可跳过工具执行；``raise Intercepted`` 硬阻断，工具不执行、结果
 为 ``blocked``），随后仅按别名查找 Agent 的工具绑定表（找不到抛
-``UnknownToolError``）、聚合参数，经 ``Tool.__call__`` 执行，最后
-dispatch ``after_tool_call`` （可改写结果）并在返回前对结果做一次
-幂等归一（已归一的值重复归一结果不变）。完整时序见 :mod:`flowing.agent`，钩子语义见 :mod:`flowing.hooks`。
+``UnknownToolError``）、聚合参数，经 ``Tool.__call__`` 执行，然后
+dispatch ``on_tool_yields`` （工具本体产出的每一份非 blocked 结果：
+同步一次；后台工具的收据、每个分段、终值与终止通知各一次——value
+是携带 ``name`` / ``tool_call_id`` / ``production`` 元信息的
+`ToolResult`，可改写 ``output`` 原料值），再 dispatch
+``after_tool_call`` （可改写结果）并在返回前对结果做一次幂等归一
+（已归一的值重复归一结果不变）。完整时序见 :mod:`flowing.agent`，钩子语义见 :mod:`flowing.hooks`。
 
 ``builtin::`` 命名空间：出厂内置工具注册在 ``builtin::`` 命名空间下。
 裸名查找先查 ``default::`` 再查 ``builtin::``——插件 / 应用可以在

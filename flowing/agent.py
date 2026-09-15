@@ -23,7 +23,7 @@
 :class:`flowing.subagents.SubagentInvocation` /
 :class:`flowing.subagents.SubagentResult`）拆在
 :mod:`flowing.subagents`；持久化机制（``FileRecordStore`` write-behind
-落盘）在 :mod:`flowing.persistence`；23 个核心钩子点的触发时机 / value
+落盘）在 :mod:`flowing.persistence`；24 个核心钩子点的触发时机 / value
 类型 / handler 能力见 :mod:`flowing.hooks` 模块 docstring 的全集表。
 
 本模块遵循「框架只提供机制，不提供策略」：核心只做错误分类、钩子点
@@ -197,7 +197,9 @@ from flowing.tool import (
     ToolEntry,
     ToolResult,
     normalize_output,
+    output_to_blocks,
 )
+from flowing.tool.core import _has_forbidden_block
 
 if TYPE_CHECKING:
     from flowing.runtime import Runtime
@@ -775,6 +777,163 @@ def build_turn_result(turn: TurnContext, agent: "Agent", *,
         finish_reason = "error"
     return TurnResult(turn=turn, final_text=final_text, status=status,
                       token_usage=token_usage, finish_reason=finish_reason)
+
+
+# ─────────────────── 后台工具投递驱动（Agent 侧统一接缝） ───────────────────
+
+
+def _start_background_drive(
+    caller: "Agent",
+    tool: Tool,
+    source: Any,
+    form: str,
+    tool_call: ToolCall | None,
+) -> str:
+    """启动后台工具的投递驱动并注册任务，返回注册键（内部 API，不属稳定契约）。
+
+    ``form="asyncgen"``：驱动任务逐段消费 async generator；``form="task"``：
+    给既有 Task 挂完成回调。两形态统一经 ``caller.track_background_task``
+    注册（强引用 + 按 id 取消 / 查询 + destroy 覆盖）。
+    """
+    if form == "task":
+        source.add_done_callback(
+            lambda t: asyncio.ensure_future(
+                _deliver_task_result(tool, t, caller, tool_call)))
+        return caller.track_background_task(source)
+    drive_task = asyncio.ensure_future(
+        _drive_asyncgen(tool, source, caller, tool_call))
+    return caller.track_background_task(drive_task)
+
+
+def _yield_meta(tool: Tool, tool_call: ToolCall | None) -> tuple[str, str | None]:
+    """后台产物 ToolResult 的元信息（内部 API）：别名取 ``tool_call.name``
+    （LLM 命名空间）；无 ``tool_call`` 时回退工具规范名、配对 id 为 None。"""
+    if tool_call is not None:
+        return tool_call.name, tool_call.id
+    return tool.definition.name, None
+
+
+async def _enqueue_event(caller: "Agent", blocks: list[ContentBlock], *,
+                         warn_tool: str | None = None) -> None:
+    """EVENT 投递统一出口（内部 API）：``warn_tool`` 非空时投递失败记
+    warning（分段：不中断驱动），否则静默（终止 / 拦截通知：尽力而为）。"""
+    try:
+        await caller.enqueue_message(Message(
+            kind=MessageKind.EVENT, source="tool_result",
+            content=blocks, priority=MessagePriority.STEER))
+    except Exception:
+        if warn_tool is not None:
+            # 投递失败不掩盖原结局——enqueue_message 只入内存队列，
+            # 失败仅钩子 / 极端场景
+            _logger.warning("async tool %s: report delivery failed", warn_tool)
+
+
+async def _segment_result(item: Any, name: str, call_id: str | None) -> ToolResult:
+    """单个 yield → ``ToolResult(completed, production="segment")`` （内部 API）。
+
+    浅层违禁块（``ToolCallBlock`` / ``ThinkingBlock``）容错转普通文本说明
+    ——后台任务已脱离调用栈，「抛异常」无人接收（与 completed 路径的
+    ``ValueError`` 框架错误通道区分）。
+    """
+    if _has_forbidden_block(item):
+        return ToolResult(
+            status="completed",
+            output="report content contained forbidden blocks (tool calls / thinking blocks); omitted",
+            name=name, tool_call_id=call_id, production="segment")
+    return ToolResult(status="completed",
+                      output=await normalize_output(item),
+                      name=name, tool_call_id=call_id, production="segment")
+
+
+async def _deliver_terminal(caller: "Agent", tool: Tool, marker: TextBlock,
+                            name: str, call_id: str | None,
+                            error_text: str) -> None:
+    """async generator 终止通知（内部 API）：包装
+    ``ToolResult(status="error", production="final")`` 过
+    ``on_tool_yields`` 后投递；拦截改投拦截通知；投递失败静默。"""
+    result = ToolResult(status="error", error=error_text,
+                        name=name, tool_call_id=call_id, production="final")
+    try:
+        result = await caller.hooks.on_tool_yields.dispatch(caller, result)
+    except Intercepted as exc:
+        blocks = [marker, TextBlock(text=f"yield intercepted, reason: {exc}")]
+    except Exception:
+        blocks = [marker, TextBlock(text=error_text)]
+    else:
+        blocks = [marker, *output_to_blocks(result.output, error=result.error)]
+    await _enqueue_event(caller, blocks)
+
+
+async def _drive_asyncgen(tool: Tool, agen: Any, caller: "Agent",
+                          tool_call: ToolCall | None) -> None:
+    """后台驱动 async generator（内部 API，不属稳定契约）。
+
+    每个 yield：归一 → dispatch ``on_tool_yields`` （可改写；``raise
+    Intercepted`` → 丢弃该分段并投递含拦截原因的 EVENT 通知，驱动继续）
+    → 塑形 → EVENT（``source="tool_result"``、STEER 优先级）入队。
+    中途异常与取消按终止通知处理（``production="final"``）；取消在通知
+    后裸 ``raise`` （任务以 cancelled 终态结束——不 raise 则任务继续跑）。
+    """
+    marker = TextBlock(text=f"async tool {tool.definition.name}: ")
+    name, call_id = _yield_meta(tool, tool_call)
+    try:
+        async for item in agen:
+            result = await _segment_result(item, name, call_id)
+            try:
+                result = await caller.hooks.on_tool_yields.dispatch(caller, result)   # 可改写本段产物
+            except Intercepted as exc:
+                # 弃段 + 通知（通知由驱动循环直接构造入队，不再回过钩子）
+                await _enqueue_event(caller, [marker, TextBlock(
+                    text=f"yield intercepted, reason: {exc}")])
+                continue
+            result.output = await normalize_output(result.output)   # 钩子改写兜底归一（幂等）
+            await _enqueue_event(
+                caller,
+                [marker, *output_to_blocks(result.output, error=result.error)],
+                warn_tool=tool.definition.name)
+    except asyncio.CancelledError:
+        await _deliver_terminal(caller, tool, marker, name, call_id,
+                                "async task cancelled")
+        raise
+    except Exception as exc:
+        await _deliver_terminal(caller, tool, marker, name, call_id, str(exc))
+        _logger.exception("async tool %s failed in the background", tool.definition.name)
+
+
+async def _deliver_task_result(tool: Tool, task: "asyncio.Task", caller: "Agent",
+                               tool_call: ToolCall | None) -> None:
+    """Task 终值投递（内部 API，不属稳定契约）。
+
+    取消 / 异常 → ``ToolResult(status="error", production="final")``；正常
+    → 归一后的 completed 终值。统一 dispatch ``on_tool_yields`` 后塑形入队
+    （拦截改投拦截通知）。全过程兜底——投递链任何环节失败记日志，不成
+    为无人 retrieve 的 Task 异常。
+    """
+    marker = TextBlock(text=f"final result of async tool {tool.definition.name}: ")
+    name, call_id = _yield_meta(tool, tool_call)
+    try:
+        if task.cancelled():
+            result = ToolResult(status="error", error="async task cancelled",
+                                name=name, tool_call_id=call_id, production="final")
+        elif (exc := task.exception()) is not None:
+            result = ToolResult(status="error", error=str(exc),
+                                name=name, tool_call_id=call_id, production="final")
+        else:
+            result = ToolResult(status="completed",
+                                output=await normalize_output(task.result()),
+                                name=name, tool_call_id=call_id, production="final")
+        try:
+            result = await caller.hooks.on_tool_yields.dispatch(caller, result)
+        except Intercepted as exc:
+            blocks = [marker, TextBlock(text=f"yield intercepted, reason: {exc}")]
+        else:
+            result.output = await normalize_output(result.output)   # 钩子改写兜底归一（幂等）
+            blocks = [marker, *output_to_blocks(result.output, error=result.error)]
+        await caller.enqueue_message(Message(
+            kind=MessageKind.EVENT, source="tool_result",
+            content=blocks, priority=MessagePriority.STEER))
+    except Exception:
+        _logger.exception("async tool %s: final result delivery failed", tool.definition.name)
 
 
 class Agent:
@@ -2048,6 +2207,18 @@ class Agent:
         """铸造下一个 Execution id（内部 API）：纯内存自增，进程内单调不复用。"""
         self._execution_seq += 1
         return str(self._execution_seq)
+
+    def _drive_background(self, tool: Tool, source: Any, form: str,
+                          tool_call: ToolCall | None = None) -> str:
+        """后台工具投递驱动的统一接缝（内部 API，不属稳定契约）。
+
+        ``Tool.__call__`` 识别后台形态（async generator / ``background``
+        标记 / 返回 ``asyncio.Task``）后经本接缝把投递驱动移交调用方
+        Agent：``form="asyncgen"`` → 驱动任务逐段消费；``form="task"``
+        → 完成回调投递终值。投递全程在本 Agent 侧执行（归一 →
+        ``on_tool_yields`` → 塑形 → EVENT 入队），返回后台任务注册键。
+        """
+        return _start_background_drive(self, tool, source, form, tool_call)
 
     def track_background_task(self, task: asyncio.Task) -> str:
         """注册一个后台任务并返回注册键（后台机制的唯一注册入口）。
@@ -3326,7 +3497,11 @@ class Agent:
         执行；``raise Intercepted`` 硬阻断）→ 按别名查
         ``_tool_entries`` → :meth:`_normalize` （LLM 视角校验 / 别名映射
         与 ``ToolEntry.resolve()`` 聚合 / 默认值填充）→ ``Tool.__call__``
-        调度（注册 ``Execution(kind="tool")``，finally 清理）→ dispatch
+        调度（注册 ``Execution(kind="tool")``，finally 清理）→ 元信息
+        接线（``name`` / ``tool_call_id`` / ``production``）→ dispatch
+        ``on_tool_yields`` （仅 ``Tool.__call__`` 执行产出的非 blocked
+        结果触发——blocked 语义即「没有产物」；shortcut 与 LLM 校验失败
+        的产物不经过本点；可改写 ``output`` 原料值）→ dispatch
         ``after_tool_call`` （可改写结果；shortcut 路径照常触发）→ 收尾
         归一（return 前幂等再跑一次 ``normalize_output``，封 shortcut 与
         钩子改写两条缝）→ 返回。
@@ -3355,9 +3530,9 @@ class Agent:
         - 异步工具透明化：``execute()`` 返回 ``asyncio.Task`` 时
           ``Tool.__call__`` 不等待，立即产 ``ToolResult(status="pending")``
           收据（经 ``as_message`` 塑形为 ``tool_status="pending"``、
-          ``content=[]`` 的 TOOL 消息挂树，配对一次性封闭）；同时给 Task
-          挂 ``add_done_callback`` （框架固定行为，非扩展点）。完成回调：
-          取终值 → ``normalize_output`` → ``output_to_blocks`` →
+          ``content=[]`` 的 TOOL 消息挂树，配对一次性封闭）；后台驱动
+          经 ``_drive_background`` 接缝在本 Agent 侧启动。终值投递：
+          归一 → dispatch ``on_tool_yields`` → ``output_to_blocks`` →
           ``Message(kind=EVENT, source="tool_result", ...)`` 构造
           STEER 消息进队列（长 turn 可达天级，完成推送须即时
           注入——检查点吸收、当轮 context 可见、不打断）；任务异常 →
@@ -3405,11 +3580,23 @@ class Agent:
                 self._executions[execution.id] = execution
                 try:
                     result = await tool(resolved_args, caller=self,
-                                        execution=execution)   # Tool.__call__ 调度
+                                        execution=execution,
+                                        tool_call=tool_call)   # Tool.__call__ 调度
                     # abort 于工具调用循环中：工具检测信号返回部分结果（协作式），
                     # 剩余工具由 _run_turn 检查点 ③ 跳过
                 finally:
                     self._executions.pop(execution.id, None)
+                # on_tool_yields 统一点：仅 Tool.__call__ 执行产出的非 blocked
+                # 结果触发（blocked 语义即「没有产物」；shortcut 与 LLM 校验
+                # 失败的 error 各在自己的分支，结构性不经过本点）
+                result.name = tool_call.name
+                result.tool_call_id = tool_call.id
+                result.production = "receipt" if result.status == "pending" else "sync"
+                if result.status != "blocked":
+                    try:
+                        result = await self.hooks.on_tool_yields.dispatch(self, result)   # 可改写 output 原料值
+                    except Intercepted as exc:
+                        result = ToolResult.blocked(reason=str(exc))   # 拦截 → blocked（工具已执行，结果被丢弃）
             try:
                 result = await self.hooks.after_tool_call.dispatch(self, result)   # 可改写结果；改写产物为原料时归一责任在下方收尾（D19）
             except Intercepted as exc:

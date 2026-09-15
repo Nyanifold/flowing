@@ -10,7 +10,7 @@
 
 模块组成：
 
-- :class:`HookRegistry`：Agent 实例级的钩子点注册表。构造时预填 23 个
+- :class:`HookRegistry`：Agent 实例级的钩子点注册表。构造时预填 24 个
   核心钩子点（``by="core"``，见下方全集表）；扩展经
   :meth:`HookRegistry.declare` 声明自己的钩子点。
 - :class:`HookList`：单个钩子点的容器。提供统一注册入口
@@ -40,7 +40,7 @@
 返回并非规律成对出现（中间隔着可达天级的子代运行），视为两个独立的
 单点事件而非一对 before / after。
 
-每个 Agent 实例的钩子注册表在构造时预填下列 23 个核心钩子点，声明者
+每个 Agent 实例的钩子注册表在构造时预填下列 24 个核心钩子点，声明者
 ``by="core"``，初始不含任何 handler。触发时机、value 类型与 handler 能力
 如下两张表（逐条以 ``flowing.agent.Agent`` 与 ``flowing.runtime`` 各
 dispatch 点为准）：
@@ -116,6 +116,16 @@ dispatch 点为准）：
      - 可改写结果（改写产物经 ``Agent.tool_call`` 收尾的
        ``normalize_output`` 归一）；``raise Intercepted`` 会生成
        ``blocked`` 结果、不向工作循环传播
+   * - ``on_tool_yields``
+     - 工具本体产出每一份非 blocked 结果时：同步结果一次；后台工具的
+       收据、每个分段、终值与终止通知（异常 / 取消）各一次。
+       ``blocked``（工具未产出）、shortcut（产物出自 handler）与 LLM
+       视角校验失败的 error（工具未执行）不触发
+     - :class:`flowing.tool.ToolResult`
+     - 可改写 ``output`` （原料值，改写产物经收尾归一）；``raise
+       Intercepted``：同步路径生成 ``blocked`` 结果，后台路径丢弃该
+       分段并投递含拦截原因的 EVENT 通知；``match_on="name"`` 可按工具
+       别名 pattern 过滤
    * - ``on_subagent_invoke``
      - 子 Agent 唤起时、参数 resolve 校验之后
      - :class:`flowing.agent.SubagentInvocation`
@@ -849,6 +859,7 @@ class HookRegistry:
         self._hook_points["on_provider_delta"] = HookList("on_provider_delta", by="core", match_on="by")
         self._hook_points["before_tool_call"] = HookList("before_tool_call", by="core")
         self._hook_points["after_tool_call"] = HookList("after_tool_call", by="core")
+        self._hook_points["on_tool_yields"] = HookList("on_tool_yields", by="core")
         self._hook_points["on_subagent_invoke"] = HookList("on_subagent_invoke", by="core")
         self._hook_points["on_subagent_returns"] = HookList("on_subagent_returns", by="core")
         self._hook_points["on_turn_abort"] = HookList("on_turn_abort", by="core")

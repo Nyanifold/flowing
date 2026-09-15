@@ -481,10 +481,11 @@ def output_to_blocks(output: Any, *, error: str | None = None) -> list[ContentBl
 
     .. rubric:: 功能介绍
 
-    塑形只有这一处实现，全部消费方走同一条代码路径：`ToolResult.as_message`
-    （内部调本函数）、异步工具完成回调（``add_done_callback`` 固定
-    watcher）、cron 的 ``default_tool_executor``——后两处自行加标注块后
-    产 EVENT 消息。
+    塑形只有这一处实现，全部消费方走同一条代码路径：
+    :meth:`flowing.tool.ToolResult.as_message` （同步工具结果 → TOOL
+    消息，内部调本函数）、Agent 侧后台投递驱动（异步工具分段 / 终值 →
+    EVENT 消息）、``Agent.invoke_subagent`` 的 SUBAGENT 交付段——后两处
+    自行加标注块后产 EVENT / SUBAGENT 消息。
 
     .. rubric:: 行为要点
 

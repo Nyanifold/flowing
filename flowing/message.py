@@ -122,7 +122,8 @@ kind → API role 发送映射（Provider adapter 职责）：
 
 - 进队列：``USER`` / ``EVENT`` / ``PEER`` / ``PLUGIN`` / ``SUBAGENT`` /
   ``SYSTEM`` （可选）/ 异步工具最终结果（以 ``EVENT`` kind 入队，
-  ``source="tool_result"``，多块 content = 标注块 + 结果块）。``TOOL``
+  ``source="tool_result"``，多块 content = 标注块 + 结果块；拦截通知
+  与终止通知——异常 / 取消——同走本通道）。``TOOL``
   kind 本身不入队——同步工具结果在逻辑 turn 内经挂树直接进入消息树。
 - 不进队列：``PROVIDER``——永远在逻辑 turn 内产生。
 - ``SYSTEM`` 双通道：经队列投递（触发新逻辑 turn），或由上下文组装内部

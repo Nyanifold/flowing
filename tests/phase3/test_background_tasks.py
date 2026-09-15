@@ -17,8 +17,9 @@ from uuid import uuid4
 
 import pytest
 
-from flowing.agent import Agent
+from flowing.agent import Agent, _start_background_drive
 from flowing.errors import FormatError, Intercepted
+from flowing.hooks import HookRegistry
 from flowing.message import (
     MessageKind,
     StructBlock,
@@ -49,15 +50,21 @@ SimpleAgent = _mod.SimpleAgent
 
 
 class _FakeCaller:
-    """最小调用方替身：收集 enqueue_message 投递的消息（B9 注册表 stub）。"""
+    """最小调用方替身：收集 enqueue_message 投递的消息（注册表 stub +
+    空钩子注册表 + 后台驱动接缝）。"""
 
     def __init__(self) -> None:
         self.messages: list = []
         self._background_tasks: dict[str, asyncio.Task] = {}
+        self.hooks = HookRegistry()
 
     async def enqueue_message(self, msg) -> str:
         self.messages.append(msg)
         return msg.id
+
+    def _drive_background(self, tool, source, form, tool_call=None) -> str:
+        """与 Agent._drive_background 同一接缝（委托同一实现）。"""
+        return _start_background_drive(self, tool, source, form, tool_call)
 
     def track_background_task(self, task: asyncio.Task) -> str:
         """与 Agent.track_background_task 同构的测试替身实现。"""
