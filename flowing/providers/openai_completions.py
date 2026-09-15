@@ -24,6 +24,7 @@ tool 消息的合成 user 消息（固定措辞提示）。
 .. seealso::
 
     :mod:`flowing.providers.anthropic_messages` 另一格式家族。
+    :mod:`flowing.providers.openai_responses` Responses 格式家族。
     :class:`flowing.providers.Provider` 抽象契约。
 """
 

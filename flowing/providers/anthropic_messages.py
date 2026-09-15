@@ -22,6 +22,7 @@ docstring。
 .. seealso::
 
     :mod:`flowing.providers.openai_completions` 另一格式家族。
+    :mod:`flowing.providers.openai_responses` Responses 格式家族。
     :class:`flowing.providers.Provider` 抽象契约。
 """
 

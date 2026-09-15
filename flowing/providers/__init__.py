@@ -4,7 +4,8 @@
 
 本包承载 Provider 侧的全部契约：抽象基类 :class:`Provider` 及内置
 adapter 继承树（:mod:`flowing.providers.openai_completions` /
-:mod:`flowing.providers.anthropic_messages` 两个格式家族）、调用产物
+:mod:`flowing.providers.openai_responses` /
+:mod:`flowing.providers.anthropic_messages` 三个格式家族）、调用产物
 :class:`ProviderResponse` / :class:`ProviderDelta` / 一次调用的 token
 用量记录 :class:`Usage`、条目配置 :class:`ProviderConfig`、adapter
 注册装饰器 :func:`register_provider`、Runtime 级懒实例化表
@@ -118,7 +119,7 @@ adapter 必须把底层错误归类为 :mod:`flowing.errors` 中的明确类型�
 - 不可重试类：``AuthenticationError`` / ``InvalidRequestError`` /
   ``ContentPolicyError`` / ``RequestTooLargeError`` （413 字节超限；
   媒体剥离后重发属 handler 职责）/ ``QuotaExhaustedError`` （429 配额
-  耗尽，与瞬时限流的 ``RateLimitedError`` 对偶——内置两个格式家族对
+  耗尽，与瞬时限流的 ``RateLimitedError`` 对偶——内置三个格式家族对
   429 一律归类为 ``RateLimitedError``，不区分配额耗尽）。
 - ``ContextLengthError``：token 超限；同样经 ``on_provider_error``
   分发——原样重发必然重现，默认策略（``use_retry``）不重试；压缩历史 /
@@ -191,9 +192,12 @@ from flowing.providers.anthropic_messages import AnthropicMessagesProvider
 from flowing.providers.bedrock import BedrockProvider
 from flowing.providers.deepseek import DeepSeekProvider
 from flowing.providers.deepseek_anthropic import DeepSeekAnthropicProvider
+from flowing.providers.deepseek_responses import DeepSeekResponsesProvider
 from flowing.providers.groq import GroqProvider
 from flowing.providers.kimi import KimiProvider
+from flowing.providers.kimi_responses import KimiResponsesProvider
 from flowing.providers.openai_completions import OpenAICompletionsProvider
+from flowing.providers.openai_responses import OpenAIResponsesProvider
 from flowing.providers.openrouter import OpenRouterProvider
 from flowing.providers.provider import (
     FakeProvider,

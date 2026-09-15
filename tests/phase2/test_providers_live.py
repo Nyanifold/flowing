@@ -1,4 +1,4 @@
-"""阶段 2：真实端点冒烟测试（T130–T134，网络门控，默认跳过，不进验收关键路径）。
+"""阶段 2：真实端点冒烟测试（T130–T161，网络门控，默认跳过，不进验收关键路径）。
 
 门控条件（两者同时具备才运行）：
 - 环境变量 ``FLOWING_LIVE_TESTS=1`` 显式开启；
@@ -13,6 +13,7 @@ from __future__ import annotations
 import base64
 import os
 import re
+import uuid
 from pathlib import Path
 
 import pytest
@@ -24,6 +25,7 @@ from flowing.providers import ProviderConfig
 from flowing.providers.anthropic_messages import AnthropicMessagesProvider
 from flowing.providers.deepseek import DeepSeekProvider
 from flowing.providers.deepseek_anthropic import DeepSeekAnthropicProvider
+from flowing.providers.deepseek_responses import DeepSeekResponsesProvider
 from flowing.errors import AuthenticationError
 from flowing.tool import ToolDefinition
 
@@ -263,3 +265,110 @@ async def test_t140_anthropic_vision_smoke():
         assert any(k in text for k in keywords), \
             f"{image} 识别结果未命中候选词：{text[:200]}"
 
+
+# ── DeepSeek Responses 端点：OpenAIResponsesProvider 功能面真机验证 ────────
+# 端点事实（https://api-docs.deepseek.com/zh-cn/api/create-response）：
+# 路径 /responses（无 /v1 前缀）；deepseek-chat 由服务端路由到
+# deepseek-flash；deepseek-reasoner 输出含 reasoning item（经 include
+# reasoning.encrypted_content 带加密内容回传，多轮以 ThinkingBlock
+# .signature 原样回放）；deepseek-v4-flash-vision-exp 接受 input_image
+# data URL。
+
+
+def _ds_responses() -> DeepSeekResponsesProvider:
+    return DeepSeekResponsesProvider(ProviderConfig({"api_key": _deepseek_key()}))
+
+
+def _dsr_model(model_id: str = "deepseek-chat") -> ModelConfig:
+    return ModelConfig(model=model_id, provider="deepseek-responses")
+
+
+async def _nonce_recall_roundtrip(provider, model: ModelConfig) -> None:
+    """两轮 nonce recall 公共体：暗号 uuid 随机，防服务端前缀缓存复用响应。"""
+    nonce = uuid.uuid4().hex[:6]
+    opener = Message(kind=MessageKind.USER, content=[TextBlock(
+        text=f"请记住暗号 {nonce}，只回复「记住」。")])
+    r1 = await provider.generate(
+        Context(system_prompt=[], tools=[], messages=[opener]), model)
+    assert r1.finish is True, "第一轮未正常结束"
+    r2 = await provider.generate(
+        Context(system_prompt=[], tools=[], messages=[
+            opener, r1.message,
+            Message(kind=MessageKind.USER, content=[TextBlock(
+                text="我刚才让你记住的暗号是什么？只回答暗号本身。")]),
+        ]), model)
+    assert r2.finish is True, "第二轮未正常结束"
+    text = "".join(b.text for b in r2.message.content if b.type == "text")
+    assert nonce in text, f"两轮后未回忆起暗号：{text[:200]}"
+
+
+async def test_t158_responses_text_multiturn():
+    """T158：deepseek-chat（responses）文本多轮——记住随机暗号并回忆。"""
+    await _nonce_recall_roundtrip(_ds_responses(), _dsr_model())
+
+
+async def test_t159_responses_image_multiturn():
+    """T159：deepseek-v4-flash-vision-exp（responses）图片多轮——第一轮
+    识图，第二轮凭完整历史回忆图内容（实质内容候选集：开放式回忆常给
+    同义转述）。"""
+    data = base64.b64encode((IMAGES / "demo-image1.png").read_bytes()).decode()
+    opener = Message(kind=MessageKind.USER, content=[
+        ImageBlock(data=data, name="demo-image1.png", mime_type="image/png"),
+        TextBlock(text="识别这张图片的内容，简短回答。")])
+    provider = _ds_responses()
+    model = _dsr_model("deepseek-v4-flash-vision-exp")
+    r1 = await provider.generate(
+        Context(system_prompt=[], tools=[], messages=[opener]), model)
+    assert r1.finish is True
+    text1 = "".join(b.text for b in r1.message.content if b.type == "text")
+    assert any(k in text1 for k in ("分子", "预训练")), \
+        f"识图语义不符：{text1[:200]}"
+    r2 = await provider.generate(
+        Context(system_prompt=[], tools=[], messages=[
+            opener, r1.message,
+            Message(kind=MessageKind.USER, content=[TextBlock(
+                text="我刚才发给你的那张图主要内容是什么？简短回答。")]),
+        ]), model)
+    assert r2.finish is True
+    text2 = "".join(b.text for b in r2.message.content if b.type == "text")
+    assert any(k in text2 for k in (
+        "分子", "预训练", "聚合物", "P-SMILES", "掩码", "对比",
+        "性质预测", "框架")), f"第二轮未回忆出图片内容：{text2[:200]}"
+
+
+async def test_t160_responses_reasoning_multiturn():
+    """T160：deepseek-reasoner（responses）思考多轮——第一轮响应含非空
+    thinking 块（reasoning item）；第二轮把 r1.message 原样回放进历史
+    （thinking signature 经基类重放 reasoning item）+ 追问，finish True。"""
+    provider = _ds_responses()
+    model = _dsr_model("deepseek-reasoner")
+    question = Message(kind=MessageKind.USER, content=[
+        TextBlock(text="9.11 和 9.8 哪个大？只回答较大的数。")])
+    r1 = await provider.generate(
+        Context(system_prompt=[], tools=[], messages=[question]), model)
+    thinking = [b for b in r1.message.content if b.type == "thinking"]
+    assert thinking, f"reasoner 响应无 thinking 块：{r1.message.content}"
+    assert thinking[0].thinking.strip()
+
+    ctx2 = Context(system_prompt=[], tools=[], messages=[
+        question, r1.message,   # reasoning item 经 signature 原样回放
+        Message(kind=MessageKind.USER, content=[TextBlock(text="好的，谢谢。")])])
+    r2 = await provider.generate(ctx2, model)
+    assert r2.finish is True
+
+
+async def test_t161_responses_stream_deltas():
+    """T161：deepseek-chat（responses）generate_stream 真 SSE——text
+    delta 拼接含「2」、content_index 单调不减、末帧携带 usage 与
+    stop_reason。"""
+    provider = _ds_responses()
+    deltas = [d async for d in provider.generate_stream(
+        _ctx("用一句话回答：1+1 等于几？"), _dsr_model())]
+    assert deltas, "流式无任何 delta"
+    text = "".join(d.text for d in deltas if d.kind == "text")
+    assert "2" in text, f"流式拼接答案语义不符：{text[:200]}"
+    indices = [d.content_index for d in deltas]
+    assert indices == sorted(indices), "content_index 非单调"
+    final = deltas[-1]
+    assert final.usage is not None and final.usage.output > 0
+    assert final.provider_data and "stop_reason" in final.provider_data
