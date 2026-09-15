@@ -153,7 +153,7 @@ def _fold(text: str, limit: int = 60) -> str:
 
 def _summarize_message(host: Agent, msg: Message, *,
                        omit_thinking: bool = False) -> str | None:
-    """新挂树消息的一行摘要（``after_turn_append`` 观察 handler 的渲染）。
+    """新挂树消息的一行摘要（``on_turn_append`` 观察 handler 的渲染）。
 
     TOOL 消息（工具结果）、STEER 注入消息、以及含 ThinkingBlock 或
     ToolCallBlock 的 PROVIDER 消息（多轮推理与工具调用可见）返回一行
@@ -295,7 +295,7 @@ async def cmd_repl(
          带参命令按第一个空格分流参数。
     4. 过程显示（绑定期间生效，``/use`` 切换时订阅随之迁移）：订阅
        该 Agent 的 ``on_provider_delta``——流式打印生成中的文本；
-       ``after_turn_append``——新挂树的 TOOL 消息与 STEER 注入消息
+       ``on_turn_append``——新挂树的 TOOL 消息与 STEER 注入消息
        打印一行摘要（正文默认折叠）；``after_turn``——非 repl 的
        ``query()`` 驱动的回合（cron / comm 等触发源）收尾后打印最终
        文本。多轮推理（ThinkingBlock）在摘要行中可见。
@@ -460,12 +460,12 @@ async def cmd_repl(
         # 绑定期间订阅三件套；delta 经 pattern 过滤只看主 Turn
         # （"_turn"），副线（side_query，by="_side"）不进 repl 主流式显示
         a.hooks.on_provider_delta["_turn"](_on_delta, by=_HOOK_OWNER)
-        a.hooks.after_turn_append(_on_append, by=_HOOK_OWNER)
+        a.hooks.on_turn_append(_on_append, by=_HOOK_OWNER)
         a.hooks.after_turn(_after_turn, by=_HOOK_OWNER)
 
     def _unsubscribe(a: Agent) -> None:
         a.hooks.on_provider_delta.remove_by_owner(_HOOK_OWNER)
-        a.hooks.after_turn_append.remove_by_owner(_HOOK_OWNER)
+        a.hooks.on_turn_append.remove_by_owner(_HOOK_OWNER)
         a.hooks.after_turn.remove_by_owner(_HOOK_OWNER)
 
     agent: Agent | None = None

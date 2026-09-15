@@ -252,7 +252,7 @@ async def test_t26_process_display_and_migration(project_two_roots, persist_dir,
     a = captured["root-a"]
     b = captured["root-b"]
     for hooks_of, expect in ((a, 0), (b, 1)):   # 旧 Agent 摘除 / 新 Agent 挂上
-        for hook_name in ("on_provider_delta", "after_turn_append", "after_turn"):
+        for hook_name in ("on_provider_delta", "on_turn_append", "after_turn"):
             entries = getattr(hooks_of.hooks, hook_name)[:]
             assert sum(1 for e in entries if e.by == "repl") == expect, hook_name
 

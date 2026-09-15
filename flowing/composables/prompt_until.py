@@ -80,8 +80,8 @@
   为 ``None`` / 空串时不入队（无物可导向），续跑循环自然终止。
 - 导向消息形态：``Message(kind=EVENT, priority=STEER,
   source="prompt-until", tags=["prompt-until"])``，经
-  :meth:`flowing.agent.Agent.steer` 入队（走 ``before_enqueue`` /
-  ``after_enqueue`` 全时序，``Intercepted`` 原样上抛）。STEER 不打断
+  :meth:`flowing.agent.Agent.steer` 入队（走 ``on_enqueue``
+  时序，``Intercepted`` 原样上抛）。STEER 不打断
   任何回合：由下一个逻辑回合消费（队首 INTERRUPT/STEER 连续段并入其
   批次，见 :meth:`flowing.agent.Agent._dequeue`），随批次挂树并持久化。
 - 终止责任在调用方：断言恒假且导向内容恒非空 → 回合无限续跑（每次
@@ -200,7 +200,7 @@ def use_prompt_until(
       ``TypeError`` fail fast。求值为空时不入队，续跑循环自然终止。
     - 导向消息与消费路径：``kind=EVENT`` / ``priority=STEER`` /
       ``source="prompt-until"`` / ``tags=["prompt-until"]``，经
-      ``steer()`` 入队（``before_enqueue`` / ``after_enqueue`` 全时序，
+      ``steer()`` 入队（``on_enqueue`` 时序，
       ``Intercepted`` 原样上抛）；由下一个逻辑回合消费（队首
       INTERRUPT/STEER 连续段并入其批次），随批次挂树并持久化。
     - 终止责任在调用方：断言恒假且导向内容恒非空 → 回合无限续跑。

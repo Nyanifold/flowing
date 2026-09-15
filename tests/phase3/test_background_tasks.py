@@ -326,7 +326,7 @@ async def test_g7_cancel_api_and_destroy(tmp_path):
     script_provider(provider, text_response("ok"))
     agent = await runtime.create_agent("test-agent")
     captured: list = []
-    agent.hooks.after_enqueue(
+    agent.hooks.on_enqueue(
         lambda a, m: captured.append(m) or m, by="test")
     gate = asyncio.Event()
     gen_started = asyncio.Event()
@@ -583,7 +583,7 @@ async def test_g11_subagent_invoke_background_failure(tmp_path):
     agent.add_agent("worker")
     agent.add_tool("subagent-invoke")
     captured: list = []
-    agent.hooks.after_enqueue(lambda a, m: captured.append(m) or m, by="test")
+    agent.hooks.on_enqueue(lambda a, m: captured.append(m) or m, by="test")
 
     async def gen(context, model):
         if "工人助手" in _sys_text(context):

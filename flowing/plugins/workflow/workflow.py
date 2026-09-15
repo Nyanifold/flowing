@@ -64,7 +64,7 @@ Workflow 驱动子 Agent 的唯一入口是 :meth:`Workflow.create_agent`
 ``message()`` / ``query()``。没有 ``invoke_subagent``——那是 Agent 侧
 「LLM 唤起 + SubagentEntry 解析 + 钩子 + 池生命周期」的包装，workflow
 的编排代码自己就是包装层；workflow 路径也不经过
-``before/after_subagent_invoke`` 钩子（创建管线只有 ``before_create`` /
+``on_subagent_invoke`` / ``on_subagent_returns`` 钩子（创建管线只有 ``before_create`` /
 ``after_create``）。并行无需专门 API——``asyncio.gather`` 即原语。
 
 Workflow 的工具调用是 :meth:`Workflow.tool_call` （规范名 + 零散参数），
@@ -331,7 +331,7 @@ class Workflow(ABC):
           ``inject()`` 上溯链经本 workflow（本 workflow ``provide()`` 的
           值对它可见）。
         - 不经 ``SubagentEntry.resolve()``，不触发
-          ``before/after_subagent_invoke`` 钩子（创建路径只有
+          ``on_subagent_invoke`` / ``on_subagent_returns`` 钩子（创建路径只有
           ``before_create`` / ``after_create``）；``kwargs`` 不做
           inject 式填充——原样传给子 Agent 的 ``setup()``。
         - ``agent_type`` 无法解析 → 创建管线的解析异常上抛；同名类型

@@ -112,7 +112,7 @@ serve 是纯 API 的冷启动
 """
 
 
-_SERVE_HOOK_POINTS = ("on_provider_delta", "after_turn_append", "after_turn", "after_destroy")
+_SERVE_HOOK_POINTS = ("on_provider_delta", "on_turn_append", "after_turn", "after_destroy")
 """SSE 连接订阅的钩子点集合（断开 / destroy 时按 owner 整组摘除）。"""
 
 _SSE_HEARTBEAT_INTERVAL = 1.0
@@ -313,7 +313,7 @@ def _build_app(runtime: Runtime, extra_routes: tuple[tuple[str, str, object], ..
             queue.put_nowait(None)   # Agent destroy：收尾哨兵，正常结束本连接
 
         agent.hooks.on_provider_delta["_turn"](_on_delta, by=owner)   # 只看主 Turn 流式
-        agent.hooks.after_turn_append(_on_append, by=owner)
+        agent.hooks.on_turn_append(_on_append, by=owner)
         agent.hooks.after_turn(_on_turn, by=owner)
         agent.hooks.after_destroy(_on_destroy, by=owner)
         get_task = asyncio.ensure_future(queue.get())
@@ -337,7 +337,7 @@ def _build_app(runtime: Runtime, extra_routes: tuple[tuple[str, str, object], ..
         finally:
             get_task.cancel()
             for hook_point in (
-                agent.hooks.on_provider_delta, agent.hooks.after_turn_append,
+                agent.hooks.on_provider_delta, agent.hooks.on_turn_append,
                 agent.hooks.after_turn, agent.hooks.after_destroy,
             ):
                 hook_point.remove_by_owner(owner)
@@ -699,7 +699,7 @@ async def cmd_serve(
     - ``GET /agents/<agent-id>/stream`` （SSE 长连接）：订阅指定
       Agent 的钩子并逐事件推送——``on_provider_delta`` 的正文 →
       ``event: delta`` （流式正文），思考增量 → ``event: thinking``
-      （adapter 真流式时逐段推送）；``after_turn_append`` →
+      （adapter 真流式时逐段推送）；``on_turn_append`` →
       ``event: message`` （新消息挂树，工具调用与结果、steer 注入等
       对前端可见，data 为消息 JSON）；``after_turn`` →
       ``event: turn_end`` （回合收尾，data 含 ``TurnResult.status``）。

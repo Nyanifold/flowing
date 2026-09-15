@@ -429,8 +429,8 @@ class MessageQueueInfo:
       turn 收尾 resolve waiters 后递减。
     - ``destroy()`` 后不应再调用 ``snapshot()``——对池条目状态的观察请用
       ``RuntimeSnapshot.agents[id].loaded``。
-    - 不提供队列内容枚举（内容走钩子订阅 ``after_enqueue`` /
-      ``before_dequeue`` 或消息级树读取）。
+    - 不提供队列内容枚举（内容走钩子订阅 ``on_enqueue`` /
+      ``on_dequeue`` 或消息级树读取）。
 
     .. seealso::
 

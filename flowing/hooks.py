@@ -10,7 +10,7 @@
 
 模块组成：
 
-- :class:`HookRegistry`：Agent 实例级的钩子点注册表。构造时预填 27 个
+- :class:`HookRegistry`：Agent 实例级的钩子点注册表。构造时预填 23 个
   核心钩子点（``by="core"``，见下方全集表）；扩展经
   :meth:`HookRegistry.declare` 声明自己的钩子点。
 - :class:`HookList`：单个钩子点的容器。提供统一注册入口
@@ -30,7 +30,17 @@
 
 核心钩子点全集（本模块最重要的扩展契约）：
 
-每个 Agent 实例的钩子注册表在构造时预填下列 27 个核心钩子点，声明者
+命名习惯：中间有复杂操作、且输入与结果都需要监督或修改的，用
+``before_`` / ``after_`` 成对（如 ``before_tool_call`` /
+``after_tool_call``、``before_provider_gen`` / ``after_provider_gen``、
+``before_create`` / ``after_create``）；无此必要的单点事件用 ``on_``
+（如 ``on_enqueue`` / ``on_dequeue`` / ``on_fork`` / ``on_turn_append`` /
+``on_turn_abort`` / ``on_provider_error`` / ``on_provider_delta``）。
+``on_subagent_invoke`` / ``on_subagent_returns`` 是特殊例子：唤起与
+返回并非规律成对出现（中间隔着可达天级的子代运行），视为两个独立的
+单点事件而非一对 before / after。
+
+每个 Agent 实例的钩子注册表在构造时预填下列 23 个核心钩子点，声明者
 ``by="core"``，初始不含任何 handler。触发时机、value 类型与 handler 能力
 如下两张表（逐条以 ``flowing.agent.Agent`` 与 ``flowing.runtime`` 各
 dispatch 点为准）：
@@ -75,14 +85,10 @@ dispatch 点为准）：
      - :class:`flowing.agent.TurnContext`
      - 可改写 ``pending_messages`` （把消息附加进本回合待挂树批次）；
        ``raise Intercepted`` 阻断则整个批次丢弃、不落盘
-   * - ``before_turn_append``
+   * - ``on_turn_append``
      - 消息挂树与落盘之前
      - :class:`flowing.message.Message`
      - 可改写消息；``raise Intercepted``
-   * - ``after_turn_append``
-     - 消息挂树与落盘之后
-     - :class:`flowing.message.Message`
-     - 观察；此后再改写返回值不会进树（消息已落盘）
    * - ``before_provider_gen``
      - 每次 LLM 调用之前
      - :class:`flowing.context.Context`
@@ -110,17 +116,17 @@ dispatch 点为准）：
      - 可改写结果（改写产物经 ``Agent.tool_call`` 收尾的
        ``normalize_output`` 归一）；``raise Intercepted`` 会生成
        ``blocked`` 结果、不向工作循环传播
-   * - ``before_subagent_invoke``
+   * - ``on_subagent_invoke``
      - 子 Agent 唤起时、参数 resolve 校验之后
      - :class:`flowing.agent.SubagentInvocation`
      - 可改写 ``args`` / ``prompt``；``raise Intercepted`` 硬阻断唤起
        （同步上抛，未创建实例）；挂在亲代 Agent 的 hooks 上
-   * - ``after_subagent_invoke``
+   * - ``on_subagent_returns``
      - 子 Agent 结果构造之后、交付之前
      - :class:`flowing.agent.SubagentInvocation`
      - 可改写 ``result`` （改写后的结果用于构造交付消息）；不接
        ``Intercepted`` （其异常按普通异常上抛）；挂在亲代 Agent 的 hooks 上
-   * - ``before_turn_abort``
+   * - ``on_turn_abort``
      - 回合被 abort 时触发一次（abort 判定收口处）
      - :class:`flowing.agent.TurnContext`
      - 观察 / 收尾前干预
@@ -144,22 +150,15 @@ dispatch 点为准）：
      - 触发时机
      - value 类型
      - handler 能力与约束
-   * - ``before_enqueue``
+   * - ``on_enqueue``
      - 消息入队之前
      - :class:`flowing.message.Message`
      - 可改写消息；``raise Intercepted`` 则拦截入队（队列不变）
-   * - ``after_enqueue``
-     - 消息入队之后
-     - :class:`flowing.message.Message`
-     - 观察（日志 / 审计）
-   * - ``before_dequeue``
-     - 工作循环出队之前（队列已确认非空）
-     - 无（handler 只收 ``agent`` 参数）
-     - 观察队列
-   * - ``after_dequeue``
+   * - ``on_dequeue``
      - 出队之后、回合开始之前
      - ``list[Message]``
-     - 可改写（变换本逻辑 turn 消费的消息列表）
+     - 可改写（变换本逻辑 turn 消费的消息列表）；已出队但未进入
+       最终批次的消息联动 resolve cancelled，空批 = 丢弃本批重等
    * - ``on_fork``
      - ``fork()`` 合法性检查与切换 head 之前
      - :class:`flowing.agent.ForkContext`
@@ -844,22 +843,19 @@ class HookRegistry:
         self._hook_points["before_destroy"] = HookList("before_destroy", by="core")
         self._hook_points["after_destroy"] = HookList("after_destroy", by="core")
         self._hook_points["before_turn"] = HookList("before_turn", by="core")
-        self._hook_points["before_turn_append"] = HookList("before_turn_append", by="core")
-        self._hook_points["after_turn_append"] = HookList("after_turn_append", by="core")
+        self._hook_points["on_turn_append"] = HookList("on_turn_append", by="core")
         self._hook_points["before_provider_gen"] = HookList("before_provider_gen", by="core")
         self._hook_points["after_provider_gen"] = HookList("after_provider_gen", by="core", match_on="by")
         self._hook_points["on_provider_delta"] = HookList("on_provider_delta", by="core", match_on="by")
         self._hook_points["before_tool_call"] = HookList("before_tool_call", by="core")
         self._hook_points["after_tool_call"] = HookList("after_tool_call", by="core")
-        self._hook_points["before_subagent_invoke"] = HookList("before_subagent_invoke", by="core")
-        self._hook_points["after_subagent_invoke"] = HookList("after_subagent_invoke", by="core")
-        self._hook_points["before_turn_abort"] = HookList("before_turn_abort", by="core")
+        self._hook_points["on_subagent_invoke"] = HookList("on_subagent_invoke", by="core")
+        self._hook_points["on_subagent_returns"] = HookList("on_subagent_returns", by="core")
+        self._hook_points["on_turn_abort"] = HookList("on_turn_abort", by="core")
         self._hook_points["after_turn"] = HookList("after_turn", by="core")
         self._hook_points["on_provider_error"] = HookList("on_provider_error", by="core")
-        self._hook_points["before_enqueue"] = HookList("before_enqueue", by="core")
-        self._hook_points["after_enqueue"] = HookList("after_enqueue", by="core")
-        self._hook_points["before_dequeue"] = HookList("before_dequeue", by="core")
-        self._hook_points["after_dequeue"] = HookList("after_dequeue", by="core")
+        self._hook_points["on_enqueue"] = HookList("on_enqueue", by="core")
+        self._hook_points["on_dequeue"] = HookList("on_dequeue", by="core")
         self._hook_points["on_fork"] = HookList("on_fork", by="core")
         self._hook_points["before_cancel"] = HookList("before_cancel", by="core")
         self._hook_points["after_cancel"] = HookList("after_cancel", by="core")

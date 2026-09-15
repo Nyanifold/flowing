@@ -80,12 +80,12 @@ class RecorderAgent(SimpleAgent):
     def _rec_after(self, _value=None):
         type(self).fired.append("after_create")
 
-    @on("before_subagent_invoke")
+    @on("on_subagent_invoke")
     def _rec_bsi(self, value):
-        type(self).fired.append("before_subagent_invoke")
+        type(self).fired.append("on_subagent_invoke")
         return value
 
-    @on("after_subagent_invoke")
+    @on("on_subagent_returns")
     def _rec_asi(self, value):
-        type(self).fired.append("after_subagent_invoke")
+        type(self).fired.append("on_subagent_returns")
         return value

@@ -146,26 +146,25 @@ async def test_t128_info_key_nodes(tmp_path):
             "after_create",                    # 生命周期（create 管线）
             "before_destroy", "after_destroy",  # 生命周期（destroy 管线）
             "before_turn", "after_turn",       # turn 边界
-            "after_enqueue", "after_dequeue",  # 消息出入队
+            "on_enqueue", "on_dequeue",  # 消息出入队
             "before_provider_gen", "after_provider_gen",  # LLM 边界
             "on_provider_error",
             "before_tool_call", "after_tool_call",        # 工具边界
-            "before_subagent_invoke", "after_subagent_invoke",
+            "on_subagent_invoke", "on_subagent_returns",
             "before_cancel", "after_cancel",
             "on_fork",
         }
         assert expected <= triggered
         # INFO 不覆盖全集：非关键节点无输出
-        assert "before_enqueue" not in triggered
         assert "on_provider_delta" not in triggered
-        assert "before_turn_append" not in triggered
+        assert "on_turn_append" not in triggered
 
         # value 只记摘要（类型名 + 标识字段）
         (tc_row,) = [r for r in rows
                      if r["hook"] == "before_tool_call" and "echo" in r["value"]]
         assert tc_row["value"].startswith("ToolCall(")
         msg_rows = [r for r in rows
-                    if r["hook"] == "after_enqueue"
+                    if r["hook"] == "on_enqueue"
                     and r["value"].startswith("Message(")]
         assert msg_rows                        # 每次 query 各一条 USER 入队
         assert "kind='user'" in msg_rows[0]["value"]
@@ -195,8 +194,8 @@ async def test_t129_debug_full_set_and_repr_truncation(tmp_path):
         rows = read_log(agent)
         triggered = set(hooks_of(rows))
         # INFO 清单外的核心点也有输出（全集枚举）
-        for name in ("before_enqueue", "before_dequeue", "before_turn_append",
-                     "after_turn_append", "on_provider_delta", "before_turn"):
+        for name in ("on_enqueue", "on_dequeue", "on_turn_append",
+                     "on_provider_delta", "before_turn"):
             assert name in triggered, name
         # 非流式合成一条全量 delta → 恰好一行
         assert len(_rows_by_hook(agent, "on_provider_delta")) == 1

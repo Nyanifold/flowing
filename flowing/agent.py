@@ -7,7 +7,7 @@
 回合载体与结果结构：
 
 - :class:`TurnContext` —— 逻辑 Turn 的执行期临时对象（``before_turn`` /
-  ``before_turn_abort`` / ``after_turn`` 钩子点的 value 类型）。
+  ``on_turn_abort`` / ``after_turn`` 钩子点的 value 类型）。
 - :class:`TurnResult` —— 回合产物（``query()`` 等待语义的返回值）。
 - :class:`Execution` —— 异步执行追踪条目（「谁正在运行、谁可取消」）。
 - :class:`FieldUpdate` —— ``watch`` watcher 通道的 value（赋值事件快照）。
@@ -282,7 +282,7 @@ WatchHandler = Callable[[Any, Any], None]
 
 @dataclass
 class TurnContext:
-    """逻辑 Turn 的执行期临时对象——``before_turn`` / ``before_turn_abort`` /
+    """逻辑 Turn 的执行期临时对象——``before_turn`` / ``on_turn_abort`` /
     ``after_turn`` 三个 turn 族钩子点的 value 类型。
 
     .. rubric:: 功能介绍
@@ -319,7 +319,7 @@ class TurnContext:
       完成后清空，此后读写没有意义。``before_turn`` 被 ``Intercepted``
       阻断时整个批次丢弃——不落盘、不留痕（显式丢失语义）。
     - ``aborted`` 由 abort 标记路径置位（``abort_turn()`` / 取消 / 亲节点级联
-      / 钩子内直接置位走同一路径）；置位幂等，``before_turn_abort`` 随之
+      / 钩子内直接置位走同一路径）；置位幂等，``on_turn_abort`` 随之
       每回合至多触发一次。``after_turn`` 钩子读 ``aborted`` 区分正常结束
       与取消。
     - ``usages`` 是本回合各次成功 ``provider_gen`` 上报用量的纯内存累加
@@ -353,7 +353,7 @@ class TurnContext:
     ``message_ids[0]`` 是本 Turn 首条消息的 id。
     """
     aborted: bool = False
-    """abort 标记：置位幂等，``before_turn_abort`` 随之每回合至多触发一次。
+    """abort 标记：置位幂等，``on_turn_abort`` 随之每回合至多触发一次。
     """
     pending_messages: list[Message] = field(default_factory=list)
     """出队后、挂树前的待发批次（含触发本 Turn 的消息）；仅 ``before_turn``
@@ -494,7 +494,7 @@ class Execution:
     是否响应。词汇约定：执行侧统一叫 cancel（方法 ``cancel()`` /
     ``cancel_by_tag()``、钩子 ``before_cancel`` / ``after_cancel`` 与本
     字段）；Turn 循环一侧保留 abort（``abort_turn()`` /
-    ``before_turn_abort`` / ``turn.aborted``）——两个域的词汇各自内部
+    ``on_turn_abort`` / ``turn.aborted``）——两个域的词汇各自内部
     自洽，不跨域混用。
     """
     pause: asyncio.Event
@@ -1871,7 +1871,7 @@ class Agent:
 
         - fire-and-forget：不注册 ``_pending_turns``、不等待任何回合；
           返回值仅是消息 id，可用于 :meth:`cancel_queued` 撤回。
-        - 入队时序（``before_enqueue`` → enqueue → ``after_enqueue``）与
+        - 入队时序（``on_enqueue`` → enqueue）与
           :meth:`enqueue_message` 完全一致；``Intercepted`` 原样上抛。
         - 不返回 ``TurnResult``——想要回合产物请用 :meth:`query`。
 
@@ -1942,17 +1942,16 @@ class Agent:
 
         .. rubric:: 行为要点
 
-        - 时序：dispatch ``before_enqueue`` （可检查 / 修改 /
+        - 时序：dispatch ``on_enqueue`` （可检查 / 修改 /
           ``raise Intercepted`` 拒绝——内容审核、速率限制、文件过大）→
-          ``_message_queue.enqueue(msg)`` → dispatch ``after_enqueue``
-          （纯观察，日志 / 审计）→ 返回 ``msg.id``。
+          ``_message_queue.enqueue(msg)`` → 返回 ``msg.id``。
         - 消费保证：入队即会被消费（常驻工作循环），无需「入队触发」逻辑。
         - 可入队种类：USER / EVENT / SYSTEM / PLUGIN / SUBAGENT / PEER，
           以及异步工具最终结果（以 ``EVENT`` kind 入队，content 为标注块 +
           结果块列表）；``PROVIDER`` 消息永远不进队列（回合内产生）。
         - 优先级插队只影响消费顺序，不影响 ``_pending_turns`` 关联
           （逐条按 id pop）。
-        - :raises flowing.errors.Intercepted: ``before_enqueue`` handler
+        - :raises flowing.errors.Intercepted: ``on_enqueue`` handler
           拒绝入队时原样上抛。
 
         .. seealso::
@@ -1963,10 +1962,9 @@ class Agent:
             - :class:`flowing.message.MessageQueue` —— 排序与阻塞语义。
         """
         if msg.id is None:
-            msg.id = self._next_message_id()   # 入队即铸造——before_enqueue 起钩子即可见终态 id
-        msg = await self.hooks.before_enqueue.dispatch(self, msg)   # 可检查/修改；Intercepted 原样上抛
+            msg.id = self._next_message_id()   # 入队即铸造——on_enqueue 起钩子即可见终态 id
+        msg = await self.hooks.on_enqueue.dispatch(self, msg)   # 可检查/修改；Intercepted 原样上抛
         self._message_queue.enqueue(msg)
-        await self.hooks.after_enqueue.dispatch(self, msg)   # 纯观察（日志/审计）
         return msg.id
 
     async def enqueue_messages(
@@ -1976,9 +1974,9 @@ class Agent:
 
         .. rubric:: 行为要点
 
-        - 逐条委托 :meth:`enqueue_message` （每条独立经过
-          ``before_enqueue`` / ``after_enqueue``）；任一条被
-          ``Intercepted`` 时异常上抛，已入队的不回滚。
+               - 逐条委托 :meth:`enqueue_message` （每条独立经过
+          ``on_enqueue``）；任一条被 ``Intercepted`` 时异常上抛，
+          已入队的不回滚。
         - 返回顺序与输入顺序一致。
 
         .. seealso:: :meth:`enqueue_message`
@@ -1989,6 +1987,17 @@ class Agent:
         for m in msgs:
             ids.append(await self.enqueue_message(m))   # 逐条委托；Intercepted 上抛，已入队不回滚
         return ids
+
+    def _pop_pending_cancelled(self, message_id: str) -> None:
+        """摘除 ``_pending_turns`` 条目并联动 resolve cancelled（框架合成空
+        ``TurnContext``；内部 API）——:meth:`cancel_queued` 与
+        :meth:`_dequeue` 的「已出队但未消费」处理共用同一填充规则。"""
+        fut = self._pending_turns.pop(message_id, None)
+        if fut is not None and not fut.done():
+            fut.set_result(TurnResult(   # 联动 resolve cancelled（框架合成空 TurnContext）
+                turn=TurnContext(started_at=datetime.now(), message_ids=[]),
+                final_text="", status="cancelled", token_usage=None,
+                finish_reason="cancelled"))
 
     def cancel_queued(self, message_id: str) -> bool:
         """撤回一条未出队的排队消息。
@@ -2015,12 +2024,7 @@ class Agent:
         removed = self._message_queue.remove(message_id)   # 同步方法，不 dispatch 钩子
         if not removed:
             return False   # 已出队或不存在：不做任何动作
-        fut = self._pending_turns.pop(message_id, None)
-        if fut is not None and not fut.done():
-            fut.set_result(TurnResult(   # 联动 resolve cancelled（框架合成空 TurnContext）
-                turn=TurnContext(started_at=datetime.now(), message_ids=[]),
-                final_text="", status="cancelled", token_usage=None,
-                finish_reason="cancelled"))
+        self._pop_pending_cancelled(message_id)   # 等待者联动 resolve cancelled
         return True
 
     def _next_message_id(self) -> str:
@@ -3067,8 +3071,8 @@ class Agent:
         续接；语义名只存在亲代侧表中，子实例不自持名字）。
 
         与 :meth:`invoke_subagent` 的分工：本方法不做
-        ``SubagentEntry.resolve()``、不经过 ``before_subagent_invoke`` /
-        ``after_subagent_invoke`` 钩子（仅走创建管线的 ``before_create`` /
+        ``SubagentEntry.resolve()``、不经过 ``on_subagent_invoke`` /
+        ``on_subagent_returns`` 钩子（仅走创建管线的 ``before_create`` /
         ``after_create``）、不支持 ``resume`` 续接——适合「创建并持有
         实例」的钩子回调 / 外部代码 / 回合内工具。
 
@@ -3128,14 +3132,14 @@ class Agent:
           ``SubagentEntry.resolve()`` （LLM args → 完整 kwargs：别名映射 +
           specified 求值 + inject 注入）→ 构造
           :class:`SubagentInvocation` 并 dispatch 亲代 Agent 的
-          ``before_subagent_invoke`` → 注册 ``Execution(kind="agent")`` →
+          ``on_subagent_invoke`` → 注册 ``Execution(kind="agent")`` →
           新建（内部调 :meth:`create_subagent`）或续接（``resume`` 按
           实例名找池中实例）。此段失败（``Intercepted`` / 校验 / 创建抛
           异常）同步上抛——子 Agent 要么成功创建要么未创建，工具路径由
           ``ToolResult(status="error")`` 承载（LLM 可见）。
         - 运行段（可后台）：``await child.query(prompt)`` 等待产出 →
           构造 :class:`SubagentResult` → dispatch
-          ``after_subagent_invoke`` （先于交付：handler 可改写 result，
+          ``on_subagent_returns`` （先于交付：handler 可改写 result，
           改写对两条路径同时生效）→ 用改写后的 result 构造
           ``Message(kind=SUBAGENT)`` 推入本实例队列（LLM 后续回合感知）
           并返回。运行段结局走 ``TurnResult`` 四态正常通道
@@ -3165,11 +3169,11 @@ class Agent:
           ``"cancelled"``，``result`` 按统一填充规则。
         - 唤起失败（创建 / 校验 / 运行抛异常）原样上抛调用方——无专属
           错误钩子；工具路径由 ``ToolResult(status="error")`` 承载。
-        - ``after_subagent_invoke`` 在结果构造后、交付前 dispatch（value
+        - ``on_subagent_returns`` 在结果构造后、交付前 dispatch（value
           为 :class:`SubagentInvocation`，``result`` 已回填）：handler
           可改写 ``invocation.result``，改写对返回值与 SUBAGENT 消息同时
           生效（两条路径同源）；纯观察需求由不改写的 handler 承担。本
-          钩子不接 ``Intercepted``——阻断闸在 ``before_subagent_invoke``。
+          钩子不接 ``Intercepted``——阻断闸在 ``on_subagent_invoke``。
         - 同步交付语义：本方法等待子 Agent 完成后，把改写后的
           ``SubagentResult`` 作为返回值交给调用方；不再另发 SUBAGENT
           消息入亲代队列。调用方（通常是同步工具路径）负责把结果放进自己
@@ -3183,7 +3187,7 @@ class Agent:
           SUBAGENT 消息，工具只返回 ``started`` 收据。外部代码若不想
           入队，不要走该工具异步路径，用
           ``asyncio.create_task(agent.invoke_subagent(...))``。
-        - 无论是否入队，``after_subagent_invoke`` 都先于交付 dispatch，
+        - 无论是否入队，``on_subagent_returns`` 都先于交付 dispatch，
           改写后的结果同时是返回值与后续交付内容。
         - 不做 keep_alive 语义——生命周期由 agent 池「默认存续 + 显式
           销毁」管理。
@@ -3213,7 +3217,7 @@ class Agent:
         Execution 注册 + 创建 / 续接。
 
         同步 await 的唤起前半段。本段返回即保证「子 Agent 已成功创建
-        （或续接）」；本段内任何失败（``before_subagent_invoke`` 的
+        （或续接）」；本段内任何失败（``on_subagent_invoke`` 的
         ``Intercepted`` / 校验错误 / 创建抛异常）同步上抛调用方，且
         Execution 注册被回收——「成功创建或未创建」二态边界，无半登记
         状态。返回 ``(child, invocation, execution)`` 三元组，交由
@@ -3232,7 +3236,7 @@ class Agent:
             agent_type=entry.name_ori if resume is None else None,   # resume 与 agent_type 互斥
             name=name,
             resume=resume, prompt=prompt, args=init_kwargs)
-        invocation = await self.hooks.before_subagent_invoke.dispatch(
+        invocation = await self.hooks.on_subagent_invoke.dispatch(
             self, invocation)   # 可改写 args/prompt；Intercepted 硬阻断唤起（上抛，未创建实例）
         execution = Execution(id=self._next_execution_id(), kind="agent", tags=["subagent"],
                               started_at=datetime.now(),
@@ -3270,7 +3274,7 @@ class Agent:
         after 钩子 + 交付 + Execution 清理。
 
         本段内不再有「创建失败」——结局只有 ``TurnResult`` 四态
-        （``subagent_status`` 承载）。``after_subagent_invoke`` 先于交付
+        （``subagent_status`` 承载）。``on_subagent_returns`` 先于交付
         dispatch：handler 改写 ``invocation.result`` 后，返回值与可选的
         SUBAGENT 消息同源采用改写后的结果；本钩子不接 ``Intercepted``
         （阻断闸在 before，答卷级处置用改写表达）。
@@ -3290,7 +3294,7 @@ class Agent:
                                     result=child.last_result,   # 收尾段已写入（resolve waiters 之前，无时序竞争）；finish → dict，普通 → 文本，无产出 → None
                                     subagent_status=turn_result.status)   # 取消/异常信息载体（此前 turn_result 接住未用，自此启用）
             invocation.result = result   # after 阶段回填
-            invocation = await self.hooks.after_subagent_invoke.dispatch(
+            invocation = await self.hooks.on_subagent_returns.dispatch(
                 self, invocation)   # 先于交付：可改写 result；不接 Intercepted
             result = invocation.result
             if enqueue_result:
@@ -4172,28 +4176,34 @@ class Agent:
         """出队扩展点：构造一个逻辑回合的消费批次，可覆写实现 drain /
         合并策略（内部 API）。
 
-        默认批次语义：阻塞到队列非空 → dispatch ``before_dequeue`` →
-        取队首 INTERRUPT/STEER 连续段（``take_while(priority <= STEER)``）
-        → 再取其后的第一条非紧急消息（若有；队首即非紧急时批次为单条）
-        → dispatch ``after_dequeue`` （可变换返回的消息列表）。取出空
-        批次（钩子在此窗口扔掉了全部候选）→ 重新等待并再次派发 before。
+        默认批次语义：阻塞到队列非空 → 取队首 INTERRUPT/STEER 连续段
+        （``take_while(priority <= STEER)``）→ 再取其后的第一条非紧急
+        消息（若有；队首即非紧急时批次为单条）→ dispatch ``on_dequeue``
+        （可变换返回的消息列表）。已出队但未进入最终批次的消息不塞回
+        队列——其 ``_pending_turns`` 等待者联动 resolve cancelled
+        （同 :meth:`cancel_queued` 填充规则）；``on_dequeue`` 把批次
+        变换为空 = 丢弃本批，工作循环重新等待下一批。
 
         覆写管「多条 / 策略」（``drain_all()`` 合并、批量、按来源分组），
         钩子管「观察 / 变换」——分工不混。批次内各消息的等待者随回合
         收尾共享同一 ``TurnResult`` 并全部 resolve。
         """
-        while True:   # 等消息与取消息拆分；钩子扔光候选则重新等待
+        while True:   # on_dequeue 空批（丢弃本批）→ 重新等待
             await self._message_queue.wait_not_empty()   # 阻塞到非空
-            await self.hooks.before_dequeue.dispatch(self)   # 即将出队时派发（观察队列，无 value）
-            msgs = self._message_queue.take_while(   # 队首 INTERRUPT/STEER 连续段
+            taken = self._message_queue.take_while(   # 队首 INTERRUPT/STEER 连续段
                 lambda m: m.priority <= MessagePriority.STEER)
             nxt = self._message_queue.dequeue_nowait()   # 其后第一条非紧急消息（若有）
             if nxt is not None:
-                msgs.append(nxt)
-            if msgs:   # 空批次 = 钩子在此窗口扔掉了全部候选 -> 重等
-                break
-        msgs = await self.hooks.after_dequeue.dispatch(self, msgs)   # 可变换返回的消息列表
-        return msgs
+                taken.append(nxt)
+            if not taken:
+                continue   # 防御：wait_not_empty 与取批之间无 await 窗口，理论不可达
+            msgs = await self.hooks.on_dequeue.dispatch(self, taken)   # 可变换批次
+            consumed = {m.id for m in msgs}
+            for dropped in taken:   # 已出队但未进入最终批次：联动 resolve cancelled，不塞回队列
+                if dropped.id not in consumed:
+                    self._pop_pending_cancelled(dropped.id)
+            if msgs:
+                return msgs
 
     async def _run_turn(
         self,
@@ -4218,7 +4228,7 @@ class Agent:
         消息挂树 → 工具调用循环（同一响应内全部 ``tool_call`` 并行执行，
         批次前同一 pause/abort 检查点）→ ``response.finish`` 或
         ``finish_output`` 置位则 break。三处 abort 判定互斥（各自随即
-        break）且 ``turn.aborted`` 幂等置位，``before_turn_abort`` 每回合
+        break）且 ``turn.aborted`` 幂等置位，``on_turn_abort`` 每回合
         至多触发一次。
 
         ``finally`` （所有路径）：``current_turn = None`` （释放回合身份牌
@@ -4242,7 +4252,7 @@ class Agent:
             # 异常路径：Intercepted -> pending_messages 全部丢弃不落盘（显式
             # 丢失语义），TurnResult status="blocked"（Intercepted 未在本模块具名引入）
             turn = await self.hooks.before_turn.dispatch(self, turn)
-            # 3. 批次逐条挂树（各条照常触发 before_turn_append）
+            # 3. 批次逐条挂树（各条照常触发 on_turn_append）
             for m in turn.pending_messages:
                 await self._append_message(m, turn)
             turn.pending_messages.clear()   # 挂树批次完成后清空
@@ -4266,7 +4276,7 @@ class Agent:
                         await self._append_message(m, turn)
                 if self._turn_abort.is_set():
                     turn.aborted = True   # 幂等置位（语义即此布尔赋值）
-                    await self.hooks.before_turn_abort.dispatch(self, turn)   # abort 判定收口处统一触发（每回合至多一次）
+                    await self.hooks.on_turn_abort.dispatch(self, turn)   # abort 判定收口处统一触发（每回合至多一次）
                     break
                 context = self._assemble_context()
                 try:
@@ -4300,7 +4310,7 @@ class Agent:
                 last_stop_reason = response.provider_data.get("stop_reason", "")   # completed 结局的 finish_reason 来源
                 if response.cancelled or self._turn_abort.is_set():
                     turn.aborted = True   # cancelled 也走 abort 路径
-                    await self.hooks.before_turn_abort.dispatch(self, turn)
+                    await self.hooks.on_turn_abort.dispatch(self, turn)
                     break
                 # 工具调用循环（并行版）：同一响应中的全部 tool_call 并行执行
                 tool_blocks = [
@@ -4312,7 +4322,7 @@ class Agent:
                     await self._pause_gate.wait()
                     if self._turn_abort.is_set():
                         turn.aborted = True
-                        await self.hooks.before_turn_abort.dispatch(self, turn)
+                        await self.hooks.on_turn_abort.dispatch(self, turn)
                         # 跳过本批全部工具；已执行工具（无）结果仍按不执行处理
                     else:
                         block_finish_was = turn.finish_output   # 置位转移检测：并行块开始前
@@ -4410,18 +4420,16 @@ class Agent:
     async def _append_message(self, msg: Message, turn: TurnContext) -> None:
         """消息挂树 + 落盘统一入口（内部 API）。
 
-        时序：dispatch ``before_turn_append`` （可改写 / ``Intercepted``）
+        时序：dispatch ``on_turn_append`` （可改写 / ``Intercepted``）
         → :meth:`push` （设 ``parent_id = current_head_id`` → 挂入
-        ``_messages`` → 落盘 → head 前移）→ ``turn.message_ids.append``
-        → dispatch ``after_turn_append`` （观察；此后改写不进树——消息已
-        落盘）。消息完整后才经过本方法——流式进行中的增量不经过它，天然
+        ``_messages`` → 落盘 → head 前移）→ ``turn.message_ids.append``。
+        消息完整后才经过本方法——流式进行中的增量不经过它，天然
         不落盘；流式被中断时，已累积内容定型为一条 ``partial=True`` 的
         完整消息，照常挂树落盘。副线（``side_query``）消息不经过本方法。
         """
-        msg = await self.hooks.before_turn_append.dispatch(self, msg)   # 可改写 / Intercepted
+        msg = await self.hooks.on_turn_append.dispatch(self, msg)   # 可改写 / Intercepted
         self.push(msg)                             # 核心写路径：parent_id → _messages → 落盘 → head 前移
         turn.message_ids.append(msg.id)            # 记 turn 索引
-        await self.hooks.after_turn_append.dispatch(self, msg)   # 观察（此后改写不进树）
 
     def _persist_message(self, msg: Message) -> None:
         """提交一条完整消息落盘（内部 API；write-behind：同步排队即返）。

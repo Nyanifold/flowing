@@ -168,21 +168,21 @@ async def test_t45_concurrent_queries_separate_turns(agent, provider):
 # ---------------------------------------------------------------------------
 
 
-async def test_t46_before_enqueue_intercepted(agent):
-    after_calls: list = []
+async def test_t46_on_enqueue_intercepted(agent):
+    later_calls: list = []
 
     async def _guard(a, msg):
         if "违规" in "".join(getattr(b, "text", "") for b in msg.content):
             raise Intercepted("拒绝")
         return msg
 
-    agent.hooks.before_enqueue(_guard)
-    agent.hooks.after_enqueue(lambda a, m: after_calls.append(m.id) or m)
+    agent.hooks.on_enqueue(_guard)
+    agent.hooks.on_enqueue(lambda a, m: later_calls.append(m.id) or m)   # 排在拦截者之后
     with pytest.raises(Intercepted):
         await agent.enqueue_message(Message(
             kind=MessageKind.USER, content=[TextBlock(text="违规内容")]))
     assert len(agent._message_queue) == 0   # 队列长度不变
-    assert after_calls == []   # after_enqueue 不触发
+    assert later_calls == []   # Intercepted 后链停止，后续 handler 不触发
 
 
 async def test_t47_cancel_queued(agent, provider):
@@ -662,11 +662,11 @@ async def test_t63_abort_inside_on_provider_error(agent, provider):
         return ctx
 
     agent.hooks.on_provider_error(_give_up)
-    agent.hooks.before_turn_abort(lambda a, t: abort_calls.append(1) or t)
+    agent.hooks.on_turn_abort(lambda a, t: abort_calls.append(1) or t)
     result = await agent.query("hi")
     # continue 后下一次 provider_gen 开头检测信号返回 cancelled，abort 收口
     assert result.status == "cancelled"
-    assert abort_calls == [1]   # before_turn_abort 恰好一次
+    assert abort_calls == [1]   # on_turn_abort 恰好一次
 
 
 async def test_t64_cancel_sets_all_signals(agent):
@@ -744,7 +744,7 @@ async def test_t68_interrupt_absorbed_and_aborted(agent, provider):
     step1, _ = tool_call_response(("wait", {}))
     script_provider(provider, step1, text_response("不应到达"))
     abort_calls: list = []
-    agent.hooks.before_turn_abort(lambda a, t: abort_calls.append(1) or t)
+    agent.hooks.on_turn_abort(lambda a, t: abort_calls.append(1) or t)
 
     t1 = asyncio.create_task(agent.query("开始"))
     await _yield(6)   # 回合进入工具执行
@@ -754,7 +754,7 @@ async def test_t68_interrupt_absorbed_and_aborted(agent, provider):
     r1, r2 = await asyncio.wait_for(asyncio.gather(t1, t2), 2)
     assert r1 is r2   # 吸收消息的等待者并入本回合，共享同一 TurnResult
     assert r1.status == "cancelled"   # abort 收口
-    assert abort_calls == [1]   # before_turn_abort 恰好一次
+    assert abort_calls == [1]   # on_turn_abort 恰好一次
     # INTERRUPT 消息已挂树
     kinds = [agent._messages[mid].kind for mid in r1.turn.message_ids]
     assert kinds.count(MessageKind.USER) == 2
@@ -773,9 +773,9 @@ async def test_t69_gates_division(agent, provider):
         return msg
 
     agent.hooks.before_turn(_record)
-    agent.hooks.before_enqueue(_reject)
+    agent.hooks.on_enqueue(_reject)
 
-    # ②.5 吸收的消息不经过 before_turn；before_enqueue 在入队时已拦截
+    # ②.5 吸收的消息不经过 before_turn；on_enqueue 在入队时已拦截
     with pytest.raises(Intercepted):
         await agent.steer("违规 steer")   # 入队闸门拦截，永远到不了 ②.5
     assert len(agent._message_queue) == 0
@@ -1245,28 +1245,29 @@ async def test_t84_hook_exception_not_wedged(agent, provider, caplog):
 
 
 async def test_dequeue_hook_discard_retries(agent, provider):
-    """before_dequeue 窗口内扔掉消息 -> dequeue_nowait 得 None -> 重等重发；
-    每条真正出队的消息之前恰好一次 before 派发。"""
-    before_calls: list[int] = []
+    """on_dequeue 把批次变换为空 = 丢弃本批（已出队不塞回，等待者联动
+    resolve cancelled）→ 工作循环重等；后续批次正常消费。"""
+    dequeue_calls: list[int] = []
     dropped = {"done": False}
 
-    async def _drop_first(a, _value=None):   # 无 value 钩子点同样收 (agent, value)
-        before_calls.append(len(agent._message_queue))
+    async def _drop_first(a, msgs):
+        dequeue_calls.append(len(msgs))
         if not dropped["done"]:
             dropped["done"] = True
-            victim = agent._message_queue.peek()
-            agent.cancel_queued(victim.id)   # 钩子在窗口内扔掉消息（合法出口）
-        return None
+            return []   # 丢弃本批（已出队消息不塞回队列）
+        return msgs
 
-    agent.hooks.before_dequeue(_drop_first)
+    agent.hooks.on_dequeue(_drop_first)
     script_provider(provider, text_response("ok"))
-    mid1 = await agent.message("会被扔掉")
+    q1 = asyncio.create_task(agent.query("会被扔掉"))
     await _yield(4)
     assert dropped["done"]
+    r1 = await asyncio.wait_for(q1, 2)
+    assert r1.status == "cancelled"   # 被丢消息的等待者联动 resolve cancelled
     result = await agent.query("正常消费")
     assert result.status == "completed"
-    # before 恰好对「真正出队的消息」各派发一次（被扔消息那次不计入消费）
-    assert before_calls[0] >= 1
+    assert dequeue_calls == [1, 1]   # 首批被丢 + 次批正常消费，各派发一次
+    assert len(provider.received) == 1   # 被丢批次未发起 LLM 调用
 
 
 async def test_enqueue_messages_batch(agent, provider):
@@ -1282,7 +1283,7 @@ async def test_enqueue_messages_batch(agent, provider):
             raise Intercepted("拒")
         return msg
 
-    agent.hooks.before_enqueue(_veto)
+    agent.hooks.on_enqueue(_veto)
     with pytest.raises(Intercepted):
         await agent.enqueue_messages([
             Message(kind=MessageKind.USER, content=[TextBlock(text="三")]),
@@ -1332,10 +1333,13 @@ async def test_t07_stream_fallback_matches_nonstream(agent, provider):
 # ---------------------------------------------------------------------------
 
 
-async def test_dequeue_batch_urgent_prefix_merges(agent, provider):
+async def test_dequeue_batch_urgent_prefix_merges(runtime, provider):
     """[steer, steer, user1, user2] → 第一回合消费前三条（紧急段 + 首条
     非紧急），第二回合消费 user2（非紧急不继续合并）。"""
     batches: list[list[str]] = []
+    # 工作循环先不启动：四条消息全部入队后再开循环，批次形成的确定性
+    # 由启动时机保证
+    agent = await runtime.create_agent(SimpleAgent, start_loop=False)
 
     async def _record(a, turn):
         batches.append([getattr(m.content[0], "text", "")
@@ -1343,15 +1347,6 @@ async def test_dequeue_batch_urgent_prefix_merges(agent, provider):
         return turn
 
     agent.hooks.before_turn(_record)
-    # 出队闸门：before_dequeue handler 挂住工作循环的出队动作，直到四条
-    # 消息全部入队（pause 不能拦住已 parked 在 wait_not_empty 的出队，
-    # 批次形成的确定性用闸门保证）
-    gate = asyncio.Event()
-
-    async def _hold(a, _value=None):   # 无 value 钩子点同样收 (agent, value)
-        await gate.wait()
-
-    agent.hooks.before_dequeue(_hold)
     script_provider(provider, text_response("r1"), text_response("r2"))
     await agent.steer("导向一")
     await agent.steer("导向二")
@@ -1362,7 +1357,7 @@ async def test_dequeue_batch_urgent_prefix_merges(agent, provider):
             break
         await asyncio.sleep(0)
     assert len(agent._message_queue) == 4
-    gate.set()
+    agent._loop_task = asyncio.create_task(agent._work_loop())   # 批次候选全部就位后启动工作循环
     r1, r2 = await asyncio.gather(q1, q2)
     assert batches[0] == ["导向一", "导向二", "问题一"]   # 紧急段 + 首条非紧急
     assert batches[1] == ["问题二"]                        # 非紧急不继续合并
@@ -1373,31 +1368,22 @@ async def test_dequeue_batch_urgent_prefix_merges(agent, provider):
                for m in first_ctx.messages for b in m.content)
 
 
-async def test_dequeue_batch_urgent_only(agent, provider):
+async def test_dequeue_batch_urgent_only(runtime, provider):
     """队中全是 STEER：整段为一个批次——单回合、provider 只调一次、
     两条 steer 均挂树。"""
     batches: list[int] = []
+    agent = await runtime.create_agent(SimpleAgent, start_loop=False)   # 同上的确定性启动
 
     async def _record(a, turn):
         batches.append(len(turn.pending_messages))
         return turn
 
     agent.hooks.before_turn(_record)
-    gate = asyncio.Event()   # 出队闸门（同 test_dequeue_batch_urgent_prefix_merges）
-
-    async def _hold(a, _value=None):   # 无 value 钩子点同样收 (agent, value)
-        await gate.wait()
-
-    agent.hooks.before_dequeue(_hold)
     script_provider(provider, text_response("ok"))
     await agent.steer("导向一")
     await agent.steer("导向二")
-    for _ in range(100):
-        if len(agent._message_queue) == 2:
-            break
-        await asyncio.sleep(0)
     assert len(agent._message_queue) == 2
-    gate.set()
+    agent._loop_task = asyncio.create_task(agent._work_loop())
     await _yield(10)  # 等回合跑完
     assert batches == [2]                 # 两条 STEER 并入同一回合批次
     assert len(provider.received) == 1    # 只开一次 LLM 调用

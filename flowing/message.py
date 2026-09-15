@@ -159,7 +159,7 @@ kind → API role 发送映射（Provider adapter 职责）：
 
 - 媒体块一律 base64 内联（``data`` 必填且是权威表示）：消息层不感知
   「文件最初从哪来」，也不做文件大小检查（大小治理分层：前端上传前校验 /
-  ``before_enqueue`` 钩子 / Provider adapter 的 ``ContextLengthError``
+  ``on_enqueue`` 钩子 / Provider adapter 的 ``ContextLengthError``
   兜底）。
 - 历史消息不可在应用层直接修改——修改历史走 :class:`MessageChain` 五 op
   或 fork（切分支）。
@@ -412,7 +412,7 @@ class ContentBlock:
     .. rubric:: 行为要点
 
     - 框架核心只接纳 base64 数据，不做文件大小检查（大小治理分层：
-      前端上传前校验 → ``before_enqueue`` 钩子 → Provider adapter 的
+      前端上传前校验 → ``on_enqueue`` 钩子 → Provider adapter 的
       ``ContextLengthError`` 兜底）。
     - ``mime_type`` 始终可选：缺失时由 adapter 按文件扩展名或内容魔数
       推断；显式指定优先。
@@ -456,7 +456,7 @@ class TextBlock(ContentBlock):
     .. rubric:: 行为要点
 
     - ``text`` 为空字符串是合法的（语义由上层决定，框架不拒绝）。
-    - 不做长度限制、不做内容审核（审核走 ``before_enqueue`` 钩子）。
+    - 不做长度限制、不做内容审核（审核走 ``on_enqueue`` 钩子）。
 
     .. seealso::
        :class:`flowing.message.ContentBlock`、
@@ -656,7 +656,7 @@ class MediaBlock(ContentBlock):
       （``flowing.tool.normalize_output``），adapter 从 provider 响应 /
       用户上传建媒体块时同守。
     - 消息层不做文件大小检查：超大 base64 字符串直接存储；大小治理分层
-      （前端校验 / ``before_enqueue`` 钩子 / adapter 的
+      （前端校验 / ``on_enqueue`` 钩子 / adapter 的
       ``ContextLengthError``）。
     - ``mime_type`` 可选：缺失时 adapter 按扩展名或内容魔数推断；显式
       指定优先。
@@ -1274,7 +1274,7 @@ class MessageQueue:
         .. rubric:: 功能介绍
 
         将 ``msg`` 按（``priority``, 入队序号）插入排序位置。
-        ``Agent.enqueue_message`` 在 ``before_enqueue`` 钩子之后调用本
+        ``Agent.enqueue_message`` 在 ``on_enqueue`` 钩子之后调用本
         方法。
 
         .. rubric:: 行为要点
@@ -1297,15 +1297,14 @@ class MessageQueue:
         .. rubric:: 功能介绍
 
         「等消息」与「取消息」的拆分原语：``Agent._dequeue`` 的默认实现
-        用它把 ``before_dequeue`` 的派发点移到「队列确实非空、即将出队」
-        的时刻，消除空转期的无效钩子派发。enqueue 时唤醒等待者。
+        用它保证「队列确实非空」才进入取批与 ``on_dequeue`` 派发，消除
+        空转期的无效动作。enqueue 时唤醒等待者。
 
         .. rubric:: 行为要点
 
         - 队列非空时立即返回；为空时挂起至下一次入队。
-        - 返回后队列可能再次被掏空（如 ``before_dequeue`` 钩子移除
-          消息），本方法不做保证——重试循环由调用方（``_dequeue``）
-          承担。
+        - 返回后 ``on_dequeue`` 仍可能把批次变换为空（丢弃本批），
+          重试循环由调用方（``_dequeue``）承担。
 
         .. seealso:: :meth:`dequeue`、:meth:`dequeue_nowait`
         """
@@ -1316,10 +1315,8 @@ class MessageQueue:
         """非阻塞取出优先级最高的一条消息；队列空返回 ``None``。
 
         与 :meth:`wait_not_empty` 配套：``Agent._dequeue`` 在
-        ``before_dequeue`` 派发后用它取消息——钩子在此窗口把消息移除
-        （``cancel_queued`` / ``remove``）时返回 ``None``，调用方重新
-        等待并重新派发 ``before_dequeue`` （每批真正出队的消息之前恰好
-        一次 before 派发）。
+        ``take_while`` 取完紧急段后用它取「其后第一条非紧急消息」——
+        无紧急前缀的批次就是本方法取出的单条。
         """
         if not self._items:
             return None
@@ -1334,13 +1331,12 @@ class MessageQueue:
         .. rubric:: 功能介绍
 
         队列空时挂起等待，直到有消息入队。本方法是「等消息 + 取消息」合体
-        的便捷原语；``Agent._dequeue()`` 的默认实现不使用它——为了把
-        ``before_dequeue`` 的派发点移到「队列确实非空、即将出队」的时刻
-        （每批真正出队的消息之前恰好一次 before 派发），默认实现改用
-        :meth:`wait_not_empty` + :meth:`take_while` / :meth:`dequeue_nowait`
-        的拆分组合（见 :meth:`flowing.agent.Agent._dequeue`）。不需要该
-        钩子时序语义的直接消费方（如自定义 ``_dequeue()`` 覆写）可用本
-        方法。
+        的便捷原语；``Agent._dequeue()`` 的默认实现不使用它——默认批次
+        语义（队首紧急连续段 + 首条非紧急 + ``on_dequeue`` 派发）需要
+        :meth:`wait_not_empty` + :meth:`take_while` /
+        :meth:`dequeue_nowait` 的拆分组合（见
+        :meth:`flowing.agent.Agent._dequeue`）。不需要批次语义的直接
+        消费方（如自定义 ``_dequeue()`` 覆写）可用本方法。
 
         .. rubric:: 行为要点
 

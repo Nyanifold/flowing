@@ -8,8 +8,8 @@
   能力三正交（可执行对象 / LLM 可见声明 / Agent 级绑定三个维度）的
   Agent 级绑定层（与 :class:`flowing.tool.ToolEntry` 同构）：LLM 看到
   的别名与描述、参数覆写 / 指定值 / 注入。
-- :class:`SubagentInvocation` —— ``before_subagent_invoke`` /
-  ``after_subagent_invoke`` 钩子的 value。
+- :class:`SubagentInvocation` —— ``on_subagent_invoke`` /
+  ``on_subagent_returns`` 钩子的 value。
 - :class:`SubagentResult` —— 子 Agent 一次唤起的返回结果。
 - :data:`DEFAULT_SUBAGENT_CATALOG_TEMPLATE` —— ``<available_subagents>``
   渲染槽位的内置缺省模板。
@@ -23,23 +23,23 @@ catalog 渲染留在 :mod:`flowing.agent`——本模块只定义管线操作的
 - 子 Agent 唤起是两段式时序（见 :meth:`flowing.agent.Agent.invoke_subagent`）：
   准备段按别名查条目 → :meth:`SubagentEntry.resolve` 聚合参数 → 构造
   :class:`SubagentInvocation` 并 dispatch 亲代 Agent 的
-  ``before_subagent_invoke`` → 新建 / 续接子 Agent（此段失败同步上抛）；
+  ``on_subagent_invoke`` → 新建 / 续接子 Agent（此段失败同步上抛）；
   运行段等待子 Agent 产出 → 构造 :class:`SubagentResult` → dispatch
-  ``after_subagent_invoke`` （先于交付，handler 可改写 result）→ 交付。
+  ``on_subagent_returns`` （先于交付，handler 可改写 result）→ 交付。
   两个钩子都挂在亲代 Agent 的 hooks 上。
 - 子 Agent 产出有两条载体：``invoke_subagent`` 同步返回
   :class:`SubagentResult` （不入亲代队列，调用方自行处置）；后台唤起路径
   （``subagent-invoke`` 工具的 ``asynchronized=True``）完成时以独立
   ``Message(kind=SUBAGENT)`` 推入亲代 Agent 队列，LLM 在后续回合感知。
-  两条路径内容同源：都采用 ``after_subagent_invoke`` 改写后的 result。
+  两条路径内容同源：都采用 ``on_subagent_returns`` 改写后的 result。
 - 没有子 Agent 专属错误钩子：唤起 / 运行失败以异常原样上抛调用方；
   ``subagent-invoke`` 工具路径由 ``ToolResult(status="error")`` 承载。
 
 .. seealso::
 
     - :mod:`flowing.agent` —— 子 Agent 唤起管线与 catalog 渲染。
-    - :mod:`flowing.hooks` —— ``before_subagent_invoke`` /
-      ``after_subagent_invoke`` 钩子点契约。
+    - :mod:`flowing.hooks` —— ``on_subagent_invoke`` /
+      ``on_subagent_returns`` 钩子点契约。
     - :mod:`flowing.tool` —— 同构的 Tool 绑定层（``ToolEntry``）。
 """
 
@@ -76,7 +76,7 @@ class SubagentResult:
 
     .. rubric:: 功能介绍
 
-    也是 ``after_subagent_invoke`` 钩子可改写的交付对象（经
+    也是 ``on_subagent_returns`` 钩子可改写的交付对象（经
     ``SubagentInvocation.result`` 回填，先于交付 dispatch——改写对
     return 值与 SUBAGENT 消息同时生效）。纯数据载体：只携带可 JSON
     序列化字段，不持有活实例引用。
@@ -132,22 +132,22 @@ class SubagentResult:
 
 @dataclass
 class SubagentInvocation:
-    """``before_subagent_invoke`` / ``after_subagent_invoke`` 钩子的 value。
+    """``on_subagent_invoke`` / ``on_subagent_returns`` 钩子的 value。
 
     .. rubric:: 功能介绍
 
     :meth:`flowing.agent.Agent.invoke_subagent` 在 ``SubagentEntry.resolve()``
     之后、创建 / 续接子 Agent 之前构造本对象并 dispatch
-    ``before_subagent_invoke`` （挂在亲代 Agent 的 hooks 上）；结果构造
-    后回填 ``result`` 并 dispatch ``after_subagent_invoke`` （先于交付：
+    ``on_subagent_invoke`` （挂在亲代 Agent 的 hooks 上）；结果构造
+    后回填 ``result`` 并 dispatch ``on_subagent_returns`` （先于交付：
     return 值与 SUBAGENT 消息均在其后）。
 
     .. rubric:: 行为要点
 
-    - ``before_subagent_invoke`` handler 可改写本对象（调整 ``args`` /
+    - ``on_subagent_invoke`` handler 可改写本对象（调整 ``args`` /
       ``prompt``）或 ``raise Intercepted`` 硬阻断唤起——阻断同步上抛，
       子 Agent 未创建。
-    - ``after_subagent_invoke`` 是改写 ``result`` 的收尾点，先于交付
+    - ``on_subagent_returns`` 是改写 ``result`` 的收尾点，先于交付
       dispatch——改写后的 result 对 return 值与 SUBAGENT 消息同时生效
       （两条路径同源）；本钩子不接 ``Intercepted`` （阻断闸在 before，
       答卷级处置用改写表达）。``result`` 在 before 阶段为 ``None``。
@@ -184,7 +184,7 @@ class SubagentInvocation:
     按名续接）；``None`` = 匿名。子实例不自持名字。
     """
     result: SubagentResult | None = None
-    """``after_subagent_invoke`` 阶段回填的唤起结果；before 阶段为 ``None``。
+    """``on_subagent_returns`` 阶段回填的唤起结果；before 阶段为 ``None``。
     """
 
 

@@ -103,7 +103,7 @@ async def test_t38_sse_event_sequence_and_cleanup(project_ok, persist_dir, monke
     handle = await start_http(monkeypatch, serve_mod, cmd_serve, project_ok, persist_dir)
     try:
         agent = await handle.runtime.get_agent("root")
-        baseline = _hook_count(agent, "on_provider_delta", "after_turn_append",
+        baseline = _hook_count(agent, "on_provider_delta", "on_turn_append",
                                "after_turn", "after_destroy")
         events: list[tuple[str, object]] = []
         async with handle.client.stream("GET", "/agents/root/stream") as resp:
@@ -111,7 +111,7 @@ async def test_t38_sse_event_sequence_and_cleanup(project_ok, persist_dir, monke
             assert resp.headers["Content-Type"].startswith("text/event-stream")
             # 等订阅注册就位（连接建立与钩子注册是两个事件，需同步点）
             await wait_until(lambda: _hook_count(
-                agent, "on_provider_delta", "after_turn_append",
+                agent, "on_provider_delta", "on_turn_append",
                 "after_turn", "after_destroy") > baseline)
             post = asyncio.create_task(
                 handle.client.post("/agents/root/message", json={"text": "你好"}))
@@ -138,7 +138,7 @@ async def test_t38_sse_event_sequence_and_cleanup(project_ok, persist_dir, monke
         assert all(d["message_id"] for d in deltas)       # 预铸 id 已随事件透出
         # 断开连接后：订阅按 owner 摘除，handler 数回落到基线
         await wait_until(lambda: _hook_count(
-            agent, "on_provider_delta", "after_turn_append",
+            agent, "on_provider_delta", "on_turn_append",
             "after_turn", "after_destroy") == baseline)
         # 再触发一回合：无推送、无异常（订阅已移除的机械化证明是计数回落）
         r = await handle.client.post("/agents/root/message", json={"text": "再来"})

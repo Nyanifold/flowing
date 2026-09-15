@@ -201,7 +201,7 @@ async def test_t91_root_workflow_parenting_and_caller_none(tmp_path):
 async def test_t92_create_agent_no_dedup_only_create_hooks(tmp_path):
     """T92：同名 agent_type 重复 create_agent 产生多个独立实例（无去重）；
     创建路径只触发 before_create/after_create，不触发
-    before/after_subagent_invoke。"""
+    on_subagent_invoke/on_subagent_returns。"""
     runtime = make_runtime(tmp_path)
     add_fake_provider(runtime)
     runtime.register_agent_type(RecorderAgent, name="recorder")
@@ -213,8 +213,8 @@ async def test_t92_create_agent_no_dedup_only_create_hooks(tmp_path):
         assert c1 is not c2 and c1.node_id != c2.node_id   # 独立实例，无去重
         assert RecorderAgent.fired.count("before_create") == 2
         assert RecorderAgent.fired.count("after_create") == 2
-        assert "before_subagent_invoke" not in RecorderAgent.fired
-        assert "after_subagent_invoke" not in RecorderAgent.fired
+        assert "on_subagent_invoke" not in RecorderAgent.fired
+        assert "on_subagent_returns" not in RecorderAgent.fired
     finally:
         await wf.destroy()
         await runtime.shutdown()

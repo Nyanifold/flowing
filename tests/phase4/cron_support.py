@@ -2,7 +2,7 @@
 
 提供：phase2 conftest 的 importlib 载入（HarnessRuntime / SimpleAgent /
 make_runtime / add_fake_provider / script_provider / text_response）、
-``CronAgent``（setup 中 ``use_cron`` + after_enqueue 观测槽 + 声明式
+``CronAgent``（setup 中 ``use_cron`` + on_enqueue 观测槽 + 声明式
 注册）、``FakeClock``（替换 ``flowing.plugins.cron.jobs._now`` 的测试
 时钟——``_now`` 是任务运行时唯一时间读取通道）、``make_cron_harness``
 （可选装好 CronPlugin 的 HarnessRuntime 工厂）。
@@ -48,7 +48,7 @@ FIXTURES_PERSISTENCE = Path(__file__).parent.parent / "fixtures" / "persistence"
 class CronAgent(SimpleAgent):
     """setup 中启用 ``use_cron`` 的测试 Agent。
 
-    - 类属性 ``captured``：``after_enqueue`` 观测槽（recover 换新实例后
+    - 类属性 ``captured``：``on_enqueue`` 观测槽（recover 换新实例后
       setup 重跑、handler 重挂，槽在类上故跨实例连续捕获）。
     - 类属性 ``declarative_jobs``：非空时在 setup 里注册 ``after_create``
       handler 做声明式任务注册（after_create 只在 create 管线触发，
@@ -62,7 +62,7 @@ class CronAgent(SimpleAgent):
     async def setup(self, **kwargs: Any) -> None:
         await super().setup(**kwargs)
         use_cron(self)
-        self.hooks.after_enqueue(
+        self.hooks.on_enqueue(
             lambda a, msg: (type(self).captured.append(msg), msg)[1], by="test")
         specs = type(self).declarative_jobs
         if specs:

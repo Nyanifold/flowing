@@ -228,13 +228,13 @@ async def test_invoke_subagent_end_to_end(runtime, provider):
     assert result2.subagent_id == child_id   # 带记忆续接
     assert result2.subagent_status == "completed"
 
-    # before_subagent_invoke 拦截：未创建任何实例
+    # on_subagent_invoke 拦截：未创建任何实例
     from flowing.errors import Intercepted
 
     async def _veto(a, invocation):
         raise Intercepted("不许唤起")
 
-    parent.hooks.before_subagent_invoke(_veto)
+    parent.hooks.on_subagent_invoke(_veto)
     with pytest.raises(Intercepted):
         await parent.invoke_subagent("kid", prompt="再来")
 

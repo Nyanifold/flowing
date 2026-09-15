@@ -1,7 +1,7 @@
 """阶段 4 skills 加载流程测试（W12–W15）：测试清单 T24–T32、T34。
 
 LLM 入口（skill-load 工具）由 FakeProvider 脚本回放驱动；编程式入口直接
-``await agent.skill_load(...)``。观测点用钩子（``after_enqueue`` 捕 PLUGIN
+``await agent.skill_load(...)``。观测点用钩子（``on_enqueue`` 捕 PLUGIN
 消息、``after_tool_call`` 捕 ToolResult）——不读内部队列结构。
 """
 
@@ -33,7 +33,7 @@ from skills_support import (
 
 
 def _capture_messages(agent, kind: MessageKind) -> list:
-    """经 after_enqueue 钩子收集指定 kind 的入队消息。"""
+    """经 on_enqueue 钩子收集指定 kind 的入队消息。"""
     collected = []
 
     def _collect(agent, msg):
@@ -41,7 +41,7 @@ def _capture_messages(agent, kind: MessageKind) -> list:
             collected.append(msg)
         return msg
 
-    agent.hooks.after_enqueue(_collect, by="test")
+    agent.hooks.on_enqueue(_collect, by="test")
     return collected
 
 

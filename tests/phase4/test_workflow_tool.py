@@ -38,7 +38,7 @@ def _capture_tool_results(agent) -> list:
 
 def _capture_plugin_messages(agent, done: asyncio.Event,
                              *, source: str | None = None) -> list:
-    """经 after_enqueue 钩子收集 PLUGIN 消息（按 source 过滤），到时置位。"""
+    """经 on_enqueue 钩子收集 PLUGIN 消息（按 source 过滤），到时置位。"""
     collected = []
 
     def _collect(agent, msg):
@@ -47,7 +47,7 @@ def _capture_plugin_messages(agent, done: asyncio.Event,
             done.set()
         return msg
 
-    agent.hooks.after_enqueue(_collect, by="test")
+    agent.hooks.on_enqueue(_collect, by="test")
     return collected
 
 
@@ -115,7 +115,7 @@ async def test_t89_caller_query_no_deadlock(project, tmp_path):
                 done.set()
             return msg
 
-        agent.hooks.after_enqueue(_collect, by="test")
+        agent.hooks.on_enqueue(_collect, by="test")
         step1, _ = tool_call_response(
             ("run-workflow", {"path": "@/caller_query.py", "prompt": "第一问"}))
         # 三步脚本：turn1 工具调用 → turn1 收尾文本 → turn2（workflow 的

@@ -59,7 +59,7 @@ async def test_t22_abort_turn_mid_turn(runtime, provider):
 
     provider.generate_fn = _gated
     agent = await runtime.create_agent(SimpleAgent)
-    agent.hooks.before_turn_abort(lambda a, t: abort_marks.append(t.aborted) or t)
+    agent.hooks.on_turn_abort(lambda a, t: abort_marks.append(t.aborted) or t)
     agent.hooks.after_turn(lambda a, t: after_reads.append(t.aborted) or t)
 
     task = asyncio.create_task(agent.query("hi"))
@@ -68,7 +68,7 @@ async def test_t22_abort_turn_mid_turn(runtime, provider):
     result = await asyncio.wait_for(task, 2)
     assert result.turn.aborted is True
     assert result.status == "cancelled"
-    assert abort_marks == [True]   # before_turn_abort 恰好一次
+    assert abort_marks == [True]   # on_turn_abort 恰好一次
     assert after_reads == [True]   # after_turn 读到 aborted
 
 
@@ -236,7 +236,7 @@ async def test_t33_uncaught_inner_exception(agent, provider):
     async def _bad_hook(a, msg):
         raise ValueError("钩子炸了")
 
-    agent.hooks.before_turn_append(_bad_hook)
+    agent.hooks.on_turn_append(_bad_hook)
     result = await agent.query("hi")
     assert result.status == "error"
     assert result.final_text == ""

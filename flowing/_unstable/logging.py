@@ -58,11 +58,11 @@
 - ``"INFO"`` （默认）：关键节点各记一行——生命周期三对（``before_create`` /
   ``after_create`` / ``before_recover`` / ``after_recover`` /
   ``before_destroy`` / ``after_destroy``）、逻辑 turn 边界（``before_turn`` /
-  ``after_turn``）、消息出入队（``after_enqueue`` / ``after_dequeue``）、
+  ``after_turn``）、消息出入队（``on_enqueue`` / ``on_dequeue``）、
   LLM 调用边界（``before_provider_gen`` / ``after_provider_gen`` /
   ``on_provider_error``）、工具调用边界（``before_tool_call`` /
-  ``after_tool_call``）、子 Agent（``before_subagent_invoke`` /
-  ``after_subagent_invoke``）、取消与 fork（``before_cancel`` /
+  ``after_tool_call``）、子 Agent（``on_subagent_invoke`` /
+  ``on_subagent_returns``）、取消与 fork（``before_cancel`` /
   ``after_cancel`` / ``on_fork``）——共 20 点。
   value 只记摘要（类型名 + 标识字段，如工具名 / 消息 id）。
 - ``"DEBUG"``：在 INFO 基础上，该 Agent 实例上存在的全部钩子点都
@@ -132,13 +132,13 @@ _INFO_HOOK_POINTS: tuple[str, ...] = (
     # 逻辑 turn 边界
     "before_turn", "after_turn",
     # 消息出入队
-    "after_enqueue", "after_dequeue",
+    "on_enqueue", "on_dequeue",
     # LLM 调用边界
     "before_provider_gen", "after_provider_gen", "on_provider_error",
     # 工具调用边界
     "before_tool_call", "after_tool_call",
     # 子 Agent
-    "before_subagent_invoke", "after_subagent_invoke",
+    "on_subagent_invoke", "on_subagent_returns",
     # 取消与 fork
     "before_cancel", "after_cancel",
     "on_fork",
@@ -289,9 +289,9 @@ def use_logging(agent: Agent) -> None:
     - ``after_provider_gen`` 的 value（``ProviderResponse``）的
       ``usage`` 概要以 :attr:`flowing.message.Message.usage` 为准，
       不在摘要中复述；``on_provider_error`` 记异常类型名。
-    - ``before_enqueue`` 被 ``Intercepted`` 拦截的结果无从观察属
+    - ``on_enqueue`` 被 ``Intercepted`` 拦截的结果无从观察属
       已知限制（拦截发生在 dispatch 内，观察点只见到「没触发
-      ``after_enqueue``」）。
+      后续 handler」）。
     - 不声明任何新钩子点；不写 state（无恢复义务）。
 
     :param agent: 启用日志的 Agent（``setup()`` 中的 ``self``）。
