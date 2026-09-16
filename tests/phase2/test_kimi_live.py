@@ -97,14 +97,19 @@ def _text_of(response) -> str:
 async def _recall_roundtrip(provider, model: ModelConfig,
                             opener: Message, question: str,
                             needle: str, recall_hint: str) -> None:
-    """两轮往返公共体：第一轮记下暗号，第二轮带完整历史追问 recall。
+    """两轮往返公共体：第一轮报编号并复述，第二轮带完整历史追问 recall。
 
-    暗号按用例随机生成，避免服务端前缀缓存把不同用例的响应复用成
-    同一份而导致 recall 断言失真。
+    编号按用例随机生成，避免服务端前缀缓存把不同用例的响应复用成
+    同一份而导致 recall 断言失真。第一轮要求模型原样复述编号——
+    编号经助手自己的输出进入对话（思考重的模型对「记住暗号」式
+    指令可能过度谨慎拒答，复述式 opener 无此问题），第二轮验证
+    完整历史（含 assistant 消息回放）被对方收到。
     """
     r1 = await provider.generate(
         Context(system_prompt=[], tools=[], messages=[opener]), model)
     assert r1.finish is True, f"第一轮未正常结束：{_text_of(r1)[:200]}"
+    assert needle in _text_of(r1), \
+        f"第一轮未复述编号：{_text_of(r1)[:200]}"
     r2 = await provider.generate(
         Context(system_prompt=[], tools=[], messages=[
             opener, r1.message,
@@ -144,10 +149,10 @@ async def _image_recall_roundtrip(provider, model: ModelConfig,
 def _nonce_opener() -> tuple[Message, str]:
     nonce = uuid.uuid4().hex[:6]
     return Message(kind=MessageKind.USER, content=[TextBlock(
-        text=f"请记住暗号 {nonce}，只回复「记住」。")]), nonce
+        text=f"我的编号是 {nonce}。请原样回复：收到，编号 {nonce}。")]), nonce
 
 
-_RECALL_QUESTION = "我刚才让你记住的暗号是什么？只回答暗号本身。"
+_RECALL_QUESTION = "我刚才报给你的编号是多少？只回答编号本身。"
 
 # 图片第二轮开放式回忆的实质内容候选集（第一轮识图断言仍用原关键词）
 _IMAGE1_RECALL = ("分子", "预训练", "聚合物", "P-SMILES", "掩码",
@@ -160,11 +165,11 @@ _IMAGE2_RECALL = ("热图", "热力图", "矩阵", "matplotlib", "相关性",
 
 
 async def test_t141_kimi_code_text_multiturn_k3():
-    """T141：kimi code 端点 k3 文本多轮——记住随机暗号并回忆。"""
+    """T141：kimi code 端点 k3 文本多轮——记住随机编号并回忆。"""
     opener, nonce = _nonce_opener()
     await _recall_roundtrip(
         _KimiCoding(ProviderConfig({"api_key": _kc_key()})), _model("k3"),
-        opener, _RECALL_QUESTION, nonce, "k3 两轮后未回忆起暗号")
+        opener, _RECALL_QUESTION, nonce, "k3 两轮后未回忆起编号")
 
 
 async def test_t142_kimi_code_image_multiturn_k3():
@@ -180,7 +185,7 @@ async def test_t143_kimi_code_text_multiturn_kimi_for_coding():
     await _recall_roundtrip(
         _KimiCoding(ProviderConfig({"api_key": _kc_key()})),
         _model("kimi-for-coding"),
-        opener, _RECALL_QUESTION, nonce, "kimi-for-coding 两轮后未回忆起暗号")
+        opener, _RECALL_QUESTION, nonce, "kimi-for-coding 两轮后未回忆起编号")
 
 
 async def test_t144_kimi_code_image_multiturn_kimi_for_coding():
@@ -200,7 +205,7 @@ async def test_t145_moonshot_openai_text_multiturn_k3():
     await _recall_roundtrip(
         KimiProvider(ProviderConfig({"api_key": _ms_key()})), _model("kimi-k3"),
         opener, _RECALL_QUESTION, nonce,
-        "kimi-k3（chat/completions）两轮后未回忆起暗号")
+        "kimi-k3（chat/completions）两轮后未回忆起编号")
 
 
 async def test_t146_moonshot_openai_image_multiturn_k3():
@@ -217,7 +222,7 @@ async def test_t147_moonshot_openai_text_multiturn_k27code():
         KimiProvider(ProviderConfig({"api_key": _ms_key()})),
         _model("kimi-k2.7-code"),
         opener, _RECALL_QUESTION, nonce,
-        "kimi-k2.7-code（chat/completions）两轮后未回忆起暗号")
+        "kimi-k2.7-code（chat/completions）两轮后未回忆起编号")
 
 
 async def test_t148_moonshot_openai_image_multiturn_k27code():
@@ -236,7 +241,7 @@ async def test_t149_moonshot_anthropic_text_multiturn_k3():
     opener, nonce = _nonce_opener()
     await _recall_roundtrip(
         _KimiAnthropic(ProviderConfig({"api_key": _ms_key()})), _model("kimi-k3"),
-        opener, _RECALL_QUESTION, nonce, "kimi-k3（anthropic）两轮后未回忆起暗号")
+        opener, _RECALL_QUESTION, nonce, "kimi-k3（anthropic）两轮后未回忆起编号")
 
 
 async def test_t150_moonshot_anthropic_image_multiturn_k3():
@@ -254,7 +259,7 @@ async def test_t151_moonshot_anthropic_text_multiturn_k27code():
         _KimiAnthropic(ProviderConfig({"api_key": _ms_key()})),
         _model("kimi-k2.7-code"),
         opener, _RECALL_QUESTION, nonce,
-        "kimi-k2.7-code（anthropic）两轮后未回忆起暗号")
+        "kimi-k2.7-code（anthropic）两轮后未回忆起编号")
 
 
 async def test_t152_moonshot_anthropic_image_multiturn_k27code():
@@ -278,7 +283,7 @@ async def test_t153_moonshot_responses_text_multiturn_k3():
     await _recall_roundtrip(
         _kimi_responses(), _model("kimi-k3"),
         opener, _RECALL_QUESTION, nonce,
-        "kimi-k3（responses）两轮后未回忆起暗号")
+        "kimi-k3（responses）两轮后未回忆起编号")
 
 
 async def test_t154_moonshot_responses_image_multiturn_k3():
@@ -294,7 +299,7 @@ async def test_t155_moonshot_responses_text_multiturn_k27code():
     await _recall_roundtrip(
         _kimi_responses(), _model("kimi-k2.7-code"),
         opener, _RECALL_QUESTION, nonce,
-        "kimi-k2.7-code（responses）两轮后未回忆起暗号")
+        "kimi-k2.7-code（responses）两轮后未回忆起编号")
 
 
 async def test_t156_moonshot_responses_image_multiturn_k27code():

@@ -284,26 +284,33 @@ def _dsr_model(model_id: str = "deepseek-chat") -> ModelConfig:
 
 
 async def _nonce_recall_roundtrip(provider, model: ModelConfig) -> None:
-    """两轮 nonce recall 公共体：暗号 uuid 随机，防服务端前缀缓存复用响应。"""
+    """两轮 nonce recall 公共体：编号 uuid 随机，防服务端前缀缓存复用响应。
+
+    第一轮要求模型原样复述编号（编号经助手自己的输出进入对话，
+    思考重的模型对「记住暗号」式指令可能过度谨慎拒答）；第二轮验证
+    完整历史（含 assistant 消息回放）被对方收到。
+    """
     nonce = uuid.uuid4().hex[:6]
     opener = Message(kind=MessageKind.USER, content=[TextBlock(
-        text=f"请记住暗号 {nonce}，只回复「记住」。")])
+        text=f"我的编号是 {nonce}。请原样回复：收到，编号 {nonce}。")])
     r1 = await provider.generate(
         Context(system_prompt=[], tools=[], messages=[opener]), model)
     assert r1.finish is True, "第一轮未正常结束"
+    r1_text = "".join(b.text for b in r1.message.content if b.type == "text")
+    assert nonce in r1_text, f"第一轮未复述编号：{r1_text[:200]}"
     r2 = await provider.generate(
         Context(system_prompt=[], tools=[], messages=[
             opener, r1.message,
             Message(kind=MessageKind.USER, content=[TextBlock(
-                text="我刚才让你记住的暗号是什么？只回答暗号本身。")]),
+                text="我刚才报给你的编号是多少？只回答编号本身。")]),
         ]), model)
     assert r2.finish is True, "第二轮未正常结束"
     text = "".join(b.text for b in r2.message.content if b.type == "text")
-    assert nonce in text, f"两轮后未回忆起暗号：{text[:200]}"
+    assert nonce in text, f"两轮后未回忆起编号：{text[:200]}"
 
 
 async def test_t158_responses_text_multiturn():
-    """T158：deepseek-chat（responses）文本多轮——记住随机暗号并回忆。"""
+    """T158：deepseek-chat（responses）文本多轮——报编号复述并回忆。"""
     await _nonce_recall_roundtrip(_ds_responses(), _dsr_model())
 
 
