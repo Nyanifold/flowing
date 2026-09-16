@@ -1,21 +1,25 @@
-"""阶段 2：Kimi 两类 provider 真机测试（T141–T157，网络门控，默认跳过）。
+"""阶段 2：Kimi 两类 provider 真机测试（T141–T157 + T162–T166，网络门控）。
 
-Kimi 的接入面分两种（见 ``测试资源/kimi-provider.md``）：
+Kimi 的接入面分两种（见 ``测试资源/kimi-provider.md``），均为**三协议
+并存**（chat/completions / Responses / Anthropic Messages）：
 
-- **kimi code**：Kimi 会员编程权益端点 ``https://api.kimi.com/coding``
-  （Anthropic Messages 协议），模型 ``k3`` / ``kimi-for-coding``；
-- **moonshot api**：开放平台 ``https://api.moonshot.cn``，OpenAI
-  chat/completions（内置 :class:`MoonshotProvider`）、Anthropic 兼容端点
-  ``/anthropic``、OpenAI Responses API ``/v1/responses``；模型
-  ``kimi-k3`` / ``kimi-k2.7-code``。注意：按平台文档 k2.7-code 的
-  Anthropic 端点强制开启思考（否则 400）——本组用例一律使用框架
-  默认参数（``thinking_budget=None`` 不发思考字段），若端点因此拒绝
-  则如实暴露为失败，不用调参规避。
+- **kimi code**：Kimi 会员编程权益端点 ``https://api.kimi.com/coding``，
+  模型 ``k3`` / ``k3-256k`` / ``kimi-for-coding``（/v1/models 实测）。
+  内置 adapter：:class:`KimiCodingProvider`（completions，默认形态）、
+  :class:`KimiCodingAnthropicProvider`（Anthropic）；Responses 形态经
+  :class:`OpenAIResponsesProvider` 配 ``base_url`` 接入（T166）。
+- **moonshot api**：开放平台 ``https://api.moonshot.cn``，模型
+  ``kimi-k3`` / ``kimi-k2.7-code``。内置 adapter：
+  :class:`MoonshotProvider`（completions）、
+  :class:`MoonshotResponsesProvider`（Responses）、
+  :class:`MoonshotAnthropicProvider`（Anthropic）。
 
-覆盖矩阵：两类 provider × 各自协议（chat/completions、Anthropic、
-Responses）× 文本 / 图片 × 多轮（第二轮带完整历史上门，验证消息
-回放）。Responses API 经内置 :class:`MoonshotResponsesProvider` 调用
-（T153–T157）。
+覆盖矩阵：两类 provider × 各自协议 × 文本 / 图片 × 多轮（第二轮带完整
+历史上门，验证消息回放）；kimi code completions 另补流式工具调用用例
+（T165，锁定工具参数正确性）。注意：按平台文档 k2.7-code 的 Anthropic
+端点强制开启思考（否则 400）——本组用例一律使用框架默认参数
+（``thinking_budget=None`` 不发思考字段），若端点因此拒绝则如实暴露为
+失败，不用调参规避。
 
 门控条件（两者同时具备才运行）：
 - 环境变量 ``FLOWING_LIVE_TESTS=1`` 显式开启；
@@ -38,9 +42,15 @@ import pytest
 from flowing.context import Context
 from flowing.message import ImageBlock, Message, MessageKind, TextBlock
 from flowing.model import ModelConfig
-from flowing.providers import MoonshotProvider, ProviderConfig
-from flowing.providers.anthropic_messages import AnthropicMessagesProvider
+from flowing.providers import (
+    KimiCodingProvider,
+    MoonshotProvider,
+    ProviderConfig,
+)
+from flowing.providers.kimi_coding_anthropic import KimiCodingAnthropicProvider
+from flowing.providers.moonshot_anthropic import MoonshotAnthropicProvider
 from flowing.providers.moonshot_responses import MoonshotResponsesProvider
+from flowing.providers.openai_responses import OpenAIResponsesProvider
 
 RESOURCES = Path(__file__).parent.parent.parent / "测试资源"
 IMAGES = Path(__file__).parent.parent / "fixtures" / "images"  # 目录即契约
@@ -59,20 +69,6 @@ def _kc_key() -> str:
 
 def _ms_key() -> str:
     return MS_KEY.read_text(encoding="utf-8").strip()
-
-
-class _KimiCoding(AnthropicMessagesProvider):
-    """kimi code 端点（Anthropic 协议）：测试内局部 adapter，不进程级注册。"""
-
-    name = "kimi-coding-live-test"
-    default_base_url = "https://api.kimi.com/coding"
-
-
-class _KimiAnthropic(AnthropicMessagesProvider):
-    """moonshot Anthropic 兼容端点：测试内局部 adapter，不进程级注册。"""
-
-    name = "kimi-anthropic-live-test"
-    default_base_url = "https://api.moonshot.cn/anthropic"
 
 
 def _model(model_id: str) -> ModelConfig:
@@ -168,14 +164,14 @@ async def test_t141_kimi_code_text_multiturn_k3():
     """T141：kimi code 端点 k3 文本多轮——记住随机编号并回忆。"""
     opener, nonce = _nonce_opener()
     await _recall_roundtrip(
-        _KimiCoding(ProviderConfig({"api_key": _kc_key()})), _model("k3"),
+        KimiCodingAnthropicProvider(ProviderConfig({"api_key": _kc_key()})), _model("k3"),
         opener, _RECALL_QUESTION, nonce, "k3 两轮后未回忆起编号")
 
 
 async def test_t142_kimi_code_image_multiturn_k3():
     """T142：kimi code 端点 k3 图片多轮——识图后第二轮凭历史回忆图内容。"""
     await _image_recall_roundtrip(
-        _KimiCoding(ProviderConfig({"api_key": _kc_key()})), _model("k3"),
+        KimiCodingAnthropicProvider(ProviderConfig({"api_key": _kc_key()})), _model("k3"),
         "demo-image1.png", ("分子", "预训练"), _IMAGE1_RECALL)
 
 
@@ -183,7 +179,7 @@ async def test_t143_kimi_code_text_multiturn_kimi_for_coding():
     """T143：kimi code 端点 kimi-for-coding 文本多轮。"""
     opener, nonce = _nonce_opener()
     await _recall_roundtrip(
-        _KimiCoding(ProviderConfig({"api_key": _kc_key()})),
+        KimiCodingAnthropicProvider(ProviderConfig({"api_key": _kc_key()})),
         _model("kimi-for-coding"),
         opener, _RECALL_QUESTION, nonce, "kimi-for-coding 两轮后未回忆起编号")
 
@@ -191,7 +187,7 @@ async def test_t143_kimi_code_text_multiturn_kimi_for_coding():
 async def test_t144_kimi_code_image_multiturn_kimi_for_coding():
     """T144：kimi code 端点 kimi-for-coding 图片多轮。"""
     await _image_recall_roundtrip(
-        _KimiCoding(ProviderConfig({"api_key": _kc_key()})),
+        KimiCodingAnthropicProvider(ProviderConfig({"api_key": _kc_key()})),
         _model("kimi-for-coding"),
         "demo-image2.png", ("热图", "矩阵"), _IMAGE2_RECALL)
 
@@ -240,14 +236,14 @@ async def test_t149_moonshot_anthropic_text_multiturn_k3():
     """T149：moonshot Anthropic 端点 kimi-k3 文本多轮。"""
     opener, nonce = _nonce_opener()
     await _recall_roundtrip(
-        _KimiAnthropic(ProviderConfig({"api_key": _ms_key()})), _model("kimi-k3"),
+        MoonshotAnthropicProvider(ProviderConfig({"api_key": _ms_key()})), _model("kimi-k3"),
         opener, _RECALL_QUESTION, nonce, "kimi-k3（anthropic）两轮后未回忆起编号")
 
 
 async def test_t150_moonshot_anthropic_image_multiturn_k3():
     """T150：moonshot Anthropic 端点 kimi-k3 图片多轮。"""
     await _image_recall_roundtrip(
-        _KimiAnthropic(ProviderConfig({"api_key": _ms_key()})), _model("kimi-k3"),
+        MoonshotAnthropicProvider(ProviderConfig({"api_key": _ms_key()})), _model("kimi-k3"),
         "demo-image1.png", ("分子", "预训练"), _IMAGE1_RECALL)
 
 
@@ -256,7 +252,7 @@ async def test_t151_moonshot_anthropic_text_multiturn_k27code():
     不发思考字段——平台文档称该模型此端点强制思考，若拒绝则如实暴露）。"""
     opener, nonce = _nonce_opener()
     await _recall_roundtrip(
-        _KimiAnthropic(ProviderConfig({"api_key": _ms_key()})),
+        MoonshotAnthropicProvider(ProviderConfig({"api_key": _ms_key()})),
         _model("kimi-k2.7-code"),
         opener, _RECALL_QUESTION, nonce,
         "kimi-k2.7-code（anthropic）两轮后未回忆起编号")
@@ -265,7 +261,7 @@ async def test_t151_moonshot_anthropic_text_multiturn_k27code():
 async def test_t152_moonshot_anthropic_image_multiturn_k27code():
     """T152：moonshot Anthropic 端点 kimi-k2.7-code 图片多轮（默认参数）。"""
     await _image_recall_roundtrip(
-        _KimiAnthropic(ProviderConfig({"api_key": _ms_key()})),
+        MoonshotAnthropicProvider(ProviderConfig({"api_key": _ms_key()})),
         _model("kimi-k2.7-code"),
         "demo-image2.png", ("热图", "矩阵"), _IMAGE2_RECALL)
 
@@ -325,3 +321,65 @@ async def test_t157_moonshot_responses_stream_k3():
     final = deltas[-1]
     assert final.usage is not None and final.usage.output > 0
     assert final.provider_data and "stop_reason" in final.provider_data
+
+
+# ── kimi code：completions 默认形态（内置 KimiCodingProvider）────────────
+
+async def test_t162_kimi_code_completions_text_multiturn_k3():
+    """T162：kimi code completions（默认形态）k3 文本多轮。"""
+    opener, nonce = _nonce_opener()
+    await _recall_roundtrip(
+        KimiCodingProvider(ProviderConfig({"api_key": _kc_key()})),
+        _model("k3"),
+        opener, _RECALL_QUESTION, nonce,
+        "k3（kimi code completions）两轮后未回忆起编号")
+
+
+async def test_t163_kimi_code_completions_image_multiturn_k3():
+    """T163：kimi code completions k3 图片多轮。"""
+    await _image_recall_roundtrip(
+        KimiCodingProvider(ProviderConfig({"api_key": _kc_key()})),
+        _model("k3"),
+        "demo-image1.png", ("分子", "预训练"), _IMAGE1_RECALL)
+
+
+async def test_t164_kimi_code_completions_text_multiturn_kimi_for_coding():
+    """T164：kimi code completions kimi-for-coding 文本多轮。"""
+    opener, nonce = _nonce_opener()
+    await _recall_roundtrip(
+        KimiCodingProvider(ProviderConfig({"api_key": _kc_key()})),
+        _model("kimi-for-coding"),
+        opener, _RECALL_QUESTION, nonce,
+        "kimi-for-coding（completions）两轮后未回忆起编号")
+
+
+async def test_t165_kimi_code_completions_tool_stream_args():
+    """T165：kimi code completions 流式工具调用——ToolCallBlock 参数必须
+    完整（锁定流式工具参数回归：空参数会让 bash 拿到 {}）。"""
+    from flowing.tool import ToolDefinition
+    provider = KimiCodingProvider(ProviderConfig({"api_key": _kc_key()}))
+    tools = [ToolDefinition(
+        name="bash", description="运行 shell 命令",
+        params_schema={"command": {"type": "string", "description": "命令"}})]
+    ctx = Context(system_prompt=[], tools=tools, messages=[Message(
+        kind=MessageKind.USER,
+        content=[TextBlock(text="请调用 bash 工具执行 echo hello")])])
+    deltas = [d async for d in provider.generate_stream(ctx, _model("k3"))]
+    blocks = [d.block for d in deltas if d.kind == "tool_use" and d.block]
+    assert blocks, "流式无工具块产出"
+    assert blocks[0].name == "bash"
+    assert blocks[0].args.get("command"), \
+        f"流式工具参数缺失/为空：{blocks[0].args}"
+
+
+async def test_t166_kimi_code_responses_text_multiturn_k3():
+    """T166：kimi code Responses 协议（OpenAIResponsesProvider + base_url
+    覆盖，无独立内置 adapter）k3 文本多轮。"""
+    provider = OpenAIResponsesProvider(ProviderConfig({
+        "api_key": _kc_key(),
+        "base_url": "https://api.kimi.com/coding/v1"}))
+    opener, nonce = _nonce_opener()
+    await _recall_roundtrip(
+        provider, _model("k3"),
+        opener, _RECALL_QUESTION, nonce,
+        "k3（kimi code responses）两轮后未回忆起编号")

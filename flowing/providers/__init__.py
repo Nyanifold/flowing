@@ -198,7 +198,9 @@ from flowing.providers.deepseek_anthropic import DeepSeekAnthropicProvider
 from flowing.providers.deepseek_responses import DeepSeekResponsesProvider
 from flowing.providers.groq import GroqProvider
 from flowing.providers.kimi_coding import KimiCodingProvider
+from flowing.providers.kimi_coding_anthropic import KimiCodingAnthropicProvider
 from flowing.providers.moonshot import MoonshotProvider
+from flowing.providers.moonshot_anthropic import MoonshotAnthropicProvider
 from flowing.providers.moonshot_responses import MoonshotResponsesProvider
 from flowing.providers.openai_completions import OpenAICompletionsProvider
 from flowing.providers.openai_responses import OpenAIResponsesProvider
