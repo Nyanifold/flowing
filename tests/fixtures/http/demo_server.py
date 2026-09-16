@@ -1,6 +1,6 @@
 """自研 demo HTTP server（本地回环）——RequestTool 测试服务端。
 
-阶段 3 边界：RequestTool 测试一律打向本 server（``127.0.0.1`` 回环，
+测试边界：RequestTool 测试一律打向本 server（``127.0.0.1`` 回环，
 不起真实外网）。端点设计围绕清单 49 的断言点：URL 路径参数排除、
 method 决定 body/query、auth 优先于 headers、expected_status 之外的
 状态码、output schema 字段提取。

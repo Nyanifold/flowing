@@ -1,4 +1,4 @@
-"""阶段 5 接口层测试夹具项目：main 在 launch 阶段失败。
+"""接口层测试夹具项目：main 在 launch 阶段失败。
 
 - ``scenario="raise"``（默认）：直接抛 ``ValueError``。
 - ``scenario="mount-missing"``：``mount("@/missing.fya")`` 不存在文件

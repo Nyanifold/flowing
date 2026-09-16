@@ -1,5 +1,5 @@
 # bad-syntax.fya —— 负例集合（整文件不可解析；各负例按切片使用，
-# 见 tests/phase3/test_parser.py）。
+# 见 tests/parser/test_parser.py）。
 # 负例 1（清单 8，YAML 段）：顶层为列表而非映射。
 - 1
 - 2

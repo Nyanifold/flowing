@@ -1,9 +1,9 @@
-"""阶段 5 接口层测试夹具项目：单根 Agent（id 定点 ``root``），FakeProvider 驱动。
+"""接口层测试夹具项目：单根 Agent（id 定点 ``root``），FakeProvider 驱动。
 
 测试 Provider 的注入通道：``cmd_* → launch → main(**kwargs)`` 是接口层
 「不解析配置」边界下唯一的参数通道——``--scenario`` / ``--persist`` 经
 kwargs 进来，由项目 ``main`` 自己的策略把 FakeProvider 预置进
-``provider_registry._instances``（与阶段 2 测试「直挂 FakeProvider」
+``provider_registry._instances``（与其他测试「直挂 FakeProvider」
 同一 hook）。接口层自始至终不感知这些语义。
 
 场景一览（``scenario`` kwarg）：

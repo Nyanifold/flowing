@@ -1,4 +1,4 @@
-# order-agent —— 目录形态 Agent 样例（阶段 3 多批次共用 fixture，目录即契约）。
+# order-agent —— 目录形态 Agent 样例（多模块共用 fixture，目录即契约）。
 # 覆盖清单点名的形态：tools 条目 `- payment as pay`（含 specified 固定值 /
 # 注入表达式 / as 改名空补丁）、`description: _`（PENDING）、`$system_prompt:`
 # 具名块、深层块 `$tools.pay.args.cwd.description:`、`$script` 块。

@@ -1,5 +1,5 @@
 # summarize —— skill 形态样例（测试 65：本期只验证字面层解析，
-# skill 装配层本体属阶段 4）。
+# skill 装配层本体由 plugins/skills 覆盖）。
 name: summarize
 description: 把给定文本压缩为要点列表。
 ---

@@ -1,8 +1,16 @@
-"""pytest 公共配置：fixtures 目录定位与持久化语料拷贝工具。"""
+"""pytest 公共配置：fixtures 目录定位、语料拷贝工具与共享 Agent fixtures。
+
+``runtime`` / ``provider`` / ``agent`` 三个 fixture 只依赖 ``harness`` 的最小
+替身面（HarnessRuntime + FakeProvider），本目录下任何模块测试都可直接用。
+"""
 
 from pathlib import Path
 
 import pytest
+
+from flowing.providers import FakeProvider
+
+from harness import HarnessRuntime, SimpleAgent
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -28,3 +36,33 @@ def copy_fixture(tmp_path):
         return dst
 
     return _copy
+
+
+@pytest.fixture
+async def runtime(tmp_path):
+    """最小 HarnessRuntime（已注册 ``test-agent`` 类型），测试后销毁存活 Agent。"""
+    rt = HarnessRuntime(tmp_path)
+    rt.register_agent_type(SimpleAgent, name="test-agent")
+    yield rt
+    # 收尾：销毁全部存活 Agent（关 store、停 drain 任务），防跨测试泄漏
+    for node_id, node in list(rt._nodes.items()):
+        if node is rt:
+            continue
+        try:
+            await node.destroy()
+        except Exception:
+            pass
+
+
+@pytest.fixture
+def provider(runtime) -> FakeProvider:
+    """挂在 ``runtime`` 上名为 ``"fake"`` 的 FakeProvider（脚本回放用）。"""
+    p = FakeProvider()
+    runtime.add_provider("fake", p)
+    return p
+
+
+@pytest.fixture
+async def agent(runtime, provider):
+    """一个已启动工作循环的空闲测试 Agent。"""
+    return await runtime.create_agent("test-agent")

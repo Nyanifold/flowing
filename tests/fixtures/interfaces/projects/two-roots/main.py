@@ -1,4 +1,4 @@
-"""阶段 5 接口层测试夹具项目：两个根 Agent（id 定点 ``root-a`` / ``root-b``）。
+"""接口层测试夹具项目：两个根 Agent（id 定点 ``root-a`` / ``root-b``）。
 
 与 ``projects/ok`` 同构（FakeProvider 注入通道与场景 kwarg 见该项目的
 模块 docstring）；root-a 走 provider ``fake-a``（回复 ``alpha-reply``），

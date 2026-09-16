@@ -1,7 +1,7 @@
-"""tests/fakes.py —— 阶段 1 的最小假 Agent / 假 Runtime 替身（duck-typed）。
+"""tests/fakes.py —— 最小假 Agent / 假 Runtime 替身（duck-typed）。
 
-阶段边界：本期不接真 Agent / Runtime（属阶段 2）。parsable 的 Agent 绑定
-求值、provide 上溯、context 逐块求值全部由本模块替身驱动（简报 W-01）。
+不含真 Agent / Runtime：parsable 的 Agent 绑定求值、provide 上溯、context
+逐块求值全部由本模块替身驱动。
 
 替身契约（与被测实现实际读取的属性一一对应）：
 
@@ -12,8 +12,8 @@
   / ``provide`` / ``inject``），自注册为 ``_nodes`` 首条目（S-12）。
 - 假 Agent：``runtime`` / ``_extra`` / ``source_dir`` / ``__dict__``（普通
   实例）/ ``ProvideNode`` 协议面
-  / ``parsable()`` 绑定工厂（对应阶段 2 的 ``Agent.parsable``，此处为
-  最小替身：构造后置 ``_instance``）。
+  / ``parsable()`` 绑定工厂（对应 ``Agent.parsable`` 的替身：构造后置
+  ``_instance``）。
 """
 
 from __future__ import annotations
@@ -98,7 +98,7 @@ class FakeAgent:
         return inject_from(self.runtime, self, key)
 
     def parsable(self, source: Any) -> Parsable:
-        """创建已绑定本实例的 Parsable（阶段 2 ``Agent.parsable`` 的替身）。"""
+        """创建已绑定本实例的 Parsable（``Agent.parsable`` 的替身）。"""
         p = Parsable(source)
         p._instance = self
         return p
