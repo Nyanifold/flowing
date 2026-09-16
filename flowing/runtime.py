@@ -218,7 +218,7 @@ async def launch(
 
     框架核心层函数。把一个 flowing 子项目目录拉起为配置完毕的 Runtime：
     子项目的入口 main 文件（缺省 ``<path>/main.py``；``main_file`` 指定替代
-    路径，CLI 上以 ``-m`` 传入，支持绝对路径与 ``@`` 相对路径）必须导出
+    路径，CLI 上以 ``-f`` 传入，支持绝对路径与 ``@`` 相对路径）必须导出
     ``async def main(**kwargs) -> Runtime``。``main()`` 在函数体内构造
     Runtime（可任意子类，``@`` 自动绑定到实例）、``use`` 插件、``provide``
     注入、``mount`` 根节点，并返回它。CLI / HTTP / Web / 测试 / 嵌入五种

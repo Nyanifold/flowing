@@ -1,10 +1,10 @@
-"""``flowing.interfaces.repl`` —— 交互式 REPL 子命令（``repl`` / 别名 ``cli``）。
+"""``flowing.interfaces.repl`` —— 交互式 REPL 子命令（``repl``）。
 
-封闭观察窗口原则见 ``flowing.interfaces`` 包 docstring。
+封闭观察窗口原则见 ``flowing.interfaces`` 包 docstring。一次性对话形态
+见 ``flowing.interfaces.oneshot``（``cli`` 子命令），二者无别名关系。
 """
 
 import sys
-import time
 from collections.abc import Awaitable, Callable
 
 from flowing.agent import Agent, TurnContext, TurnResult, build_turn_result
@@ -23,7 +23,6 @@ from flowing.interfaces import (
     EXIT_OK,
     EXIT_RUNTIME_ERROR,
     _default_agent_type,
-    _list_agent_records,
 )
 from flowing.interfaces.controls import slash_lines
 
@@ -133,7 +132,7 @@ _HELP_LINES: tuple[str, ...] = (
     "/new [agent_type]    create a new root Agent and bind it",
     "/snapshot            print a read-only snapshot of the current Runtime",
     "/messages            print the bound Agent's message chain (current head up)",
-    "/model [tag]         show or switch the bound Agent's model_tag",
+    "/model [tag]         show current & available tags / switch model_tag",
     "/context [v]         show context window usage estimate (v = per-part breakdown)",
     "/status              print a status rollup of the bound Agent",
     "/tasks [cancel <id>] list background tasks / cancel one",
@@ -189,45 +188,6 @@ def _summarize_message(host: Agent, msg: Message, *,
     return None
 
 
-def _print_message_chain(agent: Agent) -> None:
-    """沿 ``current_head_id`` 上溯打印消息链概览（``/messages`` 的渲染）。"""
-    chain: list[Message] = []
-    mid = agent.current_head_id
-    while mid is not None:
-        msg = agent._messages.get(mid)
-        if msg is None:
-            break   # 孤儿链断点：到断点即终止（与 _assemble_context 同口径）
-        chain.append(msg)
-        mid = msg.parent_id
-    if not chain:
-        print("(no messages)")
-        return
-    for msg in reversed(chain):
-        text = _fold("".join(b.text for b in msg.content if isinstance(b, TextBlock)))
-        print(f"{msg.id[:12]}  {msg.kind.value:<9} {text}")
-
-
-def _print_export(agent: Agent, fmt: str = "md") -> None:
-    """沿 current_head 上溯打印消息链导出（/export 的渲染；md 默认）。"""
-    chain: list[Message] = []
-    mid = agent.current_head_id
-    while mid is not None:
-        msg = agent._messages.get(mid)
-        if msg is None:
-            break   # 孤儿链断点：到断点即终止
-        chain.append(msg)
-        mid = msg.parent_id
-    chain.reverse()
-    for m in chain:
-        text = "".join(b.text for b in m.content if isinstance(b, TextBlock))
-        if fmt == "jsonl":
-            import json
-            from flowing.message import to_record
-            print(json.dumps(to_record(m), ensure_ascii=False))
-        else:
-            print(f"**{m.kind.value}**: {text}")
-
-
 async def cmd_repl(
     path: str,
     main_file: str | None = None,
@@ -237,7 +197,7 @@ async def cmd_repl(
     extra_help_text: str | None = None,
     **kwargs: str | bool,
 ) -> int:
-    """``flowing repl <path>`` （别名 ``flowing cli``）：交互式 REPL。
+    """``flowing repl <path>``：交互式 REPL。
 
     .. rubric:: 功能介绍
 
@@ -345,7 +305,7 @@ async def cmd_repl(
       可再经 ``/agents`` + ``/use`` 现场选择。
 
     :param path: 子项目路径（同 :func:`flowing.interfaces.run.cmd_run`）。
-    :param main_file: 替代的入口 main 文件（可选，经 CLI ``-m`` 传入）。
+    :param main_file: 替代的入口 main 文件（可选，经 CLI ``-f`` 传入）。
     :param extra_slash_handlers: 附加 slash-command 表（命令名 → 异步
         handler），默认 ``None`` （不启用）。
     :param pre_prompt_hook: 每次打印提示符前调用的异步钩子，默认

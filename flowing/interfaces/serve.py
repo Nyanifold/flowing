@@ -14,7 +14,7 @@ from aiohttp import web
 
 from flowing.agent import Agent, TurnContext, TurnResult, build_turn_result
 from flowing.errors import AgentTypeNotFoundError
-from flowing.interfaces.controls import slash_lines
+from flowing.interfaces.controls import available_model_tags, slash_lines
 from flowing.message import Message, TextBlock, to_record
 from flowing.providers import ProviderDelta
 from flowing.runtime import Runtime, launch
@@ -428,20 +428,13 @@ def _build_app(runtime: Runtime, extra_routes: tuple[tuple[str, str, object], ..
         return _json({"model_tag": tag})
 
     async def _models(request: web.Request) -> web.Response:
-        # 渲染后的可用 model tags（+ providers）；来源：runtime 已登记的 model-tags 表。
+        # 可用 model tags：与 repl /model 同口径（runtime 登记的
+        # model-tags 来源现场解析，见 controls.available_model_tags）
         agent = await _resolve_agent(runtime, request.match_info["agent_id"])
         if isinstance(agent, web.Response):
             return agent
-        table = getattr(runtime, "_model_tags", None)
-        tag_map = {}
-        if table is not None:
-            try:
-                tag_map = table.tags   # {tag: model} 或模型条目表
-            except Exception:
-                tag_map = {}
-        names = list(tag_map) if isinstance(tag_map, dict) else []
         return _json({"current": getattr(agent, "model_tag", None),
-                      "model_tags": names})
+                      "model_tags": available_model_tags(agent)})
 
     async def _status(request: web.Request) -> web.Response:
         agent = await _resolve_agent(runtime, request.match_info["agent_id"])
@@ -730,7 +723,7 @@ async def cmd_serve(
       取消，不承诺返回结果。
 
     :param path: 子项目路径（普通文件系统路径）。
-    :param main_file: 替代的入口 main 文件（可选，经 CLI ``-m`` 传入）。
+    :param main_file: 替代的入口 main 文件（可选，经 CLI ``-f`` 传入）。
     :param host: 监听地址，默认 ``127.0.0.1``。
     :param port: 监听端口，默认 ``8000``。
     :param kwargs: 透传给 ``launch`` 与子项目 ``main`` 的 ``--key

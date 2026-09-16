@@ -9,9 +9,10 @@ Runtime」——所有子命令拿到 Runtime 之后做什么，是本包各模�
 
 子命令封闭集由 :data:`SUBCOMMANDS` 定义，共八个名字：``run`` /
 ``repl`` / ``cli`` / ``repl-debug`` / ``serve`` / ``web`` / ``test`` /
-``compile``。其中 ``cli`` 是 ``repl`` 的别名，二者走同一代码路径；
-不接受插件或配置注册新子命令。``compile`` 不拉起 Runtime，是唯一
-不经 :func:`flowing.runtime.launch` 的子命令。
+``compile``。其中 ``cli`` 是一次性对话子命令（投递一条 INPUT 即退出，
+实现见 :mod:`flowing.interfaces.oneshot``），``repl`` 是交互式
+REPL——二者无别名关系。``compile`` 不拉起 Runtime，是唯一不经
+:func:`flowing.runtime.launch` 的子命令。
 
 边界（暴露层只做「拉起」这一件事）：
 
@@ -28,8 +29,9 @@ Runtime」——所有子命令拿到 Runtime 之后做什么，是本包各模�
 
 - ``flowing.interfaces.cli`` —— 进程入口 ``main()`` 与 ``compile``
   子命令。
-- ``flowing.interfaces.repl`` —— 交互式 REPL（``repl`` / 别名
-  ``cli``）。
+- ``flowing.interfaces.oneshot`` —— 一次性对话（``cli``：单条 INPUT
+  投递、打印结果、退出）。
+- ``flowing.interfaces.repl`` —— 交互式 REPL（``repl``）。
 - ``flowing.interfaces.repl_debug`` —— ``repl`` 的调试扩展版
   （``repl-debug``，增加 4 个调试 slash-command）。
 - ``flowing.interfaces.run`` —— 一次性执行（``run``）与冒烟测试
@@ -46,14 +48,22 @@ Runtime」——所有子命令拿到 Runtime 之后做什么，是本包各模�
 
 - 位置参数 ``<path>``：子项目路径，缺省 ``.`` （``flowing test
   --key val`` 等价于 ``flowing test . --key val``）。
-- flowing 级参数一律单横线：``-m <file>`` （入口 main 文件，缺省
-  ``@/main.py``）；``-a <host>`` / ``-p <port>`` （serve / web 专属
-  监听地址，默认 ``127.0.0.1:8000``）；``-h`` / ``--help`` （帮助）。
-  全部在 ``cmd_*`` 分发层剥离，不进入子项目 ``main`` 的 kwargs。
+- flowing 级参数一律单横线，封闭集：``-f <file>`` （入口 main 文件，
+  缺省 ``@/main.py``）；``-h`` / ``--help`` （帮助）；``-a <host>`` /
+  ``-p <port>`` （serve / web 专属监听地址，默认 ``127.0.0.1:8000``）；
+  ``-t <agent-id>`` / ``-m <model-tag>`` / ``-v`` （仅 ``cli`` 子命令：
+  目标 Agent / 本回合模型标签 / verbose 过程输出）。全部在 ``cmd_*``
+  分发层剥离，不进入子项目 ``main`` 的 kwargs；封闭集之外的单横线参数
+  按用法错误处理。
 - 子项目 ``main`` 的参数一律双横线：``--key value`` 经
   :func:`parse_kv_args` 收集，经 ``launch(path, **kwargs)`` 原样透传
   给 ``main(**kwargs)``——即使代码里参数命名为单字母，CLI 上也写
-  ``--x val``。``--help`` 是 CLI 保留字，不透传给 ``main``。
+  ``--x val``。双横线没有任何保留字（``--agent`` / ``--model`` /
+  ``--verbose`` 等照样是 main 的 kwargs）。``--help`` 是 CLI 保留字，
+  不透传给 ``main``。
+- 裸位置参数一律用法错误，唯一的例外是 ``cli`` 子命令的 INPUT：
+  恰好一个裸 token（一段话或一条 slash command），缺失或出现第二个
+  → 用法错误。
 
 退出码（所有子命令统一，见 :data:`EXIT_OK` / :data:`EXIT_RUNTIME_ERROR` /
 :data:`EXIT_USAGE_ERROR`）：
@@ -64,16 +74,18 @@ Runtime」——所有子命令拿到 Runtime 之后做什么，是本包各模�
   项目不可 import 等）、serve / web 端口绑定失败、compile 检测到
   产物被外部修改。
 - ``2``：用法错误——未知子命令、``<path>`` 指向不存在的目录、
-  ``<path>`` 之后出现非 ``--key`` 形式的裸参数。
+  非法参数形态（未知单横线 / 等号形式 / 裸参数越额等）。
 
 信号处理：各子命令自行安装自己的信号处理器（不共享统一安装件）——
 ``run`` / ``serve`` / ``web`` 装 SIGINT / SIGTERM → ``runtime.shutdown()``
 的优雅关闭桥；``repl`` 装交互语义：回合进行中 SIGINT 取消当前回合
 （``abort_turn``），提示符空闲时中断当前输入行（Ctrl-D 或 ``/exit``
-退出）。优雅关闭桥只发起 ``shutdown()``（非阻塞，立即返回）；
-``shutdown()`` 完成递归 destroy 全部节点与插件收尾后置位退出事件，
-``await runtime`` 处随即唤醒，进程以退出码 ``0`` 退出。框架不实现
-「二次信号强制 kill」——关闭卡死时的兜底是应用层职责。
+退出）；``cli`` 装一发语义：回合进行中 SIGINT 取消本次请求
+（``abort_turn``），空闲 / SIGTERM 走优雅关闭桥。优雅关闭桥只发起
+``shutdown()``（非阻塞，立即返回）；``shutdown()`` 完成递归 destroy
+全部节点与插件收尾后置位退出事件，``await runtime`` 处随即唤醒，
+进程以退出码 ``0`` 退出。框架不实现「二次信号强制 kill」——关闭卡死
+时的兜底是应用层职责。
 
 封闭观察窗口：默认 ``repl`` 的 slash-command 集合与默认 ``serve`` 的
 HTTP 端点集合都是封闭的，不接受运行时注册新命令 / 新端点——它们是
@@ -93,7 +105,8 @@ delta 事件）。WebSocket 不引入。
 .. code-block:: console
 
     $ flowing run . --workspace_root /ws --debug     # 长驻进程
-    $ flowing repl /path/to/project                  # 交互式 REPL（别名 cli）
+    $ flowing repl /path/to/project                  # 交互式 REPL
+    $ flowing cli . -t root -m fast "你好"           # 一次性对话（投递即退出）
     $ flowing serve . -p 9000                        # HTTP API（纯 API）
     $ flowing web .                                  # serve + 内置前端页面
     $ flowing test .                                 # 冒烟拉起后退出
@@ -105,6 +118,8 @@ delta 事件）。WebSocket 不引入。
         Runtime 唯一创建入口，所有子命令的第一步。
     :meth:`flowing.runtime.Runtime.shutdown`
         非阻塞优雅关闭，信号处理与 ``/exit`` 的最终汇聚点。
+    :mod:`flowing.interfaces.oneshot`
+        ``cli`` 子命令的行为契约。
     :mod:`flowing.interfaces.web`
         ``web`` 子命令的前端资产来源。
 """
@@ -122,8 +137,10 @@ SUBCOMMANDS: tuple[str, ...] = ("run", "repl", "cli", "repl-debug", "serve", "we
 
 出现在 ``flowing`` 之后的第一个位置参数必须命中本集合，否则按用法
 错误处理（向 stderr 打印用法并以 :data:`EXIT_USAGE_ERROR` 退出）。
-名字比较是精确小写匹配，不做前缀匹配或模糊匹配。``cli`` 是 ``repl``
-的别名，分发时归一化为 ``repl`` （同一代码路径）。
+名字比较是精确小写匹配，不做前缀匹配或模糊匹配。八个名字对应八个
+独立子命令，无别名：``cli`` 是一次性对话（
+:mod:`flowing.interfaces.oneshot`），``repl`` 是交互式 REPL（
+:func:`flowing.interfaces.repl.cmd_repl`），二者代码路径独立。
 
 .. seealso:: :func:`flowing.interfaces.cli.main`、:data:`EXIT_USAGE_ERROR`
 """
@@ -151,8 +168,10 @@ import 等）、serve / web 的端口绑定失败、compile 检测到产物被�
 EXIT_USAGE_ERROR: int = 2
 """退出码：用法错误。
 
-未知子命令、``<path>`` 指向不存在的目录、``<path>`` 之后出现
-非 ``--key`` 形式的裸参数，均以此码退出；用法说明打印到 stderr。
+未知子命令、``<path>`` 指向不存在的目录、``<path>`` 之后出现非法
+参数形态（未知单横线参数、``--key=value`` 等号形式、单独 ``--``、
+非 cli 子命令的裸参数、cli 子命令缺失 / 超额的 INPUT），均以此码退出；
+用法说明打印到 stderr。
 
 .. seealso:: :func:`flowing.interfaces.cli.main`、:func:`parse_kv_args`
 """
@@ -225,7 +244,7 @@ def _default_agent_type(runtime: Runtime) -> str | None:
     从池名录中根条目（``parent_agent_id`` 等于 Runtime 自身 id 的
     条目）里取 ``created_at`` 最新者的 ``agent_type``；池无根条目时
     返回 ``None``。repl 未绑定态隐式创建与 serve ``POST /agents``
-    缺省类型共用本判定。
+    缺省类型、cli 未给 ``-t`` 时的新建兜底共用本判定。
     """
     roots = [
         meta for meta in runtime._agent_pool.values()

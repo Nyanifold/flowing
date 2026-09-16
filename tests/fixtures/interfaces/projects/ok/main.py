@@ -9,6 +9,7 @@ kwargs 进来，由项目 ``main`` 自己的策略把 FakeProvider 预置进
 场景一览（``scenario`` kwarg）：
 
 - ``ok``（默认）：流式两段 delta 回复。
+- ``thinking``：先吐一段 thinking 增量再流式正文（cli -v 过程输出回归用）。
 - ``error``：provider 每次调用抛 ``RuntimeError`` → ``TurnResult(status="error")``。
 - ``tool``：首轮返回 ``echo`` 工具调用，次轮流式文本回复（过程显示回归用）。
 - ``debug``：``ok`` 之上加 ``current_mode`` / ``fragile()`` 可观察字段，
@@ -72,6 +73,14 @@ def _make_provider(reply: str, scenario: str) -> FakeProvider:
             return _text_response(reply)
 
         provider.generate_fn = _gen_tool
+        return provider
+
+    if scenario == "thinking":
+        async def _stream_thinking(context: Any, model: Any):
+            yield ProviderDelta(kind="thinking", text="让我想想。", content_index=0)
+            yield ProviderDelta(kind="text", text=reply, content_index=0)
+
+        provider.stream_fn = _stream_thinking
         return provider
 
     async def _stream(context: Any, model: Any):

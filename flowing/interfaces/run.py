@@ -60,7 +60,7 @@ async def cmd_run(
 
     1. ``runtime = await launch(path, main_file=main_file, **kwargs)``
        ——登记 ``@`` 上下文、import 子项目入口 main 文件（缺省
-       ``@/main.py``，经 CLI ``-m`` 指定）、执行 ``main``。返回时
+       ``@/main.py``，经 CLI ``-f`` 指定）、执行 ``main``。返回时
        Agent 已激活、消息级树与队列已就绪，逻辑 Turn 循环挂起等待
        消息。
     2. 安装 SIGINT / SIGTERM 信号处理器（:func:`_install_signal_handlers`）。
@@ -76,7 +76,7 @@ async def cmd_run(
       :data:`EXIT_RUNTIME_ERROR`，进程不再等待信号。
 
     :param path: 子项目路径（普通文件系统路径）。
-    :param main_file: 替代的入口 main 文件（可选，经 CLI ``-m`` 传入）。
+    :param main_file: 替代的入口 main 文件（可选，经 CLI ``-f`` 传入）。
     :param kwargs: 透传给 ``launch`` 与子项目 ``main`` 的 ``--key
         value`` 参数。
     :return: :data:`EXIT_OK` （正常关闭）或
@@ -109,7 +109,7 @@ async def cmd_test(
     .. rubric:: 功能介绍
 
     ``test`` 子命令的职责是冒烟拉起：``launch(path,
-    main_file=main_file, **kwargs)`` （``-m`` 可指定替代入口文件，如
+    main_file=main_file, **kwargs)`` （``-f`` 可指定替代入口文件，如
     冒烟专用 ``main_test.py``）成功后取一次 ``runtime.snapshot()``
     验证可观测面就绪，随后 ``runtime.shutdown()`` 并返回
     :data:`EXIT_OK`；``launch`` 或快照断言失败返回
@@ -125,7 +125,7 @@ async def cmd_test(
     .. code-block:: console
 
         $ flowing test . && echo "project boots"
-        $ flowing test . -m ./tests/main_test.py   # 指定替代入口文件
+        $ flowing test . -f ./tests/main_test.py   # 指定替代入口文件
 
     项目级断言（用户自写，不经 ``flowing test``）：
 
@@ -153,7 +153,7 @@ async def cmd_test(
     活动）。
 
     :param path: 子项目路径（普通文件系统路径）。
-    :param main_file: 替代的入口 main 文件（可选，经 CLI ``-m`` 传入）。
+    :param main_file: 替代的入口 main 文件（可选，经 CLI ``-f`` 传入）。
     :param kwargs: 透传给 ``launch`` 与子项目 ``main`` 的 ``--key
         value`` 参数。
     :return: :data:`EXIT_OK` （拉起成功并正常关闭）或

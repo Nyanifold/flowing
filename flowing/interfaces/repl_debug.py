@@ -134,7 +134,7 @@ async def cmd_repl_debug(
 
     :param path: 子项目路径（同
         :func:`flowing.interfaces.repl.cmd_repl`）。
-    :param main_file: 替代的入口 main 文件（可选，经 CLI ``-m`` 传入）。
+    :param main_file: 替代的入口 main 文件（可选，经 CLI ``-f`` 传入）。
     :param kwargs: 透传给 ``launch`` 与子项目 ``main`` 的 ``--key
         value`` 参数。
     :return: 委托 ``cmd_repl`` 得到的退出码（:data:`EXIT_OK` /

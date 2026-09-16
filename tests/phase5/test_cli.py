@@ -1,4 +1,9 @@
-"""阶段 5 T51–T61：``cli.py``（main 分发 + cmd_compile）。"""
+"""阶段 5 T51–T61+：``cli.py``（main 分发 + cmd_compile + cli 参数解析）。
+
+cli 子命令（一次性对话）分发到 ``oneshot.cmd_cli``，与 repl 无别名关系；
+``-t`` / ``-m`` / ``-v`` 为 cli 专属的 flowing 级单横线参数，INPUT 是
+cli 唯一被许可的裸位置参数。入口 main 文件的 flowing 级参数为 ``-f``。
+"""
 
 from __future__ import annotations
 
@@ -71,8 +76,8 @@ def _stub_cmds(monkeypatch) -> dict:
             return 0
         return _stub
 
-    for name in ("cmd_run", "cmd_repl", "cmd_repl_debug", "cmd_serve",
-                 "cmd_web", "cmd_test"):
+    for name in ("cmd_run", "cmd_repl", "cmd_cli", "cmd_repl_debug",
+                 "cmd_serve", "cmd_web", "cmd_test"):
         monkeypatch.setattr(cli_mod, name, _make(name))
 
     def _compile_stub(path):
@@ -84,10 +89,10 @@ def _stub_cmds(monkeypatch) -> dict:
 
 
 def test_t55_arg_stripping(monkeypatch, tmp_path):
-    """-m/-a/-p 剥离传给显式参数不进 kwargs；--key val 经 parse_kv_args
+    """-f/-a/-p 剥离传给显式参数不进 kwargs；--key val 经 parse_kv_args
     进 kwargs。"""
     calls = _stub_cmds(monkeypatch)
-    rc = main(["serve", str(tmp_path), "-m", "alt_main.py", "-a", "0.0.0.0",
+    rc = main(["serve", str(tmp_path), "-f", "alt_main.py", "-a", "0.0.0.0",
                "-p", "9000", "--workspace-root", "/ws", "--debug"])
     assert rc == 0
     call = calls["cmd_serve"][0]
@@ -97,14 +102,14 @@ def test_t55_arg_stripping(monkeypatch, tmp_path):
     assert call["workspace_root"] == "/ws"   # key 里的 '-' 转 '_'
     assert call["debug"] is True             # 布尔 flag
     # flowing 级参数不进 main 的 kwargs
-    assert "m" not in call and "a" not in call and "p" not in call
+    assert "f" not in call and "a" not in call and "p" not in call
     assert "host" not in call.get("kwargs", {})
 
 
 def test_t55b_repl_has_no_host_port(monkeypatch, tmp_path):
     """repl/test 等非 serve/web 子命令不收 host/port 显式参数。"""
     calls = _stub_cmds(monkeypatch)
-    assert main(["test", str(tmp_path), "-m", "t.py", "--key", "val"]) == 0
+    assert main(["test", str(tmp_path), "-f", "t.py", "--key", "val"]) == 0
     call = calls["cmd_test"][0]
     assert call["main_file"] == "t.py"
     assert call["key"] == "val"
@@ -124,7 +129,7 @@ def test_t56_help(monkeypatch, tmp_path, capsys):
 
 
 def test_t57_bare_arg(tmp_path, capsys):
-    """<path> 之后出现裸参数 → EXIT_USAGE_ERROR。"""
+    """非 cli 子命令 <path> 之后出现裸参数 → EXIT_USAGE_ERROR。"""
     assert main(["run", str(tmp_path), "barearg"]) == EXIT_USAGE_ERROR
     assert "barearg" in capsys.readouterr().err
 
@@ -136,28 +141,89 @@ def test_t04_equals_form(tmp_path, capsys):
 
 
 def test_r9_single_dash_failures(tmp_path, capsys):
-    """-p 非数字 / -m 缺值 / 未知单横线参数 → EXIT_USAGE_ERROR + stderr
+    """-p 非数字 / -f 缺值 / 未知单横线参数 → EXIT_USAGE_ERROR + stderr
     用法说明。"""
     assert main(["serve", str(tmp_path), "-p", "abc"]) == EXIT_USAGE_ERROR
     assert "port must be a number" in capsys.readouterr().err
-    assert main(["run", str(tmp_path), "-m"]) == EXIT_USAGE_ERROR
-    assert "-m is missing a value" in capsys.readouterr().err
+    assert main(["run", str(tmp_path), "-f"]) == EXIT_USAGE_ERROR
+    assert "-f is missing a value" in capsys.readouterr().err
     assert main(["run", str(tmp_path), "-x", "1"]) == EXIT_USAGE_ERROR
     assert "-x" in capsys.readouterr().err
     assert main(["run", str(tmp_path), "--"]) == EXIT_USAGE_ERROR
 
 
-def test_t54_cli_alias_same_path(monkeypatch, tmp_path):
-    """main(["cli", path]) 与 main(["repl", path]) 进入完全相同的 repl
-    代码路径（同一 cmd_repl 引用、同一入参）。"""
+# ---------------------------------------------------------------------------
+# cli 子命令：分发与参数解析（一次性对话，非 repl 别名）
+# ---------------------------------------------------------------------------
+
+def test_t54_cli_dispatches_to_oneshot(monkeypatch, tmp_path):
+    """main(["cli", ...]) 分发到 cmd_cli（独立子命令，非 repl 别名）；
+    -t / -m / -v 与 INPUT 由 CLI 层解析为显式参数。"""
     calls = _stub_cmds(monkeypatch)
-    assert main(["cli", str(tmp_path), "--k", "v"]) == 0
-    assert main(["repl", str(tmp_path), "--k", "v"]) == 0
-    # 两次调用都进同一 cmd_repl 且入参完全一致（同一代码路径）
-    assert calls["cmd_repl"] == [
-        {"path": str(tmp_path), "main_file": None, "k": "v"},
-        {"path": str(tmp_path), "main_file": None, "k": "v"},
+    assert main(["cli", str(tmp_path), "-t", "root", "-m", "fast", "-v",
+                 "你好", "--k", "v"]) == 0
+    assert calls["cmd_cli"] == [
+        {"path": str(tmp_path), "main_file": None, "k": "v",
+         "opts": {"agent_id": "root", "model_tag": "fast", "verbose": True,
+                  "input": "你好"}},
     ]
+    assert "cmd_repl" not in calls   # cli 与 repl 代码路径独立
+
+
+def test_t54b_cli_missing_input(monkeypatch, tmp_path, capsys):
+    """cli 缺 INPUT → EXIT_USAGE_ERROR，不分发。"""
+    calls = _stub_cmds(monkeypatch)
+    assert main(["cli", str(tmp_path), "-v"]) == EXIT_USAGE_ERROR
+    assert "missing INPUT" in capsys.readouterr().err
+    assert not calls
+
+
+def test_t54c_cli_extra_bare_arg(monkeypatch, tmp_path, capsys):
+    """cli 出现第二个裸参数 → EXIT_USAGE_ERROR（INPUT 恰好一个）。"""
+    calls = _stub_cmds(monkeypatch)
+    assert main(["cli", str(tmp_path), "你好", "多余"]) == EXIT_USAGE_ERROR
+    assert "only one INPUT" in capsys.readouterr().err
+    assert not calls
+
+
+def test_t54d_cli_flag_value_errors(monkeypatch, tmp_path, capsys):
+    """-t / -m 缺值 → EXIT_USAGE_ERROR；非 cli 子命令不认识 -t / -m / -v。"""
+    calls = _stub_cmds(monkeypatch)
+    assert main(["cli", str(tmp_path), "-t"]) == EXIT_USAGE_ERROR
+    assert "-t is missing a value" in capsys.readouterr().err
+    # 后随 -- 开头项同样按缺值处理
+    assert main(["cli", str(tmp_path), "-m", "--verbose", "x"]) == EXIT_USAGE_ERROR
+    assert "-m is missing a value" in capsys.readouterr().err
+    # 封闭集：-t / -v 在其它子命令是未知单横线参数
+    assert main(["run", str(tmp_path), "-t", "x", "msg"]) == EXIT_USAGE_ERROR
+    assert main(["repl", str(tmp_path), "-v"]) == EXIT_USAGE_ERROR
+    assert not calls
+
+
+def test_t54e_cli_double_dash_not_reserved(monkeypatch, tmp_path):
+    """双横线无保留字：--agent / --verbose 照旧透传 main 的 kwargs，
+    与 flowing 级 -t / -m / -v 互不冲突。"""
+    calls = _stub_cmds(monkeypatch)
+    # INPUT 在前，--agent 键值对 + --verbose 布尔 flag 照旧进 main kwargs
+    assert main(["cli", str(tmp_path), "hi", "--agent", "ghost",
+                 "--verbose"]) == 0
+    call = calls["cmd_cli"][0]
+    assert call["agent"] == "ghost"      # main 的 kwargs（--key value）
+    assert call["verbose"] is True       # main 的 kwargs（--verbose 布尔 flag）
+    # flowing 级只有 INPUT（-t / -m / -v 未给 → opts 无对应语义键）
+    assert call["opts"] == {"input": "hi"}
+
+
+def test_t54f_cli_double_dash_names_not_occupied(monkeypatch, tmp_path):
+    """双横线同名键不占用：--agent-id / --input-text 自由透传 main
+    kwargs，不被 -t / INPUT 的语义键截获。"""
+    calls = _stub_cmds(monkeypatch)
+    assert main(["cli", str(tmp_path), "hi", "--agent-id", "ghost",
+                 "--input-text", "x"]) == 0
+    call = calls["cmd_cli"][0]
+    assert call["opts"] == {"input": "hi"}   # flowing 级只有 INPUT
+    assert call["agent_id"] == "ghost"       # main kwargs（未被截获）
+    assert call["input_text"] == "x"
 
 
 def test_default_path_is_cwd(monkeypatch, tmp_path):

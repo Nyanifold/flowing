@@ -293,6 +293,24 @@ async def test_v3_new_commands(project_ok, persist_dir, monkeypatch, capsys):
     assert "/use" not in out.splitlines()[0] if out else True   # /help 不列 /use
 
 
+async def test_model_command_lists_available_tags(project_ok, persist_dir):
+    """/model：首行当前模型三要素；第二行列出全部可用 tag（文件序），
+    当前生效 tag 以 (*) 标注。"""
+    from flowing.runtime import launch
+    runtime = await launch(str(project_ok), persist=str(persist_dir))
+    try:
+        agent = await runtime.get_agent("root")
+        lines = await slash_lines("/model", "", agent, runtime)
+        assert lines[0].startswith("model_tag=default")
+        assert "provider=fake-a" in lines[0] and "model=fake-model-a" in lines[0]
+        assert lines[1].startswith("available tags:")
+        assert "default(*)" in lines[1]          # 当前 tag 标注
+        assert "fast" in lines[1] and "b" in lines[1]
+        assert "b(*)" not in lines[1]            # 仅当前 tag 带 (*)
+    finally:
+        await runtime.shutdown()
+
+
 async def test_context_command(project_ok, persist_dir, monkeypatch, capsys):
     """/context：窗口 / 估计占用 / 使用率三要素；/context v 追加分类占比
     （system prompt、tools、各 MessageKind×block type）并重归一化到总体。"""

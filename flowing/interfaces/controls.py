@@ -33,6 +33,28 @@ from flowing.message import Message, TextBlock, _text_tokens, estimate_block_tok
 from flowing.runtime import Runtime
 
 
+def available_model_tags(agent: Agent) -> list[str]:
+    """当前项目可用的全部 model tag（model-tags.yaml 的键集，文件序）。
+
+    数据源：agent 所属 Runtime 登记的 model-tags 来源（
+    ``runtime._model_tags_path``）现场解析（
+    :func:`flowing.model.load_model_tags`，无缓存）。未配置 / 读取失败
+    → 空表（名录提示不阻断）。repl ``/model`` 与 serve
+    ``GET /agents/<id>/models`` 的同一口径，避免两端漂移。
+    """
+    tags_path = getattr(agent.runtime, "_model_tags_path", None)
+    if not tags_path:
+        return []
+    try:
+        from pathlib import Path
+
+        from flowing.model import load_model_tags
+        tags = load_model_tags(Path(tags_path))
+    except Exception:
+        return []
+    return list(tags) if isinstance(tags, dict) else []
+
+
 HELP_LINES: tuple[str, ...] = (
     "/help                list all commands (this help)",
     "/exit  /quit         exit repl (graceful shutdown, then exit with code 0)",
@@ -41,7 +63,7 @@ HELP_LINES: tuple[str, ...] = (
     "/new [agent_type]    create a new root Agent and bind it",
     "/snapshot            print a read-only snapshot of the current Runtime",
     "/messages            print the bound Agent's message chain (current head up)",
-    "/model [tag]         show or switch the bound Agent's model_tag",
+    "/model [tag]         show current & available tags / switch model_tag",
     "/context [v]         show context window usage estimate (v = per-part breakdown)",
     "/status              print a status rollup of the bound Agent",
     "/tasks [cancel <id>] list background tasks / cancel one",
@@ -106,9 +128,13 @@ async def slash_lines(cmd: str, arg: str, agent: Agent | None,
 
     if name == "model":
         if not arg:
-            return [f"model_tag={getattr(agent, 'model_tag', None)}  "
+            current = getattr(agent, "model_tag", None)
+            tags = available_model_tags(agent)
+            rendered = ", ".join(f"{t}(*)" if t == current else t for t in tags)
+            return [f"model_tag={current}  "
                     f"provider={getattr(agent.model, 'provider', None)}  "
-                    f"model={getattr(agent.model, 'model', None)}"]
+                    f"model={getattr(agent.model, 'model', None)}",
+                    f"available tags: {rendered or '(none configured)'}"]
         try:
             agent.model_tag = arg
             return [f"model_tag -> {arg}"]

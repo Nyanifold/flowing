@@ -275,7 +275,7 @@ async def cmd_web(
     ``flowing.interfaces.web`` 层就绪）。
 
     :param path: 子项目路径（普通文件系统路径）。
-    :param main_file: 替代的入口 main 文件（可选，经 CLI ``-m`` 传入）。
+    :param main_file: 替代的入口 main 文件（可选，经 CLI ``-f`` 传入）。
     :param host: 监听地址，默认 ``127.0.0.1``。
     :param port: 监听端口，默认 ``8000``。
     :param kwargs: 透传给 ``launch`` 与子项目 ``main`` 的 ``--key
