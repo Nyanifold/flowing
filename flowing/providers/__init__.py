@@ -194,8 +194,9 @@ from flowing.providers.deepseek import DeepSeekProvider
 from flowing.providers.deepseek_anthropic import DeepSeekAnthropicProvider
 from flowing.providers.deepseek_responses import DeepSeekResponsesProvider
 from flowing.providers.groq import GroqProvider
-from flowing.providers.kimi import KimiProvider
-from flowing.providers.kimi_responses import KimiResponsesProvider
+from flowing.providers.kimi_coding import KimiCodingProvider
+from flowing.providers.moonshot import MoonshotProvider
+from flowing.providers.moonshot_responses import MoonshotResponsesProvider
 from flowing.providers.openai_completions import OpenAICompletionsProvider
 from flowing.providers.openai_responses import OpenAIResponsesProvider
 from flowing.providers.openrouter import OpenRouterProvider
@@ -218,7 +219,7 @@ __all__ = [
     "DeepSeekProvider",
     "FakeProvider",
     "GroqProvider",
-    "KimiProvider",
+    "MoonshotProvider",
     "OpenAICompletionsProvider",
     "OpenRouterProvider",
     "Provider",

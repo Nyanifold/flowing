@@ -5,7 +5,7 @@ Kimi 的接入面分两种（见 ``测试资源/kimi-provider.md``）：
 - **kimi code**：Kimi 会员编程权益端点 ``https://api.kimi.com/coding``
   （Anthropic Messages 协议），模型 ``k3`` / ``kimi-for-coding``；
 - **moonshot api**：开放平台 ``https://api.moonshot.cn``，OpenAI
-  chat/completions（内置 :class:`KimiProvider`）、Anthropic 兼容端点
+  chat/completions（内置 :class:`MoonshotProvider`）、Anthropic 兼容端点
   ``/anthropic``、OpenAI Responses API ``/v1/responses``；模型
   ``kimi-k3`` / ``kimi-k2.7-code``。注意：按平台文档 k2.7-code 的
   Anthropic 端点强制开启思考（否则 400）——本组用例一律使用框架
@@ -14,7 +14,7 @@ Kimi 的接入面分两种（见 ``测试资源/kimi-provider.md``）：
 
 覆盖矩阵：两类 provider × 各自协议（chat/completions、Anthropic、
 Responses）× 文本 / 图片 × 多轮（第二轮带完整历史上门，验证消息
-回放）。Responses API 经内置 :class:`KimiResponsesProvider` 调用
+回放）。Responses API 经内置 :class:`MoonshotResponsesProvider` 调用
 （T153–T157）。
 
 门控条件（两者同时具备才运行）：
@@ -38,9 +38,9 @@ import pytest
 from flowing.context import Context
 from flowing.message import ImageBlock, Message, MessageKind, TextBlock
 from flowing.model import ModelConfig
-from flowing.providers import KimiProvider, ProviderConfig
+from flowing.providers import MoonshotProvider, ProviderConfig
 from flowing.providers.anthropic_messages import AnthropicMessagesProvider
-from flowing.providers.kimi_responses import KimiResponsesProvider
+from flowing.providers.moonshot_responses import MoonshotResponsesProvider
 
 RESOURCES = Path(__file__).parent.parent.parent / "测试资源"
 IMAGES = Path(__file__).parent.parent / "fixtures" / "images"  # 目录即契约
@@ -196,14 +196,14 @@ async def test_t144_kimi_code_image_multiturn_kimi_for_coding():
         "demo-image2.png", ("热图", "矩阵"), _IMAGE2_RECALL)
 
 
-# ── moonshot api：OpenAI chat/completions（内置 KimiProvider）───────────
+# ── moonshot api：OpenAI chat/completions（内置 MoonshotProvider）───────────
 
 
 async def test_t145_moonshot_openai_text_multiturn_k3():
     """T145：moonshot chat/completions kimi-k3 文本多轮。"""
     opener, nonce = _nonce_opener()
     await _recall_roundtrip(
-        KimiProvider(ProviderConfig({"api_key": _ms_key()})), _model("kimi-k3"),
+        MoonshotProvider(ProviderConfig({"api_key": _ms_key()})), _model("kimi-k3"),
         opener, _RECALL_QUESTION, nonce,
         "kimi-k3（chat/completions）两轮后未回忆起编号")
 
@@ -211,7 +211,7 @@ async def test_t145_moonshot_openai_text_multiturn_k3():
 async def test_t146_moonshot_openai_image_multiturn_k3():
     """T146：moonshot chat/completions kimi-k3 图片多轮。"""
     await _image_recall_roundtrip(
-        KimiProvider(ProviderConfig({"api_key": _ms_key()})), _model("kimi-k3"),
+        MoonshotProvider(ProviderConfig({"api_key": _ms_key()})), _model("kimi-k3"),
         "demo-image1.png", ("分子", "预训练"), _IMAGE1_RECALL)
 
 
@@ -219,7 +219,7 @@ async def test_t147_moonshot_openai_text_multiturn_k27code():
     """T147：moonshot chat/completions kimi-k2.7-code 文本多轮。"""
     opener, nonce = _nonce_opener()
     await _recall_roundtrip(
-        KimiProvider(ProviderConfig({"api_key": _ms_key()})),
+        MoonshotProvider(ProviderConfig({"api_key": _ms_key()})),
         _model("kimi-k2.7-code"),
         opener, _RECALL_QUESTION, nonce,
         "kimi-k2.7-code（chat/completions）两轮后未回忆起编号")
@@ -228,7 +228,7 @@ async def test_t147_moonshot_openai_text_multiturn_k27code():
 async def test_t148_moonshot_openai_image_multiturn_k27code():
     """T148：moonshot chat/completions kimi-k2.7-code 图片多轮。"""
     await _image_recall_roundtrip(
-        KimiProvider(ProviderConfig({"api_key": _ms_key()})),
+        MoonshotProvider(ProviderConfig({"api_key": _ms_key()})),
         _model("kimi-k2.7-code"),
         "demo-image2.png", ("热图", "矩阵"), _IMAGE2_RECALL)
 
@@ -270,18 +270,18 @@ async def test_t152_moonshot_anthropic_image_multiturn_k27code():
         "demo-image2.png", ("热图", "矩阵"), _IMAGE2_RECALL)
 
 
-# ── moonshot api：OpenAI Responses（内置 KimiResponsesProvider）──────────
+# ── moonshot api：OpenAI Responses（内置 MoonshotResponsesProvider）──────────
 
 
-def _kimi_responses() -> KimiResponsesProvider:
-    return KimiResponsesProvider(ProviderConfig({"api_key": _ms_key()}))
+def _moonshot_responses() -> MoonshotResponsesProvider:
+    return MoonshotResponsesProvider(ProviderConfig({"api_key": _ms_key()}))
 
 
 async def test_t153_moonshot_responses_text_multiturn_k3():
     """T153：moonshot Responses 端点 kimi-k3 文本多轮。"""
     opener, nonce = _nonce_opener()
     await _recall_roundtrip(
-        _kimi_responses(), _model("kimi-k3"),
+        _moonshot_responses(), _model("kimi-k3"),
         opener, _RECALL_QUESTION, nonce,
         "kimi-k3（responses）两轮后未回忆起编号")
 
@@ -289,7 +289,7 @@ async def test_t153_moonshot_responses_text_multiturn_k3():
 async def test_t154_moonshot_responses_image_multiturn_k3():
     """T154：moonshot Responses 端点 kimi-k3 图片多轮。"""
     await _image_recall_roundtrip(
-        _kimi_responses(), _model("kimi-k3"),
+        _moonshot_responses(), _model("kimi-k3"),
         "demo-image1.png", ("分子", "预训练"), _IMAGE1_RECALL)
 
 
@@ -297,7 +297,7 @@ async def test_t155_moonshot_responses_text_multiturn_k27code():
     """T155：moonshot Responses 端点 kimi-k2.7-code 文本多轮（默认参数）。"""
     opener, nonce = _nonce_opener()
     await _recall_roundtrip(
-        _kimi_responses(), _model("kimi-k2.7-code"),
+        _moonshot_responses(), _model("kimi-k2.7-code"),
         opener, _RECALL_QUESTION, nonce,
         "kimi-k2.7-code（responses）两轮后未回忆起编号")
 
@@ -305,14 +305,14 @@ async def test_t155_moonshot_responses_text_multiturn_k27code():
 async def test_t156_moonshot_responses_image_multiturn_k27code():
     """T156：moonshot Responses 端点 kimi-k2.7-code 图片多轮（默认参数）。"""
     await _image_recall_roundtrip(
-        _kimi_responses(), _model("kimi-k2.7-code"),
+        _moonshot_responses(), _model("kimi-k2.7-code"),
         "demo-image2.png", ("热图", "矩阵"), _IMAGE2_RECALL)
 
 
 async def test_t157_moonshot_responses_stream_k3():
     """T157：Responses 端点真 SSE 流式冒烟——text delta 拼接含答案、
     content_index 单调不减、末帧携带 usage 与 stop_reason。"""
-    deltas = [d async for d in _kimi_responses().generate_stream(
+    deltas = [d async for d in _moonshot_responses().generate_stream(
         Context(system_prompt=[], tools=[], messages=[Message(
             kind=MessageKind.USER,
             content=[TextBlock(text="用一句话回答：1+1 等于几？")])]),
