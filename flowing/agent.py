@@ -3285,7 +3285,7 @@ class Agent:
 
     async def invoke_subagent(
         self,
-        agent_type: str,
+        agent_type: str = "",
         *,
         prompt: str | None = None,
         name: str | None = None,
@@ -3299,9 +3299,10 @@ class Agent:
         时序（两段式，内部拆 :meth:`_prepare_subagent` /
         :meth:`_run_subagent`）：
 
-        - 准备段（同步 await）：按别名查 ``_subagent_entries`` →
+        - 准备段（同步 await）：新建路径按别名查 ``_subagent_entries`` →
           ``SubagentEntry.resolve()`` （LLM args → 完整 kwargs：别名映射 +
-          specified 求值 + inject 注入）→ 构造
+          specified 求值 + inject 注入）；续接路径跳过条目查找与 resolve
+          （实例已存在，``kwargs`` 忽略）。随后构造
           :class:`SubagentInvocation` 并 dispatch 亲代 Agent 的
           ``on_subagent_invoke`` → 注册 ``Execution(kind="agent")`` →
           新建（内部调 :meth:`create_subagent`）或续接（``resume`` 按
@@ -3323,14 +3324,16 @@ class Agent:
             # 新建 + 命名
             result = await self.invoke_subagent(
                 "coder", prompt="审查 auth 模块", name="my-reviewer")
-            # 之后续接同一实例（保持原类型）
+            # 之后续接同一实例（保持原类型；``agent_type`` 缺省留空）
             result2 = await self.invoke_subagent(
-                "coder", resume="my-reviewer", prompt="继续审查 payment 模块")
+                resume="my-reviewer", prompt="继续审查 payment 模块")
 
         .. rubric:: 行为要点
 
         - ``resume`` 与新建参数互斥：续接保持原类型，``kwargs`` 忽略
-          （实例已存在）；``resume`` 找不到实例名 → ``ValueError``。查找
+          （实例已存在），``agent_type`` 可缺省留空（工具路径下 LLM 按
+          互斥契约只给 ``resume``）；``resume`` 找不到实例名 →
+          ``ValueError``。查找
           载体 = ``child_ids`` 语义名表：目标实例活着直接用，已销毁 /
           未恢复则经 ``Runtime.get_agent`` 现场恢复并重新进入
           ``_children``。
@@ -3395,16 +3398,26 @@ class Agent:
         :meth:`_run_subagent` 消费；Execution 清理由运行段 finally 承担
         （本段异常路径自清理）。``name`` 经 ``SubagentInvocation.name``
         进创建管线：新建路径透传 :meth:`create_subagent` （登记
-        ``child_ids``）；resume 路径忽略（实例已存在）。
+        ``child_ids``）；resume 路径忽略（实例已存在，且不查条目、不
+        resolve——``kwargs`` 按契约忽略）。
         """
-        entry = self._subagent_entries[agent_type]   # 按别名查（agent_type 形参承载别名）
-        init_kwargs = entry.resolve(self, kwargs)   # LLM args -> 完整 kwargs
+        # 续接路径（resume 非 None）不查条目、不 resolve：实例已存在，
+        # kwargs 忽略（契约见 invoke_subagent docstring「resume 与新建参数
+        # 互斥：续接保持原类型，kwargs 忽略」）。工具路径下 LLM 按互斥契约
+        # 只给 resume、agent_type 为 ""——若无条件查条目会得到
+        # dict[""] KeyError（续接必败回归，见 tests/builtins 清单 73 续接
+        # 正负例）。
+        entry: SubagentEntry | None = None
+        init_kwargs: dict[str, Any] = {}
+        if resume is None:
+            entry = self._subagent_entries[agent_type]   # 按别名查（agent_type 形参承载别名）
+            init_kwargs = entry.resolve(self, kwargs)   # LLM args -> 完整 kwargs
         invocation = SubagentInvocation(
             alias=agent_type,
             # spec 未写清处落实：骨架把别名直接当 agent_type 透传，与
             # SubagentInvocation.agent_type「取自 SubagentEntry.name_ori」的
             # 字段契约矛盾——按字段契约落实（别名是 LLM 面，类型名是创建面）
-            agent_type=entry.name_ori if resume is None else None,   # resume 与 agent_type 互斥
+            agent_type=entry.name_ori if entry is not None else None,   # resume 与 agent_type 互斥
             name=name,
             resume=resume, prompt=prompt, args=init_kwargs)
         invocation = await self.hooks.on_subagent_invoke.dispatch(

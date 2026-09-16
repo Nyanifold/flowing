@@ -174,6 +174,39 @@ async def test_t73_subagent_invoke_mutex_validation(runtime, args):
     assert result.status == "error" and "mutually exclusive" in result.error
 
 
+async def test_t73_subagent_invoke_resume_via_tool(runtime, provider):
+    """73：续接正例——只给 ``resume``、不给 ``agent_type``（LLM 按互斥契约的
+    自然写法），经工具续接同一实例。
+
+    回归：准备段原先无条件 ``_subagent_entries[agent_type]`` 查条目，
+    LLM 裸 resume 时 agent_type="" → KeyError → error 结果（错误文本为
+    空键 repr ``''``，无自我修正线索），续接在工具路径下必败。
+    """
+    agent = await runtime.create_agent("test-agent")
+    agent.add_agent("worker")
+    tool = SubagentInvokeTool()
+    script_provider(provider, text_response("第一次"), text_response("续接"))
+    r1 = await tool({"name": "w1", "agent_type": "worker", "prompt": "干活",
+                     "resume": "", "asynchronized": False}, caller=agent)
+    assert r1.status == "completed"
+    r2 = await tool({"name": "", "agent_type": "", "prompt": "继续",
+                     "resume": "w1", "asynchronized": False}, caller=agent)
+    assert r2.status == "completed"
+    assert r2.output["subagent_id"] == r1.output["subagent_id"]   # 同一实例带记忆续接
+    assert r2.output["name_alias"] == "w1"
+    assert r2.output["result"] == "续接"
+
+
+async def test_t73_subagent_invoke_resume_unknown_name(runtime):
+    """73：续接负例——``resume`` 指向不存在的实例名 → error 结果，错误文本
+    含该名字（LLM 可见的自我修正反馈，不再是空串）。"""
+    agent = await runtime.create_agent("test-agent")
+    tool = SubagentInvokeTool()
+    result = await tool({"name": "", "agent_type": "", "prompt": "p",
+                         "resume": "ghost", "asynchronized": False}, caller=agent)
+    assert result.status == "error" and "ghost" in result.error
+
+
 # ---------------------------------------------------------------------------
 # 清单 74：subagent-invoke 异步路径（asynchronized=True）
 # ---------------------------------------------------------------------------
