@@ -1,7 +1,7 @@
 # provider 条目样例（凭证侧）。
 # 一个条目 = 一个 API key 身份；adapter 字段是 register_provider 的注册键。
-# {{env.VAR}} 在加载期纯字符串替换（非 Jinja2/Parsable），缺失即抛
-# MissingEnvironmentVariableError；非 {{env. 前缀的 {{...}} 原样保留。
+# {{env.VAR}} 在加载期纯字符串替换（非 Jinja2/Parsable），缺失替换为空串
+# 并 warnings.warn 告警（不中断加载）；非 {{env. 前缀的 {{...}} 原样保留。
 deepseek-personal:
   adapter: deepseek
   base_url: https://api.deepseek.com

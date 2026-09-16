@@ -61,7 +61,7 @@ import 期作者笔误刻意用内置 ``ValueError``，不入本层次——如
         │   ├── AuthenticationError      # 不可重试（401/403）
         │   ├── InvalidRequestError      # 不可重试（400）
         │   ├── ContentPolicyError       # 不可重试
-        │   ├── MissingEnvironmentVariableError  # 条目加载时 {{env.X}} 缺失
+        │   ├── MissingEnvironmentVariableError  # 加载期要求的环境变量缺失（内置加载器告警降级，类保留给严格校验）
         │   └── ProviderNameConflictError        # adapter 规范名重名注册（import 期）
         ├── DependencyError              # 插件依赖校验（install() 时增量）
         ├── CommError                    # 通信扩展（CommPlugin 总线）
@@ -128,8 +128,11 @@ import 期作者笔误刻意用内置 ``ValueError``，不入本层次——如
   Agent 存活；``after_turn`` 收尾钩子在所有路径（含异常路径）照常触发，
   已产生的消息照常持久化。``ContextLengthError`` 等原样重发必然重现的
   错误同样分发——压缩 / 换模型 / 仅观察等处置均属 handler 内部逻辑。
-- ``MissingEnvironmentVariableError`` 在 Provider 条目加载时抛出（fail-fast：
-  出错即刻抛异常、不静默降级），与调用期异常不在同一时序。
+- ``MissingEnvironmentVariableError`` 是加载期错误类型（与调用期异常不
+  在同一时序）：内置 providers.yaml 加载器**不抛**本异常——
+  ``{{env.X}}`` 缺失时替换为空串并 ``warnings.warn`` 告警，缺失凭证的
+  实际后果在首次调用时经 ``on_provider_error`` 分发；应用层自写的严格
+  配置校验可自行抛出本类（fail-fast 语义保留给需要的加载方）。
 - 错误钩子只有 ``on_provider_error``：``on_tool_error`` /
   ``on_subagent_error`` / ``on_error`` / ``before_error`` 均不存在。工具
   业务错误是 ``ToolResult(status="error")`` 正常产物（LLM 可见、不触发任何
@@ -1262,7 +1265,7 @@ class ProviderError(FlowingError):
     """
 
     provider: str | None
-    """Provider 条目名（``providers.yaml`` 中的 key，条目名即身份标识）；加载期异常（如 ``MissingEnvironmentVariableError``）同样填写。"""
+    """Provider 条目名（``providers.yaml`` 中的 key，条目名即身份标识）；加载期错误（如应用层严格校验抛出的 ``MissingEnvironmentVariableError``）同样填写。"""
     model: str | None
     """调用时使用的模型 ID（``ModelConfig.model``）；加载期异常可为 ``None``。"""
     status_code: int | None
@@ -1540,23 +1543,26 @@ class ContentPolicyError(ProviderError):
 
 
 class MissingEnvironmentVariableError(ProviderError):
-    """Provider 条目加载时 ``{{env.VAR}}`` 引用的环境变量不存在时抛出。
+    """要求的环境变量在加载期不存在（由需要严格校验的加载方抛出）。
 
     .. rubric:: 功能介绍
 
-    ``providers.yaml`` 中的 ``{{env.VAR}}`` 是纯字符串替换（非 Jinja2 /
-    Parsable），在条目加载时一次性求值；变量缺失即在加载时抛出本异常——
-    fail-fast，不静默降级（避免运行到第一次调用才 401）。非 ``{{env.`` 前缀的
-    ``{{`` 保持原样（不报错不替换），不触发本异常。
+    表示「配置引用了必须存在的环境变量，而它没有设置」的加载期错误。
+    **内置 providers.yaml 加载器不抛本异常**——它对 ``{{env.VAR}}`` 做
+    纯字符串替换时，变量缺失替换为空串并 ``warnings.warn`` 告警、加载
+    不中断（多条目配置只用一个时，其余条目的环境变量不必齐备）；缺失
+    凭证的实际后果（如 401）在该条目首次调用时经 ``on_provider_error``
+    暴露。本类保留为公共错误类型：应用层自写的严格配置校验需要
+    fail-fast 语义时可自行抛出。非 ``{{env.`` 前缀的 ``{{`` 保持原样
+    （不报错不替换），不触发本异常。
 
     .. rubric:: 使用示例
 
-    .. code-block:: yaml
+    .. code-block:: python
 
-        # ~/.config/flowing/providers.yaml
-        deepseek-team:
-          adapter: deepseek
-          api_key: "{{env.DEEPSEEK_TEAM_KEY}}"   # 变量缺失 → 加载时抛出
+        # 应用层自己的严格校验（内置加载器不走这条路）
+        if required_var not in os.environ:
+            raise MissingEnvironmentVariableError(required_var, entry)
 
     .. rubric:: 行为要点
 
@@ -1569,6 +1575,8 @@ class MissingEnvironmentVariableError(ProviderError):
 
     .. seealso::
 
+        :func:`flowing.providers.load_provider_candidates`
+            内置加载器的宽松口径（空串 + 告警）。
         :class:`flowing.errors.AuthenticationError`
         :class:`flowing.errors.ProviderError`
         :class:`flowing.parsable.Parsable`

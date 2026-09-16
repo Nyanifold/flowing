@@ -17,7 +17,6 @@ import pytest
 
 from flowing.errors import (
     FlowingError,
-    MissingEnvironmentVariableError,
     ProviderNameConflictError,
     RateLimitedError,
 )
@@ -53,12 +52,28 @@ def _model() -> ModelConfig:
 
 # ── T01/T02：{{env.VAR}} 加载期替换 ─────────────────────────────────────────
 
-def test_t01_missing_env_var_raises(fixtures_dir, monkeypatch):
-    """T01：api_key 引用缺失的 env → 加载期抛 MissingEnvironmentVariableError。"""
+def test_t01_missing_env_var_warns_and_empties(fixtures_dir, monkeypatch):
+    """T01：api_key 引用缺失的 env → 加载不中断：替换为空串并告警
+    （配多个条目只用一个时，其余条目的环境变量不必齐备）。"""
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    with pytest.raises(MissingEnvironmentVariableError):
-        load_provider_candidates(fixtures_dir / "providers" / "providers.yaml")
+    with pytest.warns(UserWarning, match="DEEPSEEK_API_KEY"):
+        candidates = load_provider_candidates(
+            fixtures_dir / "providers" / "providers.yaml")
+    assert candidates["deepseek-personal"][1]["api_key"] == ""
+    assert candidates["anthropic-main"][1]["api_key"] == ""
+
+
+def test_t01b_mixed_entries_independent(fixtures_dir, monkeypatch):
+    """T01b：两条目各看各的环境变量——有值的正常替换，缺失的空串
+    + 告警，互不影响。"""
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test-a")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    with pytest.warns(UserWarning, match="ANTHROPIC_API_KEY"):
+        candidates = load_provider_candidates(
+            fixtures_dir / "providers" / "providers.yaml")
+    assert candidates["deepseek-personal"][1]["api_key"] == "sk-test-a"
+    assert candidates["anthropic-main"][1]["api_key"] == ""
 
 
 def test_t02_non_env_placeholder_preserved(fixtures_dir, monkeypatch):

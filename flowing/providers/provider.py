@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import os
 import re
+import warnings
 
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -33,10 +34,7 @@ from typing import Any, ClassVar
 from ruamel.yaml import YAML  # 与 flowing.model 共用同一 yaml 库
 
 from flowing.context import Context
-from flowing.errors import (
-    MissingEnvironmentVariableError,
-    ProviderNameConflictError,
-)
+from flowing.errors import ProviderNameConflictError
 from flowing.message import ContentBlock, Message
 from flowing.model import ModelConfig
 
@@ -74,9 +72,9 @@ class ProviderConfig(dict[str, Any]):
     .. rubric:: 行为要点
 
     - 前置条件：构造传入的 ``{{env.VAR}}`` 引用必须已在加载期替换完毕；
-      环境变量缺失在加载期抛
-      :class:`flowing.errors.MissingEnvironmentVariableError`，本类不会
-      见到未替换的 ``{{env.`` 前缀引用。
+      环境变量缺失在加载期替换为空串并告警，本类不会见到未替换的
+      ``{{env.`` 前缀引用（空串凭证的后果是首次调用期 401 类错误，经
+      ``on_provider_error`` 分发）。
     - 实例化 Provider 后按只读对待：运行期修改 config 不属于支持的行为。
     - 不做 schema 校验；``adapter`` 键只由加载器用于选类。
     - 安全边界：本配置含凭证，禁止写入消息、``_provided`` 与任何落盘
@@ -880,8 +878,9 @@ class ProviderRegistry:
     .. rubric:: 设计要点
 
     - 懒创建：providers.yaml 可配 20 个条目，运行时只用一两个——实例化
-      （含凭证读取）推迟到首次使用，Runtime 初始化零网络、零环境变量
-      依赖。
+      推迟到首次使用，Runtime 初始化零网络成本。条目字段的
+      ``{{env.VAR}}`` 在加载期替换，但环境变量缺失只告警降级为空串、
+      不阻断加载（未用条目的环境变量不必齐备）。
     - 两张表分离：adapter 类是进程级资产（``_provider_adapters``，
       ``register_provider`` 写入）；条目实例是 Runtime 级资产（本类，
       挂在 ``Runtime.provider_registry``）。一个进程可有多个 Runtime，
@@ -960,12 +959,12 @@ _ENV_REF_RE = re.compile(r"\{\{env\.([A-Za-z_][A-Za-z0-9_]*)\}\}")
 
 
 def _substitute_env(value: Any, *, entry: str) -> Any:
-    """对字符串值做 ``{{env.VAR}}`` 全局替换；缺失即抛，非字符串原样返回。
+    """对字符串值做 ``{{env.VAR}}`` 全局替换；缺失替换为空串并告警。
 
-    仅 ``str`` 类型值参与替换（全局替换）；环境变量缺失抛
-    :class:`flowing.errors.MissingEnvironmentVariableError` （消息含变量名
-    与条目名）。凭证不经 Jinja2 / Parsable（凭证口径见包 docstring）。
-    内部 API，不属稳定契约。
+    仅 ``str`` 类型值参与替换（全局替换）；环境变量缺失时替换为**空串**
+    并 ``warnings.warn`` 告警（消息含变量名与条目名）——加载不中断，
+    配多个条目只用一个时，其余条目的环境变量不必齐备。凭证不经
+    Jinja2 / Parsable（凭证口径见包 docstring）。内部 API，不属稳定契约。
     """
     if not isinstance(value, str):
         return value
@@ -973,7 +972,11 @@ def _substitute_env(value: Any, *, entry: str) -> Any:
     def _sub(m: "re.Match[str]") -> str:
         var = m.group(1)
         if var not in os.environ:
-            raise MissingEnvironmentVariableError(var, entry)
+            warnings.warn(
+                f"environment variable {var!r} referenced by provider "
+                f"entry {entry!r} is not set; substituting empty string",
+                UserWarning, stacklevel=2)
+            return ""
         return os.environ[var]
 
     return _ENV_REF_RE.sub(_sub, value)
@@ -987,9 +990,10 @@ def load_provider_candidates(
     .. rubric:: 功能介绍
 
     providers.yaml 加载器。职责四件：读 yaml；做 ``{{env.VAR}}`` 纯字符串
-    替换（非 Jinja2 / Parsable——凭证不经模板引擎，见包 docstring）；
-    每条目构造 :class:`ProviderConfig`；把条目的 ``adapter`` 名经进程级
-    注册表解析为 adapter 类（未知 adapter 名在扫描期报错，不是
+    替换（非 Jinja2 / Parsable——凭证不经模板引擎，见包 docstring；环境
+    变量缺失替换为空串并告警，不中断加载）；每条目构造
+    :class:`ProviderConfig`；把条目的 ``adapter`` 名经进程级注册表解析为
+    adapter 类（未知 adapter 名在扫描期报错，不是
     :class:`ProviderRegistry` 的职责）。
 
     本函数不碰环境变量与默认路径（``FLOWING_PROVIDERS_PATH`` /
@@ -1000,9 +1004,6 @@ def load_provider_candidates(
     :return: 条目名 → ``(adapter 类, ProviderConfig)``，即
       ``ProviderRegistry(candidates)`` 的构造实参。
     :raises KeyError: 条目的 ``adapter`` 名未注册（扫描期快速失败）。
-    :raises flowing.errors.MissingEnvironmentVariableError:
-        条目字段值中 ``{{env.VAR}}`` 引用的环境变量不存在——加载期
-        fail-fast（出错即刻抛异常、不静默降级）。
 
     .. rubric:: 行为要点
 
@@ -1010,6 +1011,9 @@ def load_provider_candidates(
       providers.yaml 不等于启动失败）；空文件同样返回空清单。
     - 非 ``{{env.`` 前缀的 ``{{...}}`` 保持原样，不报错、不替换。
     - 非字符串字段值（如数字）不参与替换，原样保留。
+    - ``{{env.VAR}}`` 引用的环境变量缺失 → 替换为空串并 ``warnings.warn``
+      告警（消息含变量名与条目名），加载不中断；缺失凭证的实际后果
+      （如 401）在该条目首次调用时经 ``on_provider_error`` 暴露。
 
     .. seealso:: :class:`ProviderRegistry`、:func:`register_provider`
     """
@@ -1023,9 +1027,9 @@ def load_provider_candidates(
         return candidates
     for entry_name, fields in dict(data).items():
         fields = dict(fields or {})
-        # {{env.VAR}} 纯字符串替换（仅 str 值、全局替换；缺失即
-        # 加载期抛 MissingEnvironmentVariableError——fail fast，不静默降级）；
-        # 非 {{env. 前缀的 {{...}} 保持原样
+        # {{env.VAR}} 纯字符串替换（仅 str 值、全局替换；环境变量缺失
+        # → 空串 + warnings.warn 告警，加载不中断）；非 {{env. 前缀的
+        # {{...}} 保持原样
         resolved = {k: _substitute_env(v, entry=str(entry_name))
                     for k, v in fields.items()}
         # adapter 名扫描期解析为类（未知名 → KeyError 快速失败）

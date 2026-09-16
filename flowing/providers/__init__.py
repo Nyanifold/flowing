@@ -84,12 +84,14 @@ Agent 对模型只做「持有 + 机械传递」：持有 ``self.model: ModelCon
 
 环境变量引用规则（provider / 模型条目所有字段值）：``{{env.VAR}}`` →
 ``os.environ["VAR"]``；不以 ``{{env.`` 开头的 ``{{`` 保持原样（不报错、
-不替换）。环境变量不存在时：provider 条目加载时抛
-:class:`flowing.errors.MissingEnvironmentVariableError` （fail-fast：
-出错即刻抛异常、不静默降级——避免运行到第一次调用才 401）；模型配置
-字段运行时求值时经 Parsable 求值错误路径报错。该字符串替换机制完全
-独立于 Parsable 的 Jinja2 渲染——凭证引用是纯静态操作，总在加载时
-一次完成。
+不替换）。环境变量不存在时：provider 条目加载期替换为**空串**并
+``warnings.warn`` 告警（消息含变量名与条目名），加载不中断——配多个
+条目只用一个时，其余条目的环境变量不必齐备；缺失凭证的实际后果
+（如 401）在该条目首次调用时经 ``on_provider_error`` 暴露。
+:class:`flowing.errors.MissingEnvironmentVariableError` 保留为公共错误
+类型，供应用层自写的严格配置校验自行抛出。模型配置字段运行时求值时
+经 Parsable 求值错误路径报错。该字符串替换机制完全独立于 Parsable
+的 Jinja2 渲染——凭证引用是纯静态操作，总在加载时一次完成。
 
 .. rubric:: 配置文件 schema：providers.yaml
 
@@ -124,7 +126,8 @@ adapter 必须把底层错误归类为 :mod:`flowing.errors` 中的明确类型�
 - ``ContextLengthError``：token 超限；同样经 ``on_provider_error``
   分发——原样重发必然重现，默认策略（``use_retry``）不重试；压缩历史 /
   换大窗模型属 handler 职责。
-- ``MissingEnvironmentVariableError``：provider 条目加载时抛出。
+- ``MissingEnvironmentVariableError``：加载期错误类型，内置加载器不抛
+  （缺失变量空串 + 告警），供应用层严格校验自行抛出。
 - Provider 调用期异常在逻辑 Turn 层被接住（回合以 error 结局终止，
   不向 ``query()`` 调用方抛异常）——细节见 :mod:`flowing.errors`。
 

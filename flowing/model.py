@@ -61,10 +61,10 @@ Agent 对模型只做「持有 + 机械传递」：持有 ``self.model: ModelCon
 - 两阶段解析：provider 条目（加载时 ``{{env.VAR}}`` 纯字符串替换）与
   模型配置（运行时 Parsable 求值）的解析表、``{{env.VAR}}`` 替换规则
   全文见 :mod:`flowing.providers` 包 docstring。要点：providers.yaml
-  中的 ``{{env.VAR}}`` 缺失在加载时抛
-  :class:`flowing.errors.MissingEnvironmentVariableError` （fail-fast，
-  不静默降级）；``ModelConfig`` 字段中的 ``{{env.VAR}}`` 是运行时
-  Parsable 求值，其失败按普通求值异常处理，不属该异常。
+  中的 ``{{env.VAR}}`` 缺失在加载期替换为空串并告警，不中断加载
+  （缺失凭证的后果在首次调用时经 ``on_provider_error`` 暴露）；
+  ``ModelConfig`` 字段中的 ``{{env.VAR}}`` 是运行时 Parsable 求值，其
+  失败按普通求值异常处理。
 - 最小行为：用户只写 ``model_tag: fast`` + 三个配置文件时：标签 →
   单个模型条目 → 加载凭证 → 调用一次；成功返回，失败异常上抛由
   ``on_provider_error`` 决定。没有内置重试、没有 fallback、没有能力
