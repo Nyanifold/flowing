@@ -203,6 +203,32 @@ def test_tool_use_via_input_json_delta(monkeypatch):
     assert tc.args == {"q": "天气"}
 
 
+def test_tool_use_start_with_empty_dict_input(monkeypatch):
+    """回归：content_block_start 的 tool_use 带空 dict input（kimi code 端点
+    线形）时，args 不得以 "{}" 为初值——否则与后续 input_json_delta 拼接成
+    两个 JSON 对象，收尾解析失败退化为空参数。"""
+    deltas = _run(monkeypatch, [
+        _line({"type": "message_start", "message": {"usage": {}}}),
+        _line({"type": "content_block_start", "index": 0,
+               "content_block": {"type": "tool_use", "id": "tool_abc",
+                                 "name": "bash", "input": {}}}),
+        _line({"type": "content_block_delta", "index": 0,
+               "delta": {"type": "input_json_delta",
+                         "partial_json": '{"command":"echo'}}),
+        _line({"type": "content_block_delta", "index": 0,
+               "delta": {"type": "input_json_delta",
+                         "partial_json": ' hello"}'}}),
+        _line({"type": "content_block_stop", "index": 0}),
+        _line({"type": "message_delta", "delta": {"stop_reason": "tool_use"}}),
+        _line({"type": "message_stop"}),
+    ])
+    tool = [d for d in deltas if d.block is not None and isinstance(d.block, ToolCallBlock)]
+    assert len(tool) == 1
+    tc = tool[0].block
+    assert tc.id == "tool_abc" and tc.name == "bash"
+    assert tc.args == {"command": "echo hello"}
+
+
 def test_inband_error_classified(monkeypatch):
     with pytest.raises(Exception) as ei:
         _run(monkeypatch, [

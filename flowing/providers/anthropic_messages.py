@@ -564,12 +564,22 @@ class AnthropicMessagesProvider(Provider):
                                         kind="text", text=cb["text"],
                                         content_index=idx)
                             elif btype == "tool_use":
+                                # args 初值：input 非空 dict 视为端点已给全量
+                                # （无 input_json_delta 的非常规端点）；空 dict
+                                # /缺失则参数走 input_json_delta 流式累积，初值
+                                # 必须为空串——否则 "{}" 前缀与后续 partial_json
+                                # 拼接成两个 JSON 对象，收尾解析失败退化为 {}。
+                                raw_input = cb.get("input")
+                                if not raw_input:
+                                    args_seed = ""
+                                elif isinstance(raw_input, str):
+                                    args_seed = raw_input
+                                else:
+                                    args_seed = json.dumps(
+                                        raw_input, ensure_ascii=False)
                                 blocks[idx] = {
                                     "type": "tool_use", "id": cb.get("id"),
-                                    "name": cb.get("name"),
-                                    "args": cb.get("input", "") if isinstance(
-                                        cb.get("input", ""), str) else json.dumps(
-                                            cb.get("input") or {}, ensure_ascii=False),
+                                    "name": cb.get("name"), "args": args_seed,
                                 }
                             continue
                         if etype == "content_block_delta":
