@@ -38,6 +38,7 @@ from __future__ import annotations
 from typing import Any, ClassVar
 
 import json
+import ssl
 
 from flowing.context import Context
 from flowing.errors import (
@@ -198,6 +199,10 @@ class OpenAIResponsesProvider(Provider):
                     f"{str(base_url).rstrip('/')}{path}", json=body, headers=headers)
         except httpx.TimeoutException as exc:
             raise ProviderTimeoutError(f"provider request timed out: {exc}") from exc
+        except ssl.SSLError as exc:
+            # httpcore/anyio 某些 TLS 错误不会包装成 httpx.TransportError；
+            # 仍属于响应未完成的网络层故障，应归一为可重试的 NetworkError。
+            raise NetworkError(f"provider network failure: {exc}") from exc
         except httpx.TransportError as exc:
             raise NetworkError(f"provider network failure: {exc}") from exc
         if resp.status_code >= 400:
@@ -693,6 +698,9 @@ class OpenAIResponsesProvider(Provider):
                                 ev.get("status", 400), {"error": err}, {}))
         except httpx.TimeoutException as exc:
             raise ProviderTimeoutError(f"provider request timed out: {exc}") from exc
+        except ssl.SSLError as exc:
+            # 见 _post：部分 TLS 错误会从 httpcore 直接透出。
+            raise NetworkError(f"provider network failure: {exc}") from exc
         except httpx.TransportError as exc:
             raise NetworkError(f"provider network failure: {exc}") from exc
 
