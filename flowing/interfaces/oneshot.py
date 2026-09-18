@@ -50,8 +50,8 @@ INPUT（一段话或一条 slash command）、打印结果后退出。进程生�
    - 否则：verbose 时先订阅该 Agent 的 ``on_provider_delta``
      （``"_turn"`` 主线：正文原样流式；思考 tty 灰显、非 tty 原样——
      ``-v`` 语义即全量过程输出）与 ``on_turn_append``（复用 repl 的
-     :func:`flowing.interfaces.repl._summarize_message`，工具调用 /
-     STEER 注入打一行摘要），再 ``await agent.query(text)`` 等
+     :func:`flowing.interfaces.repl._summarize_message`，工具调用逐
+     调用成行、工具结果与 STEER 注入打印全文），再 ``await agent.query(text)`` 等
      ``TurnResult``；回合内已流式上屏 → 收尾换行不重复最终文本，无
      流式（非流式 Provider / error 结局）→ 打印 ``result.final_text``。
      非 verbose 不订阅任何钩子，stdout 恰好是最终回复文本。

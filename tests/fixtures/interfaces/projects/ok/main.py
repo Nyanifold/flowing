@@ -11,7 +11,8 @@ kwargs 进来，由项目 ``main`` 自己的策略把 FakeProvider 预置进
 - ``ok``（默认）：流式两段 delta 回复。
 - ``thinking``：先吐一段 thinking 增量再流式正文（cli -v 过程输出回归用）。
 - ``error``：provider 每次调用抛 ``RuntimeError`` → ``TurnResult(status="error")``。
-- ``tool``：首轮返回 ``echo`` 工具调用，次轮流式文本回复（过程显示回归用）。
+- ``tool``：首轮返回两个并行的 ``echo`` 工具调用，次轮流式文本回复
+  （过程显示回归用：逐调用成行、不合并）。
 - ``debug``：``ok`` 之上加 ``current_mode`` / ``fragile()`` 可观察字段，
   首个回合后经 ``after_turn`` handler 翻转（repl-debug 的 /watch 回归用）。
 
@@ -68,7 +69,9 @@ def _make_provider(reply: str, scenario: str) -> FakeProvider:
                 return ProviderResponse(
                     message=Message(kind=MessageKind.PROVIDER, content=[
                         ToolCallBlock(id="call-echo-1", name="echo",
-                                      args={"text": "ping"})]),
+                                      args={"text": "ping"}),
+                        ToolCallBlock(id="call-echo-2", name="echo",
+                                      args={"text": "pong"})]),
                     finish=False, provider_data={"stop_reason": "tool_calls"})
             return _text_response(reply)
 

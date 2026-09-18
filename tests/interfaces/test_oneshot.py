@@ -34,14 +34,16 @@ async def test_plain_output_is_final_reply_only(project_ok, persist_dir, capsys)
 
 
 async def test_verbose_tool_process_output(project_ok, persist_dir, capsys):
-    """verbose：工具调用摘要行与最终回复都上屏，退出码 0。"""
+    """verbose：工具调用逐调用成行（含完整参数）与最终回复都上屏，退出码 0。"""
     rc = await cmd_cli(str(project_ok), persist=str(persist_dir),
                        opts={"input": "ping", "verbose": True},
                        scenario="tool")
     assert rc == EXIT_OK
     out = capsys.readouterr().out
-    assert "[tool_call] echo" in out
+    assert '[tool_call] echo {"text": "ping"}' in out
+    assert '[tool_call] echo {"text": "pong"}' in out
     assert "[tool:completed] echo -> ping" in out
+    assert "[tool:completed] echo -> pong" in out
     assert "alpha-reply" in out
 
 

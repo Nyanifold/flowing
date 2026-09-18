@@ -4,6 +4,7 @@
 见 ``flowing.interfaces.oneshot``（``cli`` 子命令），二者无别名关系。
 """
 
+import json
 import sys
 from collections.abc import Awaitable, Callable
 
@@ -144,20 +145,18 @@ _HELP_LINES: tuple[str, ...] = (
 """``/help`` 的全部命令一句话说明（与 :data:`SLASH_COMMANDS` 一一对应）。"""
 
 
-def _fold(text: str, limit: int = 60) -> str:
-    """折叠为单行并截断（过程显示摘要行共用）。"""
-    folded = " ".join(text.split())
-    return folded[:limit] + ("…" if len(folded) > limit else "")
-
-
 def _summarize_message(host: Agent, msg: Message, *,
                        omit_thinking: bool = False) -> str | None:
-    """新挂树消息的一行摘要（``on_turn_append`` 观察 handler 的渲染）。
+    """新挂树消息的过程显示渲染（``on_turn_append`` 观察 handler）。
 
-    TOOL 消息（工具结果）、STEER 注入消息、以及含 ThinkingBlock 或
-    ToolCallBlock 的 PROVIDER 消息（多轮推理与工具调用可见）返回一行
-    摘要，正文默认折叠；纯文本 PROVIDER 消息已由 ``on_provider_delta``
-    流式显示，不重复摘要；其余 kind 不摘要（返回 ``None``）。
+    全文显示原则：所有渲染不折叠、不截断。TOOL 消息（工具结果）与
+    STEER 注入消息各渲染一行前缀 + 全文正文；含 ThinkingBlock 的
+    PROVIDER 消息渲染 ``[thinking]`` 全文；PROVIDER 消息中的
+    ToolCallBlock **逐调用独立成行**（``[tool_call] <名称> <参数>``，
+    参数为完整 JSON），不合并、不落名。返回值可含换行（思考 +
+    每个调用各一行，正文本身亦可多行），调用端单次打印。
+    纯文本 PROVIDER 消息已由 ``on_provider_delta`` 流式显示，不重复
+    渲染；其余 kind 不渲染（返回 ``None``）。
 
     ``omit_thinking=True`` 时跳过 ``[thinking]`` 段：REPL 已把思考按
     灰显增量流式上屏，挂树摘要不再重复（纯增量原则）。
@@ -171,20 +170,22 @@ def _summarize_message(host: Agent, msg: Message, *,
                         name = b.name
                         break
         text = "".join(b.text for b in msg.content if isinstance(b, TextBlock))
-        return f"[tool:{msg.tool_status}] {name} -> {_fold(text)}"
+        return f"[tool:{msg.tool_status}] {name} -> {text}"
     if msg.priority == MessagePriority.STEER:
         text = "".join(b.text for b in msg.content if isinstance(b, TextBlock))
-        return f"[steer] {_fold(text)}"
+        return f"[steer] {text}"
     if msg.kind is MessageKind.PROVIDER:
         parts: list[str] = []
         thinking = "".join(
             b.thinking for b in msg.content if isinstance(b, ThinkingBlock))
         if thinking and not omit_thinking:
-            parts.append(f"[thinking] {_fold(thinking)}")
-        calls = [b.name for b in msg.content if isinstance(b, ToolCallBlock)]
-        if calls:
-            parts.append(f"[tool_call] {', '.join(calls)}")
-        return "; ".join(parts) if parts else None
+            parts.append(f"[thinking] {thinking}")
+        for b in msg.content:   # 工具调用逐调用独立成行：名称 + 完整参数
+            if isinstance(b, ToolCallBlock):
+                args = json.dumps(b.args, ensure_ascii=False, default=str)
+                parts.append(f"[tool_call] {b.name}"
+                             + (f" {args}" if b.args else ""))
+        return "\n".join(parts) if parts else None
     return None
 
 
@@ -255,10 +256,12 @@ async def cmd_repl(
          带参命令按第一个空格分流参数。
     4. 过程显示（绑定期间生效，``/use`` 切换时订阅随之迁移）：订阅
        该 Agent 的 ``on_provider_delta``——流式打印生成中的文本；
-       ``on_turn_append``——新挂树的 TOOL 消息与 STEER 注入消息
-       打印一行摘要（正文默认折叠）；``after_turn``——非 repl 的
+       ``on_turn_append``——新挂树的 TOOL 消息（工具结果）与 STEER
+       注入消息打印全文，PROVIDER 消息中的工具调用逐调用独立成行
+       （名称 + 完整参数 JSON），均不折叠、不截断；
+       ``after_turn``——非 repl 的
        ``query()`` 驱动的回合（cron / comm 等触发源）收尾后打印最终
-       文本。多轮推理（ThinkingBlock）在摘要行中可见。
+       文本。多轮推理（ThinkingBlock）全文可见。
     5. ``/exit``、``/quit`` 或 EOF（Ctrl-D）→ ``runtime.shutdown()``
        → 返回 :data:`EXIT_OK`。
 

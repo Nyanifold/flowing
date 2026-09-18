@@ -259,13 +259,15 @@ async def test_t26_process_display_and_migration(project_two_roots, persist_dir,
 
 
 async def test_t26b_tool_message_summary(project_ok, persist_dir, monkeypatch, capsys):
-    """过程显示（X3）：工具调用与结果挂树 → 一行摘要（默认折叠正文）。"""
+    """过程显示（X3）：工具调用逐调用成行（名称 + 完整参数），结果全文显示。"""
     drive_input(monkeypatch, ["你好", "/exit"])
     rc = await cmd_repl(str(project_ok), persist=str(persist_dir), scenario="tool")
     assert rc == EXIT_OK
     out = capsys.readouterr().out
-    assert "[tool_call] echo" in out               # PROVIDER 工具调用摘要
-    assert "[tool:completed] echo -> ping" in out  # TOOL 结果消息摘要
+    assert '[tool_call] echo {"text": "ping"}' in out   # 调用 1：独立行 + 完整参数
+    assert '[tool_call] echo {"text": "pong"}' in out   # 调用 2：独立行，不合并
+    assert "[tool:completed] echo -> ping" in out       # TOOL 结果消息全文
+    assert "[tool:completed] echo -> pong" in out
     assert "alpha-reply" in out
 
 
