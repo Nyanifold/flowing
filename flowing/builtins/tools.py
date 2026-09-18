@@ -628,8 +628,9 @@ class SubagentInvokeTool(Tool):
     LLM 唤起子 Agent 的唯一工具入口：不需要为每个子 Agent 类型生成独立
     ``ToolDefinition``——工具只有这一个，各子 Agent 类型的参数描述经
     ``<available_subagents>`` XML catalog 注入 system prompt。骨架参数
-    五个（全部可选）：``name`` （新建时命名，之后可续接）、``agent_type``
-    （子 Agent 类型，与 ``resume`` 二选一）、``prompt`` （任务提示）、
+    五个：``prompt`` （任务提示）**必填**——无任务的唤起只会产出一条
+    空消息，没有意义；其余可选：``name`` （新建时命名，之后可续接）、
+    ``agent_type`` （子 Agent 类型，与 ``resume`` 二选一）、
     ``resume`` （已存在实例名续接，与 ``agent_type`` 互斥）、
     ``asynchronized`` （异步模式开关）；各类型声明的其余 args 经 catalog
     让 LLM 感知、经 ``SubagentEntry.resolve()`` 聚合。
@@ -690,8 +691,8 @@ class SubagentInvokeTool(Tool):
                          "description": "Instance name to create for a new subagent (optional)."},
                 "agent_type": {"type": "string", "default": "",
                                "description": "Subagent type to create (mutually exclusive with resume)."},
-                "prompt": {"type": "string", "default": "",
-                           "description": "Task prompt for the new subagent."},
+                "prompt": {"type": "string",
+                           "description": "Task prompt for the subagent (required)."},
                 "resume": {"type": "string", "default": "",
                            "description": "Name of an existing instance to resume (mutually exclusive with agent_type)."},
                 "asynchronized": {"type": "boolean", "default": False,
@@ -719,6 +720,9 @@ class SubagentInvokeTool(Tool):
         - ``agent_type`` 与 ``resume`` 互斥且至少其一（空串视为未给）；
           违反时抛 ``ValueError``——经 ``Tool.__call__`` 包装为
           ``status="error"`` （LLM 可见，可自纠正）。
+        - ``prompt`` 必填：schema 无默认值（LLM 视角必填校验，缺失时
+          由 ``Agent.tool_call`` 包装为 LLM 可见 error）；空串在 execute
+          守卫处抛 ``ValueError``（同通道）。
         - ``kwargs`` 为该子 Agent 类型声明的其余 args（catalog 中 LLM
           可见），原样透传给 ``invoke_subagent`` 经 ``SubagentEntry.
           resolve()`` 聚合。
@@ -734,6 +738,9 @@ class SubagentInvokeTool(Tool):
         """
         if bool(agent_type) == bool(resume):  # 互斥且至少其一
             raise ValueError("agent_type and resume are mutually exclusive; provide exactly one")
+        if not prompt:   # 必填守卫：无任务的唤起只会给子 Agent 塞一条空消息
+            raise ValueError("prompt is required and must be non-empty: "
+                             "the task the subagent should work on")
         if asynchronized:
             # 嵌套形态：execute 保持 async def（同步路径须带值 return，
             # async generator 内禁止），asynchronized 分支返回本对象的
@@ -743,7 +750,7 @@ class SubagentInvokeTool(Tool):
                 caller=caller, name=name, agent_type=agent_type,
                 prompt=prompt, resume=resume, **kwargs)
         result = await caller.invoke_subagent(
-            agent_type, prompt=prompt or None, name=name or None,
+            agent_type, prompt=prompt, name=name or None,
             resume=resume or None, **kwargs)
         # 同步路径：把 SubagentResult 全字段平铺进工具返回值；
         # 运行段已跳过 SUBAGENT 入队，避免同源结果二次入队。

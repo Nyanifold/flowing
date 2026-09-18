@@ -174,6 +174,34 @@ async def test_t73_subagent_invoke_mutex_validation(runtime, args):
     assert result.status == "error" and "mutually exclusive" in result.error
 
 
+async def test_t73_subagent_invoke_prompt_required_via_llm(runtime, provider):
+    """73：LLM 路径缺 ``prompt`` → LLM 视角必填校验失败 → error 结果
+    （LLM 可见、可自纠正），子 Agent 不创建。"""
+    agent = await runtime.create_agent("test-agent")
+    agent.add_agent("worker")
+    agent.add_tool("subagent-invoke")
+    step1, _ = tool_call_response(("subagent-invoke", {"agent_type": "worker"}))
+    script_provider(provider, step1, text_response("补上 prompt 重试"))
+    result = await agent.query("唤起子代理")
+    assert result.status == "completed"
+    tool_msg = next(agent._messages[mid] for mid in result.turn.message_ids
+                    if agent._messages[mid].kind is MessageKind.TOOL)
+    assert tool_msg.tool_status == "error"
+    text = "".join(b.text for b in tool_msg.content if isinstance(b, TextBlock))
+    assert "prompt" in text and "Field required" in text
+    assert agent._children == {}   # 校验失败在创建前，无子实例残留
+
+
+async def test_t73_subagent_invoke_prompt_empty_guard(runtime):
+    """73：空串 ``prompt`` → execute 守卫抛 ValueError → error 结果
+    （LLM 可见）。"""
+    agent = await runtime.create_agent("test-agent")
+    tool = SubagentInvokeTool()
+    result = await tool({"name": "", "agent_type": "worker", "prompt": "",
+                         "resume": "", "asynchronized": False}, caller=agent)
+    assert result.status == "error" and "prompt" in result.error
+
+
 async def test_t73_subagent_invoke_resume_via_tool(runtime, provider):
     """73：续接正例——只给 ``resume``、不给 ``agent_type``（LLM 按互斥契约的
     自然写法），经工具续接同一实例。
