@@ -619,7 +619,9 @@ def _emit_source(
     """发射产物 .py 源码（固定模板）。
 
     模板：文件头注释（来源与「勿手改」提示）→ ``$script`` 拆出的
-    ``from __future__`` import（语法要求最前）→ 按需 import →
+    ``from __future__`` import（语法要求最前）→ 按需 import
+    （``PENDING`` 永在首行：条目覆写常量也可能引用它，按需判定的
+    扫描面曾漏过它们）→
     ``$script`` 模块级段（无 self 函数 / 类声明 / 赋值等一切非方法
     顶层语句，保序）→ 模块级 ``_FYA_*`` 数据常量（刻意不放类体——
     ``_check_pending`` 会扫类 MRO，条目覆写里的 PENDING 空补丁会被
@@ -628,7 +630,7 @@ def _emit_source(
     ``_extra`` 合入 + 条目绑定 → 按编译期定死的透传参数集委托用户
     setup）。
     """
-    imports = ["from flowing import Agent"]
+    imports = ["from flowing import Agent, PENDING"]
     body_lines: list[str] = []
 
     body_lines.append(f"source_file = {_emit_value(_source_file_value(fya_path, project_root))}")
@@ -655,9 +657,7 @@ def _emit_source(
             f"{_emit_value(args_props)})")
 
     if any("Parsable(" in line for line in body_lines):
-        imports[0] = "from flowing import Agent, Parsable"
-    if any("= PENDING" in line for line in body_lines):
-        imports[0] += ", PENDING"
+        imports[0] = "from flowing import Agent, PENDING, Parsable"
     if args_props is not None:
         imports.append("from flowing.params import schema_to_model")
     if tools_refs or subagent_refs:

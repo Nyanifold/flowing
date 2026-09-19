@@ -305,6 +305,30 @@ def test_t63b_args_derived_from_setup_signature(tmp_path):
         compile_fya_class(bad)
 
 
+def test_t63d_entry_body_pending_compiles(tmp_path):
+    """63 补（回归）：条目覆写体内的 ``_``（PENDING 空补丁）编译产物可执行。
+
+    回归：PENDING import 曾是按需判定且只扫类属性行——``_FYA_TOOLS``
+    常量里的 ``PENDING`` 引用漏补 import，mount 期 exec 产物即
+    ``name 'PENDING' is not defined``。现首行固定携带 PENDING。
+    """
+    fya = tmp_path / "entry-pending.fya"
+    fya.write_text(textwrap.dedent("""\
+        description: 条目体空补丁回归样例。
+        tools:
+          - make-payment as pay: {args: {order_id as oid: _}}
+        ---
+        $system_prompt:
+        你是助手。
+        """), encoding="utf-8")
+    product = compile_fya_file(fya)
+    source = product.read_text(encoding="utf-8")
+    assert source.splitlines()[0].startswith("#")   # 文件头注释
+    assert "from flowing import Agent, PENDING" in source
+    assert "PENDING" in source.split("_FYA_TOOLS", 1)[1]   # 常量里确有引用
+    exec(compile(source, str(product), "exec"), {})   # 产物可执行（回归点）
+
+
 def test_t63c_name_assertion_and_class_name_field(tmp_path):
     """63 补：name 一致性断言（不符 → NameMismatchError）与显式 class_name。"""
     fya = tmp_path / "foo.fya"
