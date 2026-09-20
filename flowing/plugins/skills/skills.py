@@ -138,11 +138,11 @@ PENDING 是 ``.fya`` 里的 ``_`` 占位值，表示该字段留待运行期赋�
 
 catalog 懒注入：``use_skill()`` 把 :class:`LazySkillsPrompt` 注册为
 ``prompt_blocks`` 的动态块，每次组装上下文现场渲染——catalog 内容
-反映当刻的 ``enabled`` 状态与参数覆盖，无任何缓存（渲染惰性；定义
+反映当刻的 ``visible`` 状态与参数覆盖，无任何缓存（渲染惰性；定义
 文件已在声明期一次读入）。正文（content）由 LLM 经 ``skill-load``
 决定使用时才按需加载并渲染。catalog 中 ``<name>`` 是别名
 （``SkillEntry.name_alias``）；catalog 无 ``<params>`` 段（LLM
-不给 skill 传参，见下节）；只有 ``enabled=True`` 的条目进入 catalog。
+不给 skill 传参，见下节）；只有 ``visible=True`` 的条目进入 catalog。
 
 加载流程（LLM 入口与代码入口是同一执行路径，详见 :func:`use_skill`
 的「skill_load 契约」）：
@@ -212,11 +212,11 @@ LLM 不给 skill 传参：``skill-load`` 工具与 ``agent.skill_load()``
 
 .. rubric:: 行为要点（跨符号约定）
 
-- enabled 语义：「可见性」与「可加载性」分离：
-  ``enabled=False`` 的条目不进 catalog、LLM 看不到、无法经
-  ``skill-load`` 工具加载（LLM 入口做 enabled 检查），但仍可编程式
-  ``await agent.skill_load("name")`` 加载——代码入口不做 enabled
-  检查。与 ``ToolEntry.enabled`` / ``SubagentEntry.enabled`` 语义一致。
+- visible 语义：「可见性」与「可加载性」分离：
+  ``visible=False`` 的条目不进 catalog、LLM 看不到、无法经
+  ``skill-load`` 工具加载（LLM 入口做 visible 检查），但仍可编程式
+  ``await agent.skill_load("name")`` 加载——代码入口不做 visible
+  检查。与 ``ToolEntry.visible`` / ``SubagentEntry.visible`` 语义一致。
 - 覆写策略（检查后跳过）：``use_skill()`` 挂载回调（``skill_load``
   绑定、prompt 块、工具条目）采用「检查后跳过」——实例上已有同名
   定义时保留用户定义（``setup()`` 中后执行的扩展覆盖先执行扩展挂载
@@ -283,8 +283,8 @@ class LazySkillsPrompt:
     ``use_skill()`` 把本类实例包装为动态 Parsable 注册进
     ``agent.prompt_blocks`` （``cache="dynamic"``、``by="skill"``、
     ``tags=["skill.catalog"]``）。每次组装上下文时 :meth:`resolve`
-    被调用，现场渲染当刻的 catalog（enabled 过滤、参数覆盖、别名都
-    取当刻值）。「Lazy」只指渲染惰性：``enabled`` 状态运行时
+    被调用，现场渲染当刻的 catalog（visible 过滤、参数覆盖、别名都
+    取当刻值）。「Lazy」只指渲染惰性：``visible`` 状态运行时
     可变、Agent 局部变量（渲染上下文）随运行变化，因此 catalog 文本
     每次现场渲染、不缓存。读取不惰性：Skill 定义文件已在
     ``use_skill()`` 声明期全部解析入 ``SkillRegistry`` （含 disabled
@@ -293,13 +293,13 @@ class LazySkillsPrompt:
 
     .. rubric:: 行为要点
 
-    - 只收集 ``enabled=True`` 的条目（声明顺序），从
+    - 只收集 ``visible=True`` 的条目（声明顺序），从
       ``SkillRegistry`` 取已解析的 ``Skill`` （声明期已读入，无文件
       IO），以 ``catalog_template`` 模板渲染整体文本（上下文
       ``entries`` / ``agent`` 见 :data:`CatalogTemplate`）。
-    - ``enabled`` 是纯渲染时过滤（与 Tool / Subagent 条目语义一致）：
+    - ``visible`` 是纯渲染时过滤（与 Tool / Subagent 条目语义一致）：
       只影响本 catalog 与 LLM 可见性，不影响编程式 ``skill_load()``。
-    - 无 enabled 条目 → 解析为空串，``use_skill()`` 注册的包装逻辑
+    - 无 visible 条目 → 解析为空串，``use_skill()`` 注册的包装逻辑
       跳过整块注入（catalog 不出现；``skill-load`` 工具条目的存在性
       不受本块影响）。
     - 不缓存渲染结果；不修改任何条目状态；不触发文件 IO。
@@ -324,7 +324,7 @@ class LazySkillsPrompt:
         .. rubric:: 行为要点
 
         - ``entries`` 存引用而非快照：``agent._skill_entries`` 后续的
-          enabled 切换 / 条目增删在下一次 ``resolve`` 即生效。
+          visible 切换 / 条目增删在下一次 ``resolve`` 即生效。
         - 模板在构造时已全部就位（``use_skill()`` 按 Agent 级 >
           Runtime 级 > 内置默认解析完毕），本类不再做配置回退。
         - 渲染期取 ``Skill`` 经 ``registry.get(entry.name_ori)``——
@@ -338,7 +338,7 @@ class LazySkillsPrompt:
 
         .. seealso:: :func:`use_skill`、:meth:`resolve`
         """
-        self.entries = entries  # 存引用而非快照：enabled 切换/条目增删下次 resolve 即生效
+        self.entries = entries  # 存引用而非快照：visible 切换/条目增删下次 resolve 即生效
         self.registry = registry
         self.catalog_template = catalog_template  # 构造时已按 Agent 级 > Runtime 级 > 内置解析完毕；本类不再做配置回退
 
@@ -348,9 +348,9 @@ class LazySkillsPrompt:
 
         .. rubric:: 行为要点
 
-        - enabled 条目按声明序取 ``(entry, skill)`` 对，以
+        - visible 条目按声明序取 ``(entry, skill)`` 对，以
           ``catalog_template`` 模板渲染整体文本（Parsable TEMPLATE
-          语义）；无 enabled 条目返回 ``""``。
+          语义）；无 visible 条目返回 ``""``。
         - 边缘情况：运行期新增声明指向的 Skill 未解析成功 → 异常上抛，
           本次上下文组装失败（不静默跳过——catalog 缺条目会让 LLM 看到
           残缺的技能清单）；模板渲染异常（语法错等）同样 fail-fast
@@ -358,19 +358,19 @@ class LazySkillsPrompt:
 
         :param agent: 调用方 Agent 实例（模板上下文与 Parsable 求值
             上下文）。
-        :return: catalog 文本；无 enabled 条目时为空串。
+        :return: catalog 文本；无 visible 条目时为空串。
 
         .. seealso:: :class:`SkillRegistry`、:meth:`flowing.agent.Agent._assemble_context`
         """
         items: list[tuple[SkillEntry, Skill]] = []
         for entry in self.entries.values():  # 声明顺序遍历
-            if not entry.enabled:  # enabled 是纯渲染时过滤，不影响编程式 skill_load
+            if not entry.visible:  # visible 是纯渲染时过滤，不影响编程式 skill_load
                 continue
             skill = self.registry.get(  # 声明期已落账解析键，精确命中、纯内存无文件 IO
                 entry.name_ori,
             )
             items.append((entry, skill))
-        if not items:  # 无 enabled 条目 -> 空串，包装逻辑跳过整块注入
+        if not items:  # 无 visible 条目 -> 空串，包装逻辑跳过整块注入
             return ""
         # 模板渲染：Parsable TEMPLATE 语义，上下文 entries / agent；
         # 描述字段在模板内经 .resolve(agent) 现场求值（每次渲染现场 resolve、无缓存）
@@ -404,11 +404,11 @@ class SkillLoadTool(Tool):
     .. rubric:: 行为要点
 
     - ``name`` 按别名在 ``caller._skill_entries`` 查找；命中且
-      ``enabled=True`` → 调 ``skill_load(name)``；加载流程（含 PLUGIN
+      ``visible=True`` → 调 ``skill_load(name)``；加载流程（含 PLUGIN
       消息入队）见 :func:`use_skill` 的「skill_load 契约」。工具对
       LLM 的返回是简短收据（``{"loaded": <别名>}``），正文不经
       ToolResult——PLUGIN 消息在后续逻辑 Turn 进入上下文。
-    - enabled 检查在 LLM 入口：条目 ``enabled=False`` 或未声明 →
+    - visible 检查在 LLM 入口：条目 ``visible=False`` 或未声明 →
       抛 :class:`flowing.errors.FlowingError` （由 ``Tool.__call__``
       包装为 ``status="error"`` 的 LLM 可见结果），不加载、不入队。
       编程式 ``agent.skill_load()`` 无此检查。
@@ -451,15 +451,15 @@ class SkillLoadTool(Tool):
             启用）。
         :return: 收据 ``{"loaded": <别名>}``；正文经 PLUGIN 消息送达。
         :raises flowing.errors.FlowingError: ``name`` 未声明或条目
-            ``enabled=False`` 时（由 ``Tool.__call__`` 包装为 error
+            ``visible=False`` 时（由 ``Tool.__call__`` 包装为 error
             结果，LLM 可见）。
 
         .. seealso:: :meth:`flowing.tool.Tool.execute`、:class:`SkillResult`
         """
-        entry = caller._skill_entries.get(name)  # 按别名查找（LLM 入口做 enabled 检查）
-        if entry is None or not entry.enabled:
+        entry = caller._skill_entries.get(name)  # 按别名查找（LLM 入口做 visible 检查）
+        if entry is None or not entry.visible:
             raise FlowingError(  # -> flowing.errors.FlowingError；由 Tool.__call__ 包装为 error 结果
-                f"skill {name!r} is not declared or is disabled (enabled=False rejects the LLM entry; "
+                f"skill {name!r} is not declared or is invisible (visible=False rejects the LLM entry; "
                 f"programmatic skill_load is unaffected)",
             )
         skill_result = await caller.skill_load(name)  # -> SkillResult（同一执行路径，五步流程见 use_skill）
@@ -665,7 +665,7 @@ def use_skill(
     SkillResult``，由本函数绑定为实例方法）：
 
     1. 按别名查 ``_skill_entries``；未声明 → 抛 ``KeyError`` （编程
-       错误，属调用方责任）。不做 enabled 检查（编程式入口的特权）。
+       错误，属调用方责任）。不做 visible 检查（编程式入口的特权）。
     2. 经 ``registry.get(entry.name_ori)`` 取共享
        ``Skill`` （声明期已预解析并落账解析键——文件派生技能为派生
        限定键，本步为纯内存查找）。
@@ -703,7 +703,7 @@ def use_skill(
        形态，与 ``.fya`` 声明一致：裸名 / ``ns::name`` / 相对或绝对
        路径 / 路径带裸名。
     2. body 判别（单点）：键集固定 ``description`` / ``args`` /
-       ``enabled`` （无 ``inject`` 键——注入写 args 里的
+       ``visible`` （无 ``inject`` 键——注入写 args 里的
        ``"{{ self.inject('key') }}"`` 表达式）；未知键 →
        :class:`flowing.errors.FormatError`。去向：``description`` →
        ``override_description`` （``str`` 包装 Parsable，``Parsable``
@@ -712,7 +712,7 @@ def use_skill(
        Parsable，加载时以调用方 Agent 实例上下文求值——注入表达式
        同路）；``_`` （PENDING）值视为未声明该参数（不进
        ``specified``）；``args`` 键含 ``as`` → ``FormatError``，无改名
-       通道；``enabled`` → 布尔原样。
+       通道；``visible`` → 布尔原样。
     3. 冲突：同 alias 已存在 →
        :class:`flowing.errors.EntryNameConflictError` （绑定层统一
        fail-fast）。
@@ -760,10 +760,10 @@ def use_skill(
             else:
                 item = {f"{name} as {alias}" if alias is not None else name: body or {}}
                 ref = normalize_entries([item], naming=SKILL_NAMING)[0]
-            # body 判别（键集固定 description/args/enabled——无 inject 键；未知键 -> FormatError）
+            # body 判别（键集固定 description/args/visible——无 inject 键；未知键 -> FormatError）
             override_description = None
             specified: dict[str, Parsable] = {}
-            enabled = True
+            visible = True
             for bkey, bvalue in ref.body.items():
                 if bkey == "description":
                     # description -> override_description（str->Parsable 包装 / Parsable 透传 / _->None 空补丁）
@@ -785,17 +785,17 @@ def use_skill(
                         if pvalue is PENDING:
                             continue   # _（PENDING）值视为未声明该参数（不进 specified，覆盖校验照常）
                         specified[pname] = pvalue if isinstance(pvalue, Parsable) else Parsable(pvalue)
-                elif bkey == "enabled":
-                    enabled = bool(bvalue)
+                elif bkey == "visible":
+                    visible = bool(bvalue)
                 else:
                     raise FormatError(
-                        f"skill entry contains unknown key: {bkey!r} (fixed key set: description/args/enabled)")
+                        f"skill entry contains unknown key: {bkey!r} (fixed key set: description/args/visible)")
             if ref.alias in agent._skill_entries:   # 同 alias = 笔误（绑定层统一 fail-fast）
                 raise EntryNameConflictError(ref.alias, kind="skill")
             entry = SkillEntry(
                 name_alias=ref.alias, name_ori=ref.raw,
                 specified=specified,
-                override_description=override_description, enabled=enabled,
+                override_description=override_description, visible=visible,
             )
             skill = registry.get(entry.name_ori, agent.source_dir())  # 声明期一次性预解析（含 disabled），失败此刻即报错
             # 落账 name_ori：文件派生技能记派生限定键（skill.registry_key，热路径
@@ -953,7 +953,7 @@ async def _load_skill(
 
     .. seealso:: :func:`use_skill`、:class:`SkillResult`
     """
-    entry = agent._skill_entries[name]  # 契约第 1 步：按别名查；未声明 -> KeyError；不做 enabled 检查
+    entry = agent._skill_entries[name]  # 契约第 1 步：按别名查；未声明 -> KeyError；不做 visible 检查
     registry: SkillRegistry = agent.inject(skill_registry_key)
     skill = registry.get(entry.name_ori)  # 第 2 步：声明期已预解析并落账解析键（文件派生技能为派生限定键），纯内存查找
     # 第 3 步：合并（LLM 不传参；低 -> 高：schema 默认值 -> specified 求值

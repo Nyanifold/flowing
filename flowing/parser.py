@@ -495,11 +495,11 @@ def normalize_entries(
         from flowing.runtime import AGENT_NAMING
 
         normalize_entries(["payment as pay", "./a/payment",
-                           {"builtin::web-search": {"enabled": True}}],
+                           {"builtin::web-search": {"visible": True}}],
                           naming=AGENT_NAMING)
         # → [EntryRef("payment", "pay", {}),
         #    EntryRef("./a/payment", "payment", {}),
-        #    EntryRef("builtin::web-search", "web-search", {"enabled": True})]
+        #    EntryRef("builtin::web-search", "web-search", {"visible": True})]
 
     :param items: 资源列表项（字符串或单键映射）。
     :param naming: 路径形态条目的别名推断规则表。

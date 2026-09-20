@@ -53,7 +53,7 @@ CatalogTemplate: TypeAlias = str
 模板上下文变量：
 
 - ``entries``：``list[tuple[SkillEntry, Skill]]``——「(条目, 已解析
-  Skill)」对列表，只含 ``enabled=True`` 的条目，顺序即 ``skills:``
+  Skill)」对列表，只含 ``visible=True`` 的条目，顺序即 ``skills:``
   声明顺序；空列表时模板应渲染为空串（:class:`LazySkillsPrompt`
   据此跳过整块注入，内置模板以 ``{% if entries %}`` 保证）。
 - ``agent``：调用方 Agent 实例。条目的描述字段是
@@ -291,11 +291,11 @@ class SkillEntry:
               description: "本 Agent 专用的长文摘要（覆写 Skill 本体描述）"
           - translate                  # 裸名：别名 = 规范名，无覆盖
           - audit:
-              enabled: false           # 不出 catalog，仍可编程式 skill_load
+              visible: false           # 不出 catalog，仍可编程式 skill_load
 
     .. rubric:: 行为要点
 
-    - ``enabled=False``：不进 catalog、LLM 不可见、``skill-load`` 工具
+    - ``visible=False``：不进 catalog、LLM 不可见、``skill-load`` 工具
       入口拒绝加载；``agent.skill_load()`` 编程式加载不受影响
       （可见性与可加载性分离）。
     - ``args`` 的每个值进入 ``specified`` （包装 Parsable，加载时以
@@ -342,7 +342,7 @@ class SkillEntry:
 
     .. seealso:: :attr:`flowing.tool.ToolEntry.override_description`
     """
-    enabled: bool = True
+    visible: bool = True
     """是否出现在 catalog。``False`` 时 LLM 不可见且 ``skill-load``
     入口拒绝，编程式 ``skill_load()`` 仍可加载。
     """

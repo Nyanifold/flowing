@@ -70,8 +70,8 @@ class Togglable(Protocol):
     - ``tags``：标签列表。按标签的批量操作以「列表中任一元素与给定
       标签相等」匹配。
     - 注意对照：``flowing.tool.ToolEntry`` 与
-      ``flowing.plugins.skills.SkillEntry`` 只有 ``enabled`` 一个
-      同名字段（Agent 级绑定层条目，存于按别名索引的 dict，不进
+      ``flowing.plugins.skills.SkillEntry`` 的对应字段叫 ``visible``
+      （Agent 级绑定层条目，存于按别名索引的 dict，不进
       ``ManagedList``）——它们**不满足**本协议，不享有按 by/tags
       的整组管理。
 

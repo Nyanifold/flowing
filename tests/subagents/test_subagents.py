@@ -1,7 +1,7 @@
 """子智能体条目与解析测试：测试清单 52–56。
 
 覆盖 ``SubagentEntry.catalog_view``（specified 排除 / 覆写 / 别名 /
-description 覆写与子类回退）、``_assemble_context`` 的 enabled 过滤与
+description 覆写与子类回退）、``_assemble_context`` 的 visible 过滤与
 S-19 无隐式附加、同别名撞名 ``EntryNameConflictError``、glob 显式优先
 跳过（``_expand_glob_entries``）、``resolve`` 别名映射 + specified
 （固定值 / 注入表达式）覆盖。
@@ -133,21 +133,21 @@ async def test_catalog_template_renders_views(parent):
 
 
 # ---------------------------------------------------------------------------
-# 清单 53：enabled=False → catalog 无条目；Context.tools 无 subagent-invoke
+# 清单 53：visible=False → catalog 无条目；Context.tools 无 subagent-invoke
 # ---------------------------------------------------------------------------
 
 
 async def test_disabled_entry_excluded_from_catalog(parent):
     entry = parent.add_agent("payment", alias="pay")
-    entry.enabled = False
+    entry.visible = False
     context = parent._assemble_context()
     catalog_segments = [s for s in context.system_prompt
                         if s.name == "subagent-catalog"]
-    assert catalog_segments == []   # 无 enabled 条目 → 整块不注入
+    assert catalog_segments == []   # 无 visible 条目 → 整块不注入
     assert context.tools == []   # S-19：无显式声明 → subagent-invoke 不在可见面
 
 
-async def test_enabled_entry_rendered_in_catalog(parent):
+async def test_visible_entry_rendered_in_catalog(parent):
     parent.add_agent("payment", alias="pay")
     context = parent._assemble_context()
     catalog = [s for s in context.system_prompt if s.name == "subagent-catalog"]
@@ -196,10 +196,10 @@ def test_glob_body_inherited_by_expanded_entries(tmp_path):
     """glob 条目带覆写映射时，每个展开产物继承同一 body。"""
     (tmp_path / "a" / "payment").mkdir(parents=True)
     expanded = _expand_glob_entries(
-        [{"./a/*/": {"enabled": True}}], naming=AGENT_NAMING,
+        [{"./a/*/": {"visible": True}}], naming=AGENT_NAMING,
         source_dir=tmp_path)
     assert [r.alias for r in expanded] == ["payment"]
-    assert expanded[0].body == {"enabled": True}
+    assert expanded[0].body == {"visible": True}
 
 
 # ---------------------------------------------------------------------------

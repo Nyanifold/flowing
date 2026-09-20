@@ -92,7 +92,7 @@ async def test_t24_llm_skill_load_roundtrip(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# T25：enabled=False → LLM 入口 error；编程式入口不受限
+# T25：visible=False → LLM 入口 error；编程式入口不受限
 # ---------------------------------------------------------------------------
 
 
@@ -102,7 +102,7 @@ async def test_t25_disabled_entry_llm_rejected_programmatic_allowed(tmp_path):
                                  content="AUDIT_BODY"))
     provider = add_fake_provider(runtime)
     agent = await runtime.create_agent(
-        "skill-host", skills=[{"audit": {"enabled": False}}])
+        "skill-host", skills=[{"audit": {"visible": False}}])
     use_skill(agent)
     agent.add_tool("skill-load")
     plugin_messages = _capture_messages(agent, MessageKind.PLUGIN)
@@ -116,7 +116,7 @@ async def test_t25_disabled_entry_llm_rejected_programmatic_allowed(tmp_path):
     assert "audit" in tool_results[0].error
     assert plugin_messages == []               # 无 PLUGIN 消息
 
-    loaded = await agent.skill_load("audit")   # 编程式入口不做 enabled 检查
+    loaded = await agent.skill_load("audit")   # 编程式入口不做 visible 检查
     assert "AUDIT_BODY" in loaded.content
 
 

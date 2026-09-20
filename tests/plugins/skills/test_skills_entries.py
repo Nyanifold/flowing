@@ -34,11 +34,11 @@ async def test_t06_all_declared_entries_parsed_eagerly(tmp_path):
     runtime = make_skill_runtime(tmp_path)
     agent = await runtime.create_agent(
         "skill-host", start_loop=False,
-        skills=["sum", {"with-args as wa": {"enabled": False}}])
+        skills=["sum", {"with-args as wa": {"visible": False}}])
     use_skill(agent)
     registry = agent.inject(skill_registry_key)
     keys = set(registry._skills)
-    assert any(k.endswith("::sum") for k in keys)          # enabled 条目
+    assert any(k.endswith("::sum") for k in keys)          # visible 条目
     assert any(k.endswith("::with-args") for k in keys)    # disabled 条目同样已读入
 
 
@@ -60,7 +60,7 @@ async def test_t16_alias_entry(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# T17：enabled=False 不进 catalog，但编程式 skill_load 不受影响
+# T17：visible=False 不进 catalog，但编程式 skill_load 不受影响
 # ---------------------------------------------------------------------------
 
 
@@ -70,12 +70,12 @@ async def test_t17_disabled_entry_invisible_but_loadable(tmp_path):
                                  content="AUDIT_BODY"))
     agent = await runtime.create_agent(
         "skill-host", start_loop=False,
-        skills=[{"audit": {"enabled": False}}, "sum"])
+        skills=[{"audit": {"visible": False}}, "sum"])
     use_skill(agent)
     catalog = _catalog_text(agent)
     assert "<name>audit</name>" not in catalog
     assert "<name>sum</name>" in catalog
-    result = await agent.skill_load("audit")   # 编程式入口不做 enabled 检查
+    result = await agent.skill_load("audit")   # 编程式入口不做 visible 检查
     assert "AUDIT_BODY" in result.content
 
 
@@ -141,15 +141,15 @@ async def test_t20_override_description(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# T21：resolve 只含 enabled 条目且本次渲染无文件 IO
+# T21：resolve 只含 visible 条目且本次渲染无文件 IO
 # ---------------------------------------------------------------------------
 
 
-async def test_t21_resolve_enabled_only_and_no_io(tmp_path, monkeypatch):
+async def test_t21_resolve_visible_only_and_no_io(tmp_path, monkeypatch):
     runtime = make_skill_runtime(tmp_path)
     agent = await runtime.create_agent(
         "skill-host", start_loop=False,
-        skills=["sum", {"with-args as wa": {"enabled": False}}])
+        skills=["sum", {"with-args as wa": {"visible": False}}])
     use_skill(agent)   # 声明期已把定义文件全部读入注册表
     # 渲染期任何文件访问都是违约（读取不惰性、渲染惰性）
     monkeypatch.setattr(Path, "read_text",
@@ -162,31 +162,31 @@ async def test_t21_resolve_enabled_only_and_no_io(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# T22：运行期 enabled 置 False → 再次 resolve 不含该条目（渲染无缓存）
+# T22：运行期 visible 置 False → 再次 resolve 不含该条目（渲染无缓存）
 # ---------------------------------------------------------------------------
 
 
-async def test_t22_runtime_enabled_toggle_reflected(tmp_path):
+async def test_t22_runtime_visible_toggle_reflected(tmp_path):
     runtime = make_skill_runtime(tmp_path)
     agent = await runtime.create_agent(
         "skill-host", start_loop=False, skills=["sum", "with-args as wa"])
     use_skill(agent)
     assert "<name>wa</name>" in _catalog_text(agent)
-    agent._skill_entries["wa"].enabled = False
+    agent._skill_entries["wa"].visible = False
     assert "<name>wa</name>" not in _catalog_text(agent)
 
 
 # ---------------------------------------------------------------------------
-# T23：无 enabled 条目 → resolve 返回 ""，整块不注入（内容为空段）
+# T23：无 visible 条目 → resolve 返回 ""，整块不注入（内容为空段）
 # ---------------------------------------------------------------------------
 
 
-async def test_t23_no_enabled_entries_renders_empty(tmp_path):
+async def test_t23_no_visible_entries_renders_empty(tmp_path):
     runtime = make_skill_runtime(tmp_path)
     runtime.register_skill(Skill(name="audit", description="d", content="c"))
     agent = await runtime.create_agent(
         "skill-host", start_loop=False,
-        skills=[{"audit": {"enabled": False}}])
+        skills=[{"audit": {"visible": False}}])
     use_skill(agent)
     assert _catalog_text(agent) == ""
     context = agent._assemble_context()

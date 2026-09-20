@@ -233,7 +233,7 @@ class SubagentEntry:
 
     .. rubric:: 行为要点
 
-    - ``enabled=False`` 时不渲染进 catalog（LLM 不可见），但仍可编程式
+    - ``visible=False`` 时不渲染进 catalog（LLM 不可见），但仍可编程式
       ``invoke_subagent()``——可见性与可执行性分离。
     - ``specified`` 声明的参数（固定值与注入表达式）排除在 catalog
       渲染之外（LLM 不可见）；注入表达式求值结果是子 Agent 创建时的
@@ -321,7 +321,7 @@ class SubagentEntry:
     """LLM 参数名 → 规范参数名（``catalog_view()`` 生成 ``<params>``
     时改名）。默认空 dict。
     """
-    enabled: bool = True
+    visible: bool = True
     """是否渲染进 catalog（LLM 可见）；``False`` 时 LLM 看不到该子
     Agent，但仍可编程式 ``invoke_subagent()`` 唤起。直接置 ``True`` /
     ``False`` 切换，下一次上下文组装生效（没有 ``ManagedList`` 那样的
@@ -381,7 +381,7 @@ class SubagentEntry:
 
         .. rubric:: 功能介绍
 
-        Agent 每次组装上下文时对每个 ``enabled=True`` 的条目调用本
+        Agent 每次组装上下文时对每个 ``visible=True`` 的条目调用本
         方法，产物进入
         :data:`DEFAULT_SUBAGENT_CATALOG_TEMPLATE` （或 Agent 级覆写模板）
         的 ``entries`` 上下文。预计算在 Python 侧完成，模板只负责排布。
@@ -399,7 +399,7 @@ class SubagentEntry:
           ``specified`` 声明的参数（固定值与注入表达式对 LLM 隐藏），
           最后按 ``param_aliases`` 改名（改名撞名报 ``FormatError``）。
           无可见参数 → 空串；子 Agent 类无 ``args_model`` → 空串。
-        - ``enabled=False`` 的条目由调用方过滤，本方法不检查；直接对
+        - ``visible=False`` 的条目由调用方过滤，本方法不检查；直接对
           停用条目调用不报错，但产物无契约保证。
         - ``subagent-invoke`` 工具不随本条目自动可见——需用户显式声明
           （``tools:`` / ``add_tool("subagent-invoke")``）才进入

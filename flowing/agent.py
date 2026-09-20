@@ -2385,7 +2385,7 @@ class Agent:
                 estimated += estimate_message_tokens(m)
             # 锚点后新增工具补估：当前启用工具中不在 _measured_tool_names 者
             for entry in self._tool_entries.values():
-                if entry.enabled and entry.name_alias not in self._measured_tool_names:
+                if entry.visible and entry.name_alias not in self._measured_tool_names:
                     estimated += _estimate_tool_schema_tokens(
                         entry.llm_definition(self.runtime, self))
         else:
@@ -2394,7 +2394,7 @@ class Agent:
             for block in self.prompt_blocks:
                 estimated += _text_tokens(str(block.content.resolve(self)))
             for entry in self._tool_entries.values():
-                if entry.enabled:
+                if entry.visible:
                     estimated += _estimate_tool_schema_tokens(
                         entry.llm_definition(self.runtime, self))
             for m in path:
@@ -3889,7 +3889,7 @@ class Agent:
         找到工具，判别覆写体（``body``）并构造 :class:`flowing.tool.ToolEntry`，
         以别名（``alias`` / ``ref.alias``，缺省 = 规范名）为 key 写入
         ``self._tool_entries``。从此该工具进入本 Agent 的可见集
-        （``enabled=True`` 时对 LLM 可见）与可调用集（``tool_call()`` 仅按
+        （``visible=True`` 时对 LLM 可见）与可调用集（``tool_call()`` 仅按
         别名查本表）。
 
         两种调用形态（内部统一归一为 EntryRef 后走同一条管线）：
@@ -3900,7 +3900,7 @@ class Agent:
         - 程序化（``setup()`` / 运行期）：调用
           ``add_tool(name, alias=..., body=...)``，``body`` 与 ``.fya``
           单键映射项的覆写映射同构
-          （键集 ``description`` / ``args`` / ``output`` / ``enabled``；
+          （键集 ``description`` / ``args`` / ``output`` / ``visible``；
           不接受 ``inject`` 键——注入写 args 里的
           ``"{{ self.inject('key') }}"`` 表达式）；内部经
           :func:`flowing.parser.normalize_entries` 构造 EntryRef。
@@ -3942,7 +3942,7 @@ class Agent:
           ``.fya`` / ``.py`` 直接纳入），纳入命中在创建期 eager 解析，
           非法资源照常 fail-fast。
         - body 判别（本方法体内，单点维护）：键集固定为 ``description`` /
-          ``args`` / ``output`` / ``enabled``；未知键 →
+          ``args`` / ``output`` / ``visible``；未知键 →
           :class:`flowing.errors.FormatError` （含旧 ``inject`` 键——已
           删除，注入写 args 里的注入表达式）。各键去向：
 
@@ -3957,7 +3957,7 @@ class Agent:
             映射，逐字段并入 ``override_params``，不经过 args 的关键字
             校验（``type`` 等键在此合法）；「省略字段 = 移除」语义见
             ``FinishTool`` 规约；
-          - ``enabled`` → 布尔原样。
+          - ``visible`` → 布尔原样。
         - 深层块（``$tools.<alias>.args.<param>.description:``）的填回先于
           本方法调用（装配层时序约束：先 merge 具名块，再逐条目调本方法）
           ——本方法看到的 ``body`` 是已合并的最终形态。
@@ -3973,7 +3973,7 @@ class Agent:
         :param alias: LLM 看到的别名；缺省按 ``normalize_entries`` 推断。
         :param body: 覆写映射，与 ``.fya`` 单键映射项的值同构；``None``
             为无覆写。
-        :returns: 新创建的 ``ToolEntry`` （便于链式修改，如置 ``enabled``）。
+        :returns: 新创建的 ``ToolEntry`` （便于链式修改，如置 ``visible``）。
         :raises flowing.errors.ToolNotFoundError: 引用未在注册表 / 查找链。
         :raises flowing.errors.EntryNameConflictError: 同 alias 条目已存在。
         :raises flowing.errors.FormatError: EntryRef 与 ``alias`` / ``body``
@@ -4005,9 +4005,9 @@ class Agent:
         #   args -> 逐参数 split_as 判别：dict->override_params / as->param_aliases /
         #           PENDING->空补丁 / 其它->specified（Parsable 包装）
         #   output -> 独立分支：逐字段并入 override_params（不经 args 关键字校验）
-        #   inject -> FormatError（已删除：注入写 args 里的注入表达式）；enabled -> 原样
+        #   inject -> FormatError（已删除：注入写 args 里的注入表达式）；visible -> 原样
         override_description, override_params, specified = None, {}, {}
-        param_aliases, enabled = {}, True
+        param_aliases, visible = {}, True
         for body_key, body_val in ref.body.items():
             if body_key == "description":
                 override_description = _as_parsable_patch(body_val)
@@ -4026,8 +4026,8 @@ class Agent:
                     raise FormatError(f"tool override output must be a mapping: {body_val!r}")
                 for field_name, field_def in body_val.items():
                     override_params[field_name] = dict(field_def)
-            elif body_key == "enabled":
-                enabled = bool(body_val)
+            elif body_key == "visible":
+                visible = bool(body_val)
             else:
                 raise FormatError(f"tool override body contains unknown key: {body_key!r}")
         entry = ToolEntry(
@@ -4037,7 +4037,7 @@ class Agent:
             override_params=override_params,
             specified=specified,
             param_aliases=param_aliases,
-            enabled=enabled,
+            visible=visible,
         )
         self._tool_entries[key] = entry
         return entry
@@ -4060,7 +4060,7 @@ class Agent:
         Agent 类型」的声明。按引用找到子 Agent 类型，判别覆写体并构造
         :class:`flowing.subagents.SubagentEntry`，以别名为 key 写入
         ``self._subagent_entries``。从此该类型进入本 Agent 的 catalog
-        （``enabled=True`` 时对 LLM 可见）与可唤起集
+        （``visible=True`` 时对 LLM 可见）与可唤起集
         （``invoke_subagent()`` 仅按别名查本表）。
 
         两种调用形态（与 ``add_tool`` 同一管线）：
@@ -4073,7 +4073,7 @@ class Agent:
           ``add_agent(name, alias=..., body=...)``，``body`` 与 ``.fya``
           单键映射项的覆写映射同构
           （键集 ``system_prompt`` / ``description`` / ``args`` /
-          ``enabled``——无 ``output``：输出 schema 覆写是 Tool 面概念；
+          ``visible``——无 ``output``：输出 schema 覆写是 Tool 面概念；
           无 ``inject`` 键，注入写 args 里的
           ``"{{ self.inject('key') }}"`` 表达式）；内部经
           :func:`flowing.parser.normalize_entries` 构造 EntryRef。
@@ -4088,7 +4088,7 @@ class Agent:
         - 同 alias 重复添加 → :class:`flowing.errors.EntryNameConflictError`
           （绑定层统一 fail-fast，与 tool / skill 同口径）。
         - body 判别（本方法体内，单点维护）：键集固定为 ``system_prompt`` /
-          ``description`` / ``args`` / ``enabled``；未知键 →
+          ``description`` / ``args`` / ``visible``；未知键 →
           :class:`flowing.errors.FormatError` （含不接受 ``inject`` 键）。
           各键去向：
 
@@ -4104,7 +4104,7 @@ class Agent:
             空补丁；其它值 → ``specified`` （包装 Parsable，
             ``invoke_subagent()`` 内以亲代 Agent 实例上下文求值）。差异：
             ``inject`` 目标是子 Agent 初始化参数而非 ``execute()`` 参数；
-          - ``enabled`` → 布尔原样。
+          - ``visible`` → 布尔原样。
         - 深层块（``$subagents.<alias>.xxx:``）填回先于本方法调用（装配层
           时序约束，与 tool 侧同律）。
         - 边缘情况：``name`` / ``ref.raw`` 未命中 → 经 :meth:`get_agent_class`
@@ -4150,12 +4150,12 @@ class Agent:
         key = ref.alias
         if key in self._subagent_entries:   # 同 alias 重复添加 = 笔误（绑定层统一 fail-fast）
             raise EntryNameConflictError(key, kind="subagent")
-        # 第 1 步：body 判别（键集 system_prompt/description/args/enabled——
+        # 第 1 步：body 判别（键集 system_prompt/description/args/visible——
         # 无 inject 键；未知键 -> FormatError；args 判别与 add_tool 同规则、
         # 无 output 分支；system_prompt/description 包装 Parsable，PENDING -> 空补丁 None）
         override_system_prompt, override_description = None, None
         override_params, specified, param_aliases = {}, {}, {}
-        enabled = True
+        visible = True
         for body_key, body_val in ref.body.items():
             if body_key == "system_prompt":
                 override_system_prompt = _as_parsable_patch(body_val)
@@ -4165,8 +4165,8 @@ class Agent:
                 if not isinstance(body_val, Mapping):
                     raise FormatError(f"subagent override args must be a mapping: {body_val!r}")
                 _classify_override_args(body_val, override_params, specified, param_aliases)
-            elif body_key == "enabled":
-                enabled = bool(body_val)
+            elif body_key == "visible":
+                visible = bool(body_val)
             else:
                 raise FormatError(f"subagent override body contains unknown key: {body_key!r}")   # 含 Tool 面 output 键
         entry = SubagentEntry(
@@ -4177,7 +4177,7 @@ class Agent:
             override_params=override_params,
             specified=specified,
             param_aliases=param_aliases,
-            enabled=enabled,
+            visible=visible,
         )
         self._subagent_entries[key] = entry
         return entry
@@ -4477,11 +4477,11 @@ class Agent:
                                             pending=len(self._pending_turns))
                            if _want("message_queue") else None),
             model=model_info,
-            tool_entries=([EntryInfo(alias=e.name_alias, enabled=e.enabled,
+            tool_entries=([EntryInfo(alias=e.name_alias, visible=e.visible,
                                      agent_type=None)
                            for e in self._tool_entries.values()]
                           if _want("tool_entries") else None),
-            subagent_entries=([EntryInfo(alias=e.name_alias, enabled=e.enabled,
+            subagent_entries=([EntryInfo(alias=e.name_alias, visible=e.visible,
                                         agent_type=e.name_ori)
                                for e in self._subagent_entries.values()]
                               if _want("subagent_entries") else None),
@@ -4814,11 +4814,11 @@ class Agent:
     def _render_subagent_catalog(self) -> str:
         """渲染 ``<available_subagents>`` catalog 块（内部 API）。
 
-        对每个 ``enabled=True`` 的子 Agent 绑定条目调
+        对每个 ``visible=True`` 的子 Agent 绑定条目调
         :meth:`flowing.subagents.SubagentEntry.catalog_view` 在 Python 侧
         预计算视图 dict，再经模板一次性渲染（模板只负责排布）。模板取
         模板取 ``subagent_catalog_template`` 属性（缺失时回退
-        ``DEFAULT_SUBAGENT_CATALOG_TEMPLATE``）。无 ``enabled=True``
+        ``DEFAULT_SUBAGENT_CATALOG_TEMPLATE``）。无 ``visible=True``
         条目 →
         返回 ``""`` （整块不注入）。渲染经 Parsable TEMPLATE 语义（include
         基准为本 Agent 的 ``source_dir``）；渲染异常 fail-fast 上抛，不
@@ -4827,7 +4827,7 @@ class Agent:
         views: list[dict[str, Any]] = [
             entry.catalog_view(self)   # Python 侧预计算视图（description/params_xml 已解析）
             for entry in self._subagent_entries.values()
-            if entry.enabled   # enabled=False 不进 catalog（调用方负责过滤）
+            if entry.visible   # visible=False 不进 catalog（调用方负责过滤）
         ]
         if not views:
             return ""   # 空列表渲染为 ""（整块不注入）
@@ -4853,7 +4853,7 @@ class Agent:
            ``UnpairedToolCallError``（显式手术 ``chain.remove`` 重新打开配对
            是唯一来源，调用方负责封闭）。
         3. ``_visible_tools()`` → ``list[ToolDefinition]`` （仅
-           ``enabled=True`` 条目）。无隐式附加——``subagent-invoke`` /
+           ``visible=True`` 条目）。无隐式附加——``subagent-invoke`` /
            ``finish`` 等内置工具必须由用户显式声明才进入可见面。
         4. 子智能体 catalog：``<available_subagents>`` 块经
            ``_render_subagent_catalog()`` 现场渲染并入 ``system_prompt``
@@ -4899,21 +4899,21 @@ class Agent:
         subagent_catalog = self._render_subagent_catalog()
         if subagent_catalog:
             # 并入 system_prompt 段（段名「subagent-catalog」为落实命名，
-            # 规约未具名）；cache="dynamic"（enabled 状态与覆写运行时可变）
+            # 规约未具名）；cache="dynamic"（visible 状态与覆写运行时可变）
             segments.append(PromptSegment(
                 content=subagent_catalog, cache="dynamic", name="subagent-catalog"))
         return Context(system_prompt=segments, tools=tools, messages=messages)
 
     def _visible_tools(self) -> list[ToolDefinition]:
-        """当前 ``enabled=True`` 工具条目经 ``llm_definition()`` 的定义
+        """当前 ``visible=True`` 工具条目经 ``llm_definition()`` 的定义
         列表（内部 API）。
 
-        每次现场生成，无缓存；``enabled`` 运行时可变（模式切换），故不可
+        每次现场生成，无缓存；``visible`` 运行时可变（模式切换），故不可
         缓存。子 Agent 不走本方法——其 LLM 可见声明是 catalog XML（见
         :meth:`flowing.subagents.SubagentEntry.catalog_view`）。
         """
         defs: list[ToolDefinition] = []
         for entry in self._tool_entries.values():
-            if entry.enabled:
+            if entry.visible:
                 defs.append(entry.llm_definition(self.runtime, self))   # 每次现场生成，无缓存
         return defs

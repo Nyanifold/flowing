@@ -997,8 +997,8 @@ class UnknownToolError(ToolError):
     - 框架核心不捕获本异常（直接上抛出工具调用循环）；应用层可在
       ``before_tool_call`` 前置校验或自行捕获。
     - 不可自动重试：LLM 可在后续回合修正调用名，是否重试属应用策略。
-    - 本异常只在别名完全不存在时抛出：停用（``enabled=False``）只影响 LLM
-      可见性，不影响本异常的判定。
+    - 本异常只在别名完全不存在时抛出：不可见（``visible=False``）只影响 LLM
+      可见面，不影响本异常的判定。
 
     .. seealso::
 

@@ -165,7 +165,7 @@ async def slash_lines(cmd: str, arg: str, agent: Agent | None,
             parts["system prompt"] = sys_tokens
         tool_tokens = sum(
             _estimate_tool_schema_tokens(entry.llm_definition(runtime, agent))
-            for entry in agent._tool_entries.values() if entry.enabled)
+            for entry in agent._tool_entries.values() if entry.visible)
         if tool_tokens:
             parts["tools"] = tool_tokens
         for m in reversed(list(agent.chain.walk(agent.current_head_id))):

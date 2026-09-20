@@ -253,7 +253,7 @@ class EntryInfo:
 
     - ``alias`` 是 Agent 内查找键（``tool_call()`` 仅按别名查找）；同一工具
       在不同 Agent 快照中可有不同别名。
-    - ``enabled=False`` 表示绑定存在但当前对 LLM 不可见、不可调用；条目
+    - ``visible=False`` 表示绑定存在但当前对 LLM 不可见、不可调用；条目
       本身仍在（可被重新启用）。
     - ``agent_type`` 仅子 Agent 条目有值；工具条目恒为 ``None``。
     - 不投影 entry 的 schema 覆写内容（specified / inject 参数等）——观测
@@ -270,7 +270,7 @@ class EntryInfo:
 
     alias: str
     """Agent 内别名（查找键）；可能与全局注册名不同（per-Agent 覆写）。"""
-    enabled: bool
+    visible: bool
     """启用状态：``False`` 时对 LLM 不可见、不可调用，但绑定仍保留。语义
     呼应 ``flowing.lists.Togglable`` 的元素契约（开关语义一致，但
     Tool/Subagent 条目的容器是别名键 dict，不经 ``ManagedList`` 管理——两
@@ -536,7 +536,7 @@ class AgentSnapshot:
             print("turn 已产生消息:", asnap.current_turn.message_count)
         for exc_id, exc in asnap.executions.items():
             print("在飞:", exc.kind, exc.tags)
-        disabled = [e.alias for e in asnap.tool_entries if not e.enabled]
+        disabled = [e.alias for e in asnap.tool_entries if not e.visible]
 
     .. rubric:: 行为要点
 

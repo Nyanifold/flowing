@@ -47,8 +47,8 @@ def _full_agent_snapshot() -> AgentSnapshot:
         message_queue=MessageQueueInfo(size=1, pending=0),
         model=ModelInfo(model="deepseek-chat", provider="deepseek-personal", model_tag="fast",
                         context_window=64000, max_output_tokens=8192, thinking_budget=None),
-        tool_entries=[EntryInfo(alias="read-file", enabled=True, agent_type=None)],
-        subagent_entries=[EntryInfo(alias="pay", enabled=False, agent_type="PayAgent")],
+        tool_entries=[EntryInfo(alias="read-file", visible=True, agent_type=None)],
+        subagent_entries=[EntryInfo(alias="pay", visible=False, agent_type="PayAgent")],
         context_usage=None,
     )
 

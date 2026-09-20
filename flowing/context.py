@@ -826,7 +826,7 @@ class Context:
       消息照常进入 ``messages``；配对在树内封闭（执行期 cancelled / 恢复
       期 synthetic 占位，均落盘），组装对未配对只做断言
       （``UnpairedToolCallError``）、不做读时修补。
-    - ``tools`` 只含 ``enabled=True`` 的工具条目经 ``llm_definition()`` 的
+    - ``tools`` 只含 ``visible=True`` 的工具条目经 ``llm_definition()`` 的
       产物，与消息流完全分离。无隐式附加：``subagent-invoke`` /
       ``finish`` 等内置工具同样需用户显式声明（``tools:`` /
       ``add_tool``）才出现。
@@ -882,7 +882,7 @@ class Context:
     """当前启用的工具定义（:class:`flowing.tool.ToolDefinition` 列表）：工具声明
     独立于消息流存在，adapter 直接映射为各 API 的 function 声明。
 
-    行为边界：只含 ``enabled=True`` 条目的 ``llm_definition()`` 产物；空
+    行为边界：只含 ``visible=True`` 条目的 ``llm_definition()`` 产物；空
     列表合法。
 
     .. seealso:: :class:`flowing.tool.ToolDefinition`

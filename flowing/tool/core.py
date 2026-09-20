@@ -709,7 +709,7 @@ class ToolEntry:
       求值，注入表达式在此沿 provide 链上溯）；值是 ``_`` （``PENDING``）
       → 空补丁：装配时解析为空，深层块（如示例 ``$tools.pay.args.cwd.description:``）可逐字段填充，未被填充则合成时从基底定义全量回填，
       不报错。
-    - ``enabled=False`` 时条目不进 ``Context.tools`` （LLM 不可见），但
+    - ``visible=False`` 时条目不进 ``Context.tools`` （LLM 不可见），但
       编程式路径仍可经注册表访问——可见性与可执行性分离。
     - entry 不持有 Tool 实例引用——执行时按 ``name_ori`` 现场查
       `ToolRegistry`。
@@ -753,7 +753,7 @@ class ToolEntry:
     """LLM 参数名 → 规范参数名。默认空 dict。LLM 看到别名，``resolve()``
     第一步映射回规范名。
     """
-    enabled: bool = True
+    visible: bool = True
     """是否对 LLM 可见；``False`` 时不进 ``Context.tools``，但仍可编程式调用。
     """
 
@@ -762,7 +762,7 @@ class ToolEntry:
 
         .. rubric:: 功能介绍
 
-        上下文组装（``Agent._assemble_context()``）时对每个 ``enabled``
+        上下文组装（``Agent._assemble_context()``）时对每个 ``visible``
         entry 调用本方法，产物进入 ``Context.tools``。每次调用都重新
         求值，不缓存结果。
 
