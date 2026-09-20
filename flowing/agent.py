@@ -3113,13 +3113,18 @@ class Agent:
         消息行与邻接调整记录一并落盘。已配对的调用（含在途工具返回的
         部分结果）不重复封闭。封闭行在 write-behind 窗口内丢失时，由恢复
         管线的合成封闭（``synthetic=True`` 占位）兜底。
+
+        边界：封闭位置与 ``current_head_id`` 无关（按消息 id 定位，天然
+        落在调用所在分支）。head 上移只发生在「head 恰在某条 PROVIDER
+        消息上」时——批跳 / 取消响应意味着该消息无任何结果、封闭是新
+        链尾；head 在结果消息上时 insert 已把结果重挂到封闭之后（链尾
+        不变），head 已 fork 离开时不动。
         """
         answered: set[str] = set()
         for mid in turn.message_ids:
             msg = self._messages.get(mid)
             if msg is not None and msg.kind is MessageKind.TOOL and msg.tool_call_id:
                 answered.add(msg.tool_call_id)
-        last_closure: str | None = None
         for mid in turn.message_ids:
             msg = self._messages.get(mid)
             if msg is None or msg.kind is not MessageKind.PROVIDER:
@@ -3132,12 +3137,12 @@ class Agent:
                                       tool_status="cancelled", content=[])
                     after_id = self.chain.insert(after_id, closure)
                     turn.message_ids.append(after_id)
-                    last_closure = after_id
-        if last_closure is not None:
-            # insert 不移动 head：封闭是回合尾部，head 必须随之上移（写袋——
-            # head 以袋为准）——否则下一条消息的 parent 落在封闭之前的 provider
-            # 上，封闭退化为侧支、head 链上重新出现未配对
-            self._core_state["current_head_id"] = last_closure
+            if after_id != msg.id and self.current_head_id == msg.id:
+                # 该 provider 有封闭产出且 head 恰停在它上面（批跳 / 取消响应：
+                # 无任何结果消息）——封闭是新链尾，head 随之上移（写袋——head
+                # 以袋为准）；head 在结果消息上（insert 已重挂、链尾不变）或已
+                # fork 离开时不动
+                self._core_state["current_head_id"] = after_id
 
     async def cancel(self) -> None:
         """协作式终止整个 Agent：全部执行条目 abort + 当前回合退出信号。
@@ -4670,24 +4675,27 @@ class Agent:
                             after = turn.finish_output
                             return tc, result, before, after
 
-                        items = await asyncio.gather(
-                            *(_run_one(tc) for tc in (ToolCall.from_block(b) for b in tool_blocks)),
-                            return_exceptions=True,
-                        )
-                        # 按响应中的原始顺序挂树；执行中的异常在全部结果落树后再上抛
+                        # 结果返回即挂树（实时完成序）：崩溃只丢真正在飞的
+                        # 结果——「整批完成后按响应块序统一挂树」改为
+                        # as_completed 边返回边挂；finish 置位检测的「首个
+                        # 触发置位」相应为实时首个（谁先交卷谁标 turn_end）；
+                        # 执行中的异常仍在全部结果落树后再上抛
                         errors: list[BaseException] = []
                         marked = False
-                        for item in items:
-                            if isinstance(item, BaseException):
-                                errors.append(item)
+                        futures = [_run_one(tc) for tc in
+                                   (ToolCall.from_block(b) for b in tool_blocks)]
+                        for fut in asyncio.as_completed(futures):
+                            try:
+                                tc, result, before, after = await fut
+                            except BaseException as exc:
+                                errors.append(exc)
                                 continue
-                            tc, result, before, after = item
                             result_msg = result.as_message(tc.id)   # 配对锚接线（tc.id → tool_call_id）
                             if (block_finish_was is None and not marked
                                     and before is None and after is not None):
-                                result_msg.turn_end = True   # finish 置位路径：首个触发置位的 TOOL 消息标 turn_end
+                                result_msg.turn_end = True   # finish 置位路径：首个触发置位的 TOOL 消息标 turn_end（实时首个）
                                 marked = True
-                            await self._append_message(result_msg, turn)   # 结果消息挂树
+                            await self._append_message(result_msg, turn)   # 结果消息挂树（即完成即挂）
                         if errors:
                             raise errors[0]   # 框架错误：已成功的结果已挂树，异常继续走 _run_turn 的 except 通道
                 if turn.aborted:

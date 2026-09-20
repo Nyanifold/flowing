@@ -169,3 +169,32 @@ async def test_closure_lands_on_call_branch(runtime):
     await agent.fork(a)
     walk_ids = [m.id for m in agent.chain.walk(a)]
     assert b not in walk_ids and closure_id not in walk_ids
+
+
+async def test_results_append_in_completion_order(runtime, provider):
+    """结果即完成即挂：快工具的结果先于慢工具挂树（实时完成序，
+    不再等整批按块序）。"""
+    class Timed(Tool):
+        def __init__(self, name: str, delay: float) -> None:
+            self._delay = delay
+            self.definition = ToolDefinition(name=name, description=name,
+                                             params_schema={})
+
+        async def execute(self) -> str:
+            await asyncio.sleep(self._delay)
+            return self.definition.name
+
+    runtime.register_tool(Timed("slow-t", 0.3))
+    runtime.register_tool(Timed("fast-t", 0.01))
+    agent = await runtime.create_agent("test-agent")
+    agent.add_tool("slow-t")
+    agent.add_tool("fast-t")
+    # 块序：slow 在前、fast 在后；完成序应反过来
+    step1, _ = tool_call_response(("slow-t", {}), ("fast-t", {}))
+    script_provider(provider, step1, text_response("ok"))
+    r = await agent.query("go")
+    assert r.status == "completed"
+    tool_msgs = [m for m in agent.chain.walk(agent.current_head_id)
+                 if m.kind is MessageKind.TOOL]
+    names = [m.content[0].text for m in reversed(tool_msgs) if m.content]
+    assert names == ["fast-t", "slow-t"], "结果按完成序挂树（fast 先、slow 后）"

@@ -826,10 +826,10 @@ async def test_t70_parallel_tool_batch(runtime, provider):
     assert result.status == "completed"
     # asyncio.gather 并行：两个 start 都在任一 end 之前
     assert events[:2] == ["start-1", "start-2"]
-    # 结果按响应原始顺序挂树
+    # 结果按实时完成序挂树（两个调用同延迟，完成序不定——断言集合配对）
     tool_msgs = [agent._messages[mid] for mid in result.turn.message_ids
                  if agent._messages[mid].kind is MessageKind.TOOL]
-    assert [m.tool_call_id for m in tool_msgs] == [c.id for c in calls]
+    assert {m.tool_call_id for m in tool_msgs} == {c.id for c in calls}
 
 
 async def test_t71_finish_output_shift(runtime, provider):
