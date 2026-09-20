@@ -171,6 +171,7 @@ from flowing.model import ModelConfig, load_model_tags, load_models
 from flowing.params import InjectionKey, schema_to_model
 from flowing.parsable import _UNSET, PENDING, Parsable
 from flowing.parser import EntryRef, normalize_entries, split_as
+from flowing.paths import GLOB_META
 from flowing.persistence import FileRecordStore, RecordStore, StateView
 from flowing.provide import inject_from
 from flowing.providers import Provider, ProviderDelta, ProviderResponse, Usage
@@ -191,6 +192,7 @@ from flowing.subagents import (
 )
 from flowing.tool import (
     TOOL_NAMING,
+    McpTool,
     Tool,
     ToolCall,
     ToolDefinition,
@@ -3713,6 +3715,104 @@ class Agent:
         """
         return self.runtime.tool_registry.get(name_or_path, source_dir=self.source_dir())
 
+    async def _prepare_tool_refs(self, refs: "list[EntryRef]") -> "list[EntryRef]":
+        """``.fya`` 装配的工具绑定预处理（内部 API，不属稳定契约）。
+
+        装配层生成的 setup 包装器把 ``_FYA_TOOLS`` 经本方法换算为最终
+        绑定列表后逐条 ``add_tool``：
+
+        - 裸名条目先经
+          :meth:`flowing.tool.registry.ToolRegistry.expand_mcp` 尝试
+          MCP 合成名展开（不命中即无操作）；``list_tools()`` 是异步的，
+          装配是本管线唯一的异步点，``add_tool`` 保持同步契约；
+        - 解析产物为 MCP 组骨架（任何形态——裸名组名 / 路径 / 路径 glob
+          命中）→ 经 ``expand_mcp`` 的组展开换成逐工具条目（组引用的
+          别名不继承，子代理按合成名落账；覆写体由每个子条目继承）；
+        - 裸名模式（含 glob 字符、不含 ``/``）经
+          :meth:`flowing.tool.registry.ToolRegistry.glob` 展开为逐条
+          条目，模式条目本身不进绑定列表；
+        - 展开产物的别名与已收条目重复时：同一资源（同注册表键）跳过，
+          不同资源告警并跳过（已收条目胜出——「glob 显式优先」的名字
+          空间延伸）。
+        """
+        registry = self.runtime.tool_registry
+        final: list[EntryRef] = []
+        claimed: dict[str, EntryRef] = {}
+
+        def _append_hit(key: str, body: "Mapping[str, Any]") -> None:
+            alias = key.rsplit("::", 1)[-1]
+            existing = claimed.get(alias)
+            if existing is not None:
+                try:
+                    same = self.get_tool(existing.raw).registry_key == key
+                except Exception:
+                    same = False
+                if not same:
+                    _logger.warning(
+                        "name-glob hit skipped (alias %r already claimed by another resource): %s",
+                        alias, key)
+                return
+            hit = EntryRef(raw=key, alias=alias, body=body)
+            claimed[alias] = hit
+            final.append(hit)
+
+        for ref in refs:
+            raw = ref.raw
+            if isinstance(raw, str) and "/" not in raw:
+                await registry.expand_mcp(raw, source_dir=self.source_dir())
+                if GLOB_META.search(raw):   # 名字模式：注册表展开
+                    for key in registry.glob(raw):
+                        _append_hit(key, ref.body)
+                    continue
+            tool = self.get_tool(raw)   # 存在性解析（未命中照常 ToolNotFoundError）
+            if isinstance(tool, McpTool) and not getattr(tool, "_server_tool_name", None):
+                # 组骨架引用（任意形态）→ 展开为逐工具条目
+                for key in await registry._expand_group(tool):
+                    _append_hit(key, ref.body)
+                continue
+            final.append(ref)
+            claimed.setdefault(ref.alias, ref)
+        return final
+
+    async def _prepare_agent_refs(self, refs: "list[EntryRef]") -> "list[EntryRef]":
+        """``.fya`` 装配的子 Agent 绑定预处理（内部 API，不属稳定契约）。
+
+        与 :meth:`_prepare_tool_refs` 同构：路径形态与裸名精确引用原样
+        保留；裸名模式经
+        :meth:`flowing.agent_registry.AgentRegistry.glob` 展开为逐条条目
+        （别名判重规则同工具侧）。Agent 类型无远程目录，本方法不含异步
+        展开段。
+        """
+        final: list[EntryRef] = []
+        claimed: dict[str, EntryRef] = {}
+        for ref in refs:
+            raw = ref.raw
+            if not isinstance(raw, str) or "/" in raw:
+                final.append(ref)
+                claimed.setdefault(ref.alias, ref)
+                continue
+            if not GLOB_META.search(raw):
+                final.append(ref)
+                claimed.setdefault(ref.alias, ref)
+                continue
+            for key in self.runtime.agent_registry.glob(raw):
+                alias = key.rsplit("::", 1)[-1]
+                existing = claimed.get(alias)
+                if existing is not None:
+                    try:
+                        same = (self.get_agent_class(existing.raw).registry_key == key)
+                    except Exception:
+                        same = False
+                    if not same:
+                        _logger.warning(
+                            "name-glob hit skipped (alias %r already claimed by another resource): %s",
+                            alias, key)
+                    continue
+                hit = EntryRef(raw=key, alias=alias, body=ref.body)
+                claimed[alias] = hit
+                final.append(hit)
+        return final
+
     def get_agent_class(self, agent_type: str) -> type[Agent]:
         """上下文感知的 Agent 类型解析门面：自动携带本 Agent 的
         ``source_dir``。
@@ -3786,7 +3886,11 @@ class Agent:
 
         .. rubric:: 行为要点
 
-        - 同步、立即生效：下一次上下文组装即可见。
+        - 同步、立即生效：下一次上下文组装即可见。MCP 合成名例外：
+          本方法保持同步，``subagent-invoke`` 以外的合成名（MCP 组展开
+          产物）须先经
+          :meth:`flowing.tool.registry.ToolRegistry.expand_mcp` 异步展开
+          注册（``.fya`` 装配路径自动完成，程序化路径自调一次）。
         - 同 alias 重复添加 → :class:`flowing.errors.EntryNameConflictError`。
           每次生命周期（create / recover）都从 ``__init__`` 的空
           ``_tool_entries`` 开始重放 ``setup()``；同一生命周期内重复添加

@@ -61,11 +61,18 @@ class McpTool(Tool):
     每个声明独立实例（区别于 script 单例）。
 
     命名规则：MCP 声明块代理的是一组服务端工具，注册 / 解析时每个实际
-    工具的规范名 = ``<fya 声明名>-<server 暴露工具名>`` （如声明
+    工具的规范名 = ``<fya 声明名>--<server 暴露工具名>`` （如声明
     ``name: github``、服务端暴露 ``create-issue`` → 注册规范名
-    ``github-create-issue``）——服务端工具名空间天然带声明名前缀，不同
+    ``github--create-issue``）——服务端工具名空间天然带声明名前缀，不同
     MCP 来源的同名工具不撞名。Agent 侧引用（``tools:`` 条目 /
-    ``add_tool``）按合成名引用（可照常 ``as`` 别名）。
+    ``add_tool``）按合成名引用（可照常 ``as`` 别名）：``.fya`` 装配
+    路径在绑定前自动展开（
+    :meth:`flowing.tool.registry.ToolRegistry.expand_mcp`）；程序化
+    ``add_tool`` 是同步的，引用合成名前需先自行调一次
+    ``await runtime.tool_registry.expand_mcp(...)``。普通工具名与
+    声明名含 ``--`` 均不推荐（文档约定，无强制校验）：合成名按首个
+    ``--`` 切分定组，声明名含 ``--`` 时组前缀错配；普通工具名含
+    ``--`` 靠「注册表精确命中优先」保证按字面值解析。
 
     .. rubric:: 使用示例
 
@@ -101,7 +108,7 @@ class McpTool(Tool):
     - 来源识别：存在 ``command`` → stdio；存在 ``url`` → 远程；两者都有
       → `AmbiguousMcpSourceError`；两者都无 → `MissingMcpSourceError`。
     - 同名冲突：同命名空间规范名重名注册永远抛 `ToolNameConflictError`
-      ——注册名为合成名 ``<声明名>-<server 暴露名>``，撞名即声明名重复，
+      ——注册名为合成名 ``<声明名>--<server 暴露名>``，撞名即声明名重复，
       须换声明名（或注册到不同命名空间）。
     - MCP 服务器的 ``outputSchema`` 自动填入 `ToolDefinition.output_schema`
       （随声明携带，adapter 白名单不映射；当前实现不据此做结果校验，也
@@ -233,10 +240,12 @@ class McpTool(Tool):
         .. rubric:: 功能介绍
 
         装配期 schema 拉取的唯一入口：``ToolRegistry.get`` 命中 mcp 型
-        TOOL.fya 只产声明实例（骨架 definition）；装配层在 get 解析完成
-        后调用本方法一次——每个服务端工具产一个独立 `McpTool` 代理实例，
-        规范名 = ``<fya 声明名>-<server 暴露工具名>``，由装配层经
-        ``ToolRegistry.register`` 按合成名注册（撞名 →
+        TOOL.fya 只产声明实例（骨架 definition）；声明期的异步展开通道
+        :meth:`flowing.tool.registry.ToolRegistry.expand_mcp` 在合成名
+        解析不命中时调用本方法一次——每个服务端工具产一个独立 `McpTool`
+        代理实例，规范名 = ``<fya 声明名>-<server 暴露工具名>``，由
+        ``expand_mcp`` 经 ``ToolRegistry.register`` 按合成名注册
+        （``default::`` 命名空间；撞名 →
         ``ToolNameConflictError``，注册表层承载）。``execute`` 不依赖本
         方法（惰性连接），但 LLM 可见声明必须由本方法的产物承载。
 
@@ -268,7 +277,7 @@ class McpTool(Tool):
             if "args" in override:
                 params = apply_param_overrides(params, override["args"])
             definition = ToolDefinition(
-                name=f"{self.definition.name}-{server_tool.name}",   # 合成名 <声明名>-<server 名>
+                name=f"{self.definition.name}--{server_tool.name}",   # 合成名 <声明名>--<server 名>
                 description=override.get("description",
                                          server_tool.description or ""),
                 params_schema=params,
@@ -286,8 +295,10 @@ class McpTool(Tool):
         .. rubric:: 行为要点
 
         - 本方法只存在于 ``list_tools()`` 展开产物（``_server_tool_name``
-          已置位）上；声明实例（组代理）直接执行 → ``RuntimeError``
-          （按合成名 ``<声明名>-<server 名>`` 引用，属声明笔误）。
+          已置位）上；声明实例（组骨架）直接执行 → ``RuntimeError``
+          （骨架只在程序化直持时出现——``.fya`` 装配在绑定期把组骨架
+          自动展开为逐工具条目，见
+          :meth:`flowing.tool.registry.ToolRegistry.expand_mcp`）。
         - 连接失败 / 服务端 ``isError`` 返回 → 抛异常，由 ``__call__``
           包装为 ``status="error"`` 结果（无连接重试）。
         - 返回形态：服务端 ``structuredContent`` 优先；否则文本块拼合
@@ -296,7 +307,7 @@ class McpTool(Tool):
         if self._server_tool_name is None:
             raise RuntimeError(
                 f"MCP declaration {self.definition.name!r} is a tool-group proxy and cannot be executed directly"
-                " — reference its expanded products by the synthetic name <decl-name>-<server tool name>")
+                " — reference its expanded products by the synthetic name <decl-name>--<server tool name>")
         async with self._connect() as session:
             result = await session.call_tool(self._server_tool_name,
                                              arguments=kwargs)

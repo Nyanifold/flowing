@@ -7,6 +7,7 @@
 
 from __future__ import annotations   # 注解延迟求值，配合 TYPE_CHECKING 破注解级循环边
 
+import re
 import warnings
 
 from collections.abc import Iterator
@@ -22,7 +23,9 @@ from flowing.errors import (
 )
 from flowing.params import expand_args_schema, schema_to_model
 from flowing.paths import (
+    GLOB_META,
     classify_ref,
+    fnmatch_keys,
     infer_name,
     kebab_to_pascal,
     kebab_to_snake,
@@ -451,6 +454,99 @@ class ToolRegistry:
         candidates = [resolved.name, f"{kebab_to_snake(identity)}.py"]
         return self._resolve_hit(resolved, False, resolved.parent, candidates,
                                  ref=name_or_path)
+
+    async def _expand_group(self, group: McpTool) -> list[str]:
+        """MCP 组骨架展开为子代理注册（幂等）。内部 API，不属稳定契约。
+
+        ``await group.list_tools()`` 拉取服务端 schema，每个子代理由
+        ``register`` 按合成名（``<声明名>--<server 名>``）注册进
+        ``default::`` 命名空间。组已展开（合成名已在册）时不重复连接，
+        直接返回在册键。
+        """
+        prefix = f"default::{group.definition.name}--"
+        existing = sorted(k for k in self._tools if k.startswith(prefix))
+        if existing:
+            return existing
+        keys = []
+        for child in await group.list_tools():
+            self.register(child)
+            keys.append(child.registry_key)
+        return sorted(keys)
+
+    def glob(self, pattern: str) -> list[str]:
+        """注册表键的名字 glob（``tools:`` 条目名字模式的匹配域）。
+
+        委托 :func:`flowing.paths.fnmatch_keys`：裸名模式（不含 ``::``）
+        匹配 ``default::`` / ``builtin::`` 视图的裸名部分；含 ``::`` 的
+        限定模式匹配完整键。返回键排序后的**完整键**列表（稳定序），零
+        命中返回空列表。匹配域是调用时点的注册表快照（MCP 合成名等声明
+        期产物须已由 :meth:`expand_mcp` 落账）。
+        """
+        return fnmatch_keys(pattern, self._tools.keys())
+
+    async def expand_mcp(self, name_or_pattern: str, *,
+                         source_dir: Path | None = None) -> bool:
+        """MCP 合成名的异步展开（``list_tools()`` 的接线点）。声明期通道。
+
+        .. rubric:: 功能介绍
+
+        合成名形态 ``<声明名>--<server 工具名>``（``--`` 为组分隔符）。
+        裸名 ``name_or_pattern``（精确合成名或组内模式 ``demo--*``）同步
+        解析不命中时，按首个 ``--`` 切分定组，经双锚点探测组声明——
+        文件锚优先（``source_dir`` 定向文件链命中 mcp 型声明，与「文件
+        覆盖注册表」同口径），其次注册表锚（``default::<组名>`` 为 MCP
+        骨架）——命中则 ``await group.list_tools()`` 拉取服务端 schema
+        展开，子代理由 ``register`` 按合成名注册进 ``default::``（撞名 →
+        ``ToolNameConflictError``）。展开后合成名即可被 ``get`` 解析。
+
+        ``get`` 保持同步（热路径契约）；本方法是声明期唯一的异步点，由
+        调用方（``.fya`` 装配的 ``Agent._prepare_tool_refs``、程序化路径
+        自调）在使用合成名前调用一次。组已展开（其合成名已在册）时不
+        重复连接，幂等。
+
+        :param name_or_pattern: 精确合成名或组内模式（裸名；限定名 /
+          路径形态直接返回 ``False``）。无 ``--`` 或组名段含模式字符
+          （无法锚定）→ ``False``。
+        :param source_dir: 裸名文件链的查找根（与 ``get`` 同口径）。
+        :return: ``True`` = 发生了展开（或组已在册）且目标可解析；
+          ``False`` = 无需展开或无法展开（非 MCP 合成名——由调用方的
+          正常错误通道 fail-fast，本方法不抛 ``ToolNotFoundError``）。
+        :raises ToolNameConflictError: 展开产物的合成名与在册条目撞名。
+        """
+        if classify_ref(name_or_pattern) != "bare":
+            return False
+        is_pattern = bool(GLOB_META.search(name_or_pattern))
+        if not is_pattern:
+            try:
+                self.get(name_or_pattern, source_dir=source_dir)
+                return False   # 本就可解析（含精确占用），无需展开
+            except ToolNotFoundError:
+                pass
+        if "--" not in name_or_pattern:
+            return False   # 无组分隔符：不是合成名形态
+        prefix = name_or_pattern.split("--", 1)[0]
+        if GLOB_META.search(prefix):
+            return False   # 组名段含模式字符 → 无法锚定（跨组模式不支持）
+        if any(k.startswith(f"default::{prefix}--") for k in self._tools):
+            return True   # 组已展开（幂等，不重复连接）
+        # 双锚点探测：文件锚优先（文件覆盖注册表），其次注册表骨架
+        group: McpTool | None = None
+        if source_dir is not None:
+            probed = self._probe_name_chain(prefix, source_dir)
+            if probed is not None:
+                candidate = self._resolve_hit(*probed, ref=prefix)
+                if isinstance(candidate, McpTool):
+                    group = candidate
+        if group is None:
+            candidate = self._tools.get(f"default::{prefix}")
+            if isinstance(candidate, McpTool):
+                group = candidate
+        if group is None:
+            return False
+        await self._expand_group(group)
+        if is_pattern:
+            return True
+        return f"default::{name_or_pattern}" in self._tools
 
     def _probe_name_chain(
         self, name: str, source_dir: Path

@@ -41,6 +41,7 @@ from flowing.paths import infer_name as _infer_name
 from flowing.paths import kebab_to_snake as _kebab_to_snake
 from flowing.paths import pascal_to_kebab as _pascal_to_kebab
 from flowing.paths import path_to_module_name as _path_to_module_name
+from flowing.paths import fnmatch_keys as _fnmatch_keys
 from flowing.paths import probe_candidates as _probe_candidates
 from flowing.paths import resolve_path as _paths_resolve_path
 from flowing.paths import to_project_path as _paths_to_project_path
@@ -169,6 +170,17 @@ class AgentRegistry:
             raise AgentTypeConflictError(key)   # 全键重名永远不允许
         self._agents[key] = agent_class   # 条目惰性：get 在 invoke/创建时才解析
         agent_class.registry_key = key   # 回写（与 Tool/Skill.registry_key 同构；文件派生注册点同律）
+
+    def glob(self, pattern: str) -> list[str]:
+        """注册表键的名字 glob（``subagents:`` 条目名字模式的匹配域）。
+
+        委托 :func:`flowing.paths.fnmatch_keys`：裸名模式匹配
+        ``default::`` / ``builtin::`` 视图的裸名部分；含 ``::`` 的限定
+        模式匹配完整键。返回键排序后的完整键列表（稳定序），零命中返回
+        空列表。匹配域是调用时点的注册表快照——未被引用过的文件态 Agent
+        类型不在册（它们由路径 glob 覆盖）。
+        """
+        return _fnmatch_keys(pattern, self._agents.keys())
 
     def get(self, agent_type: str, *,
             source_dir: Path | None = None) -> type[Agent]:

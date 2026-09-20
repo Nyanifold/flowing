@@ -171,3 +171,14 @@ def test_t15_getattr_extra_fields_passthrough():
     assert skill.tpl is marker   # 原样返回，不做 Parsable 求值
     with pytest.raises(AttributeError):
         skill.missing
+
+
+def test_t07b_glob_name_patterns(registry):
+    """名字 glob：裸名模式查 default::/builtin:: 视图；限定模式查全键；
+    零命中空列表；键排序稳定序。"""
+    registry.register(Skill(name="sum-alpha", content="a"))
+    registry.register(Skill(name="sum-beta", content="b"))
+    registry.register(Skill(name="other", content="c"), namespace="plugin-x")
+    assert registry.glob("sum-*") == ["default::sum-alpha", "default::sum-beta"]
+    assert registry.glob("plugin-x::*") == ["plugin-x::other"]
+    assert registry.glob("no-such-*") == []

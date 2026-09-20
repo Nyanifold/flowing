@@ -100,7 +100,7 @@ __all__ = [
     "compile_project",
 ]
 
-COMPILER_VERSION: str = "0.1.2"
+COMPILER_VERSION: str = "0.1.3"
 """编译器版本——写入 meta 的 ``compiler_version`` 字段。
 
 版本是缓存键的一部分：meta 中记录的 ``compiler_version`` 与当前值不同
@@ -627,7 +627,9 @@ def _emit_source(
     ``_check_pending`` 会扫类 MRO，条目覆写里的 PENDING 空补丁会被
     误判为未兑现字段）→ ``class <Name>(Agent):`` 类属性赋值 →
     ``$script`` 类体段（self 方法）→ 装配层生成的 ``setup`` （前置段：
-    ``_extra`` 合入 + 条目绑定 → 按编译期定死的透传参数集委托用户
+    ``_extra`` 合入 + 条目预处理（MCP 合成名展开与名字 glob 的运行期
+    展开，经 ``_prepare_tool_refs`` / ``_prepare_agent_refs``）+ 条目
+    绑定 → 按编译期定死的透传参数集委托用户
     setup）。
     """
     imports = ["from flowing import Agent, PENDING"]
@@ -686,10 +688,10 @@ def _emit_source(
         if extra:
             body_lines.append("    self._extra.update(_FYA_EXTRA)")
         if tools_refs:
-            body_lines.append("    for _ref in _FYA_TOOLS:")
+            body_lines.append("    for _ref in await self._prepare_tool_refs(_FYA_TOOLS):")
             body_lines.append("        self.add_tool(_ref)")
         if subagent_refs:
-            body_lines.append("    for _ref in _FYA_SUBAGENTS:")
+            body_lines.append("    for _ref in await self._prepare_agent_refs(_FYA_SUBAGENTS):")
             body_lines.append("        self.add_agent(_ref)")
         if has_user_setup:
             if setup_params is None:

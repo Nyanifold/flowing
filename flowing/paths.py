@@ -77,10 +77,39 @@ from typing import Iterable, Literal
 
 from flowing.errors import FormatError
 
+GLOB_META = re.compile(r"[*?\[]")
+"""glob 模式字符判定（``*`` / ``?`` / ``[``）：三类资源列表（``tools:`` /
+``subagents:`` / ``skills:``）的 glob 触发词法与注册表名字 glob 的
+模式判定共用本正则——唯一出处，各消费方 import 使用（公开常量）。
+"""
+
+
+def fnmatch_keys(pattern: str, keys: Iterable[str]) -> list[str]:
+    """注册表键的 fnmatch 名字 glob（三注册表 ``glob()`` 门面的共用实现）。
+
+    裸名模式（不含 ``::``）只匹配 ``default::`` / ``builtin::`` 键的裸名
+    部分（裸名视图，与 ``ToolRegistry.get`` 的裸名解析口径一致）；含
+    ``::`` 的限定模式匹配完整键（``fnmatch`` 的 ``*`` 可跨 ``::``，
+    ``*::read`` 这类跨命名空间模式因此成立）。返回键排序后的完整键列表
+    （稳定序）；零命中返回空列表。名字是扁平字符串：模式里的 ``**`` 按
+    ``*`` 处理（fnmatch 天然语义）。
+    """
+    import fnmatch
+
+    if "::" in pattern:
+        return sorted(k for k in keys if fnmatch.fnmatchcase(k, pattern))
+    return sorted(
+        k for k in keys
+        if k.startswith(("default::", "builtin::"))
+        and fnmatch.fnmatchcase(k.split("::", 1)[1], pattern))
+
+
 __all__ = [
     "PATH_PREFIXES",
+    "GLOB_META",
     "NamingRules",
     "classify_ref",
+    "fnmatch_keys",
     "resolve_path",
     "to_project_path",
     "probe_candidates",
@@ -442,8 +471,10 @@ def infer_name(path: str | Path, *, naming: NamingRules) -> str:
 # 命名格式互转（纯格式转换，无资源策略）
 # ---------------------------------------------------------------------------
 
-_KEBAB_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
-"""合法 kebab-case 名：小写字母数字，单连字符分段。"""
+_KEBAB_RE = re.compile(r"^[a-z0-9]+(-{1,2}[a-z0-9]+)*$")
+"""合法 kebab-case 名：小写字母数字，单/双连字符分段（双连字符是 MCP
+合成名的组分隔符——``<声明名>--<server 工具名>``，见
+:class:`flowing.tool.mcp.McpTool`）。"""
 
 
 def kebab_to_snake(name: str) -> str:

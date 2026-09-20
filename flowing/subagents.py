@@ -55,6 +55,7 @@ from xml.sax.saxutils import escape as _xml_escape
 
 from flowing.errors import FormatError
 from flowing.params import apply_param_overrides
+from flowing.paths import GLOB_META as _GLOB_META
 from flowing.parsable import Parsable
 from flowing.paths import NamingRules, classify_ref, resolve_path
 
@@ -498,9 +499,6 @@ def _entry_params_xml(entry: SubagentEntry, cls: "type[Agent]") -> str:
     return "<params>" + "".join(parts) + "</params>"
 
 
-_GLOB_META = re.compile(r"[*?\[]")
-"""glob 元字符判别（条目 ``raw`` 是否 glob 模式）。"""
-
 _logger = logging.getLogger("flowing.subagents")
 
 
@@ -525,6 +523,16 @@ def _expand_glob_entries(
       前缀，每命中一条路径产一个条目（``raw`` 为命中路径的绝对形态
       字符串，别名经 ``normalize_entries`` → ``infer_name`` 推断；
       glob 条目带覆写映射时每个展开产物继承同一 body）。
+    - 双空间并集：不含 ``/`` 的 glob 模式在路径展开之外**原样透传**
+      一个名字模式条目（``raw`` 即模式串，``alias`` 与 ``raw`` 相同，
+      占位用——装配运行期经 ``Agent._prepare_tool_refs`` /
+      ``_prepare_agent_refs`` 按注册表键展开为逐条条目后才绑定，模式
+      条目本身不进绑定流）；路径空间与名字空间的命中在运行期按解析
+      身份（注册表键）判重合并。
+    - 路径命中为 ``type: mcp`` 的工具组声明时产普通路径条目；骨架
+      （未展开、无可执行 schema）在装配绑定段经
+      ``ToolRegistry.expand_mcp`` 展开为逐工具条目（绑定段的统一行为，
+      见 ``Agent._prepare_tool_refs``）。
     - ``project_root=None`` 时 ``@/`` 引用（显式条目与 glob 模式同样）
       → 内置 ``ValueError`` （显式报错，不静默退回 cwd——与
       ``ToolRegistry.get`` 的 ``@/`` 失败姿态一致）。
@@ -546,7 +554,7 @@ def _expand_glob_entries(
     .. seealso:: :class:`SubagentEntry` 行为要点「同 alias 重复」的例外
         条款（规则文本的权威出处）。
     """
-    from flowing.parser import normalize_entries   # 函数内 import：本模块头部对 parser 只留 TYPE_CHECKING 边
+    from flowing.parser import EntryRef, normalize_entries   # 函数内 import：本模块头部对 parser 只留 TYPE_CHECKING 边
 
     # 失败姿态与 ToolRegistry.get 对齐：无 launch 上下文（project_root 缺失）
     # 时 @/ 引用（显式条目与 glob 模式同样）显式报错，不静默退回 cwd
@@ -599,6 +607,9 @@ def _expand_glob_entries(
             seen.add(resolved)
             item: Any = {str(resolved): body} if body else str(resolved)
             refs.extend(normalize_entries([item], naming=naming))
+        # 双轨：不含 / 的模式原样透传为名字模式条目（运行期按注册表键展开）
+        if "/" not in pattern_raw:
+            refs.append(EntryRef(raw=pattern_raw, alias=pattern_raw, body=body))
     return refs
 
 

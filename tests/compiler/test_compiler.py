@@ -826,3 +826,26 @@ def test_fya_script_selfless_on_handler_rejected(tmp_path):
         """), encoding="utf-8")
     with pytest.raises(FormatError, match="must take self"):
         compile_fya_class(fya)
+
+
+def test_t63e_name_glob_pattern_passthrough(tmp_path):
+    """63 补：名字模式（不含 /）透传进 _FYA_TOOLS（不 AOT 展开），setup
+    包装器经 _prepare_tool_refs 运行期展开。"""
+    fya = tmp_path / "globbed.fya"
+    fya.write_text(textwrap.dedent("""\
+        description: 模式透传样例。
+        tools:
+          - read
+          - demo--*
+        subagents:
+          - helper-?
+        ---
+        $system_prompt:
+        你是助手。
+        """), encoding="utf-8")
+    product = compile_fya_file(fya)
+    source = product.read_text(encoding="utf-8")
+    assert "'demo--*'" in source   # 模式串原样保留在 _FYA_TOOLS
+    assert "'helper-?'" in source  # 同（_FYA_SUBAGENTS）
+    assert "await self._prepare_tool_refs(_FYA_TOOLS)" in source
+    assert "await self._prepare_agent_refs(_FYA_SUBAGENTS)" in source

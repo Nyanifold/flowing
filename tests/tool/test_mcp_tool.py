@@ -95,23 +95,23 @@ async def test_mcp_stdio_roundtrip():
     decl = _declaration(command=sys.executable, args=[str(DEMO_SERVER)])
     tools = await decl.list_tools()
     assert {t.definition.name for t in tools} == {
-        "github-create-issue", "github-list-prs"}   # 合成名 <声明名>-<server 名>
+        "github--create-issue", "github--list-prs"}   # 合成名 <声明名>--<server 名>
     by_name = {t.definition.name: t for t in tools}
     # outputSchema 自动填 output_schema（list-prs 服务端带 outputSchema）
-    assert by_name["github-list-prs"].definition.output_schema is not None
+    assert by_name["github--list-prs"].definition.output_schema is not None
     registry = ToolRegistry()
     for t in tools:
         registry.register(t)
     # 同名重复注册 → ToolNameConflictError
     with pytest.raises(ToolNameConflictError):
-        registry.register(by_name["github-create-issue"])
+        registry.register(by_name["github--create-issue"])
     # execute 真实往返（惰性连接）。create-issue 无 outputSchema → 非结构化
     # 文本（JSON 字符串）；list-prs 有 outputSchema → structuredContent dict
-    created = await by_name["github-create-issue"]({"title": "标题", "body": "正文"})
+    created = await by_name["github--create-issue"]({"title": "标题", "body": "正文"})
     assert created.status == "completed"
     created_out = json.loads(created.output)
     assert created_out["issue_id"] == 42 and created_out["title"] == "标题"
-    listed = await by_name["github-list-prs"]({"state": "closed"})
+    listed = await by_name["github--list-prs"]({"state": "closed"})
     assert listed.status == "completed"
     assert listed.output["result"][0]["state"] == "closed"
 
@@ -137,14 +137,14 @@ async def test_mcp_sse_via_fya_fixture(sse_server, fixtures_dir, monkeypatch):
     assert isinstance(decl, McpTool) and decl.url.endswith("/sse")
     tools = await decl.list_tools()
     # tools 子集：只暴露 create-issue，list-prs 不暴露
-    assert [t.definition.name for t in tools] == ["github-create-issue"]
+    assert [t.definition.name for t in tools] == ["github--create-issue"]
     tool = tools[0]
     # overrides：description 整体替换 + args 稀疏覆写
     assert tool.definition.description == "创建 GitHub Issue（覆写描述）。"
     assert tool.definition.params_schema["title"]["description"] == \
         "Issue 标题，不超过 80 字符。"
     registry.register(tool)
-    assert registry.get("github-create-issue") is tool
+    assert registry.get("github--create-issue") is tool
     result = await tool({"title": "经 fya 装配"})
     assert result.status == "completed", result.error
     assert json.loads(result.output)["url"] == "https://example.test/issues/42"
@@ -168,8 +168,8 @@ async def test_mcp_streamable_http_roundtrip(http_mcp_server):
     decl = _declaration(url=f"http://127.0.0.1:{http_mcp_server}/mcp")
     tools = await decl.list_tools()
     by_name = {t.definition.name: t for t in tools}
-    assert set(by_name) == {"github-create-issue", "github-list-prs"}
-    result = await by_name["github-create-issue"]({"title": "streamable"})
+    assert set(by_name) == {"github--create-issue", "github--list-prs"}
+    result = await by_name["github--create-issue"]({"title": "streamable"})
     assert result.status == "completed", result.error
     assert json.loads(result.output)["title"] == "streamable"
 

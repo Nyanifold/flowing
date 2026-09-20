@@ -27,6 +27,7 @@ from flowing.parsable import PENDING, Parsable
 from flowing.parser import load_fya_yaml, split_fya
 from flowing.paths import (
     classify_ref,
+    fnmatch_keys,
     infer_name,
     probe_candidates,
     resolve_path,
@@ -154,6 +155,16 @@ class SkillRegistry:
             raise SkillNameConflictError(key)  # 全键重名永远不允许
         self._skills[key] = skill
         skill.registry_key = key   # 落账时回写全键（与 get 的解析通道同口径）
+
+    def glob(self, pattern: str) -> list[str]:
+        """注册表键的名字 glob（``skills:`` 条目名字模式的匹配域）。
+
+        委托 :func:`flowing.paths.fnmatch_keys`：裸名模式匹配
+        ``default::`` / ``builtin::`` 视图的裸名部分；含 ``::`` 的限定
+        模式匹配完整键。返回键排序后的完整键列表（稳定序），零命中返回
+        空列表。匹配域是调用时点的注册表快照。
+        """
+        return fnmatch_keys(pattern, self._skills.keys())
 
     def get(self, name: str, source_dir: Path | None = None) -> Skill:
         """按规范名取 Skill，未命中缓存时现场解析定义文件。

@@ -130,7 +130,9 @@ PENDING 是 ``.fya`` 里的 ``_`` 占位值，表示该字段留待运行期赋�
 除 ``skills: _`` 的 PENDING 声明外不存在自动扫描，所有 Skill
 均经 Agent 显式引用触发定向查找；``skills:`` 条目支持裸名 / 显式
 相对路径 / glob 三形态，glob 展开时规范名与已显式声明条目相同的跳过
-（先解析显式条目，再展开 glob）。
+（先解析显式条目，再展开 glob）。glob 双空间并集：路径命中 ∪ 注册表
+名字命中（不含 ``/`` 的模式经 ``SkillRegistry.glob`` 匹配注册表键），
+按解析身份判重。
 
 .. rubric:: catalog 与加载流程
 
@@ -247,6 +249,7 @@ from flowing.errors import EntryNameConflictError, FlowingError, FormatError
 from flowing.message import Message, MessageKind, MessagePriority, TextBlock
 from flowing.parsable import PENDING, Parsable
 from flowing.parser import EntryRef, normalize_entries, split_as
+from flowing.paths import GLOB_META
 from flowing.plugins import Plugin
 from .models import (
     SKILL_NAMING,
@@ -836,6 +839,23 @@ def use_skill(
             project_root=getattr(agent.runtime, "project_root", None))
     else:
         refs = normalize_entries(raw_items, naming=SKILL_NAMING)   # 无文件上下文：纯注册表条目
+    # 名字模式展开（注册表键 fnmatch，与路径命中并集）：模式条目（含 glob
+    # 字符且不含 /）本身不进绑定流，命中按别名判重——同一资源跳过、不同
+    # 资源告警跳过（已收条目胜出，与工具/子 Agent 侧同口径）
+    expanded: list[Any] = []
+    claimed = {ref.alias for ref in refs}
+    for ref in refs:
+        raw = ref.raw
+        if isinstance(raw, str) and "/" not in raw and GLOB_META.search(raw):
+            for key in registry.glob(raw):
+                alias = key.rsplit("::", 1)[-1]
+                if alias in claimed:
+                    continue
+                claimed.add(alias)
+                expanded.append(EntryRef(raw=key, alias=alias, body=ref.body))
+            continue
+        expanded.append(ref)
+    refs = expanded
     for ref in refs:
         agent.skill_add(ref)  # type: ignore[attr-defined]
     # 第 5 步：渲染模板解析——本函数参数 > SkillPlugin 构造参数（随注册表注入）> 内置 DEFAULT_CATALOG_TEMPLATE

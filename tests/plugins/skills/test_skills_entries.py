@@ -230,3 +230,19 @@ async def test_t33_catalog_template_three_level_resolution(tmp_path):
     catalog3 = _catalog_text(agent3)
     assert catalog3.startswith("<available_skills>")
     assert "<name>sum</name>" in catalog3
+
+
+# ---------------------------------------------------------------------------
+# T06 补：名字 glob——skills: 模式经 SkillRegistry.glob 展开注册表命中
+# ---------------------------------------------------------------------------
+
+
+async def test_t06b_name_glob_entries(tmp_path):
+    """skills: [sum-*] 名字模式：注册表里的两个技能都进绑定；模式串本身不进。"""
+    runtime = make_skill_runtime(tmp_path)
+    runtime.register_skill(Skill(name="sum-alpha", description="a", content="A"))
+    runtime.register_skill(Skill(name="sum-beta", description="b", content="B"))
+    agent = await runtime.create_agent(
+        "skill-host", start_loop=False, skills=["sum-*"])
+    use_skill(agent)
+    assert set(agent._skill_entries) == {"sum-alpha", "sum-beta"}
