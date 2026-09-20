@@ -824,8 +824,9 @@ async def test_t70_parallel_tool_batch(runtime, provider):
     script_provider(provider, step1, text_response("完成"))
     result = await agent.query("开始")
     assert result.status == "completed"
-    # asyncio.gather 并行：两个 start 都在任一 end 之前
-    assert events[:2] == ["start-1", "start-2"]
+    # 并行批次：两个 start 都在任一 end 之前（启动顺序不按块序钉死）
+    assert sorted(events[:2]) == ["start-1", "start-2"]
+    assert all(e.startswith("start-") for e in events[:2])
     # 结果按实时完成序挂树（两个调用同延迟，完成序不定——断言集合配对）
     tool_msgs = [agent._messages[mid] for mid in result.turn.message_ids
                  if agent._messages[mid].kind is MessageKind.TOOL]
@@ -1069,13 +1070,13 @@ async def test_t78_async_tool_pending_and_event(runtime, provider):
             break
         assert asyncio.get_running_loop().time() < deadline, "EVENT 消息未按时挂树"
         await asyncio.sleep(0.01)
-    ok_evt, fail_evt = events
+    # 两条 EVENT 的到达顺序随完成序浮动——按内容选取，不按时间序
+    ok_evt = next(e for e in events if "AB" in e.content[1].text)
+    fail_evt = next(e for e in events if "后台炸了" in e.content[1].text)
     assert ok_evt.source == "tool_result"
     assert ok_evt.priority == MessagePriority.STEER
     assert isinstance(ok_evt.content[0], TextBlock)   # 标注块
     assert len(ok_evt.content) == 2   # 标注块 + 结果块
-    assert "AB" in ok_evt.content[1].text   # 结果块（"ab" 大写）
-    assert "后台炸了" in fail_evt.content[1].text   # 错误文本块（与同步 error 同语义）
 
 
 async def test_t79_abort_skips_remaining_tools(runtime, provider):
