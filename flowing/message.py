@@ -20,11 +20,13 @@
 3. 消息的排队与调度：外部消息经 :class:`MessageQueue` 按优先级排序消费；
    ``MessageKind.PROVIDER`` 永不进队列（永远在逻辑 turn 内由 Provider
    adapter 产生）。
-4. 消息的持久化与手术：一行一个 Message、消息完整后 append（append-only）；
-   任意历史修改走 :class:`MessageChain` 五 op。tombstone（删除标记行）/
-   撕裂末行容忍 / 压缩等持久化机制属 :mod:`flowing.persistence` 与
-   ``flowing.agent`` 的职责，本模块只约束「消息对象 ↔ 行」的映射语义
-   （:func:`to_record` / :func:`from_record`）。
+4. 消息的持久化与手术：一行一个 Message、消息完整后提交记录（记录流——
+   追加是主要形态，后端定期清洗重写，重放结果不变，见
+   :mod:`flowing.persistence`）；任意历史修改走 :class:`MessageChain` 五
+   op。tombstone（删除标记行）/ 撕裂末行容忍 / 压缩等持久化机制属
+   :mod:`flowing.persistence` 与 ``flowing.agent`` 的职责，本模块只约束
+   「消息对象 ↔ 行」的映射语义（:func:`to_record` /
+   :func:`from_record`）。
 
 逻辑 Turn 只是执行概念：消费一条消息 → 产生一条 ``turn_end=True`` 的
 PROVIDER 消息（或被 abort）的过程；执行期载体是
@@ -534,10 +536,12 @@ class ToolCallBlock(ContentBlock):
 
     .. rubric:: 行为要点
 
-    - 恢复不变量：tool_call block 必须有对应的 TOOL 结果消息（同分支、
-      严格成对，锚点为本 block 的 ``id`` 与结果消息的
-      ``Message.tool_call_id``）；缺失时恢复流程合成 ``synthetic=True``
-      的占位 TOOL 消息（见 :attr:`Message.synthetic`）。
+    - 配对不变量（树内封闭）：tool_call block 必须有对应的 TOOL 结果消息
+      （同分支、严格成对，锚点为本 block 的 ``id`` 与结果消息的
+      ``Message.tool_call_id``）——执行期取消以 ``tool_status="cancelled"``
+      封闭、缺失时恢复流程合成 ``synthetic=True`` 的占位 TOOL 消息（见
+      :attr:`Message.synthetic`），均落盘；装配对未配对只做断言
+      （``UnpairedToolCallError``），不做读时修补。
     - ``args`` 是 LLM 填写的原始参数字典，未合并；参数合并（specified
       （含注入表达式）> LLM args > schema 默认值，specified 最高）与
       防篡改通道在 ``flowing.tool.ToolEntry`` 层处理，block 本身只是
@@ -1848,6 +1852,11 @@ class MessageChain:
         - 不移动 ``current_head_id``；删除 head 上溯路径上的消息属于调用
           方责任。需要「删除当前 head 并回退到亲节点」时，请使用
           ``Agent.remove`` / ``Agent.pop`` （Agent 层负责 head 维护）。
+        - **配对警示**：删除一条 TOOL 结果消息或含 ``ToolCallBlock`` 的
+          PROVIDER 消息会重新打开配对（tool_call 与结果不再 1:1）——树内
+          成对是不变量，本方法不自动封闭；调用方须随后自行补封闭（如
+          再 ``insert`` 一条结果消息），否则装配的配对断言
+          （``UnpairedToolCallError``）会响亮失败。
 
         :raises KeyError: ``msg_id`` 不存在于消息树（或已被删除）。
 

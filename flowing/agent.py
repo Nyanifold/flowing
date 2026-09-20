@@ -143,6 +143,7 @@ from pydantic import ValidationError
 
 from flowing.context import Context, ContextUsageEstimate, PromptBlockList, PromptSegment
 from flowing.errors import (
+    UnpairedToolCallError,
     EntryNameConflictError,
     FlowingError,
     FormatError,
@@ -1875,7 +1876,9 @@ class Agent:
             # 未知行形态（meta 已被 replay 吸收）静默跳过
         # ①b 孤立 tool_call 合成占位（配对锚为消息字段）：
         #    逐分支扫描 PROVIDER 消息的 ToolCallBlock.id，同分支后续无
-        #    tool_call_id 匹配的 TOOL 消息者，合成占位消息挂树封闭配对：
+        #    tool_call_id 匹配的 TOOL 消息者，经 chain.insert 合成占位消息
+        #    挂树**落盘**封闭配对（消息行 + 邻接调整记录一并写回，占位出现在
+        #    「调用之后、既有后续之前」的链上位置）：
         #    Message(kind=TOOL, tool_call_id=<孤立调用 id>,
         #            tool_status="error", synthetic=True,
         #            content=[TextBlock(占位说明)])
@@ -1902,16 +1905,10 @@ class Agent:
                 content=[TextBlock(
                     text=f"tool call {call_id} result is missing (the tool crashed mid-execution), "
                          "placeholder message synthesized on restore.")])
-            placeholder.parent_id = provider_id
-            # insert 式挂树（纯内存，不落盘——下次恢复以同一确定性 id 重新
-            # 合成，语义幂等且 parent 链自愈）：provider 消息的既有直接子消息
-            # 重挂到占位消息之下，保证配对占位出现在「调用之后、既有后续之前」
-            # 的链上位置；上次恢复后追加的消息（parent_id 已是占位 id）经
-            # 确定性 id 天然接回
-            for child in list(self._messages.values()):
-                if child.parent_id == provider_id and child.id != placeholder.id:
-                    child.parent_id = placeholder.id
-            self._messages[placeholder.id] = placeholder
+            # 落盘封闭（树内永远成对的恢复期保障）：insert 把占位挂在调用直接
+            # 后继并持久化邻接调整（既有子消息重挂到占位之下，各自子树随之整体
+            # 移动）；已落盘的占位在 answered 中，二次恢复不重复合成
+            self.chain.insert(provider_id, placeholder)
             if self.current_head_id == provider_id:
                 # provider 消息本是分支尾：占位消息成为新尾，head 随之上移
                 # （写袋——head 以袋为准）
@@ -3105,6 +3102,42 @@ class Agent:
         .. seealso:: :meth:`cancel`、:meth:`pause`
         """
         self._turn_abort.set()
+
+    def _close_orphan_tool_calls(self, turn: "TurnContext") -> None:
+        """abort / cancel 收尾的配对封闭（树内永远成对的执行期保障）。
+
+        本回合 PROVIDER 消息里未配对的每个 ``ToolCallBlock``，按块序经
+        :meth:`flowing.message.MessageChain.insert` 逐条补一条
+        ``tool_status="cancelled"``、空内容的 TOOL 消息——「因取消未执行」
+        是事实记录（非合成占位）：与调用同分支、插在调用的直接后继位置，
+        消息行与邻接调整记录一并落盘。已配对的调用（含在途工具返回的
+        部分结果）不重复封闭。封闭行在 write-behind 窗口内丢失时，由恢复
+        管线的合成封闭（``synthetic=True`` 占位）兜底。
+        """
+        answered: set[str] = set()
+        for mid in turn.message_ids:
+            msg = self._messages.get(mid)
+            if msg is not None and msg.kind is MessageKind.TOOL and msg.tool_call_id:
+                answered.add(msg.tool_call_id)
+        last_closure: str | None = None
+        for mid in turn.message_ids:
+            msg = self._messages.get(mid)
+            if msg is None or msg.kind is not MessageKind.PROVIDER:
+                continue
+            after_id = msg.id
+            for block in msg.content:
+                if isinstance(block, ToolCallBlock) and block.id not in answered:
+                    closure = Message(kind=MessageKind.TOOL,
+                                      tool_call_id=block.id,
+                                      tool_status="cancelled", content=[])
+                    after_id = self.chain.insert(after_id, closure)
+                    turn.message_ids.append(after_id)
+                    last_closure = after_id
+        if last_closure is not None:
+            # insert 不移动 head：封闭是回合尾部，head 必须随之上移（写袋——
+            # head 以袋为准）——否则下一条消息的 parent 落在封闭之前的 provider
+            # 上，封闭退化为侧支、head 链上重新出现未配对
+            self._core_state["current_head_id"] = last_closure
 
     async def cancel(self) -> None:
         """协作式终止整个 Agent：全部执行条目 abort + 当前回合退出信号。
@@ -4678,6 +4711,8 @@ class Agent:
             # 前移（空 turn 无 append 自然不动），回合末无结算写入；
             # 钩子抛异常只影响交付段，不再楔死 agent
             self.current_turn = None   # 回合物质终结
+            if turn.aborted:
+                self._close_orphan_tool_calls(turn)   # 配对封闭：未配对调用以 cancelled TOOL 消息挂树落盘（树内永远成对）
 
             def _finish(expose_turn: bool = True) -> None:
                 # 5c. 交付（独立小函数：正常路径与 after_turn 异常路径共用，
@@ -4804,9 +4839,11 @@ class Agent:
            仅是 adapter 意图标记，框架本地不缓存）；``prompt_blocks[0]``
            的 ``{{ self.system_prompt }}`` 惰性引用在此触发解析。
         2. 消息路径：从 ``current_head_id`` 沿 ``parent_id`` 上溯到根，
-           反转得根 → head 的消息序列；半截 turn 的已落盘消息照常包含
-           （孤立 tool_call 由恢复时合成的 ``synthetic`` 占位 TOOL 消息
-           封闭成对）。
+           反转得根 → head 的消息序列；半截 turn 的已落盘消息照常包含。
+           树内永远成对（执行期 cancelled 封闭 / 恢复期 synthetic 落盘
+           封闭）：装配对配对只做断言、不做读时修补——发现孤立调用即
+           ``UnpairedToolCallError``（显式手术 ``chain.remove`` 重新打开配对
+           是唯一来源，调用方负责封闭）。
         3. ``_visible_tools()`` → ``list[ToolDefinition]`` （仅
            ``enabled=True`` 条目）。无隐式附加——``subagent-invoke`` /
            ``finish`` 等内置工具必须由用户显式声明才进入可见面。
@@ -4831,9 +4868,21 @@ class Agent:
         # 孤儿链断点容忍——中间消息被 chain.remove 且子树未先 reparent 时
         # 上溯到断点即终止），反转得根 -> head
         messages = list(self.chain.walk(self.current_head_id))[::-1]
-        # （半截 turn 已落盘消息照常包含；孤立 tool_call 由恢复时合成的
-        # synthetic 占位 TOOL 消息封闭成对——tool_status="error"、
-        # content=[TextBlock(占位说明)]，见 _restore 步骤 ①b）
+        # 配对断言（树内永远成对：执行期 cancelled 封闭 / 恢复期 synthetic
+        # 落盘封闭之外的未配对形态只剩显式手术——chain.remove 删掉了调用或
+        # 结果消息——此处响亮报错，不做读时修补）：tool_call 与其结果严格
+        # 1:1，孤立即 UnpairedToolCallError
+        answered = {m.tool_call_id for m in messages if m.kind is MessageKind.TOOL}
+        for m in messages:
+            if m.kind is not MessageKind.PROVIDER:
+                continue
+            for b in m.content:
+                if isinstance(b, ToolCallBlock) and b.id not in answered:
+                    raise UnpairedToolCallError(
+                        f"unpaired tool call in message tree: {b.id}"
+                        f" (its result message is missing — closed pair is a tree invariant;"
+                        " remove() of a call/result message reopens pairing and must be re-closed by the caller)")
+        # （半截 turn 已落盘消息照常包含——树内永远成对，见上方配对断言）
         tools = self._visible_tools()
         # 无隐式附加——subagent-invoke / finish 等内置工具
         # 需用户经 tools: / add_tool 显式声明才进入可见面

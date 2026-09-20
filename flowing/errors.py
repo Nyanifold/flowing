@@ -2279,3 +2279,17 @@ class Intercepted(Exception):
         super().__init__(reason)
         self.reason = reason
         self.payload = payload
+
+
+class UnpairedToolCallError(FlowingError):
+    """消息树配对不变量被破坏（tool_call 与结果消息未成对）。
+
+    .. rubric:: 功能介绍
+
+    树内永远成对：执行期取消以 ``tool_status="cancelled"`` 封闭、崩溃经
+    恢复管线以 ``synthetic=True`` 占位封闭（均落盘）。装配（
+    ``Agent._assemble_context``）对配对只做断言、不做读时修补——发现
+    孤立 tool_call 即抛本异常。唯一的合法来源是显式手术
+    （``MessageChain.remove`` 删除了调用或结果消息）：手术方负责随后
+    重新封闭（``MessageChain.insert`` 补结果消息）。
+    """

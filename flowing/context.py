@@ -88,9 +88,11 @@ docstring）。
   的半截 turn 消息照常进入 ``messages`` （它们是已产生的完整历史）；
   执行状态不恢复、不续跑。
 - 成对匹配：同一分支上 PROVIDER 消息内 ``ToolCallBlock.id`` 与后续
-  TOOL 消息的 ``tool_call_id`` 字段 1:1 严格成对；恢复时合成的
-  ``synthetic=True`` 占位 TOOL 消息封闭孤立 tool_call，adapter 不需要
-  （也不应该）自行修补。
+  TOOL 消息的 ``tool_call_id`` 字段 1:1 严格成对——**树内封闭**：执行期
+  取消以 ``tool_status="cancelled"`` 封闭、崩溃经恢复管线以
+  ``synthetic=True`` 占位封闭（均落盘）；装配对配对只做断言、不做读时
+  修补（孤立即 ``UnpairedToolCallError``），adapter 不需要（也不应该）自行
+  修补。
 - 副线消息不出现：``side_query`` 副线调用的消息不进树、不落盘，不会
   出现在主流程组装的 ``messages`` 中。
 - 组装结果可改写：先经 ``before_provider_gen`` 钩子（value 即
@@ -821,9 +823,9 @@ class Context:
       已 append 到树的消息自然在路径上。无活跃 turn（崩溃恢复后、新 turn
       开始前）行为相同。
     - 半截 turn 不截断：最后一条 ``turn_end=True`` 之后已落盘的半截 turn
-      消息照常进入 ``messages``；孤立 tool_call 由 ``synthetic=True`` 占位
-      TOOL 消息封闭（``tool_call_id`` 等于孤立调用 id、
-      ``tool_status="error"``），tool_call / tool_result 严格成对。
+      消息照常进入 ``messages``；配对在树内封闭（执行期 cancelled / 恢复
+      期 synthetic 占位，均落盘），组装对未配对只做断言
+      （``UnpairedToolCallError``）、不做读时修补。
     - ``tools`` 只含 ``enabled=True`` 的工具条目经 ``llm_definition()`` 的
       产物，与消息流完全分离。无隐式附加：``subagent-invoke`` /
       ``finish`` 等内置工具同样需用户显式声明（``tools:`` /
@@ -892,7 +894,8 @@ class Context:
 
     行为边界：不含副线消息；半截 turn 不截断；tool_call 与其结果消息严格
     成对（配对锚为 PROVIDER 消息内 ``ToolCallBlock.id`` 与 TOOL 消息的
-    ``tool_call_id`` 字段），孤立调用由 ``synthetic`` 占位封闭成对，规则见
+    ``tool_call_id`` 字段）——**树内封闭**（执行期 cancelled / 恢复期
+    ``synthetic`` 占位，均落盘），装配只做配对断言、不做读时修补，规则见
     类 docstring。
 
     .. seealso:: :class:`flowing.message.Message`
