@@ -1905,7 +1905,8 @@ class Agent:
                 kind=MessageKind.TOOL, tool_call_id=call_id,
                 tool_status="error", synthetic=True,
                 content=[TextBlock(
-                    text=f"tool call {call_id} result is missing (the tool crashed mid-execution), "
+                    text=f"tool call {call_id} result is missing (the tool crashed mid-execution, "
+                         "or the result message was removed); "
                          "placeholder message synthesized on restore.")])
             # 落盘封闭（树内永远成对的恢复期保障）：insert 把占位挂在调用直接
             # 后继并持久化邻接调整（既有子消息重挂到占位之下，各自子树随之整体
