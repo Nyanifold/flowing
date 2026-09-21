@@ -65,8 +65,8 @@ async def test_batch_skip_closes_with_cancelled(runtime, provider):
 
 
 async def test_in_flight_abort_pairs_with_partial(runtime, provider):
-    """批次执行中 abort：在途工具返回部分结果（真实配对），
-    不产生多余 cancelled 封闭。"""
+    """批次执行中 abort：在途工具被竞速中断，结果以 tool_status=
+    "cancelled" 真实挂树（真实配对，不产生封闭占位）。"""
     class Slow(Tool):
         definition = ToolDefinition(name="slow", description="慢工具",
                                     params_schema={})
@@ -90,9 +90,9 @@ async def test_in_flight_abort_pairs_with_partial(runtime, provider):
     await task
     assert r1.status == "cancelled"
     calls, results = _calls(agent), _results(agent)
-    assert set(calls) <= set(results), "在途工具的部分结果已真实配对"
+    assert set(calls) <= set(results), "在途工具被取消后结果仍真实配对挂树"
     for cid, m in results.items():
-        assert m.tool_status != "cancelled", "真实部分结果不被封闭覆盖"
+        assert m.tool_status == "cancelled", "被竞速中断的工具结果是 cancelled（不是封闭占位）"
 
 
 async def test_recovery_closure_persisted(runtime, tmp_path):

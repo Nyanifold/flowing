@@ -3514,6 +3514,11 @@ class Agent:
         结果；同步工具路径用 ``False`` 避免同一结果既作为 TOOL 消息挂
         树、又作为 SUBAGENT 消息再次入队。finally 清理 Execution 注册
         （无论结局）。
+
+        级联取消：亲代侧等待被中断（``Tool.__call__`` 竞速注入 /
+        destroy 拆循环）→ 本段捕获 CancelledError，先给子 Agent 自己的
+        回合退出信号（``child.abort_turn()``——协作式，子回合自行收尾
+        与封闭），再原样上抛。
         """
         try:
             turn_result = await child.query(invocation.prompt or "")   # 等待产出（prompt 可为 None：纯参数唤起）
@@ -3538,6 +3543,12 @@ class Agent:
                     source=f"subagent:{result.subagent_id}",
                     content=output_to_blocks(result.result),
                     priority=MessagePriority.STEER))
+        except asyncio.CancelledError:
+            # 级联取消：亲代侧等待被中断（Tool.__call__ 竞速注入 / destroy
+            # 拆循环）——子 Agent 收自己的回合退出信号（协作式，自行收尾
+            # 与配对封闭），随后原样上抛
+            child.abort_turn()
+            raise
         finally:
             self._executions.pop(execution.id, None)
         return result

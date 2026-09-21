@@ -13,6 +13,7 @@ re-export；子系统的全局约定（调用时序、``builtin::``
 from __future__ import annotations   # 注解延迟求值，配合 TYPE_CHECKING 破注解级循环边
 
 import asyncio
+import contextlib
 import inspect
 import logging
 import warnings
@@ -57,7 +58,7 @@ def _strip_unsupported_background(tool: "Tool") -> None:
             f"background is not supported for {type(tool).__name__} (only script tools); forced to False")
         tool.background = False
 
-ToolStatus = Literal["completed", "pending", "blocked", "error"]
+ToolStatus = Literal["completed", "pending", "blocked", "cancelled", "error"]
 """工具执行结果的状态四值。
 
 - ``"completed"``：正常完成，返回值承载在 ``output`` 字段。
@@ -991,9 +992,13 @@ class Tool:
         1. 形态检测：``inspect.isasyncgen`` （async generator 后台形态
            ——首 yield 收据 + 后台驱动）→ ``inspect.isawaitable``——同步
            ``execute`` 直接调用，异步 ``execute`` await；
-        2. Task 包装：异步执行包装为 ``asyncio.Task`` 并关联
-           ``execution`` （cancel 注入的落点——置 abort 信号而非强杀
-           协程）；
+        2. Task 包装与取消竞速：异步执行包装为 ``asyncio.Task`` 并关联
+           ``execution``——在途等待与取消信号（``execution.cancel`` +
+           调用方 Agent 的 ``_turn_abort``）竞速；信号先置位 → 中断在途
+           执行（CancelledError 注入 ``execute`` 的 await 点），产出
+           ``status="cancelled"`` 结果（LLM 可见「被取消」，不走 error
+           通道）。后台形态（background 标记 / Task 返回 / async gen）
+           不包竞速——其取消经 Execution 注册表置位；
         3. caller 自动传入：依 ``_has_caller`` （注册时 inspect 检测）
            决定是否传 ``caller=``；
         4. 内部校验：caller 注入之后、``execute`` 之前，聚合终值按
@@ -1114,8 +1119,41 @@ class Tool:
                     # 构造尾部 _strip_unsupported_background 告警并强制 False）
                     value = asyncio.ensure_future(result)
                 else:
-                    task = asyncio.ensure_future(result)  # Task 包装（abort 为协作式，不强杀）
-                    value = await task
+                    task = asyncio.ensure_future(result)
+                    # 取消竞速（script 前台 / cli / request / mcp 全覆盖的默认
+                    # 行为）：在途等待与取消信号竞速——信号先置位则中断在途
+                    # 执行（CancelledError 注入 execute 的 await 点，工具的
+                    # try/finally 照常跑），产出 cancelled 结果（LLM 可见
+                    # 「被取消」，不走 error 通道）；后台形态（background
+                    # 标记 / Task 返回 / async gen）不包竞速——它们的取消经
+                    # Execution 注册表置位（cancel_children 通道）
+                    sig_events = []
+                    if execution is not None:
+                        sig_events.append(execution.cancel)
+                    turn_abort = getattr(caller, "_turn_abort", None)   # 鸭子类型调用方（测试替身）可无此字段
+                    if turn_abort is not None:
+                        sig_events.append(turn_abort)
+                    if not sig_events:   # 编程式直调（无执行条目、无调用方）：无竞速
+                        value = await task
+                    else:
+                        signals = [asyncio.ensure_future(ev.wait())
+                                   for ev in sig_events]
+                        done, _ = await asyncio.wait(
+                            {task, *signals}, return_when=asyncio.FIRST_COMPLETED)
+                        for sig in signals:
+                            sig.cancel()
+                        if task in done:
+                            value = task.result()   # 异常原样上抛（下方 except 通道）
+                        else:
+                            task.cancel()   # CancelledError 注入在途 await 点
+                            with contextlib.suppress(asyncio.CancelledError):
+                                await task   # 等其收尾（工具的 finally / 清理）
+                            if task.cancelled():
+                                return ToolResult(status="cancelled", output=None)
+                            # 工具捕获取消并返回了部分产物（如 bash 的已收集输出 +
+                            # 中断提示）：带进 cancelled 结果返回（LLM 可见中断前
+                            # 的部分输出）
+                            return ToolResult(status="cancelled", output=task.result())
             else:
                 value = result
         except Intercepted as exc:

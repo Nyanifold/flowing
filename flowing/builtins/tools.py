@@ -275,6 +275,10 @@ class BashTool(Tool):
 
         - 超时杀整个进程组（子进程自立会话，含命令再拉起的孙进程），
           随后返回 ``status="error"`` 的 ``ToolResult``。
+        - 取消中断（``Tool.__call__`` 竞速注入的 CancelledError）杀整个
+          进程组并回收，返回已收集的部分输出 + 中断提示行（竞速层包装为
+          ``status="cancelled"`` 的结果，LLM 可见中断前输出）；输出经
+          增量泵流收集（``communicate`` 拿不到取消时的部分输出）。
         - ``cwd`` 非绝对 → ``ValueError``——经 ``Tool.__call__`` 包装为
           ``status="error"`` （LLM 可见，可自纠正）。
         """
@@ -286,19 +290,49 @@ class BashTool(Tool):
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=cwd,
-            start_new_session=True,   # 独立进程组：超时杀整组
+            start_new_session=True,   # 独立进程组：超时/取消杀整组
         )
+        stdout_buf = bytearray()   # 增量收集（communicate 取消时拿不到部分
+        stderr_buf = bytearray()   # 输出——自行泵流，中断时保留已读部分）
+
+        async def _pump(stream: asyncio.StreamReader, buf: bytearray) -> None:
+            while True:
+                chunk = await stream.read(65536)
+                if not chunk:
+                    break
+                buf.extend(chunk)
+
+        pumps = [asyncio.ensure_future(_pump(proc.stdout, stdout_buf)),
+                 asyncio.ensure_future(_pump(proc.stderr, stderr_buf))]
         try:
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout)
+            await asyncio.wait_for(proc.wait(), timeout)
         except TimeoutError:   # 3.11+ asyncio.TimeoutError 即内置 TimeoutError
             try:
                 os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
             except (ProcessLookupError, PermissionError):
                 pass   # 进程已自行退出
             await proc.wait()   # 回收僵尸
+            await asyncio.gather(*pumps)   # 排空已产出
             raise ValueError(f"command timed out ({timeout}s); process group terminated") from None
-        out = stdout.decode("utf-8", errors="replace")
-        err = stderr.decode("utf-8", errors="replace")
+        except asyncio.CancelledError:
+            # 取消中断（__call__ 竞速注入）：杀进程组（不泄漏）、回收、排空，
+            # 返回已收集的部分输出 + 中断提示（Ctrl-C 体验对齐）——竞速层
+            # 包装为 status="cancelled" 的结果
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass   # 进程已自行退出
+            await proc.wait()
+            await asyncio.gather(*pumps)   # 杀后流 EOF，泵自然收尾
+            out = stdout_buf.decode("utf-8", errors="replace")
+            err = stderr_buf.decode("utf-8", errors="replace")
+            hint = ("CancelledError: command interrupted by agent "
+                    "cancellation; process group terminated")
+            return (f"exit_code: <cancelled>\n"
+                    f"--- stdout ---\n{out}--- stderr ---\n{err}{hint}\n")
+        await asyncio.gather(*pumps)
+        out = stdout_buf.decode("utf-8", errors="replace")
+        err = stderr_buf.decode("utf-8", errors="replace")
         # 非零退出码不是异常——照常在 output 里返回（LLM 应看到）
         return (f"exit_code: {proc.returncode}\n"
                 f"--- stdout ---\n{out}--- stderr ---\n{err}")
