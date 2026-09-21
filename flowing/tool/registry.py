@@ -368,6 +368,9 @@ class ToolRegistry:
           与 ``before_tool_call`` 审批路径调本方法时必命中注册表快路径
           ——Entry 在装配期已解析落账（文件命中的落账派生限定键，注册表
           命中的落账裸名），文件解析是声明期行为，运行时不触发文件 IO。
+        - MCP 合成名（``<声明名>--<server 名>``）经声明期
+          :meth:`expand_mcp` 展开注册后命中注册表快路径；``.fya`` 装配
+          自动完成展开，程序化路径需先自调 ``expand_mcp``。
         - ``.fya`` 与同名 ``.py`` 并存 → 告警 + ``.fya`` 优先。
         - ``.py`` 命中后：恰好一个 ``@flowing_tool`` 打标函数 →
           ``_auto_generate_tool`` 提升；或恰好一个 `ScriptTool` 子类 →

@@ -83,6 +83,7 @@ _FACTORIES = {
     # 推测点 X6 / X7 新增的具名类型（持久化层）
     "FormatVersionError": lambda: errors.FormatVersionError(Path("f.jsonl"), 99, 1),
     "CorruptionError": lambda: errors.CorruptionError(Path("f.jsonl"), 3),
+    "UnpairedToolCallError": lambda: errors.UnpairedToolCallError("call-x"),
     "Intercepted": lambda: Intercepted("r"),
 }
 
@@ -92,9 +93,8 @@ def test_e8_all_names_importable_and_expected():
 
     注：``EntryNameConflictError`` 按 py-spec 原样不在 ``__all__`` 中（直挂根
     的跨正交类），仍可显式导入；``StateKeyError`` 已退役删除（D6/D8）。
-    简报 E8 原文「44 个」与实际规约计数（46）不符，以 py-spec 为准。
     """
-    assert len(errors.__all__) == 54
+    assert len(errors.__all__) == 55
     excluded = {"EntryNameConflictError"}
     assert set(errors.__all__) == set(_FACTORIES) - excluded
     for name in errors.__all__:

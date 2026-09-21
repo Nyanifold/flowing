@@ -143,13 +143,13 @@ from pydantic import ValidationError
 
 from flowing.context import Context, ContextUsageEstimate, PromptBlockList, PromptSegment
 from flowing.errors import (
-    UnpairedToolCallError,
     EntryNameConflictError,
     FlowingError,
     FormatError,
     Intercepted,
     ToolNotFoundError,
     UnknownToolError,
+    UnpairedToolCallError,
 )
 from flowing.hooks import HookRegistry
 from flowing.message import (
@@ -467,7 +467,9 @@ class Execution:
     - 取消是协作式的：``cancel`` 置位是请求不是命令——执行体在检查点检测
       信号后自行决定立即停止（返回已有或空结果）、忽略信号正常完成、或
       做关键收尾后返回部分结果。框架不设强制终止语义（那是可覆写
-      ``stop()`` 的职责）。
+      ``stop()`` 的职责）。例外：前台 awaitable 工具（script / cli /
+      request / mcp）的在途执行由 ``Tool.__call__`` 的取消竞速中断
+      （CancelledError 注入其 await 点）——竞速注入不等工具的协作检查点。
     - ``pause`` 置位同样是协作式请求，保留给 Tool 覆写与 Composable——
       框架核心不主动 set / clear 它；只影响单个执行、不级联（区别于
       Agent 层 ``pause()`` 对工作循环 gate 的控制）。
@@ -1875,7 +1877,7 @@ class Agent:
                 core_persisted.pop(record["key"], None)
             # 未知行形态（meta 已被 replay 吸收）静默跳过
         # ①b 孤立 tool_call 合成占位（配对锚为消息字段）：
-        #    逐分支扫描 PROVIDER 消息的 ToolCallBlock.id，同分支后续无
+        #    扫描 PROVIDER 消息的 ToolCallBlock.id，全局（全树）无
         #    tool_call_id 匹配的 TOOL 消息者，经 chain.insert 合成占位消息
         #    挂树**落盘**封闭配对（消息行 + 邻接调整记录一并写回，占位出现在
         #    「调用之后、既有后续之前」的链上位置）：
@@ -3108,9 +3110,10 @@ class Agent:
         self._turn_abort.set()
 
     def _close_orphan_tool_calls(self, turn: "TurnContext") -> None:
-        """abort / cancel 收尾的配对封闭（树内永远成对的执行期保障）。
+        """回合收尾的配对封闭（树内永远成对的执行期保障）。
 
-        本回合 PROVIDER 消息里未配对的每个 ``ToolCallBlock``，按块序经
+        每个回合收尾恒做（无孤儿则空转）——abort / error / 正常结局统一
+        走此：本回合 PROVIDER 消息里未配对的每个 ``ToolCallBlock``，按块序经
         :meth:`flowing.message.MessageChain.insert` 逐条补一条
         ``tool_status="cancelled"``、空内容的 TOOL 消息——「因取消未执行」
         是事实记录（非合成占位）：与调用同分支、插在调用的直接后继位置，
@@ -3154,7 +3157,7 @@ class Agent:
         .. rubric:: 功能介绍
 
         时序：dispatch ``before_cancel`` （value 为 :class:`CancelContext`，
-        handler ``raise Intercepted`` 阻止取消）→ 置位 ``_executions``
+        handler ``raise Intercepted`` 阻止取消）→ 置位 ``_executions
         全部 abort + 置位回合退出信号 → dispatch ``after_cancel`` （信号
         置位后立即触发——「取消请求已被接受」的事实事件；纯观察，日志 /
         通知 / 审计）。无状态值迁移（Agent 无生命周期状态机）。
@@ -3170,6 +3173,8 @@ class Agent:
 
         - 协作式：置位是请求不是命令——执行体三选一（立即停止返回已有
           / 空结果 / 忽略信号正常完成 / 关键收尾后返回部分结果）；Agent
+          层的前台 awaitable 工具例外：在途执行由竞速中断（见 Execution
+          的协作式条款例外）；Agent
           接收所有返回，不因曾被 cancel 丢弃返回值。
         - cancel 是正常终止不是错误：工具返回部分输出作正常
           ``ToolResult``，Provider 返回空 ``ProviderResponse``——不抛异常。
@@ -3588,8 +3593,9 @@ class Agent:
           自我修正反馈，不是回合异常。内部校验失败（specified / inject /
           默认值的配置错误，在 ``Tool.__call__`` 触发）例外：上抛框架
           错误通道 + 日志，不包成 ToolResult、不进 LLM 可见文本。
-        - abort 于工具调用循环中：正在执行的工具检测信号返回部分结果；
-          剩余工具被跳过（不 execute）。
+        - abort 于工具调用循环中：批次前检查点③的批次整体跳过（不
+          execute）；批次在途的工具由 ``Tool.__call__`` 的取消竞速中断，
+          各产 cancelled 结果挂树。
         - 本方法没有同步 / 异步开关：同步还是异步由工具的 ``execute``
           实现决定。``execute`` 是普通 ``async def`` → ``Tool.__call__``
           await 到底，本方法返回最终 ``ToolResult``，不 enqueue；
@@ -3650,8 +3656,8 @@ class Agent:
                     result = await tool(resolved_args, caller=self,
                                         execution=execution,
                                         tool_call=tool_call)   # Tool.__call__ 调度
-                    # abort 于工具调用循环中：工具检测信号返回部分结果（协作式），
-                    # 剩余工具由 _run_turn 检查点 ③ 跳过
+                    # abort 于工具调用循环中：批次前检查点③整批跳过；在途
+                    # 工具由 Tool.__call__ 的取消竞速中断（产 cancelled 结果）
                 finally:
                     self._executions.pop(execution.id, None)
                 # on_tool_yields 统一点：仅 Tool.__call__ 执行产出的非 blocked
@@ -3939,11 +3945,12 @@ class Agent:
 
         .. rubric:: 行为要点
 
-        - 同步、立即生效：下一次上下文组装即可见。MCP 合成名例外：
-          本方法保持同步，``subagent-invoke`` 以外的合成名（MCP 组展开
-          产物）须先经
+        - 同步、立即生效：下一次上下文组装即可见。两个程序化边界：
+          MCP 合成名（MCP 组展开产物）须先经
           :meth:`flowing.tool.registry.ToolRegistry.expand_mcp` 异步展开
-          注册（``.fya`` 装配路径自动完成，程序化路径自调一次）。
+          注册（``.fya`` 装配路径自动完成，程序化路径自调一次）；名字
+          glob（含 ``*`` 的模式）只在 ``.fya`` 装配路径展开
+          （``_prepare_tool_refs``），本方法按字面值解析、不展开。
         - 同 alias 重复添加 → :class:`flowing.errors.EntryNameConflictError`。
           每次生命周期（create / recover）都从 ``__init__`` 的空
           ``_tool_entries`` 开始重放 ``setup()``；同一生命周期内重复添加
@@ -4099,7 +4106,9 @@ class Agent:
 
         .. rubric:: 行为要点
 
-        - 同步、立即生效：下一次上下文组装即渲染进 catalog。
+        - 同步、立即生效：下一次上下文组装即渲染进 catalog。名字 glob
+          （含 ``*`` 的模式）只在 ``.fya`` 装配路径展开
+          （``_prepare_agent_refs``），本方法按字面值解析、不展开。
         - 同 alias 重复添加 → :class:`flowing.errors.EntryNameConflictError`
           （绑定层统一 fail-fast，与 tool / skill 同口径）。
         - body 判别（本方法体内，单点维护）：键集固定为 ``system_prompt`` /
@@ -4734,8 +4743,9 @@ class Agent:
             # 前移（空 turn 无 append 自然不动），回合末无结算写入；
             # 钩子抛异常只影响交付段，不再楔死 agent
             self.current_turn = None   # 回合物质终结
-            if turn.aborted:
-                self._close_orphan_tool_calls(turn)   # 配对封闭：未配对调用以 cancelled TOOL 消息挂树落盘（树内永远成对）
+            # 配对封闭恒做（无孤儿则空转）：abort / error 结局都可能留下未配对
+            # 调用（批跳、批次中途框架异常、destroy）——树内永远成对
+            self._close_orphan_tool_calls(turn)
 
             def _finish(expose_turn: bool = True) -> None:
                 # 5c. 交付（独立小函数：正常路径与 after_turn 异常路径共用，
@@ -4865,8 +4875,8 @@ class Agent:
            反转得根 → head 的消息序列；半截 turn 的已落盘消息照常包含。
            树内永远成对（执行期 cancelled 封闭 / 恢复期 synthetic 落盘
            封闭）：装配对配对只做断言、不做读时修补——发现孤立调用即
-           ``UnpairedToolCallError``（显式手术 ``chain.remove`` 重新打开配对
-           是唯一来源，调用方负责封闭）。
+           ``UnpairedToolCallError``（孤儿的合法来源只剩显式树操作：
+           ``chain.remove`` 或 fork 切分未闭合链段——调用方负责封闭）。
         3. ``_visible_tools()`` → ``list[ToolDefinition]`` （仅
            ``visible=True`` 条目）。无隐式附加——``subagent-invoke`` /
            ``finish`` 等内置工具必须由用户显式声明才进入可见面。

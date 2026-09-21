@@ -5,8 +5,9 @@
 本模块定义 Flowing 框架的全部具名异常类型，是框架核心层（非扩展、非应用层）
 的公共契约。``FlowingError`` 是统一根，向下按职责分为十一个类别：配置、
 注入、钩子、工具、注册表、资源、Provider、依赖、通信、格式、编译；另有
-三个异常直接挂根、不属任何类别——``EntryNameConflictError`` （Agent 绑定
-层别名冲突）、``FormatVersionError`` 与 ``CorruptionError`` （jsonl 持久化
+四个异常直接挂根、不属任何类别——``EntryNameConflictError`` （Agent 绑定
+层别名冲突）、``UnpairedToolCallError`` （消息树配对不变量）、
+``FormatVersionError`` 与 ``CorruptionError`` （jsonl 持久化
 文件；与声明式文件格式的 ``FormatError`` 分层，持久化层不专设中间层）。
 外加一个刻意游离于普通错误语义之外的信号类 ``Intercepted`` （钩子 handler
 的有意硬阻断信号，刻意不继承 ``FlowingError``）。
@@ -71,6 +72,7 @@ import 期作者笔误刻意用内置 ``ValueError``，不入本层次——如
         ├── EntryNameConflictError       # Agent 绑定层同 alias 冲突
         ├── FormatVersionError           # jsonl 持久化文件格式版本不受支持
         ├── CorruptionError              # jsonl 持久化文件中间行损坏
+        ├── UnpairedToolCallError        # 消息树配对不变量（装配断言）
         ├── FormatError                  # 声明式文件格式 / Parsable 求值 / 保留属性
         │   ├── MissingFieldError
         │   ├── MissingContextError
@@ -219,6 +221,7 @@ __all__ = [
     "ArtifactModifiedError",
     "FormatVersionError",
     "CorruptionError",
+    "UnpairedToolCallError",
     "Intercepted",
 ]
 # 注：EntryNameConflictError 刻意不列入 __all__；仍可经
@@ -2289,7 +2292,8 @@ class UnpairedToolCallError(FlowingError):
     树内永远成对：执行期取消以 ``tool_status="cancelled"`` 封闭、崩溃经
     恢复管线以 ``synthetic=True`` 占位封闭（均落盘）。装配（
     ``Agent._assemble_context``）对配对只做断言、不做读时修补——发现
-    孤立 tool_call 即抛本异常。唯一的合法来源是显式手术
-    （``MessageChain.remove`` 删除了调用或结果消息）：手术方负责随后
-    重新封闭（``MessageChain.insert`` 补结果消息）。
+    孤立 tool_call 即抛本异常。孤儿的合法来源是显式的树操作：
+``MessageChain.remove`` 删除了调用或结果消息，或 ``Agent.fork`` 把
+未配对的调用切进新分支（fork docstring 的「配对断裂」条款）——操作方
+负责随后重新封闭（``MessageChain.insert`` 补结果消息）或弃用该分支。
     """

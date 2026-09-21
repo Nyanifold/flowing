@@ -2,7 +2,7 @@
 
 三层能力描述的 Tool 形态核心：可执行对象（:class:`Tool` 基类）、LLM 可见
 声明（:class:`ToolDefinition`）、Agent 级绑定（:class:`ToolEntry`）、
-调用与结果（:class:`ToolCall` / :class:`ToolResult`，状态四值见
+调用与结果（:class:`ToolCall` / :class:`ToolResult`，状态五值见
 :data:`ToolStatus`、类型判别值 :data:`ToolType`）。另承载子系统共享的
 命名规则表 :data:`TOOL_NAMING` 与 execute 签名建模入口
 ``_infer_from_execute``（内部 API）。公开符号经 ``flowing.tool``
@@ -59,9 +59,11 @@ def _strip_unsupported_background(tool: "Tool") -> None:
         tool.background = False
 
 ToolStatus = Literal["completed", "pending", "blocked", "cancelled", "error"]
-"""工具执行结果的状态四值。
+"""工具执行结果的状态五值。
 
 - ``"completed"``：正常完成，返回值承载在 ``output`` 字段。
+- ``"cancelled"``：被取消——``Tool.__call__`` 的取消竞速中断在途
+  ``execute`` 的产物（工具捕获后返回部分产物的，产物在 ``output``）。
 - ``"pending"``：异步收据。三种形态产生：``execute`` 返回
   ``asyncio.Task``；``execute`` 是 async generator（首个 ``yield``
   即收据内容）；``background = True`` 标记的普通 async ``execute``。
@@ -280,6 +282,9 @@ class ToolResult:
       经 `ToolResult.blocked` 工厂产生——来源：``before_tool_call`` /
       ``after_tool_call`` 拦截（工具未执行或结果被丢弃），或 ``execute``
       内主动抛出 ``Intercepted`` （执行被硬阻断于中途）。
+    - ``cancelled`` 承载取消边界：``Tool.__call__`` 的取消竞速中断
+      在途执行的产物——``output`` 为 ``None`` 或工具中断前返回的部分
+      产物（如 bash 的已收集输出 + 中断提示）。
     - ``pending`` 承载异步边界（三种形态：返回 ``asyncio.Task`` /
       async generator 首 yield / ``background`` 标记）：框架只回收据，
       不阻塞逻辑 Turn 等待异步任务。
@@ -305,12 +310,13 @@ class ToolResult:
     """
 
     status: ToolStatus
-    """执行状态四值之一，见 `ToolStatus`。
+    """执行状态五值之一，见 `ToolStatus`。
     """
     output: Any = None
     """唯一结果字段。构造期收原料；经 `normalize_output` 归一后、出
     ``Agent.tool_call`` 恒为五形态之一。``completed`` 时承载返回值；
-    ``pending`` 时为 ``None`` （收据）；``error`` 时可为 ``None``；
+    ``pending`` 时为 ``None`` （收据）；``cancelled`` 时为 ``None`` 或
+  工具中断前返回的部分产物；``error`` 时可为 ``None``；
     ``blocked`` 时为 ``None`` 或阻断原因 str。
     """
     error: str | None = None
@@ -965,7 +971,9 @@ class Tool:
           已由调度层聚合进参数）；复杂对象（连接池、客户端）不进参数
           ——以标识符字符串传入，经 ``caller`` 获取真实对象。
         - 长时间运行的工具应周期性检查 ``self._execution.cancel.is_set()``
-          以支持协作式取消。
+          以支持协作式取消（后台形态——async gen / Task 返回——的取消不经
+          ``__call__`` 竞速，须工具自查信号；前台 awaitable 由竞速中断，
+          无需自查）。
 
         .. seealso::
 
@@ -1054,9 +1062,11 @@ class Tool:
           形态决定，与调用上下文无关。
         - 不重试、不超时兜底、不审批——重试由可选的 ``use_retry()``
           提供，审批在 ``before_tool_call``。
-        - 边缘情况：``execution.cancel`` 在 ``execute`` 运行期间被置位
-          → 本方法不强制中断 Task，工具自行协作退出；工具不响应时由
-          cancel / stop 族的上层策略处理。
+        - 边缘情况：``execution.cancel``（或调用方 ``_turn_abort``）在
+          ``execute`` 运行期间被置位 → 取消竞速中断在途 Task
+          （CancelledError 注入其 await 点，产 cancelled 结果）；后台
+          形态（async gen / Task 返回 / background 标记）不包竞速，
+          其取消经 Execution 注册表置位、执行体自行协作退出。
 
         .. seealso::
 

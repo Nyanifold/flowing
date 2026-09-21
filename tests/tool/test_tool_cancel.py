@@ -31,10 +31,10 @@ class SlowTool(Tool):
         return "done"
 
 
-async def test_script_tool_race_cancel():
+async def test_script_tool_race_cancel(tmp_path):
     """script 前台：abort 信号先置位 → 在途 execute 被中断，
     结果 status="cancelled"，不等 30s。"""
-    rt = make_runtime(Path("/tmp/t-cancel-script"))
+    rt = make_runtime(tmp_path)
     rt.register_tool(SlowTool())
     agent = await rt.create_agent("test-agent")
     agent.add_tool("slow")
@@ -55,12 +55,11 @@ async def test_script_tool_race_cancel():
     await rt.shutdown()
 
 
-async def test_script_tool_cancel_via_execution():
+async def test_script_tool_cancel_via_execution(tmp_path):
     """execution.cancel 通道（编程式直调）：置位 → cancelled。"""
-    rt = make_runtime(Path("/tmp/t-cancel-exec"))
+    rt = make_runtime(tmp_path)
     tool = SlowTool()
     agent = await rt.create_agent("test-agent")
-    execution = None
     from flowing.agent import Execution
     from datetime import datetime
     execution = Execution(id="x1", kind="tool", tags=[], started_at=datetime.now(),

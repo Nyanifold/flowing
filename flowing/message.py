@@ -57,7 +57,7 @@ Message 字段规约总表：
    * - ``tool_call_id``
      - 配对锚（仅 ``kind=TOOL`` 非 ``None``）：与 PROVIDER 消息 ``ToolCallBlock.id`` 1:1 严格成对
    * - ``tool_status``
-     - 工具结果状态四值（仅 ``kind=TOOL`` 非 ``None``）；``__post_init__`` 双向强制
+     - 工具结果状态五值（仅 ``kind=TOOL`` 非 ``None``）；``__post_init__`` 双向强制
    * - ``source``
      - 自由字符串二级分类（框架不枚举），投递方填写
    * - ``tags``
@@ -878,8 +878,8 @@ class Message:
     """配对锚（默认 ``None``）：仅 ``kind=TOOL`` 非 None，值为对应
     PROVIDER 消息 :attr:`ToolCallBlock.id`。``__post_init__`` 双向强制。
     """
-    tool_status: Literal["completed", "pending", "blocked", "error"] | None = None
-    """工具结果状态四值（默认 ``None``）：仅 ``kind=TOOL`` 非 None。
+    tool_status: Literal["completed", "pending", "blocked", "cancelled", "error"] | None = None
+    """工具结果状态五值（默认 ``None``）：仅 ``kind=TOOL`` 非 None。
     用内联 ``Literal`` 而非 import ``flowing.tool.ToolStatus``——保持
     「tool 认识 message、message 不认识 tool」的单向依赖。
     ``__post_init__`` 双向强制。

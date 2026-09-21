@@ -253,8 +253,8 @@ class EntryInfo:
 
     - ``alias`` 是 Agent 内查找键（``tool_call()`` 仅按别名查找）；同一工具
       在不同 Agent 快照中可有不同别名。
-    - ``visible=False`` 表示绑定存在但当前对 LLM 不可见、不可调用；条目
-      本身仍在（可被重新启用）。
+    - ``visible=False`` 表示绑定存在但当前对 LLM 不可见（编程式调用不受
+      影响——可见性≠可执行性）；条目本身仍在（可被重新置可见）。
     - ``agent_type`` 仅子 Agent 条目有值；工具条目恒为 ``None``。
     - 不投影 entry 的 schema 覆写内容（specified / inject 参数等）——观测
       面只给「绑没绑、叫什么、开没开」；LLM 可见声明请经
@@ -271,9 +271,9 @@ class EntryInfo:
     alias: str
     """Agent 内别名（查找键）；可能与全局注册名不同（per-Agent 覆写）。"""
     visible: bool
-    """启用状态：``False`` 时对 LLM 不可见、不可调用，但绑定仍保留。语义
-    呼应 ``flowing.lists.Togglable`` 的元素契约（开关语义一致，但
-    Tool/Subagent 条目的容器是别名键 dict，不经 ``ManagedList`` 管理——两
+    """可见性状态：``False`` 时对 LLM 不可见（编程式调用不受影响——
+    可见性≠可执行性），但绑定仍保留。对应 Tool/Subagent/Skill 条目的
+    ``visible`` 字段（别名键 dict 承载，不经 ``ManagedList`` 管理——两
     家族分界见 ``flowing.lists`` 模块 docstring）。"""
     agent_type: str | None
     """子 Agent 条目的目标类型名；工具条目恒为 ``None``。"""

@@ -242,7 +242,10 @@ LLM 不给 skill 传参：``skill-load`` 工具与 ``agent.skill_load()``
 
 from typing import Any, ClassVar
 
+import logging
 from collections.abc import Mapping
+
+_logger = logging.getLogger(__name__)
 
 from flowing.agent import Agent
 from flowing.errors import EntryNameConflictError, FlowingError, FormatError
@@ -843,16 +846,27 @@ def use_skill(
     # 字符且不含 /）本身不进绑定流，命中按别名判重——同一资源跳过、不同
     # 资源告警跳过（已收条目胜出，与工具/子 Agent 侧同口径）
     expanded: list[Any] = []
-    claimed = {ref.alias for ref in refs}
+    claimed: dict[str, Any] = {}
     for ref in refs:
+        claimed.setdefault(ref.alias, ref)
         raw = ref.raw
         if isinstance(raw, str) and "/" not in raw and GLOB_META.search(raw):
             for key in registry.glob(raw):
                 alias = key.rsplit("::", 1)[-1]
-                if alias in claimed:
+                existing = claimed.get(alias)
+                if existing is not None:
+                    try:   # 同一资源（同注册表键）静默去重；不同资源告警跳过
+                        same = registry.get(
+                            existing.raw, source_dir=source_dir).registry_key == key
+                    except Exception:
+                        same = False
+                    if not same:
+                        _logger.warning(
+                            "name-glob hit skipped (alias %r already claimed by another resource): %s",
+                            alias, key)
                     continue
-                claimed.add(alias)
-                expanded.append(EntryRef(raw=key, alias=alias, body=ref.body))
+                claimed[alias] = EntryRef(raw=key, alias=alias, body=ref.body)
+                expanded.append(claimed[alias])
             continue
         expanded.append(ref)
     refs = expanded
