@@ -50,6 +50,7 @@ from flowing.errors import (
     ServerError,
 )
 from flowing.message import (
+    ImageBlock,
     MediaBlock,
     Message,
     MessageKind,
@@ -137,6 +138,11 @@ class OpenAICompletionsProvider(Provider):
     - 前缀缓存由 OpenAI 服务端自动处理，adapter 不发送任何缓存标记；
       ``PromptBlock.cache`` 对本格式只是字节稳定性提示，不产生请求级
       效果。
+    - 多模态输入仅将 ``ImageBlock`` 编码为 ``image_url``；其他媒体类型
+      在本地抛出 :class:`flowing.errors.InvalidRequestError`，避免错误地
+      作为图片提交。
+    - 子类可覆写 :meth:`_additional_headers` 添加厂商请求头，并覆写
+      :meth:`_provider_data_from_chunk` 收集流式响应元数据。
 
     .. seealso::
 
@@ -174,6 +180,7 @@ class OpenAICompletionsProvider(Provider):
         credential = self.get_credential()   # 每次发起请求前读取（凭证唯一入口）
         if credential:
             headers["Authorization"] = f"Bearer {credential}"
+        headers.update(self._additional_headers())
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(120.0)) as client:
                 resp = await client.post(
@@ -193,6 +200,14 @@ class OpenAICompletionsProvider(Provider):
                 err_body = resp.text
             raise _HttpResponseError(resp.status_code, err_body, dict(resp.headers))
         return resp.json()
+
+    def _additional_headers(self) -> dict[str, str]:
+        """返回可合并到普通 POST 与 SSE 请求的厂商请求头。
+
+        基类默认空映射，不改变既有 adapter 的请求头；子类返回值在
+        ``Authorization`` 等基础头之后合并。
+        """
+        return {}
 
     # ── 请求映射（Context → chat/completions 请求体）────────────────────
 
@@ -249,16 +264,23 @@ class OpenAICompletionsProvider(Provider):
         return "".join(parts), media
 
     def _map_user_content(self, msg: Message) -> Any:
-        """user 系消息的内容位：有媒体 → parts 形态（image_url），否则纯文本。"""
+        """映射 user 内容；图片生成 ``image_url``，不支持媒体本地报错。"""
         text, media = self._map_content_blocks(msg)
         if not media:
             return text
         parts: list[dict[str, Any]] = [{"type": "text", "text": text}]
         for m in media:
-            mime = m.mime_type or "application/octet-stream"
-            parts.append({"type": "image_url", "image_url": {
-                "url": f"data:{mime};base64,{m.data}"}})
+            parts.append(self._image_part(m))
         return parts
+
+    def _image_part(self, media: MediaBlock) -> dict[str, Any]:
+        """把静态图像编码为 OpenAI ``image_url`` part；拒绝其他媒体类型。"""
+        if not isinstance(media, ImageBlock):
+            raise InvalidRequestError(
+                f"openai_completions does not support {media.type!r} media input")
+        mime = media.mime_type or "application/octet-stream"
+        return {"type": "image_url", "image_url": {
+            "url": f"data:{mime};base64,{media.data}"}}
 
     def _map_message(self, msg: Message) -> list[dict[str, Any]]:
         """单条消息 → chat/completions messages 数组元素（一对多：媒体转移）。"""
@@ -298,9 +320,7 @@ class OpenAICompletionsProvider(Provider):
             follow_up = {"role": "user", "content": [
                 {"type": "text",
                  "text": "[The tool results above include the following media content]"},
-                *[{"type": "image_url", "image_url": {
-                    "url": f"data:{m.mime_type or 'application/octet-stream'};base64,{m.data}"}}
-                  for m in media],
+                *[self._image_part(m) for m in media],
             ]}
             return [tool_msg, follow_up]
         if msg.kind is MessageKind.SYSTEM:
@@ -454,7 +474,16 @@ class OpenAICompletionsProvider(Provider):
         credential = self.get_credential()   # 凭证唯一入口，每次读取
         if credential:
             headers["Authorization"] = f"Bearer {credential}"
+        headers.update(self._additional_headers())
         return headers
+
+    def _provider_data_from_chunk(self, chunk: dict[str, Any]) -> dict[str, Any]:
+        """提取单个 JSON SSE chunk 的厂商元数据；基类默认返回空映射。
+
+        ``generate_stream`` 在解析每个有效 JSON chunk 后、检查 choices
+        前调用，因此无 choices 的 usage / metadata chunk 也可被子类读取。
+        """
+        return {}
 
     def _parse_tool_args(self, raw: str) -> dict:
         """流式累积的工具参数 → 对象；JSON 容错（坏转义/残缺 → 尽力修复）。
@@ -548,6 +577,7 @@ class OpenAICompletionsProvider(Provider):
         tools: dict[object, dict] = {}   # stream index/id -> {idx,id,name,args}
         finish_reason = None
         last_usage: dict | None = None
+        stream_provider_data: dict[str, Any] = {}
 
         async def _alloc() -> int:
             i = cidx["next"]
@@ -597,6 +627,8 @@ class OpenAICompletionsProvider(Provider):
                             raise self._classify_error(_HttpResponseError(
                                 chunk.get("status", 400),
                                 {"error": chunk["error"]}, {}))
+                        stream_provider_data.update(
+                            self._provider_data_from_chunk(chunk))
                         if chunk.get("usage") is not None:
                             last_usage = chunk["usage"]
                         choices = chunk.get("choices") or []
@@ -651,8 +683,9 @@ class OpenAICompletionsProvider(Provider):
         # 流结束：先产工具块（整段参数），再产末帧（usage + finish_reason）
         async for d in _finalize_tools():
             yield d
+        stream_provider_data["stop_reason"] = finish_reason
         yield ProviderDelta(
             kind="text", text="", content_index=cidx["next"],   # 未使用 index：末帧只载 usage/finish，不污染已累积块
             usage=self._usage_from_raw(last_usage) if last_usage else None,
-            provider_data={"stop_reason": finish_reason},
+            provider_data=stream_provider_data,
         )

@@ -10,10 +10,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import ClassVar
 
+from flowing.context import Context
+from flowing.errors import InvalidRequestError
+from flowing.model import ModelConfig
 from flowing.providers.openai_completions import OpenAICompletionsProvider
-from flowing.providers.provider import register_provider
+from flowing.providers.provider import ProviderResponse, register_provider
 
 
 @register_provider
@@ -44,6 +48,14 @@ class OpenRouterProvider(OpenAICompletionsProvider):
       ``provider_data``。
     - 模型路由是 OpenRouter 服务端行为，本 adapter 不做本地路由 /
       fallback 链。
+    - 所有请求携带 ``X-OpenRouter-Metadata: enabled``，响应中的
+      ``openrouter_metadata`` 映射保存在 ``provider_data``。
+    - models.yaml 可为单个模型声明 ``reasoning.effort``；该字符串按
+      OpenRouter 参数形状写入请求体 ``reasoning.effort``。该设置属于模型
+      属性，不转换 ``thinking_budget``，也不影响其他 provider。各模型接受
+      的强度由服务端决定；不支持的配置由既有 HTTP 错误归类暴露。
+    - OpenAI Completions 多模态输入目前仅接受图像；音频、视频和文件块
+      在本地以 ``InvalidRequestError`` 拒绝。
 
     .. seealso::
 
@@ -54,3 +66,42 @@ class OpenRouterProvider(OpenAICompletionsProvider):
 
     name: ClassVar[str] = "openrouter"
     default_base_url: ClassVar[str | None] = "https://openrouter.ai/api/v1"
+
+    def _additional_headers(self) -> dict[str, str]:
+        return {"X-OpenRouter-Metadata": "enabled"}
+
+    def _build_request(self, context: Context, model: ModelConfig) -> dict:
+        body = super()._build_request(context, model)
+        try:
+            effort = model["reasoning.effort"]
+        except KeyError:
+            return body
+        if not isinstance(effort, str):
+            raise InvalidRequestError(
+                "models.yaml reasoning.effort must be a string, "
+                f"got {type(effort).__name__}")
+        reasoning = body.get("reasoning")
+        if reasoning is None:
+            reasoning = {}
+        elif not isinstance(reasoning, dict):
+            raise InvalidRequestError(
+                "OpenRouter reasoning request field must be a mapping when "
+                "reasoning.effort is configured")
+        else:
+            reasoning = dict(reasoning)
+        reasoning["effort"] = effort
+        body["reasoning"] = reasoning
+        return body
+
+    def _map_response(self, resp: dict) -> ProviderResponse:
+        response = super()._map_response(resp)
+        metadata = resp.get("openrouter_metadata")
+        if isinstance(metadata, Mapping):
+            response.provider_data["openrouter_metadata"] = dict(metadata)
+        return response
+
+    def _provider_data_from_chunk(self, chunk: dict) -> dict:
+        metadata = chunk.get("openrouter_metadata")
+        if isinstance(metadata, Mapping):
+            return {"openrouter_metadata": dict(metadata)}
+        return {}

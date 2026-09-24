@@ -17,3 +17,7 @@ deepseek-flash-thinking:
   model: deepseek-v4-flash
   thinking: enabled           # 思考开关（→ {"type": "enabled"}）
   reasoning_effort: high      # 思考强度（low/high/max）
+openrouter-gpt6:
+  provider: openrouter
+  model: openai/gpt-6-luna
+  "reasoning.effort": high    # OpenRouter 参数归模型条目所有

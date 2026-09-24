@@ -64,7 +64,8 @@ def test_t87_extra_not_resolved(agent):
 def test_t88_load_models(fixtures_dir):
     models = load_models(fixtures_dir / "providers" / "models.yaml")
     assert set(models) == {"sonnet", "deepseek-v4",
-                           "deepseek-flash", "deepseek-flash-thinking"}
+                           "deepseek-flash", "deepseek-flash-thinking",
+                           "openrouter-gpt6"}
     sonnet = models["sonnet"]
     assert sonnet.provider == "anthropic" and sonnet.model == "claude-sonnet-4-6"
     assert isinstance(sonnet.thinking_budget, Parsable)  # 模板形态字段被包装
@@ -72,6 +73,10 @@ def test_t88_load_models(fixtures_dir):
     ds = models["deepseek-v4"]
     assert ds.provider == "deepseek-personal" and ds.model == "deepseek-chat"
     assert ds.context_window == 64000  # 静态值保持原样（不包装）
+    openrouter = models["openrouter-gpt6"]
+    assert openrouter.model == "openai/gpt-6-luna"
+    assert openrouter["reasoning.effort"] == "high"
+    assert getattr(openrouter, "reasoning.effort") == "high"
 
 
 def test_t88b_loaded_parsable_field_resolves(fixtures_dir, agent):
@@ -85,7 +90,29 @@ def test_t89_unknown_field_goes_to_extra(fixtures_dir):
     models = load_models(fixtures_dir / "providers" / "models.yaml")
     cfg = models["deepseek-v4"]
     assert cfg._extra["team_note"] == "x"  # 不告警、不丢弃
-    assert not hasattr(cfg, "team_note") or "team_note" not in vars(cfg)
+    assert "team_note" not in vars(cfg)  # 扩展字段由 __getattr__ 读取
+    assert cfg.team_note == cfg["team_note"] == "x"
+
+
+def test_model_config_item_access_preserves_declared_fields():
+    cfg = ModelConfig(
+        "m", "p", thinking_budget=123, context_window=456,
+        max_output_tokens=789,
+        extra={"note": "extra", "reasoning.effort": "high",
+               # Formal fields win over conflicting manual extra keys.
+               "model": "shadow-model"},
+    )
+    assert cfg["model"] == cfg.model == "m"
+    assert cfg["provider"] == cfg.provider == "p"
+    assert cfg["thinking_budget"] == cfg.thinking_budget == 123
+    assert cfg["context_window"] == cfg.context_window == 456
+    assert cfg["max_output_tokens"] == cfg.max_output_tokens == 789
+    assert cfg.note == cfg["note"] == "extra"
+    assert cfg["reasoning.effort"] == getattr(cfg, "reasoning.effort") == "high"
+    with pytest.raises(KeyError):
+        _ = cfg["missing"]
+    with pytest.raises(AttributeError):
+        _ = cfg.missing
 
 
 def test_t89b_deepseek_thinking_entries_split(fixtures_dir):

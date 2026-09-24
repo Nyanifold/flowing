@@ -31,7 +31,7 @@ Agent 对模型只做“持有 + 机械传递”：持有 ``self.model: ModelCon
       model: claude-sonnet-4-6  # 必填，传给 API 的模型 ID
       thinking_budget: 32000    # 可选元信息，字段值可为 Parsable
       # 字段分流：固定内建字段集（见 load_models）升为 ModelConfig
-      # 实例属性，其余字段静默进 ModelConfig._extra
+      # 实例属性，其余字段静默进 ModelConfig._extra，可经属性或下标读取
 
 ``model-tags.yaml`` （默认 ``$FLOWING_CONFIG_HOME/model-tags.yaml``）::
 
@@ -123,7 +123,8 @@ class ModelConfig:
     字段分流：:func:`load_models` 把固定内建字段集（``model`` /
     ``provider`` / ``thinking_budget`` / ``context_window`` /
     ``max_output_tokens``）提升为实例属性；models.yaml 条目中的其余字段
-    静默收纳进 :attr:`_extra`，Composable 可读，框架核心不解释、不丢弃。
+    静默收纳进 :attr:`_extra`，可通过同名属性或 ``cfg["字段名"]`` 读取，
+    框架核心不解释、不丢弃。
 
     .. rubric:: 使用示例
 
@@ -166,8 +167,8 @@ class ModelConfig:
     - 本类不做任何 provider 探测、能力校验或合法性检查；不兼容的模型到
       API 调用时才报错。
     - 不缓存 :meth:`resolve` 结果——每次 ``provider_gen()`` 前现场求值。
-    - ``extra=None`` 归一化为空 dict；``_extra`` 内容不属于稳定契约
-      （跨版本不保证）。
+    - ``extra=None`` 归一化为空 dict；扩展字段可经同名属性或下标读取，
+      ``_extra`` 内部存储形态不属于稳定契约（跨版本不保证）。
     - 不变量：``self.model`` 永远是 ``ModelConfig``；``provider`` 字段解析
       后必须能在 provider 候选清单中查到条目，否则 ``provider_gen()`` 时
       报错。
@@ -283,7 +284,10 @@ class ModelConfig:
           含 Parsable 时必须返回新实例。
         - 不触发 provider 查找、不触碰网络、不缓存结果。
         - ``_extra`` 中的值不参与求值，原样拷贝到新实例。
-        - Parsable 求值失败（语法错误等）异常直接上抛，由 ``_run_turn`` 的
+        - 未定义为正式字段的名称经属性访问或 ``cfg["字段名"]`` 读取
+          ``_extra``；下标读取正式字段时返回对应属性。下标键按完整字符串
+          匹配，不拆分点号（如 ``cfg["reasoning.effort"]``）。
+    - Parsable 求值失败（语法错误等）异常直接上抛，由 ``_run_turn`` 的
           错误路径（``on_provider_error``）处理；模板引用未定义变量按 Jinja2
           默认行为处理（不抛）。
 
@@ -318,6 +322,34 @@ class ModelConfig:
             max_output_tokens=_resolve_field(self.max_output_tokens),
             extra=dict(self._extra),  # _extra 不参与求值，原样拷贝（见边缘情况）
         )
+
+    def __getattr__(self, name: str) -> Any:
+        """显式属性不存在时，从 ``_extra`` 读取同名模型扩展字段。
+
+        :raises AttributeError: 扩展字段中也不存在该名称。
+        """
+        extra = vars(self).get("_extra", {})
+        try:
+            return extra[name]
+        except KeyError:
+            raise AttributeError(
+                f"{type(self).__name__!s} has no attribute {name!r}") from None
+
+    def __getitem__(self, key: str) -> Any:
+        """按字段名读取正式属性或 ``_extra`` 中的模型扩展字段。
+
+        正式模型字段优先；其余字符串作为 ``_extra`` 的完整键查找，
+        包含点号的键不会被拆分。
+
+        :param key: 正式字段名或 ``_extra`` 中的完整字符串键。
+        :raises KeyError: 正式字段与扩展字段中均不存在该键。
+        """
+        if key in _KNOWN_MODEL_FIELDS:
+            return getattr(self, key)
+        try:
+            return vars(self).get("_extra", {})[key]
+        except KeyError:
+            raise KeyError(key) from None
 
 
 
