@@ -1,4 +1,4 @@
-"""flowing.composables —— 应用层 Composable：纯函数式能力注入。
+"""flowing.composables —— 应用层 Composable：函数式能力注入。
 
 .. rubric:: 功能介绍
 
@@ -17,10 +17,19 @@ steer 导向续跑）。场景类
 Composable（``use_logging`` / ``use_guardrail`` 等）属应用代码，框架
 不预留符号。
 
-Composable 只做“挂载”：注册钩子 handler、绑定实例属性；不修改框架
-核心状态。本包不提供插件（阶段一）能力：不做全局注册、不经过
-``runtime.install()``、自身也没有 ``install()``——调用即生效，作用域严格
-限于传入的那一个 Agent 实例。
+``use_xxx(agent, ...)`` 是应用层入口约定，不是行为白名单。函数体可按需
+注册钩子 handler、挂载 Agent 属性、通过 ``agent.state.register()`` 登记
+状态，也可执行其他应用层逻辑；Composable 的返回值与具体行为不受本包
+限制。只在当前运行期使用的临时状态可放在闭包变量或 Agent 属性中：把
+状态放在该次调用创建的闭包中，可避免与 Agent 属性名冲突，但外部不能
+通过 Agent 直接访问；Agent 属性可供外部读取和管理，但需自行避免属性名
+冲突。需要持久化的状态可通过 Flowing 内置的 ``agent.state.register()``
+登记，也可由应用自行维护持久化与恢复；
+闭包变量和普通 Agent 属性本身不提供持久化能力。
+内置 Composable 通常用于为传入的 Agent 实例装配策略。本包不提供插件
+（阶段一）能力：
+不做全局注册、不经过 ``runtime.install()``、自身也没有 ``install()``——
+调用即执行，影响范围由函数实现决定。
 
 .. rubric:: 使用示例
 
@@ -45,18 +54,19 @@ Composable 只做“挂载”：注册钩子 handler、绑定实例属性；不�
 
 .. rubric:: 行为要点
 
-- 启用方式：双层启用的阶段二——``use_xxx(self)`` 在 ``setup()`` 中按
-  实例启用（恢复时 ``setup()`` 在新实例上执行，钩子注册表随实例重建，
-  天然不叠加）；未调用 ``use_xxx`` 的 Agent 不持有任何相关 handler 与
-  状态——“没启用”是“代码路径从没存在过”，不是“被跳过”，零开销。
-- 同步 / async 形态：由内部是否确需 ``await`` 决定——纯注册型
-  Composable 写成同步 ``def`` （本包五个均为同步），调用点不需要
-  ``await``；需要真实等待（退避 sleep、副线查询）的 handler 才是异步
+- 启用方式：双层启用的阶段二——``use_xxx(self, ...)`` 在 ``setup()`` 中按
+  需执行。恢复时，新实例会再次执行 ``setup()``；临时状态与钩子按函数和
+  注册 API 的语义重新装配，持久化状态由所选的持久化渠道恢复。
+-  未调用的 Composable 不会执行，因此不会由它添加 handler、属性或状态。
+- 同步 / async 形态：由函数本身是否需要 ``await`` 决定。本包五个
+  ``use_xxx`` 当前均为同步 ``def``；这只是当前实现形态，不限制自写
+  Composable。需要真实等待（退避 sleep、副线查询）的 handler 可以是异步
   函数。
-- 无排序约束：``setup()`` 中调用顺序决定最终结果，后注册的 handler
+- 调用顺序：``setup()`` 中 ``use_xxx`` 的调用顺序决定最终结果，后注册的 handler
   排在链尾执行。
-- 本包五个 Composable 均不做幂等去重：重复调用按注册语义各自叠加一组
-  handler（允许以不同参数多次启用）；整组替换用
+- 本包五个 Composable 均不做幂等去重：同一个 ``use_xxx`` 可以用不同参数
+  多次调用，重复调用按注册语义各自叠加一组 handler。自写 Composable 的
+  多次调用如何组合由其实现决定；挂载 handler 时若需整组替换，可用
   ``remove_by_owner()`` （参数取各子模块注册面清单中的 ``by`` 值）
   移除默认 handler 后自注册。
 - 注册的资源、声明的钩子点与挂载的钩子：见各子模块 docstring 的

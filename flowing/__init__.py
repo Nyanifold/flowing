@@ -12,7 +12,8 @@ Flowing 的核心立场是“框架只提供机制，不提供策略”。包结
   ``provide`` / ``compiler`` —— 本模块顶层导出其中面向日常使用的符号。
 - **内置扩展**：``flowing.plugins``（``skills`` / ``comm`` / ``cron`` /
   ``workflow`` / ``clipboard``）——随包发布、显式 ``runtime.install(...)`` 启用。
-- **应用层**：``flowing.composables``（``use_xxx(agent)`` 纯函数式注入）。
+- **应用层**：``flowing.composables``（以 ``use_xxx(agent, ...)`` 函数向
+  Agent 装配应用逻辑与策略）。
 
 运行模型锚点：消息级树（``Message.id`` + ``parent_id`` 链，
 ``current_head_id`` 指向消息 id）；Turn 仅为逻辑执行阶段（执行期载体
