@@ -45,7 +45,7 @@
 Agent 上下文（``/eval``、``/watch``）：
 
 - 必须存在当前绑定 Agent；未绑定（提示符 ``(new agent)>>>``）时打印
-  「未绑定 Agent：无法解析表达式」。
+  “未绑定 Agent：无法解析表达式”。
 - 有绑定时，求值经 ``agent.parsable("{{ <expr> }}").resolve(agent)``，
   与 flowing 其它 ``Parsable`` 求值共用同一套上下文语义（``env`` /
   ``config`` / 实例属性 / Parsable 字段等）。

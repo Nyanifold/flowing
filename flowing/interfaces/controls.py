@@ -14,7 +14,7 @@ repl 输入框与 web 输入框都以 ``/cmd [arg]`` 形式接受控制命令。
 - **agent 级**（作用于给定 agent）：``messages / model / context / status /
   tasks / export / rewind / cancel / pause / resume``。
 
-约定：本目录只含「作用于显式目标并返回文本」的命令；前台绑定切换（``agent``/
+约定：本目录只含“作用于显式目标并返回文本”的命令；前台绑定切换（``agent``/
 ``new``）与进程退出（``exit / quit``）是交互壳自身行为，不在此列。
 
 .. seealso::

@@ -2,7 +2,7 @@
 
 .. rubric:: 功能介绍
 
-本模块定义「system prompt 分层注册 → 惰性求值 → Provider adapter 消费」
+本模块定义“system prompt 分层注册 → 惰性求值 → Provider adapter 消费”
 这条链路上的全部数据结构：
 
 - :class:`PromptBlock`：一段 system prompt 的注册声明。记录惰性内容
@@ -142,14 +142,14 @@ class PromptBlock:
 
     .. rubric:: 功能介绍
 
-    框架核心层数据结构。一个 ``PromptBlock`` 是「一段 system prompt 的注册
-    声明」：``content`` 是惰性内容（:class:`flowing.parsable.Parsable`
+    框架核心层数据结构。一个 ``PromptBlock`` 是“一段 system prompt 的注册
+    声明”：``content`` 是惰性内容（:class:`flowing.parsable.Parsable`
     或普通字符串——字符串在构造期归一化为 Parsable），``cache`` /
     ``tags`` / ``by`` / ``enabled`` 是管理元数据。注册时不解析
     内容，直到每次组装（``Agent._assemble_context()``）现场求值，产出
     :class:`PromptSegment`。
 
-    system prompt 从「一段完整文本」变为「按注册顺序拼接的分层片段」，使
+    system prompt 从“一段完整文本”变为“按注册顺序拼接的分层片段”，使
     框架骨架（``by="core"``）、内置扩展与应用代码能各自注册、各自管理自己
     的片段，互不感知。内容用惰性求值承载是因为惰性求值是功能正确性
     的前提：注册时环境变量、配置值、实例属性可能尚不存在，只有使用时才能
@@ -548,7 +548,7 @@ class PromptBlockList(ManagedList[PromptBlock]):
 
         .. rubric:: 功能介绍
 
-        标签是「一组块共同的功能身份」（如 ``"mode-plan"``），启停一组块不应
+        标签是“一组块共同的功能身份”（如 ``"mode-plan"``），启停一组块不应
         依赖各自的位置或名字。
 
         .. rubric:: 使用示例
@@ -565,8 +565,8 @@ class PromptBlockList(ManagedList[PromptBlock]):
         - 只翻 ``enabled`` 字段（置为 ``False``）：块保留原位、原注册顺序不变；
           之后调用 :meth:`enable_by_tag` 可恢复。
         - 已处于停用状态的匹配块不产生任何变化，但仍计入返回值：重复调用同一
-          个 ``tag`` 返回相同数值（本类的计数口径是「命中数」，与基类
-          ``ManagedList`` 的「本次实际变化数」口径不同）。
+          个 ``tag`` 返回相同数值（本类的计数口径是“命中数”，与基类
+          ``ManagedList`` 的“本次实际变化数”口径不同）。
         - 无匹配块时不报错、返回 0。
         - 不删除元素、不求值、不触发任何钩子。
 
@@ -638,8 +638,8 @@ class PromptBlockList(ManagedList[PromptBlock]):
 
         .. rubric:: 功能介绍
 
-        与 disable 系列互补：disable 是「暂时不用」（可逆、保序），remove 是
-        「永久退场」（如扩展卸载、模式机制整体移除）。
+        与 disable 系列互补：disable 是“暂时不用”（可逆、保序），remove 是
+        “永久退场”（如扩展卸载、模式机制整体移除）。
 
         .. rubric:: 使用示例
 
@@ -672,7 +672,7 @@ class PromptBlockList(ManagedList[PromptBlock]):
 
         .. rubric:: 功能介绍
 
-        属主是「谁注册的」——扩展或 Composable 需要整体停用自己注册的全部块
+        属主是“谁注册的”——扩展或 Composable 需要整体停用自己注册的全部块
         时，不应枚举各自的 tag。这也是扩展必须如实填写 ``by`` 的原因。
 
         :param owner: 要匹配的来源标识；块的 ``by`` 字段与它相等即命中
@@ -707,7 +707,7 @@ class PromptBlockList(ManagedList[PromptBlock]):
 
         .. rubric:: 功能介绍
 
-        「谁注册、谁回收」：属主维度比 tag 更贴近扩展的生命周期边界（一个
+        “谁注册、谁回收”：属主维度比 tag 更贴近扩展的生命周期边界（一个
         扩展可能注册多个不同 tag 的块）。
 
         .. rubric:: 使用示例
@@ -909,10 +909,10 @@ class ContextUsageEstimate:
 
     .. rubric:: 功能介绍
 
-    「现在如果把上下文发给 LLM，大约多大」的快照值：``measured`` 是锚点
+    “现在如果把上下文发给 LLM，大约多大”的快照值：``measured`` 是锚点
     （最近一次 Provider 实测）覆盖的部分，``estimated`` 是锚点之后（或无
     锚点时全段）的本地启发式估算部分，``tokens`` 为两者之和。两部分分开
-    承载而非只给一个和——观测方可以区分「多少是实测、多少是猜的」。估算
+    承载而非只给一个和——观测方可以区分“多少是实测、多少是猜的”。估算
     部分永不用于计费（计费走 ``TurnResult.token_usage`` 聚合口径，两条数据
     流不混）。
 

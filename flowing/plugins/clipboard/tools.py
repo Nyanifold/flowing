@@ -130,7 +130,7 @@ def _write_file(path: Path, content: str) -> None:
 
 def _emit_segment(caller: Agent, segment: str, origin: Path,
                   output: str, cwd: str | None, *, verb: str) -> str:
-    """cut/copy 共用的「区段落目标」步骤：剪贴板（阈值双限，先校验后
+    """cut/copy 共用的“区段落目标”步骤：剪贴板（阈值双限，先校验后
     落盘）或文件（无阈值、覆盖写、上级目录自动创建），返回收据文本。"""
     lines = len(segment.splitlines())
     chars = len(segment)

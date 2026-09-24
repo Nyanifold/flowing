@@ -537,13 +537,13 @@ class OpenAIResponsesProvider(Provider):
     ) -> Any:
         """真 SSE 流式覆写：逐 delta 产出正文 / 思考 / 工具调用。
 
-        替代基类「一次 generate() 包成单条 text delta」的回退——
+        替代基类“一次 generate() 包成单条 text delta”的回退——
         ``/responses`` ``stream=true`` 响应在此逐事件解析。事件流为
         ``event: <类型>`` + ``data: <json>`` 行对（无 ``[DONE]`` 收尾，
         流以 ``response.completed`` 为止）：
 
         - ``response.output_item.added``：reasoning / message /
-          function_call 分别开块，content_index 按「首现顺序」动态分配
+          function_call 分别开块，content_index 按“首现顺序”动态分配
           （与 openai 家族同一约定），同一逻辑块的所有 delta 共享同一
           index。
         - 思考：``response.reasoning_summary_text.delta`` 与

@@ -508,7 +508,7 @@ class OpenAICompletionsProvider(Provider):
     ) -> Any:
         """真 SSE 流式覆写：逐 delta 产出正文 / 思考 / 工具调用。
 
-        替代基类「一次 generate() 包成单条 text delta」的回退——OpenAI /
+        替代基类“一次 generate() 包成单条 text delta”的回退——OpenAI /
         DeepSeek 家族的 chat/completions ``stream=true`` 响应在此逐 chunk
         解析。chunk 形态（``data: <json>``，``[DONE]`` 收尾）：
 
@@ -526,7 +526,7 @@ class OpenAICompletionsProvider(Provider):
           ``provider_data["stop_reason"]`` 透出（completed 结局的
           finish_reason 来源，见 :meth:`flowing.agent.Agent.provider_gen`）。
 
-        块 content_index 按「首现顺序」动态分配（pi 同款），与文本分块
+        块 content_index 按“首现顺序”动态分配（pi 同款），与文本分块
         单一化一致——同一逻辑块的所有 delta 共享同一 index，agent 累积时
         依此归位。非 2xx / chunk 内 ``error`` 按 :meth:`_classify_error`
         归类上抛；超时 / 传输层失败同 :meth:`generate`。

@@ -3,7 +3,7 @@
 .. rubric:: 功能介绍
 
 本模块是 ``.fya`` 处理三层流水（字面层 → 装配层 → 合成层）中的
-字面层：只做「文本 → 结构化数据」的转换，产出 :class:`FyaDocument`
+字面层：只做“文本 → 结构化数据”的转换，产出 :class:`FyaDocument`
 （或中间的 :class:`RawFya`）。:class:`FyaDocument` 分三部分：
 
 - ``fields``：顶层 YAML 映射（``_`` 已映射为 :data:`flowing.parsable.PENDING`；
@@ -13,8 +13,8 @@
 - ``script``：``$script`` 块原文。
 
 本模块与资源无关：不内置 "agent" / "tool" / "skill" 等任何关键词；
-「哪些字段是资源列表」由调用方经 ``entry_fields`` 声明，「路径形态怎么
-推断名字」由调用方经 :class:`flowing.paths.NamingRules` 提供。
+“哪些字段是资源列表”由调用方经 ``entry_fields`` 声明，“路径形态怎么
+推断名字”由调用方经 :class:`flowing.paths.NamingRules` 提供。
 
 .. rubric:: ``.fya`` 词法规则（本模块管辖的全部语法）
 
@@ -76,8 +76,8 @@ class EntryRef:
     .. rubric:: 功能介绍
 
     ``tools:`` / ``subagents:`` / ``skills:`` 列表项的统一形态：原始引用
-    串不拆、别名落定、覆写映射原样持有。本类型只携带「指向谁、叫什么、
-    临时附言」三件字面事实——解析到目标（注册表查找 / 候选链探测）不在
+    串不拆、别名落定、覆写映射原样持有。本类型只携带“指向谁、叫什么、
+    临时附言”三件字面事实——解析到目标（注册表查找 / 候选链探测）不在
     此层。
 
     .. rubric:: 使用示例
@@ -139,14 +139,14 @@ class FyaDocument:
 
     .. rubric:: 功能介绍
 
-    「已规范化、未求值、未合并」的声明文档：``fields`` 中 ``_`` 已是
+    “已规范化、未求值、未合并”的声明文档：``fields`` 中 ``_`` 已是
     :data:`~flowing.parsable.PENDING`、声明为资源列表的字段已是
     ``list[EntryRef]``；``blocks`` 原样持有等待装配层填回；``script``
     等待装配层编译为类体方法。
 
     .. rubric:: 行为要点
 
-    - 产出值都是「生的」：具名块是原始字符串，YAML 值是原生类型；
+    - 产出值都是“生的”：具名块是原始字符串，YAML 值是原生类型；
       不构造 ``Parsable``、不做文件查找、不校验字段语义。
     - 不变量：``blocks`` 的 key 唯一（重复路径在切分期已报错）且
       不含 ``$script``。
@@ -203,7 +203,7 @@ def parse_fya(
     .. rubric:: 行为要点
 
     - ``entry_fields`` 中声明但文件里不存在的字段：不报错（缺省视为
-      无声明——字段缺失语义由装配层按「必填 / 可选」各自决定）。
+      无声明——字段缺失语义由装配层按“必填 / 可选”各自决定）。
     - 声明字段的值不是列表 → :class:`FormatError` （资源列表必须是
       YAML 列表）。
     - ``naming`` 仅在条目规范化遇路径形态时需要；其余形态可缺省。
@@ -264,8 +264,8 @@ def split_fya(text: str) -> RawFya:
       :class:`FormatError`。
     - 块头不合法（``---`` 后次行不匹配 ``$...:`` 形式、路径含空段或
       非法字符、含 ``[``）→ :class:`FormatError`。
-    - 块体允许为空串（如 ``$field:`` 后无内容）——空串也是「值」，
-      与「未声明」不同。
+    - 块体允许为空串（如 ``$field:`` 后无内容）——空串也是“值”，
+      与“未声明”不同。
     - 本函数不解析 YAML、不识别 ``_`` （那是 :func:`load_fya_yaml` 的
       职责）；不校验路径段对应的字段是否真实存在（装配层导航时才检查）。
 

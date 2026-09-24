@@ -9,7 +9,7 @@
   旧链整体成为历史。
 - ``use_auto_compact()`` —— 请求**前**触发（``before_provider_gen``），
   头尾保留式压缩：保留链头（≤ ``head_tokens``）与链尾（≤ ``tail_tokens``）
-  的原始消息，中段压缩为「用户指令汇编 + 交接摘要」一条消息，开分支
+  的原始消息，中段压缩为“用户指令汇编 + 交接摘要”一条消息，开分支
   换链后本次请求直接携压缩后上下文发出。
 
 ``use_compact()`` 的压缩序列：主回合 LLM 调用成功返回后检查
@@ -29,7 +29,7 @@
 必须由 Agent 开发者在 ``setup()`` 中显式调用。不调用的 Agent 不持有任何
 压缩相关 handler 与状态——行为与不调用时逐字节等价。
 
-「何时压、压成什么样」没有唯一正确答案：阈值与摘要指令都应可整体替换，
+“何时压、压成什么样”没有唯一正确答案：阈值与摘要指令都应可整体替换，
 框架核心只提供占用估计、``side_query`` 副线、开新根（``branch``）与
 ``fork`` 四个机制，本模块提供一份可整体替换的默认策略。替换方式同
 ``use_retry``：``remove_by_owner("compact")`` 移除默认 handler 后自注册。
@@ -151,7 +151,7 @@ DEFAULT_COMPACT_TEMPLATE: str = (
 
 
 def use_compact(agent: Agent, threshold: float = 0.8) -> None:
-    """为单个 Agent 实例启用「上下文超阈值自动压缩」策略（可选、非默认）。
+    """为单个 Agent 实例启用“上下文超阈值自动压缩”策略（可选、非默认）。
 
     .. rubric:: 功能介绍
 
@@ -218,8 +218,8 @@ def use_compact(agent: Agent, threshold: float = 0.8) -> None:
 
     - ``threshold``：触发阈值，``usage_ratio`` 严格大于它时启动压缩；
       合法区间 ``0 < threshold <= 1.0`` （``usage_ratio`` 不做上限截断，
-      ``> 1.0`` 是合法的溢出信号，``threshold=1.0`` 即「只在溢出后压
-      缩」）。区间外的值抛 ``ValueError``。
+      ``> 1.0`` 是合法的溢出信号，``threshold=1.0`` 即“只在溢出后压
+      缩”）。区间外的值抛 ``ValueError``。
 
     重复调用：不做幂等去重——每次调用按注册语义各自叠加一个检测 handler
     （各自闭包持有独立的 ``threshold``），允许以不同参数多次启用。恢复
@@ -308,7 +308,7 @@ def use_auto_compact(
     head_tokens: int = 10_000,
     user_instruction_tokens: int = 2_000,
 ) -> None:
-    """为单个 Agent 实例启用「请求前头尾保留式自动压缩」策略（可选、非默认）。
+    """为单个 Agent 实例启用“请求前头尾保留式自动压缩”策略（可选、非默认）。
 
     .. rubric:: 功能介绍
 
@@ -316,7 +316,7 @@ def use_auto_compact(
     （``by="auto_compact"``）：每次主回合 LLM 请求发出**之前**检查上下文
     占用，超过 ``threshold`` 时在同一 handler 调用内完成压缩——保留链
     头部（≤ ``head_tokens``）与尾部（≤ ``tail_tokens``）的原始消息，
-    中段压缩为一条「用户指令汇编 + 交接摘要」消息，从前缀末条开分支、
+    中段压缩为一条“用户指令汇编 + 交接摘要”消息，从前缀末条开分支、
     后缀深拷贝拼接，再 ``fork`` 换链；本次请求直接携带压缩后的上下文
     发出（handler 整体改写 ``Context``）。
 

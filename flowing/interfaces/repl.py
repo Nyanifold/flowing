@@ -246,7 +246,7 @@ async def cmd_repl(
        - 非 ``/`` 开头：未绑定则先创建新 Agent——``agent_type`` 取
          池中根条目里 ``created_at`` 最新者的 ``agent_type``
          （:func:`_default_agent_type`，与 serve ``POST /agents``
-         缺省类型同口径）；池无根条目 → 打印「无法确定 Agent 类型」
+         缺省类型同口径）；池无根条目 → 打印“无法确定 Agent 类型”
          提示，不创建。创建经 ``runtime.create_agent(agent_type)``
          （``parent_id=None`` 缺省即根）并绑定。然后以 ``str`` 调
          :meth:`flowing.agent.Agent.query` （打包 USER 消息在其内部
@@ -294,9 +294,9 @@ async def cmd_repl(
     - 行编辑与补全（``readline`` 可用时）：方向键 / 行编辑 / 会话内历史
       由 ``input()`` 天然获得；Tab 补全顶层 slash 命令（仅行首 ``/``
       开头的词，参数不补全）。
-    - 未绑定时收到非 ``/`` 输入且池无根条目：打印「无法确定 Agent
-      类型」提示，名录保持为空，不退出。
-    - 未识别的 ``/xxx``：打印「未知命令，/help 查看可用命令」，
+    - 未绑定时收到非 ``/`` 输入且池无根条目：打印“无法确定 Agent
+      类型”提示，名录保持为空，不退出。
+    - 未识别的 ``/xxx``：打印“未知命令，/help 查看可用命令”，
       继续循环。
     - 回合进行中收到 SIGINT（Ctrl-C）：repl 专用处理器对当前绑定 Agent
       ``abort_turn()``——协作式取消当轮（回合以 cancelled 收尾），repl 与

@@ -75,16 +75,16 @@ CatalogTemplate: TypeAlias = str
 
 
 class Skill:
-    """Skill 对象模型——三种定义文件统一解析出的「可执行对象」。
+    """Skill 对象模型——三种定义文件统一解析出的“可执行对象”。
 
     .. rubric:: 功能介绍
 
-    三层能力描述中 Skill 的「可执行对象」层：:class:`SkillRegistry` 把
+    三层能力描述中 Skill 的“可执行对象”层：:class:`SkillRegistry` 把
     三种定义形式（``.md`` / ``.skill.fya`` / 目录，见模块 docstring
-    「Skill 定义文件与查找规则」）统一解析为本类的实例。框架核心不
+    “Skill 定义文件与查找规则”）统一解析为本类的实例。框架核心不
     认识本类——它由 ``SkillPlugin`` 定义与消费。所有 Skill 同一个类，
     差异全部在数据（``description`` / ``content`` / ``args_schema`` /
-    ``on_load``），不存在「内置 / 自定义」的类层次。
+    ``on_load``），不存在“内置 / 自定义”的类层次。
 
     .. rubric:: 使用示例
 
@@ -221,7 +221,7 @@ class Skill:
         .. rubric:: 行为要点
 
         - ``description`` / ``content`` 收 ``str`` （包装为
-          :class:`flowing.parsable.Parsable`）或已构造的 ``Parsable`` （透传）——保持「存如何解析、不存结果」的惰性语义。
+          :class:`flowing.parsable.Parsable`）或已构造的 ``Parsable`` （透传）——保持“存如何解析、不存结果”的惰性语义。
         - ``args_schema`` 缺省为空 dict（无参数即无覆盖义务）；
           ``registry_key`` 缺省 ``None`` （未注册实例）。
         - 本构造不读文件、不求值、不注册（注册是
@@ -266,7 +266,7 @@ class Skill:
 
 @dataclass
 class SkillEntry:
-    """Skill 的 Agent 级绑定——三层能力描述中的「绑定」层。
+    """Skill 的 Agent 级绑定——三层能力描述中的“绑定”层。
 
     .. rubric:: 功能介绍
 
@@ -302,7 +302,7 @@ class SkillEntry:
       调用方 Agent 实例上下文求值）；``_`` （PENDING）值视为未声明
       该参数（不进 ``specified``，覆盖校验照常）。条目 ``args`` 的
       参数键含 ``as`` → :class:`flowing.errors.FormatError` （无改名
-      通道——``param_aliases`` 已随「LLM 不传参」删除）。
+      通道——``param_aliases`` 已随“LLM 不传参”删除）。
     - 覆盖校验（声明期 fail-fast）：``skill_add`` 时对
       ``skill.args_schema`` 逐参数检查——不在 ``specified`` 又无
       schema 默认值 → ``FormatError``。
@@ -356,7 +356,7 @@ class SkillLoadContext:
 
     加载流程第 1 步的钩子 value：携带调用方 Agent、目标别名与合并后
     的参数（schema 默认值 → ``specified`` （含注入表达式），见
-    :func:`use_skill` 的「skill_load 契约」）。handler 可就地修改
+    :func:`use_skill` 的“skill_load 契约”）。handler 可就地修改
     ``args``，后续 ``on_load`` 与正文渲染使用改写后的值。
 
     .. rubric:: 使用示例
@@ -426,7 +426,7 @@ class SkillContent:
     .. rubric:: 行为要点
 
     - handler 出口规则与 ``before_skill_load`` 相同；此处
-      ``raise Intercepted`` 使加载「看似完成但结果被丢弃」——PLUGIN
+      ``raise Intercepted`` 使加载“看似完成但结果被丢弃”——PLUGIN
       消息不入队、``skill_load()`` 不返回（异常上抛给调用方）。慎用。
     - 边缘情况：``body`` 被改为空串是合法的（PLUGIN 消息照常入队，
       内容为空文本块）。

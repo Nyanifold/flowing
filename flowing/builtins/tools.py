@@ -17,7 +17,7 @@
 注册不等于可见（安全边界）：任何工具对 LLM 可见都必须经 Agent 级显式
 声明（``.fya`` ``tools:`` 或 ``add_tool``）——可写文件、执行命令的危险
 工具（``write`` / ``bash`` / ``edit``）不会因为注册就进入任何 Agent 的
-``Context.tools``。本模块只提供「能干什么」；「该不该批准」（Bash 任意
+``Context.tools``。本模块只提供“能干什么”；“该不该批准”（Bash 任意
 命令、Write/Edit 覆盖写）是策略，由 ``before_tool_call`` 钩子 / 审批
 插件承担。
 
@@ -26,7 +26,7 @@
 允许，相对 ``cwd`` 解析；``cwd`` 自身必须是绝对路径（默认 ``None``，
 即不给基准）。相对路径无基准或 ``cwd`` 非绝对 → ``status="error"`` 的
 ``ToolResult`` （LLM 可见、可自纠正）。设计意图：基准必须由调用方显式
-给出，LLM 视角下没有隐含的「当前目录」。
+给出，LLM 视角下没有隐含的“当前目录”。
 
 工具失败是正常产物：六个文件 / shell 工具的参数错误与 IO 错误（路径是
 目录 / 文件不存在 / 非 UTF-8 编码 / ``rg`` 未安装等）一律以
@@ -35,7 +35,7 @@ LLM 应看到错误文本并自行修正调用。
 
 .. rubric:: 使用示例
 
-``cwd`` 同时是「``.fya`` 定义期经智能体属性传参」的示范位：Agent 自己
+``cwd`` 同时是“``.fya`` 定义期经智能体属性传参”的示范位：Agent 自己
 有 ``cwd`` 属性（如 ``setup`` 中赋值 ``self.cwd = "/srv/proj"``）时，
 ``.fya`` 的 tools 条目把 ``cwd`` 参数覆写为引用该属性的 Parsable 模板
 （:mod:`flowing.parsable`——声明层的模板值，调用期以调用方 Agent 为
@@ -427,7 +427,7 @@ class GrepTool(Tool):
       默认 ``None``）；``glob`` （文件名过滤，可选）。
     - 匹配语义沿用 ``rg`` 默认行为：尊重 ``.gitignore``、跳过隐藏文件。
     - 返回：匹配行文本，每行 ``<路径>:<行号>:<内容>``；路径一律以绝对
-      形式呈现。无匹配返回「（无匹配）」；匹配行数超过
+      形式呈现。无匹配返回“（无匹配）”；匹配行数超过
       250 行时截断并注明。
     - 边缘情况：``rg`` 未安装 / ``rg`` 执行失败（退出码非 0 或 1）→
       ``status="error"`` 的 ``ToolResult``；退出码 1（无匹配）不是错误。
@@ -460,7 +460,7 @@ class GrepTool(Tool):
         - ``rg`` 未安装 / 执行失败（退出码非 0 或 1）→ 抛
           ``RuntimeError``——经 ``Tool.__call__`` 包装为
           ``status="error"`` 的 ``ToolResult`` （LLM 可见，可自纠正）；
-          退出码 1（无匹配）不是错误，返回「（无匹配）」。
+          退出码 1（无匹配）不是错误，返回“（无匹配）”。
         - 匹配行数超过 250 行时截断并注明（见类 docstring）。
         """
         p = _resolve_under_cwd(path, cwd)
@@ -507,7 +507,7 @@ class GlobTool(Tool):
       目录，必填，遵循 ``cwd`` 基准口径——见模块 docstring）；``cwd``
       （路径基准，默认 ``None``）。
     - 返回：匹配文件的绝对路径文本（每行一条，按 mtime 倒序——最近
-      修改在前）；只列文件不列目录。无匹配返回「（无匹配）」；结果数
+      修改在前）；只列文件不列目录。无匹配返回“（无匹配）”；结果数
       超过 100 个时截断并注明。
     - 只做文件系统枚举：不跟随 ``.gitignore`` （与 ``grep`` 的 ``rg``
       语义不同），也不做内容过滤（那是 ``grep`` 的职责）。
@@ -538,7 +538,7 @@ class GlobTool(Tool):
         - 基准目录不存在或不是目录 → 抛 ``ValueError``——经
           ``Tool.__call__`` 包装为 ``status="error"`` 的 ``ToolResult``
           （LLM 可见，可自纠正）。
-        - 结果数超过 100 个时截断并注明；无匹配返回「（无匹配）」。
+        - 结果数超过 100 个时截断并注明；无匹配返回“（无匹配）”。
         """
         p = _resolve_under_cwd(path, cwd)
         if not p.is_dir():
@@ -818,7 +818,7 @@ class SubagentInvokeTool(Tool):
         - 运行段 ``await caller._run_subagent(..., enqueue_result=True)``
           后台驱动——完成 / 失败投递由它内部经 SUBAGENT 消息完成，故无
           需末 yield；取消时 ``CancelledError`` 注入运行段 await 点，
-          驱动方投递「已取消」后裸 raise。
+          驱动方投递“已取消”后裸 raise。
         """
         child, invocation, execution = await caller._prepare_subagent(
             agent_type, prompt=prompt or None, name=name or None,

@@ -24,7 +24,7 @@ class RunWorkflowTool(ScriptTool):
     LLM 调用。
 
     执行体是 async generator（该形态的契约见
-    :class:`flowing.tool.ScriptTool` 类 docstring「后台工具形态」）：第一
+    :class:`flowing.tool.ScriptTool` 类 docstring“后台工具形态”）：第一
     个 ``yield`` 是收据（``Tool.__call__`` 等它作为 ``pending`` 收据），
     之后的运行段由框架后台驱动，后续 ``yield`` 逐段投递 EVENT 消息。
     工具声明上使用类级 ``definition`` 显式给出，``strict=False``——

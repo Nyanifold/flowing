@@ -17,7 +17,7 @@ steer 导向续跑）。场景类
 Composable（``use_logging`` / ``use_guardrail`` 等）属应用代码，框架
 不预留符号。
 
-Composable 只做「挂载」：注册钩子 handler、绑定实例属性；不修改框架
+Composable 只做“挂载”：注册钩子 handler、绑定实例属性；不修改框架
 核心状态。本包不提供插件（阶段一）能力：不做全局注册、不经过
 ``runtime.install()``、自身也没有 ``install()``——调用即生效，作用域严格
 限于传入的那一个 Agent 实例。
@@ -48,7 +48,7 @@ Composable 只做「挂载」：注册钩子 handler、绑定实例属性；不�
 - 启用方式：双层启用的阶段二——``use_xxx(self)`` 在 ``setup()`` 中按
   实例启用（恢复时 ``setup()`` 在新实例上执行，钩子注册表随实例重建，
   天然不叠加）；未调用 ``use_xxx`` 的 Agent 不持有任何相关 handler 与
-  状态——「没启用」是「代码路径从没存在过」，不是「被跳过」，零开销。
+  状态——“没启用”是“代码路径从没存在过”，不是“被跳过”，零开销。
 - 同步 / async 形态：由内部是否确需 ``await`` 决定——纯注册型
   Composable 写成同步 ``def`` （本包五个均为同步），调用点不需要
   ``await``；需要真实等待（退避 sleep、副线查询）的 handler 才是异步
@@ -60,7 +60,7 @@ Composable 只做「挂载」：注册钩子 handler、绑定实例属性；不�
   ``remove_by_owner()`` （参数取各子模块注册面清单中的 ``by`` 值）
   移除默认 handler 后自注册。
 - 注册的资源、声明的钩子点与挂载的钩子：见各子模块 docstring 的
-  「注册面清单」。
+  “注册面清单”。
 
 .. seealso::
 

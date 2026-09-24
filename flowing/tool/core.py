@@ -51,7 +51,7 @@ def _strip_unsupported_background(tool: "Tool") -> None:
     ``background`` 后台化标记仅 script 型受支持（script 经类属性 / ``.fya``
     落属性；``.fya`` 的非 script 型声明在加载期 ``FormatError``）。三个具体
     工具类（cli / request / mcp）构造尾部统一调本函数：发现 truthy
-    ``background`` 属性 → 告警「不支持」并强制置 ``False``。
+    ``background`` 属性 → 告警“不支持”并强制置 ``False``。
     """
     if getattr(tool, "background", False):
         warnings.warn(
@@ -147,7 +147,7 @@ class ToolCall:
 
     .. rubric:: 功能介绍
 
-    `ToolCall` 是「LLM 想调什么」的纯数据载体：从 PROVIDER 消息的工具调用
+    `ToolCall` 是“LLM 想调什么”的纯数据载体：从 PROVIDER 消息的工具调用
     块（``ToolCallBlock``）解析而来，经 ``before_tool_call`` 钩子链传递，
     最终被解包为零散参数喂给 ``Tool.execute()``。`ToolCall` 只是调用意图，
     不是可执行对象；``execute()`` 不接收 `ToolCall` 整体入参。
@@ -354,7 +354,7 @@ class ToolResult:
 
     @classmethod
     def blocked(cls, reason: str | None = None) -> "ToolResult":
-        """构造「被钩子硬阻断」的结果（``status="blocked"`` 的唯一来源）。
+        """构造“被钩子硬阻断”的结果（``status="blocked"`` 的唯一来源）。
 
         .. rubric:: 功能介绍
 
@@ -364,7 +364,7 @@ class ToolResult:
         阻断结果：``before_tool_call`` 拦截时工具未执行；``after_tool_call``
         拦截时工具已执行完、结果被丢弃；``execute`` 内拦截时执行被中断
         于中途。统一由本工厂生成，保证所有阻断路径的产物结构一致（LLM
-        可据此向用户说明「该操作被拦截」而不是「执行失败」）。
+        可据此向用户说明“该操作被拦截”而不是“执行失败”）。
 
         :param reason: 阻断原因（通常取 ``Intercepted`` 的消息），LLM 可见。
         :return: ``status="blocked"``、``error`` 为 ``None`` 的 `ToolResult`。
@@ -424,8 +424,8 @@ class ToolResult:
         - 边缘情况：``status="pending"`` 也产生消息（收据消息）——返回
           Task 路径 ``output=None`` → ``content=[]`` （空 tool_result 的
           API 层兜底属 adapter 职责）；async gen 路径 ``output=首 yield``
-          → content 带内容，并（注册键非 ``None`` 时）末尾附加「后台任务
-          ID」文本块（不动作者 yield 的内容）；异步任务真正完成时的结果
+          → content 带内容，并（注册键非 ``None`` 时）末尾附加“后台任务
+          ID”文本块（不动作者 yield 的内容）；异步任务真正完成时的结果
           由框架另行产生多块 EVENT 消息，与本收据互不覆盖。
 
         .. seealso::
@@ -460,7 +460,7 @@ class ToolDefinition:
 
     .. rubric:: 功能介绍
 
-    三层能力描述中的「LLM 可见声明」层：字段为 ``name`` / ``description`` /
+    三层能力描述中的“LLM 可见声明”层：字段为 ``name`` / ``description`` /
     ``params_schema`` / ``output_schema`` / ``strict``。它出现在
     ``Context.tools`` 中，是 Provider adapter 组装各家 function-calling
     schema 的唯一来源（adapter 为白名单语义——只取 ``name`` /
@@ -493,7 +493,7 @@ class ToolDefinition:
       在 `Tool.__call__` （校验模型于工具创建时编译）。
     - ``strict`` 语义：``True`` （默认）时工具层按 ``params_schema``
       严格约束 LLM 入参——LLM 传出未定义参数即校验失败；``False`` 时
-      工具层不限制参数（未知键原样放行，用于「参数由下游自行校验」的
+      工具层不限制参数（未知键原样放行，用于“参数由下游自行校验”的
       工具）。
 
     .. seealso::
@@ -549,8 +549,8 @@ class ToolDefinition:
         .. rubric:: 功能介绍
 
         `ToolEntry.llm_definition()` 的唯一覆写机制：别名、参数局部覆写、
-        描述覆写、隐藏参数移除，全部经本方法一次性完成。「返回新对象，
-        原始不变」是绑定层不污染全局注册表的结构性保证——`ToolRegistry`
+        描述覆写、隐藏参数移除，全部经本方法一次性完成。“返回新对象，
+        原始不变”是绑定层不污染全局注册表的结构性保证——`ToolRegistry`
         中的定义永不被 Agent 级覆写修改。
 
         :param name: 新名字（通常传 `ToolEntry.name_alias`）；``None`` 保持
@@ -657,11 +657,11 @@ def _apply_param_aliases(
 
 @dataclass
 class ToolEntry:
-    """Agent 对工具的一次「用法声明」——三层能力描述中的 Agent 级绑定层。
+    """Agent 对工具的一次“用法声明”——三层能力描述中的 Agent 级绑定层。
 
     .. rubric:: 功能介绍
 
-    `ToolEntry` 回答「这个 Agent 如何使用这个 Tool」：LLM 看到的别名、
+    `ToolEntry` 回答“这个 Agent 如何使用这个 Tool”：LLM 看到的别名、
     参数覆写、指定值、参数别名。每个 Agent 实例持有自己的 entry 集合，
     互不共享——同一工具在不同 Agent 上可以呈现不同的 LLM 视图（如
     ``FinishTool`` 在不同 Agent 上的不同 schema），覆写发生在 Agent 级
@@ -826,7 +826,7 @@ class ToolEntry:
         本方法在 ``Agent._normalize()`` 内部被调用（``before_tool_call``
         钩子之后），产出按规范名组织的最终参数字典。只收参数声明表
         ``params_schema`` （``tool.definition.params_schema``），不持有
-        `Tool` 引用——`ToolEntry` 保持在「绑定 / 声明」层，不依赖「执行」
+        `Tool` 引用——`ToolEntry` 保持在“绑定 / 声明”层，不依赖“执行”
         层；调用方（``Agent._normalize``）已持有 Tool 实例，顺手传入
         声明表即可。
 
@@ -871,7 +871,7 @@ class ToolEntry:
 
 
 class Tool:
-    """可执行对象基类——三层能力描述中的「执行」层。
+    """可执行对象基类——三层能力描述中的“执行”层。
 
     .. rubric:: 功能介绍
 
@@ -879,8 +879,8 @@ class Tool:
     ``execute()``；框架调度层经 ``__call__`` 统一调用。四种工具类型
     （script / mcp / cli / request）均以本类（或其子类）为最终产物。
     调度职责（awaitable / async generator 检测、Task 包装、caller 注入、
-    返回值包装）集中在 ``__call__``，让 ``execute()`` 保持「零散参数进、
-    普通值出」的最简单签名——工具作者不需要知道 `ToolResult` 的存在。
+    返回值包装）集中在 ``__call__``，让 ``execute()`` 保持“零散参数进、
+    普通值出”的最简单签名——工具作者不需要知道 `ToolResult` 的存在。
 
     .. rubric:: 使用示例
 
@@ -1004,7 +1004,7 @@ class Tool:
            ``execution``——在途等待与取消信号（``execution.cancel`` +
            调用方 Agent 的 ``_turn_abort``）竞速；信号先置位 → 中断在途
            执行（CancelledError 注入 ``execute`` 的 await 点），产出
-           ``status="cancelled"`` 结果（LLM 可见「被取消」，不走 error
+           ``status="cancelled"`` 结果（LLM 可见“被取消”，不走 error
            通道）。后台形态（background 标记 / Task 返回 / async gen）
            不包竞速——其取消经 Execution 注册表置位；
         3. caller 自动传入：依 ``_has_caller`` （注册时 inspect 检测）
@@ -1024,7 +1024,7 @@ class Tool:
            ``ToolResult(error)`` （不触发错误钩子）；``execute`` 内抛出的
            :class:`flowing.errors.Intercepted` → ``ToolResult.blocked``
            （硬阻断信号语义即 blocked，与 ``before_tool_call`` 拦截同一
-           出口、同一 reason 塑形——「有意拒绝」与「意外故障」不进同一
+           出口、同一 reason 塑形——“有意拒绝”与“意外故障”不进同一
            LLM 可见通道）；三种后台形态 → ``ToolResult(pending)``：
            ① ``execute`` 是 async generator（首 yield = 收据内容）；
            ② 普通 async ``execute`` + ``background = True`` （仅 script

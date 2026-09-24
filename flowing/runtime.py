@@ -60,7 +60,7 @@ provide-inject 链：Runtime 是链终点。``Runtime.provide(key, value)`` 注�
 任何时机均可调用 :meth:`Runtime.get_config`；合并前（典型即模块顶层
 import 期）调用抛 :class:`flowing.errors.ConfigNotReadyError`。
 ``get_config`` 不做命名空间访问控制：任何代码可读任何命名空间，注册
-只是「谁负责校验」的声明。
+只是“谁负责校验”的声明。
 
 插件启用：``Runtime.install(plugin)`` 是插件启用入口（阶段一），按实参顺序
 执行各插件的 ``install(runtime)``；插件在 install 中注册全局能力（工具 /
@@ -85,7 +85,7 @@ session 目录日志）→ ``before_recover`` → ``setup`` → PENDING 检查 �
 JSON 可序列化；``_provided`` 的值内容（凭证等敏感值）绝不进入快照。
 完整字段契约见 :mod:`flowing.snapshot`。
 
-关闭：``shutdown()`` 是「请求关闭」——递归 destroy 全部节点、插件收尾、
+关闭：``shutdown()`` 是“请求关闭”——递归 destroy 全部节点、插件收尾、
 关闭全局状态视图、置位退出事件后返回；``await runtime`` 在事件置位后解除
 阻塞，此时全部善后已完成。空 Runtime（未 mount）同样可 await / shutdown。
 推荐调用顺序见 :func:`launch` 与各方法 docstring。
@@ -262,7 +262,7 @@ async def launch(
     - 返回值是 ``main()`` 返回的 Runtime——此时 Agent 已激活、工作循环
       Task 已就绪；若调用方不做 ``await runtime``，进程/任务随即无事可做。
     - 本函数只负责把子项目拉起为 Runtime：不解析配置、不认识插件、不决定
-      「新建 vs 恢复」（那是 ``main()`` 的策略）、不启动任何服务端口。
+      “新建 vs 恢复”（那是 ``main()`` 的策略）、不启动任何服务端口。
 
     :param path: flowing 子项目目录（普通文件系统路径，CLI 层不感知 ``@``）。
     :param main_file: 替代的 main 文件路径（可选；缺省 ``<path>/main.py``）。
@@ -401,8 +401,8 @@ class Runtime:
 
     .. rubric:: 行为要点
 
-    - 创建即注册：Agent 诞生必经 ``_nodes`` 注册（结构保证「不可能创建而
-      不注册」）。节点的遗忘分三档：
+    - 创建即注册：Agent 诞生必经 ``_nodes`` 注册（结构保证“不可能创建而
+      不注册”）。节点的遗忘分三档：
 
       - destroy（``Agent.destroy()``）：丢实例、从 ``_nodes`` 摘除，池 key
         与名录保留——可经 ``recover_agent`` / ``get_agent`` 现场恢复；
@@ -412,7 +412,7 @@ class Runtime:
       - 删除：物理删除 session 目录 + 名录项，不可逆——框架不提供删除
         功能，应用层需要删除已有归档文件请自行实现（建议先归档再删除，
         避免活引用指向已消失的目录）。
-    - ``shutdown()`` 的返回与 ``await runtime`` 解除阻塞表达「已关闭」的
+    - ``shutdown()`` 的返回与 ``await runtime`` 解除阻塞表达“已关闭”的
       观测语义——不提供 ``status`` 字段之类的生命周期状态投影。
     - 一个进程可同时运行多个 Runtime（``@`` 上下文按 asyncio Task 隔离），
       互不共享存储。
@@ -671,8 +671,8 @@ class Runtime:
         实例级启用（阶段二）；未启用的扩展对 Agent 零开销。插件声明式依赖
         （``dependencies``）的校验随本方法增量执行：已装插件依赖图成环抛
         :class:`flowing.errors.DependencyError` （报错现场即引入环的那次
-        ``install()``）；依赖缺失只 ``warnings.warn`` 警告、不抛错（「声明了
-        依赖但实际用不上」是合法形态，``install()`` 可分批）。
+        ``install()``）；依赖缺失只 ``warnings.warn`` 警告、不抛错（“声明了
+        依赖但实际用不上”是合法形态，``install()`` 可分批）。
 
         .. rubric:: 使用示例
 
@@ -719,7 +719,7 @@ class Runtime:
         self._persist_dir.mkdir(parents=True, exist_ok=True)
 
     def get_plugin(self, name: str, *, strict: bool = True) -> Any | None:
-        """按名查询已安装插件实例；``strict`` 标志兼容「直接用」与「探测」两种写法。
+        """按名查询已安装插件实例；``strict`` 标志兼容“直接用”与“探测”两种写法。
 
         .. rubric:: 功能介绍
 
@@ -734,7 +734,7 @@ class Runtime:
           （``if runtime.get_plugin("skill", strict=False) is not None: ...``）。
 
         默认取 ``True``：探测是有意主动触发的存在性检查，显式写
-        ``strict=False`` 是意图的自我声明；「直接用」是更常见的形态，
+        ``strict=False`` 是意图的自我声明；“直接用”是更常见的形态，
         应享受更短的写法与更响亮的失败。
 
         .. rubric:: 使用示例
@@ -801,8 +801,8 @@ class Runtime:
         幂等挂载（指定 ``agent_id`` 时）：手动 mount 的根是特殊节点，
         应当指定固定 id——``agent_id`` 已存在于池中则走恢复（委托
         ``recover_agent``，含休眠记录的现场恢复）而非新建；不存在则新建。
-        第二次启动再 mount 同一文件同一 id，语义是「同一个根回来了」，
-        不是「又创建了一个根」。``agent_id=None`` 则每次新建新根（自动
+        第二次启动再 mount 同一文件同一 id，语义是“同一个根回来了”，
+        不是“又创建了一个根”。``agent_id=None`` 则每次新建新根（自动
         生成 id）——多根并存 / 临时根的形态。根节点的类型只由 ``node``
         解析决定；``agent_id`` 只是身份指定，不改变类型。
 
@@ -882,7 +882,7 @@ class Runtime:
 
         框架核心层方法，唯一真正执行创建的代码路径。``mount()`` /
         ``Agent.create_subagent()`` / ``Workflow.create_agent()`` 全部委托
-        本方法——委托方只提供「自己的 ``node_id`` 作为 ``parent_id``」。
+        本方法——委托方只提供“自己的 ``node_id`` 作为 ``parent_id``”。
         ``agent_type`` 统一为字符串类型名（非类对象；类对象无法持久化）。
 
         .. rubric:: 使用示例
@@ -900,7 +900,7 @@ class Runtime:
            不在池注册表与活体表中，重复抛 ``ValueError``；缺省
            ``f"{_id_prefix}-<6 位随机 hex>"``）、``runtime`` 与
            ``_parent_id`` （``parent_id=None`` 翻译为 Runtime 的
-           ``node_id``——「根」由「亲节点是 Runtime」表达）。冲突检查分两
+           ``node_id``——“根”由“亲节点是 Runtime”表达）。冲突检查分两
            步：① id 撞池注册表 / 活体表——显式 id 报错，自动 id 重生成；
            ② session 目录已存在——目录是定点（显式 ``session_dir`` 或显式
            ``agent_id``）时抛 ``FileExistsError`` （可能是已归档的留档
@@ -916,7 +916,7 @@ class Runtime:
            经 ``before_recover`` 重新表达。
         5. ``kwargs = await hooks.before_create.dispatch(instance, kwargs)``
            —— 可改写 kwargs。本钩子仅创建管线触发（recover 不触发），
-           是「只应在创建时做」的逻辑落点；handler 只能来自类上 ``@on``
+           是“只应在创建时做”的逻辑落点；handler 只能来自类上 ``@on``
            声明（实例 hooks 在 ``__init__`` 注册，插件 / Composable 的
            挂载通道是 setup 里的 ``use_xxx``，赶不上本钩子）。与
            ``before_tool_call["subagent-invoke"]`` 的分工：后者只覆盖工具
@@ -961,7 +961,7 @@ class Runtime:
             ``{_id_prefix}-<6 位随机 hex>``（撞池注册表 / 活体表 / 既有
             session 目录时重生成，唯一性由检查保证而非概率）；指定值须不在
             池注册表与活体表中
-            （与 :meth:`recover_agent` 的「要求已存在」对称：create 要求
+            （与 :meth:`recover_agent` 的“要求已存在”对称：create 要求
             不存在），重复 → :class:`ValueError`。不校验格式，可以使用
             ``agent-`` 前缀（与自动生成的形态保持一致，便于看 id 知类型），
             建议使用可作目录名的字符（缺省 ``session_dir`` 时即 session
@@ -1142,9 +1142,9 @@ class Runtime:
           指向消息树中最后持久化的消息；队列待消费消息在，恢复后作为新
           逻辑 Turn 处理；进行中的逻辑 Turn 不恢复（未持久化消息丢弃，
           撕裂末行丢弃）。
-        - 恢复不递归子 agent（子代经「有 key 无 value → 现场恢复」在
+        - 恢复不递归子 agent（子代经“有 key 无 value → 现场恢复”在
           ``get_agent`` 时惰性重建）；但向上递归亲代链（见管线第 5 步）。
-        - 不做「半截 Turn 精确续跑」；不校验 ``override_args`` 与创建时
+        - 不做“半截 Turn 精确续跑”；不校验 ``override_args`` 与创建时
           args 的一致性。
 
         :param agent_id: 池注册表中已有的 agent id。
@@ -1250,12 +1250,12 @@ class Runtime:
 
         .. rubric:: 功能介绍
 
-        框架核心层方法，统一语义「有 key 无 value → 现场恢复」的入口：
+        框架核心层方法，统一语义“有 key 无 value → 现场恢复”的入口：
         池中有活实例直接返回；池记录存在但实例不存在（主 agent 恢复后
         未实例化的子 agent、或已 ``destroy()`` 但 session 保留的子 agent）
         时，内部走 ``recover_agent(agent_id)`` 现场重建后返回。调用方无需
-        区分「从未实例化」与「已销毁」——恢复后上下文延续（「同一个子
-        agent」有记忆）；恢复代价与树大小无关（主 agent 恢复不递归子
+        区分“从未实例化”与“已销毁”——恢复后上下文延续（“同一个子
+        agent”有记忆）；恢复代价与树大小无关（主 agent 恢复不递归子
         agent）。
 
         .. rubric:: 使用示例
@@ -1274,7 +1274,7 @@ class Runtime:
         - 不递归恢复子 agent 的子 agent（逐层惰性）；不做模糊匹配。
         - ``strict`` （与 :meth:`get_plugin` 同构）：``False`` （默认）完全
           不在池中返回 ``None``——探测写法；``True`` 完全不在池中抛
-          ``KeyError``——直接用写法。strict 只作用于「完全不在池」；在池
+          ``KeyError``——直接用写法。strict 只作用于“完全不在池”；在池
           的活体 / 现场恢复路径不受其影响。
 
         :param agent_id: 池注册表中的 agent id。
@@ -1312,7 +1312,7 @@ class Runtime:
         类型）。
 
         与 ``destroy()`` 的区别：``destroy()`` 只丢实例、保留池 key 与
-        名录（「有 key 无 value → 现场恢复」）；``archive_agent`` 把 key
+        名录（“有 key 无 value → 现场恢复”）；``archive_agent`` 把 key
         与名录一并移除——归档后 ``get_agent`` 返回 ``None`` /
         ``recover_agent`` 找不到，运行时完全遗忘，文件留档供审计 /
         手动恢复（外部运维）。
@@ -1420,7 +1420,7 @@ class Runtime:
         - 每个孤儿经 :meth:`archive_agent` 递归归档（含其子树）；孤儿之间
           无亲子重叠（子条目因亲节点在池而不入选），归档安全。
         - 无孤儿 → 返回空列表（可随时调用）。
-        - 不校验「parent 悬空」是否确由崩溃造成（也可能是亲节点被归档后的
+        - 不校验“parent 悬空”是否确由崩溃造成（也可能是亲节点被归档后的
           残留——归档亲节点本就递归含子，正常路径不产生，但本方法不区分来源，
           一律清理）。
         - 与 ``recover_agent`` 的关系：恢复遇孤儿亲节点只 ``warnings.warn``
@@ -1528,8 +1528,8 @@ class Runtime:
         不直接进入本链——``FLOWING_*`` 由各自消费点直读，命令行参数经
         ``set_config`` 表达。``ConfigKey[T]`` 约束 ``default`` 的类型与
         泛型参数一致（mypy / pyright 可检查）。读取全部是实例方法，不存在
-        「隐式拿到某个 Runtime」的旁路——调用方须持有 Runtime 实例。无
-        命名空间访问控制：注册只是「谁负责校验」的声明，未注册命名空间
+        “隐式拿到某个 Runtime”的旁路——调用方须持有 Runtime 实例。无
+        命名空间访问控制：注册只是“谁负责校验”的声明，未注册命名空间
         静默保留、可自由读取。
 
         .. rubric:: 使用示例
@@ -1615,7 +1615,7 @@ class Runtime:
         优先级链浅合并产物的嵌套形态——模板里 ``{{ config.agent.timeout }}``
         逐级取值（Jinja attr→item 回退）；``get_config`` 消费的是点分扁平
         形态。现场反摊平，只读语义——改写返回的 dict 不回写框架。不含
-        ``set_config`` 的运行期覆盖层（渲染上下文契约是「配置合并视图」，
+        ``set_config`` 的运行期覆盖层（渲染上下文契约是“配置合并视图”，
         覆盖层只服务 ``get_config``）。
         """
         nested: dict[str, Any] = {}
@@ -1685,7 +1685,7 @@ class Runtime:
         .. rubric:: 功能介绍
 
         插件三类资源注册之一（插件 ``install`` 中的注册通道）。全局注册表
-        存「可执行对象 + 默认 LLM 可见声明」，Agent 级差异由 ``ToolEntry``
+        存“可执行对象 + 默认 LLM 可见声明”，Agent 级差异由 ``ToolEntry``
         绑定层覆写，不改全局注册表。两种入参形态：
 
         - 已构造的 ``Tool`` 实例——直接注册；
@@ -1790,7 +1790,7 @@ class Runtime:
         self.agent_registry.register(agent, name=name, namespace=namespace)   # ns::name 完整键冲突 → AgentTypeConflictError（由 AgentRegistry.register 承载）
 
     def register_config_namespace(self, name: str, schema: Any) -> None:
-        """声明扩展的配置命名空间（「谁负责校验」的声明，非访问控制）。
+        """声明扩展的配置命名空间（“谁负责校验”的声明，非访问控制）。
 
         .. rubric:: 功能介绍
 
@@ -1939,7 +1939,7 @@ class Runtime:
 
         把 ``path`` 登记为模型标签映射文件（``model-tags.yaml``）的来源，
         覆盖默认路径。模型标签是单值映射（标签 → 单个模型条目名，无候选
-        列表、无回退链——标签未定义即报错；「换模型」只能动态改
+        列表、无回退链——标签未定义即报错；“换模型”只能动态改
         ``self.model`` 或 ``model_tag``）。标签来源的优先级从高到低：本方法
         登记的路径（代码级）> ``FLOWING_MODEL_TAGS`` 环境变量指向的文件 >
         默认 ``$FLOWING_CONFIG_HOME/model-tags.yaml``——本方法只登记单个
@@ -2125,7 +2125,7 @@ class Runtime:
     @staticmethod
     def _flatten_config(data: dict[str, Any], *, _prefix: str = "") -> dict[str, Any]:
         """嵌套 dict 摊平为点分 key（浅合并的落实粒度：叶子字段级覆盖——
-        「同名 key 高优先级覆盖、未覆盖 key 沿用低优先级」；列表不递归，
+        “同名 key 高优先级覆盖、未覆盖 key 沿用低优先级”；列表不递归，
         整列表覆盖。内部 API）。"""
         flat: dict[str, Any] = {}
         for key, value in data.items():
@@ -2292,7 +2292,7 @@ class Runtime:
 
         .. rubric:: 功能介绍
 
-        框架核心层方法。语义是「请求关闭」而非「同步等待全进程退出」——
+        框架核心层方法。语义是“请求关闭”而非“同步等待全进程退出”——
         发信号后立刻返回，善后流程在本方法内按上述顺序执行完毕。协作式
         关闭：不用 ``os._exit`` / 强制 kill（除非关闭本身卡死，那是应用层
         兜底）。信号处理（SIGINT / SIGTERM）→ 本方法 → ``await runtime``
@@ -2359,8 +2359,8 @@ class Runtime:
         .. rubric:: 功能介绍
 
         等价于 ``yield from self._shutdown_event.wait().__await__()``。与有无
-        Agent 无关——空 Runtime（未 mount）同样有效，只等退出事件。「保持
-        进程存活」与「关闭信号」解耦：CLI / 嵌入方统一 ``await runtime``；
+        Agent 无关——空 Runtime（未 mount）同样有效，只等退出事件。“保持
+        进程存活”与“关闭信号”解耦：CLI / 嵌入方统一 ``await runtime``；
         若 ``main()`` 返回后不做此 await，进程立即退出（mount 返回不等于
         有活干）。
 
@@ -2485,8 +2485,8 @@ class Runtime:
         - 成环 → 抛 :class:`flowing.errors.DependencyError` （报错现场即
           引入环的那次 ``install()``；``install()`` 可分批——缺依赖不报错，只有
           真成环才报）；
-        - 依赖缺失 → ``warnings.warn`` 警告不抛（「声明了依赖但实际用
-          不上」是合法形态；要严格化可用 ``-W error`` 升级）。运行时真
+        - 依赖缺失 → ``warnings.warn`` 警告不抛（“声明了依赖但实际用
+          不上”是合法形态；要严格化可用 ``-W error`` 升级）。运行时真
           用到缺失依赖时由 ``MissingProvideError`` （inject 失败）兜底。
 
         .. seealso:: :meth:`flowing.runtime.Runtime.install`、

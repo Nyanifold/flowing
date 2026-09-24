@@ -80,7 +80,7 @@
 - 应用层端点：应用代码经 ``comm.create_handle(endpoint_id=...)`` 注册
   （如 UI 端点 ``"ui-main"``）。
 
-端点种类在总线层面无结构差异——全部是「端点 ID → 接收回调」的路由表
+端点种类在总线层面无结构差异——全部是“端点 ID → 接收回调”的路由表
 条目。Cron 扩展不经通信总线（见 :mod:`flowing.plugins.cron`）。
 
 .. rubric:: 总线四操作语义（契约要点）
@@ -121,7 +121,7 @@
 .. rubric:: 直接操作总线的立场
 
 ``agent.comm_handler`` （``CommHandle``）是推荐路径——句柄自动携带
-身份（sender / publisher），是「身份正确」的保证。技术上任何代码都
+身份（sender / publisher），是“身份正确”的保证。技术上任何代码都
 能经 ``runtime.inject(communication_key)`` 取到总线并直接调用
 ``send(sender=...)`` 冒充其他端点；框架接受这一约定，不做结构禁止。
 直接操作总线属高级用法，调用方须自行保证身份字段正确。
@@ -204,14 +204,14 @@ class Communication:
 
     .. rubric:: 功能介绍
 
-    通信扩展的全局服务面：维护「端点 ID → 接收回调」的端点表与
-    「topic → 订阅者 ID → 回调」的订阅表，提供 ``send`` / ``request`` /
+    通信扩展的全局服务面：维护“端点 ID → 接收回调”的端点表与
+    “topic → 订阅者 ID → 回调”的订阅表，提供 ``send`` / ``request`` /
     ``publish`` / ``reply`` 四操作与 ``subscribe`` / ``unsubscribe`` /
     ``unsubscribe_all`` 订阅管理。由 ``CommPlugin.install()`` 创建并以
     ``communication_key`` provide 到 Runtime provide 链根，生命周期与
     Runtime 相同。
 
-    总线是「机制」：它只做寻址、路由、关联与派发，不理解任何业务语义
+    总线是“机制”：它只做寻址、路由、关联与派发，不理解任何业务语义
     （不校验 payload、不感知端点种类）。订阅表与广播派发归总线，收到
     后的二次派发归端点（``CommHandle``）——两层分工使非 Agent 端点
     （UI、系统组件）与 Agent 端点共享同一基础设施。
@@ -368,7 +368,7 @@ class Communication:
 
         .. rubric:: 功能介绍
 
-        一次完成「注册端点、构造 ``CommHandle``」两件事：返回的句柄
+        一次完成“注册端点、构造 ``CommHandle``”两件事：返回的句柄
         自动携带身份（发送时填 ``sender`` / ``publisher``）。``on_signal`` /
         ``on_event`` 是端点接收信号 / 事件的回调，缺省为 noop（收到的
         信号 / 事件被忽略）。``use_comm()`` 与 UI 等应用层端点都经
@@ -572,7 +572,7 @@ class Communication:
 
         - 订阅回调按订阅表遍历顺序逐个调用：同步回调直接执行完毕，
           返回 awaitable 的回调转为后台任务后立即继续下一个；本方法
-          在全部回调「已启动」后返回，不等待任何回调完成。
+          在全部回调“已启动”后返回，不等待任何回调完成。
         - 无订阅者 → 空操作。
         - 单个订阅回调抛异常 → 捕获并记日志，其余订阅者与发布者不受
           影响（容错）。
@@ -792,7 +792,7 @@ class CommHandle:
     def _default_noop(*args: Any) -> None:
         """默认空回调——未注入接收回调时，收到的信号 / 事件被忽略。
 
-        内部 API，不属稳定契约。同步无返回，保证「未配置接收方的端点」
+        内部 API，不属稳定契约。同步无返回，保证“未配置接收方的端点”
         在总线派发路径上永远是安全的空操作。
         """
         pass  # 空操作即全部语义：收到的信号/事件被忽略
@@ -1054,7 +1054,7 @@ class CommPlugin(Plugin):
     全局 ``Communication`` 实例并以 ``communication_key`` provide 到
     Runtime provide 链根。此后任何 Agent 可经 ``use_comm(self)`` 启用
     实例级通信能力。框架核心发布时不预装本插件——未启用的通信扩展
-    「从没存在过」。
+    “从没存在过”。
 
     .. rubric:: 行为要点
 
@@ -1132,8 +1132,8 @@ def use_comm(agent: Agent, *, name: str | None = None) -> None:
        Agent ``destroy()`` 时调用 ``handle.destroy()`` 注销端点、取消
        订阅、取消挂起的请求。
 
-    句柄固定挂载为 ``agent.comm_handler``——命名遵循「插件绑定成员以
-    注册名 underscore 版为前缀」的共同约定（见 ``flowing.plugins``
+    句柄固定挂载为 ``agent.comm_handler``——命名遵循“插件绑定成员以
+    注册名 underscore 版为前缀”的共同约定（见 ``flowing.plugins``
     模块 docstring），无改名参数。
 
     .. rubric:: 使用示例

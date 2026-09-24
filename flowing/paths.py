@@ -2,15 +2,15 @@
 
 .. rubric:: 功能介绍
 
-本模块集中定义框架内「资源引用字符串」的路径词法规则，供 ``.fya`` 装配、
+本模块集中定义框架内“资源引用字符串”的路径词法规则，供 ``.fya`` 装配、
 注册表查找等场景共用：
 
 - 路径前缀表（:data:`PATH_PREFIXES`）：``./``、``../``、``@/`` 三类相对
   前缀，全框架唯一权威来源（``parsable`` 的 ``$`` 引用、各 registry 的
   候选链与 ``Runtime.resolve_path`` 共用同一组前缀）；
 - 引用形态判别（:func:`classify_ref`）：把引用字符串判为路径 / 限定名
-  （``ns::name``）/ 裸名三种形态之一——只回答「这个字符串长什么样」，
-  不回答「去哪找」；
+  （``ns::name``）/ 裸名三种形态之一——只回答“这个字符串长什么样”，
+  不回答“去哪找”；
 - 路径解析与表示（:func:`resolve_path` / :func:`to_project_path`）：
   前缀 → ``pathlib.Path`` 的纯函数，以及逆向的对外表示（根内 ``@/``
   形式）；
@@ -160,8 +160,8 @@ def classify_ref(raw: str) -> Literal["path", "qualified", "bare"]:
 
     .. rubric:: 功能介绍
 
-    纯词法判定，不做通道选择：本函数只回答「这个字符串长什么样」，
-    「去哪找」（注册表查找、路径定位）由各注册表与装配层负责。判定
+    纯词法判定，不做通道选择：本函数只回答“这个字符串长什么样”，
+    “去哪找”（注册表查找、路径定位）由各注册表与装配层负责。判定
     顺序固定：
 
     1. 命中 :data:`PATH_PREFIXES` 任一项、前导 ``/`` （绝对路径）、
@@ -228,7 +228,7 @@ def resolve_path(
 
     前缀语义：``@/`` → ``project_root``；``./`` → ``source_dir``；
     ``../`` → ``source_dir.parent``，多级 ``../../`` 逐级向上；绝对路径
-    原样接受。本函数面向「路径形态」的引用：裸名（无前缀、无分隔符）
+    原样接受。本函数面向“路径形态”的引用：裸名（无前缀、无分隔符）
     的查找属注册表 / 装配层，不经本函数。
 
     .. rubric:: 使用示例
@@ -360,14 +360,14 @@ def probe_candidates(base_dir: Path, candidates: Iterable[str]) -> Path | None:
     框架内三资源（Agent / Tool / Skill）的目录形态定向查找链共用本
     函数做探测循环：候选名及其顺序是各资源的规则，由调用方构造并
     传入（如 Agent 的 ``AGENT.fya > agent.fya > ...``、Tool 的
-    ``TOOL.fya > ...``）；本函数只做「按传入顺序逐个检查 ``base_dir``
-    下是否存在，首个命中返回」。
+    ``TOOL.fya > ...``）；本函数只做“按传入顺序逐个检查 ``base_dir``
+    下是否存在，首个命中返回”。
 
     :param base_dir: 候选名相对的基准目录。
     :param candidates: 候选文件名列表（相对 ``base_dir``），顺序即
         优先级。
     :return: 首个存在者的完整路径；全部未命中返回 ``None`` （不报错，
-        「不命中」的处置是调用方职责）。
+        “不命中”的处置是调用方职责）。
 
     .. rubric:: 行为要点
 
@@ -390,7 +390,7 @@ class NamingRules:
 
     .. rubric:: 功能介绍
 
-    本类型只承载「哪些文件名是通用名、按什么顺序剥离后缀」这两张表，
+    本类型只承载“哪些文件名是通用名、按什么顺序剥离后缀”这两张表，
     不含推断逻辑。框架内各资源模块在紧邻其候选链声明处定义自己的规则
     常量：Agent 的 ``AGENT_NAMING`` （见 ``flowing.runtime``）、Tool 的
     ``TOOL_NAMING`` （见 ``flowing.tool``）、Skill 的 ``SKILL_NAMING``
@@ -525,7 +525,7 @@ def kebab_to_pascal(name: str) -> str:
 
     .. rubric:: 行为要点
 
-    纯格式转换，不叠加资源后缀策略：「类名始终以 ``Agent`` 结尾」等
+    纯格式转换，不叠加资源后缀策略：“类名始终以 ``Agent`` 结尾”等
     规则由资源装配层在本函数结果上叠加 / 校验（如 ``flowing.compiler``
     的 ``class_name`` 推断：``pay`` → ``PayAgent`` 的补后缀发生在
     装配层，不在本函数）。
@@ -548,7 +548,7 @@ def pascal_to_kebab(name: str) -> str:
     .. rubric:: 行为要点
 
     - 词边界规则：小写或数字 → 大写处切分；连续大写串（缩写词）在
-      「大写 → 大写小写」的收尾处切分——``HTTPClient`` →
+      “大写 → 大写小写”的收尾处切分——``HTTPClient`` →
       ``http-client``，``PayAgent`` → ``pay-agent``。
     - 纯格式转换，不去除任何资源后缀：``PayAgent`` 转出 ``pay-agent``，
       含 ``agent`` 段（后缀语义属资源层）。

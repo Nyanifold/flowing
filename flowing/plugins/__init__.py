@@ -41,8 +41,8 @@
   ``SkillPlugin.install`` 绑定 ``runtime.register_skill``）时，仅当
   对象当前没有该成员才绑定（``hasattr`` 检查，含类级方法）——开发者
   可能已自定义同名逻辑，绑定方不得覆盖。
-- 命名约定（习惯约定，非强制校验）：插件注册名取「类名去掉 ``Plugin``
-  后缀再转 kebab-case」（``CronPlugin`` → ``"cron"``、``SkillPlugin`` →
+- 命名约定（习惯约定，非强制校验）：插件注册名取“类名去掉 ``Plugin``
+  后缀再转 kebab-case”（``CronPlugin`` → ``"cron"``、``SkillPlugin`` →
   ``"skill"``）；插件绑到 Agent 的成员以注册名的 underscore 版为前缀
   （``skill_load``、``comm_handler``），前缀即命名空间，因此不提供
   改名参数。
@@ -105,7 +105,7 @@ class Plugin:
     :attr:`dependencies` （:attr:`namespace` 可选），并按需实现
     :meth:`install` / :meth:`shutdown`。插件作者的约定（``install``
     只注册、协作不查询、注册只在 ``install``、依赖只声明；以及绑函数
-    约定、命名约定）见本模块 docstring「全局约定」。
+    约定、命名约定）见本模块 docstring“全局约定”。
 
     .. rubric:: 使用示例
 

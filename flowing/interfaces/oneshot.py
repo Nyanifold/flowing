@@ -5,7 +5,7 @@
 ``flowing cli <path> [-f <main file>] [-t <agent-id>] [-m <model-tag>] [-v] INPUT [--key value ...]``
 是一次性对话形态：拉起 Runtime、加载（或新建）根 Agent、投递一条
 INPUT（一段话或一条 slash command）、打印结果后退出。进程生命周期
-= 单条消息——``query()`` 天然阻塞至回合收尾，是「默认阻塞 bash」的
+= 单条消息——``query()`` 天然阻塞至回合收尾，是“默认阻塞 bash”的
 实现方式。
 
 与 ``repl``（交互循环）互补：``cli`` 面向脚本化 / 管道化调用
@@ -34,7 +34,7 @@ INPUT（一段话或一条 slash command）、打印结果后退出。进程生�
      未知 id → stderr + ``EXIT_RUNTIME_ERROR``。
    - 未给出（repl 启动绑定的确定性版）：活体表恰好一个根 → 直用；
      否则池休眠根恰好一个 → 现场恢复（身份连续）；否则按项目默认根
-     类型新建（池无根记录 → stderr「cannot determine agent type」+
+     类型新建（池无根记录 → stderr“cannot determine agent type”+
      ``EXIT_RUNTIME_ERROR``）。
 3. ``-m <model-tag>``：``agent.model_tag = model_tag`` 后投递——只改
    实例内存属性（:func:`flowing.agent.Agent.__setattr__` 拦截当场重
@@ -79,7 +79,7 @@ INPUT（一段话或一条 slash command）、打印结果后退出。进程生�
   两个名字保留，``-t`` / ``-m`` / ``-v`` / INPUT 的语义键不 shadows
   任何 main kwargs。
 - slash INPUT 时不投递消息、不改模型；``/exit`` / ``/quit`` 这类
-  交互壳命令在 ``slash_lines`` 层返回「shell-level」提示行。
+  交互壳命令在 ``slash_lines`` 层返回“shell-level”提示行。
 
 .. seealso::
 

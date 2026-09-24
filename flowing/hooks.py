@@ -26,7 +26,7 @@
   canonical home 在 :mod:`flowing.lists`，本模块再导出（:class:`HookList`
   继承 ``ManagedList``，见 :mod:`flowing.lists` 模块 docstring）。
 - ``watch`` 通道：与钩子点并列的独立 watcher 机制，监听实例属性赋值
-  事件（见行为要点的「watcher 通道」）。
+  事件（见行为要点的“watcher 通道”）。
 
 核心钩子点全集（本模块最重要的扩展契约）：
 
@@ -312,7 +312,7 @@ watcher 通道（``watch``，与钩子点并列的扩展契约）：
 - 同名钩子点只允许一个声明者（冲突规则见 :meth:`HookRegistry.declare`）；
   ``by`` 必填——框架核心 ``by="core"``，扩展用自身标识。
 - 声明后任何代码都可以向该钩子点挂 handler，无需再声明：声明者是
-  「所有者」，注册者是「使用者」。
+  “所有者”，注册者是“使用者”。
 - 框架只在创建 / 恢复 / 销毁管线与 Turn 循环的固定位置 dispatch 核心钩子
   点；扩展自行 dispatch 自己声明的钩子点，调用方式与框架内部一致
   （``await hooks.<name>.dispatch(agent, value)``）。
@@ -412,7 +412,7 @@ class HookEntry:
     用户通常不直接实例化，而是通过注册与分组管理 API 间接持有。
 
     pattern 过滤条件与 handler 绑定为一条记录，使 disable / enable /
-    remove 等分组操作对「带 pattern 的 handler」同样生效。
+    remove 等分组操作对“带 pattern 的 handler”同样生效。
 
     .. rubric:: 行为要点
 
@@ -452,10 +452,10 @@ class PatternRegistrar:
     .. rubric:: 功能介绍
 
     :meth:`HookList.__getitem__` 传入 ``str`` 时返回本对象；调用它即完成
-    「仅当 value 的 ``match_on`` 属性匹配 pattern 时才执行」的 handler
+    “仅当 value 的 ``match_on`` 属性匹配 pattern 时才执行”的 handler
     注册。
 
-    「按名称过滤注册」是高频需求（只对 ``payment-*`` 工具做审批）。
+    “按名称过滤注册”是高频需求（只对 ``payment-*`` 工具做审批）。
     独立 Registrar 类型使 ``hook["pattern"]`` 与 ``hook(handler)`` 共享
     同一调用形态，注册产物仍是普通 :class:`HookEntry` （``pattern`` 字段
     非空），因此分组管理、注册顺序、分发算法完全一致，无第二套语义。
@@ -564,7 +564,7 @@ class HookList(ManagedList[HookEntry]):
       两个层面）。
     - ``__getitem__`` 三形态见下；``int`` / ``slice`` 基于含 disabled 的
       完整底层列表做位置索引（用于自省），与 ``__iter__`` / :meth:`dispatch`
-      的「跳过 disabled」语义互不干扰。
+      的“跳过 disabled”语义互不干扰。
     - 构造阶段钩子点（``before_create`` / ``after_create`` /
       ``before_destroy`` / ``after_destroy`` / ``before_recover`` /
       ``after_recover``）与运行期钩子点一样接受同步或异步 handler；注册时
@@ -594,7 +594,7 @@ class HookList(ManagedList[HookEntry]):
         .. rubric:: 行为要点
 
         - ``by`` 必填关键字参数，不允许省略或显式传 ``None``——声明者身份是
-          「声明独占」冲突判定的唯一依据。
+          “声明独占”冲突判定的唯一依据。
         - ``match_on`` 必须是 value 类型具备的属性名字符串；本方法不校验
           （value 类型在声明时不可知），错误在分发时按普通异常上抛。
 
@@ -773,8 +773,8 @@ class HookRegistry:
 
     钩子只影响当前 Agent 实例，无全局钩子表——同类的两个 Agent 可以有
     不同的钩子栈。钩子点集合是显式的：访问未声明的钩子点立即抛
-    ``UnknownHookPointError`` （而非静默创建空钩子点），让「没调用
-    ``use_skill()`` 却访问 ``before_skill_load``」这类错误在开发期暴露。
+    ``UnknownHookPointError`` （而非静默创建空钩子点），让“没调用
+    ``use_skill()`` 却访问 ``before_skill_load``”这类错误在开发期暴露。
 
     .. rubric:: 使用示例
 
@@ -825,7 +825,7 @@ class HookRegistry:
 
         .. rubric:: 行为要点
 
-        - 预填集合为模块 docstring「核心钩子点全集」的完整集合，
+        - 预填集合为模块 docstring“核心钩子点全集”的完整集合，
           各 ``HookList`` 初始为空（无 handler）；``match_on`` 默认为
           ``"name"``，仅 ``after_provider_gen`` / ``on_provider_delta``
           为 ``"by"`` （value 携带来源标记，可按来源 pattern 过滤注册）。
@@ -879,10 +879,10 @@ class HookRegistry:
         扩展（Composable / 插件的 ``use_xxx``）在 Agent 实例的 ``setup()``
         阶段就地声明自己的钩子点，并自行在使用处 dispatch。
 
-        钩子点从「核心固定集」变为「声明即创建」：Skill 扩展声明
+        钩子点从“核心固定集”变为“声明即创建”：Skill 扩展声明
         ``before_skill_load``，Comm 扩展声明 ``on_signal``——不调用这些
-        扩展的 Agent 实例没有这些钩子点。声明者是钩子点「所有者」，
-        注册者是「使用者」；声明后任何代码都可挂 handler，无需再声明。
+        扩展的 Agent 实例没有这些钩子点。声明者是钩子点“所有者”，
+        注册者是“使用者”；声明后任何代码都可挂 handler，无需再声明。
 
         .. rubric:: 使用示例
 
@@ -908,7 +908,7 @@ class HookRegistry:
           扩展钩子点（谁声明谁 dispatch）。
         - 声明时机约束：应在 ``setup()`` （或 ``use_xxx``）中完成；运行期
           Turn 循环内声明虽不禁止，但属扩展自身责任，框架不做时序保障。
-        - ``@on`` 冲刷：创建钩子点（而非走「同名同 by 幂等返回已有」路径）时，把 ``_pending_on``
+        - ``@on`` 冲刷：创建钩子点（而非走“同名同 by 幂等返回已有”路径）时，把 ``_pending_on``
           里同名记录全部挂载进新 ``HookList`` （含 pattern 的走
           ``HookList[pattern]`` 通道）并从暂记列表移除——此刻尚无其它
           handler，``@on`` handler 天然排最前。幂等路径（同名 + 同 ``by``）
@@ -990,7 +990,7 @@ class HookRegistry:
 
         - 命中（含预填核心点与已 declare 的扩展点）→ 返回对应容器。
         - 未命中 → 抛 :class:`flowing.errors.UnknownHookPointError`，
-          不静默创建——这是「声明即创建」的强制面。
+          不静默创建——这是“声明即创建”的强制面。
 
         :raises flowing.errors.UnknownHookPointError:
             访问未声明的钩子点。
@@ -1133,8 +1133,8 @@ def on(
     - setup 后结算：``setup()`` 返回后的 PENDING 检查发现暂记列表非空 →
       抛 :class:`flowing.errors.UnknownHookPointError` （拼错的
       钩子点名或未启用对应插件，必须死在创建期，不做静默死信）。``@on``
-      的目标钩子点必须在 setup 结束前被 declare（与「Composable 在
-      setup 里启用」约定一致）。
+      的目标钩子点必须在 setup 结束前被 declare（与“Composable 在
+      setup 里启用”约定一致）。
     - ``by`` 省略时记 ``None``，与 :meth:`HookList.__call__` 的默认一致
       ——``@on`` 与括号调用是同语义的两种注册形态。注意
       ``remove_by_owner(None)`` 会精确匹配并删除全部匿名 handler（含

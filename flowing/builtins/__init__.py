@@ -2,7 +2,7 @@
 
 .. rubric:: 功能介绍
 
-本包是框架随包发布的「出厂自带」能力集合，全部注册在 ``builtin::``
+本包是框架随包发布的“出厂自带”能力集合，全部注册在 ``builtin::``
 命名空间下（注册行为见 :func:`register_builtins`，由 ``Runtime`` 构造
 期自动执行，随每个 ``Runtime`` 实例天生在场）：
 
@@ -15,7 +15,7 @@
 
 .. rubric:: 全局约定（跨符号、影响使用的约定）
 
-注册不等于可见。条目进入注册表只代表「框架认识它」，不代表 LLM 能看到
+注册不等于可见。条目进入注册表只代表“框架认识它”，不代表 LLM 能看到
 它：Agent 的工具目录（``Context.tools``）只包含该 Agent 在 ``.fya`` 的
 ``tools:`` 或 ``add_tool`` 中显式声明的条目；可写文件、执行命令的危险
 工具（``write`` / ``bash`` / ``edit`` 等）必须由使用者显式声明才会被
@@ -85,7 +85,7 @@ def register_builtins(runtime) -> None:
     .. rubric:: 行为要点
 
     - 只写注册表：不触碰任何 Agent 实例，也不产生 LLM 可见性——可见性
-      只能由 Agent 级显式声明产生（见包 docstring 的「注册不等于可见」）。
+      只能由 Agent 级显式声明产生（见包 docstring 的“注册不等于可见”）。
     - 预期在 ``Runtime`` 构造期恰好调用一次；同一 ``Runtime`` 重复调用
       会因同名工具条目已注册而抛
       :class:`flowing.errors.ToolNameConflictError`。

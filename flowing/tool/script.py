@@ -75,11 +75,11 @@ class ScriptTool(Tool):
                 ...
 
     后台工具形态（async generator）：``execute`` 写成 async generator——
-    第一个 ``yield`` 是「准备完成」标记（可空值），`Tool.__call__` 等待它
+    第一个 ``yield`` 是“准备完成”标记（可空值），`Tool.__call__` 等待它
     作为 ``pending`` 收据（``tool_status="pending"`` 的 TOOL 消息带内容）；
     后续每个 ``yield`` 由框架后台驱动并逐段投递 EVENT 消息（LLM 可见）；
     首 yield 前只允许轻量准备，长任务必须放在首 yield 之后（违反的后果
-    是收据延迟——作者责任）。「只要后台、不要中间报告」的普通 async
+    是收据延迟——作者责任）。“只要后台、不要中间报告”的普通 async
     ``execute`` 可声明类属性 ``background = True`` （仅 script 型生效）走
     同一 ``pending`` 通道：
 
@@ -235,7 +235,7 @@ def flowing_tool(fn: Callable[..., Any] | None = None, *,
     两种用法：``@flowing_tool`` （名字由文件名 / 目录名推断）或
     ``@flowing_tool("make-payment")`` （参数仅作一致性断言——必须与推断名
     一致，不符抛 :class:`flowing.errors.NameMismatchError`）。定义处的
-    显式打标让「这个函数是工具」成为作者意图而非框架猜测。
+    显式打标让“这个函数是工具”成为作者意图而非框架猜测。
 
     .. rubric:: 行为要点
 
@@ -279,8 +279,8 @@ def _auto_generate_tool(fn: Callable[..., Any]) -> Tool:
     .. rubric:: 行为要点
 
     - 等价于 ``type("<PascalName>", (ScriptTool,), {"execute":
-      staticmethod(fn)})`` 后实例化；元信息按「文件名 / docstring / 类型
-      标注」提取（名字推断与装饰器参数断言规则见 :func:`flowing_tool`）。
+      staticmethod(fn)})`` 后实例化；元信息按“文件名 / docstring / 类型
+      标注”提取（名字推断与装饰器参数断言规则见 :func:`flowing_tool`）。
     - :raises flowing.errors.MissingSchemaError: 参数缺类型标注。
     - :raises flowing.errors.AmbiguousToolError: 同一 ``.py`` 同时存在
       打标函数与 Tool 子类、或多个打标函数（由定向查找层抛出，不在本

@@ -2,8 +2,8 @@
 
 .. rubric:: 功能介绍
 
-本模块提供 ``use_system_reminder()``：为单个 Agent 实例启用「每个逻辑
-Turn 开始前注入系统提醒」策略。启用后，每个逻辑 Turn 开始时，默认策略
+本模块提供 ``use_system_reminder()``：为单个 Agent 实例启用“每个逻辑
+Turn 开始前注入系统提醒”策略。启用后，每个逻辑 Turn 开始时，默认策略
 把当前可见的提醒内容清单压缩为一条 ``Message(kind=EVENT, ...)`` （多个
 内容块合并成一条消息），经 ``before_turn`` 钩子附加进本回合的待挂树
 批次——提醒随批次挂树并持久化，排在触发消息之后。
@@ -101,7 +101,7 @@ def use_system_reminder(
     message_interval: int = 0,
     time_interval: float = 0,
 ) -> None:
-    """为单个 Agent 实例启用「每回合注入系统提醒」策略（可选、非默认）。
+    """为单个 Agent 实例启用“每回合注入系统提醒”策略（可选、非默认）。
 
     .. rubric:: 功能介绍
 

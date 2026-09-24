@@ -3,15 +3,15 @@
 .. rubric:: 功能介绍
 
 本模块定义 ``web`` 子命令与 Web 暴露层的唯一交接点：
-:func:`get_frontend_assets`。在 flowing 的架构里，UI 是几个「下游
-应用」的例子——``flowing.interfaces.web`` 承载的只是 ``web`` 子命令
+:func:`get_frontend_assets`。在 flowing 的架构里，UI 是几个“下游
+应用”的例子——``flowing.interfaces.web`` 承载的只是 ``web`` 子命令
 所需的（内置默认）前端资产：一个用公开 API 拼出的可对话页面（发消息、
 流式显示、查快照、选择 / 切换 / 新建 Agent）。
 
-框架核心只提供「HTTP API」这个机制（``flowing serve`` 已完整）；
-「给不给前端、前端长什么样」是暴露层的策略，由本模块承载。替换或
+框架核心只提供“HTTP API”这个机制（``flowing serve`` 已完整）；
+“给不给前端、前端长什么样”是暴露层的策略，由本模块承载。替换或
 移除前端不影响 :data:`flowing.interfaces.serve.SERVE_ENDPOINTS` 中的
-任何一条。``web`` 命令只是「serve + 加载本模块前端资产」的便捷组合。
+任何一条。``web`` 命令只是“serve + 加载本模块前端资产”的便捷组合。
 
 .. rubric:: 内置前端范围
 
@@ -24,15 +24,15 @@
 根选取行为（serve 端点对根选取无状态，选取全在客户端）：页面加载时
 ``GET /agents`` 列出根 Agent（id + 最后回复前缀 + 最后修改时间，口径
 同 REPL ``/agents``）；多根默认选中最后修改时间最新的根，页面常显
-当前目标 id，下拉可切换；零根显示空态页并提供「新建 Agent」入口
+当前目标 id，下拉可切换；零根显示空态页并提供“新建 Agent”入口
 （经 ``POST /agents``）。
 
 边界：
 
 - 前端页面与 Runtime 的交互只有 serve 的封闭 HTTP 端点一条通道
   （消息投递 / 观察流 / 控制与读取端点）；前端不绕过 serve API 另开
-  消息通道（例如直连 Agent 的内部方法）。这保证「HTTP 请求与 CLI
-  输入等价」的不变量在 web 形态下同样成立。
+  消息通道（例如直连 Agent 的内部方法）。这保证“HTTP 请求与 CLI
+  输入等价”的不变量在 web 形态下同样成立。
 - 本模块不做任何构建 / 打包：资产在 import 本模块时即已就绪，
   ``GET /`` 与 ``GET /assets/*`` 只是读取 :class:`FrontendAssets`
   的字段。WebSocket 不引入——流式推送由 serve 的 SSE 端点承载。
@@ -159,7 +159,7 @@ def get_frontend_assets() -> FrontendAssets:
     仓库根 ``webui/`` 的构建产物（单文件
     ``webui-dist/index.html``，全部 JS/CSS 内联）：亮色聊天界面（样式变量
     借用 kimi-code web 界面亮色主题）：agent 侧栏（含最近回复预览）+
-    「记录 / 树」双子页（记录视图渲染消息树——仅分叉处缩进、分叉首条
+    “记录 / 树”双子页（记录视图渲染消息树——仅分叉处缩进、分叉首条
     消息可开合、每条消息带预览，树子页可点节点切换分支），消息正文
     Markdown 渲染（react-markdown + GFM）、思考折叠、工具调用/返回折叠卡
     （展开为 JSON 高亮）、输入框上方上下文占用进度条、头部模型选择；
@@ -248,7 +248,7 @@ async def cmd_web(
     ``GET /assets/*`` 返回静态资源），供浏览器直接打开交互。前端
     资产来自 :func:`flowing.interfaces.web.get_frontend_assets`。
 
-    ``web`` 只是「serve + 加载前端资产」的便捷组合——替换或移除
+    ``web`` 只是“serve + 加载前端资产”的便捷组合——替换或移除
     前端不影响任何 HTTP API，前端也只有
     ``POST /agents/<agent-id>/message`` 一条消息入口。
 

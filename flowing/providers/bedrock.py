@@ -41,7 +41,7 @@ class BedrockProvider(AnthropicMessagesProvider):
 
     - 本 adapter 无官方默认端点：条目必须提供 ``base_url``。
     - 凭证优先级：config 显式 ``aws_session_token`` > 基类 ``api_key``。
-    - 凭证同样遵守「不进消息 / ``_provided`` / 落盘」的安全边界。
+    - 凭证同样遵守“不进消息 / ``_provided`` / 落盘”的安全边界。
     - 当前传输层复用基类的普通 HTTP 形态（未实现 AWS SigV4 签名）。
 
     .. seealso::

@@ -10,7 +10,7 @@
 不侵入框架核心执行流的前提下，外部（UI、监控、测试、运维）如何知道
 Runtime / Agent 此刻是什么状态。
 
-观测面由两条互补的机制通道组成，本模块承载「拉取」这一条（「推送」由
+观测面由两条互补的机制通道组成，本模块承载“拉取”这一条（“推送”由
 钩子系统承载）：
 
 .. list-table::
@@ -35,9 +35,9 @@ Runtime / Agent 此刻是什么状态。
 
 快照是观测量，不是持久化格式：持久化侧由 ``tree.jsonl`` （消息树操作
 日志）与 ``state.jsonl`` （``flowing.persistence.StateView`` 写透存储）
-承载，恢复 = 重放日志现场重建对象。不存在「拍全量状态照存档、下次整张
-加载」的快照文件；观测字段与持久化格式无转换关系、不保证字段兼容
-（观测字段由「当下想看什么」驱动，持久化格式由兼容性驱动）。
+承载，恢复 = 重放日志现场重建对象。不存在“拍全量状态照存档、下次整张
+加载”的快照文件；观测字段与持久化格式无转换关系、不保证字段兼容
+（观测字段由“当下想看什么”驱动，持久化格式由兼容性驱动）。
 
 快照不包含插件状态：框架不为插件提供快照命名空间挂载机制。插件要暴露
 自身状态，走自己的只读查询 API——观察者经 ``runtime.get_plugin(...)``
@@ -76,7 +76,7 @@ Runtime / Agent 此刻是什么状态。
   不是协程，调用时不需要 ``await``。快照收集在同一事件循环 task 内同步
   完成，不等待任何长操作。
 - 单时刻一致性：一次调用内部各字段取自同一时刻的框架状态，不出现
-  「``messages.count`` 取自 t1、``executions`` 取自 t2」的撕裂。一致性
+  “``messages.count`` 取自 t1、``executions`` 取自 t2”的撕裂。一致性
   承诺以一次调用为单位：需要多个切面在同一时刻一致，必须在同一次调用
   中传入全部所需 key（``keys={"tool_entries", "executions"}``）；拆成
   两次调用各取一个切面，两次之间框架可能已变化，跨切面比对失效。
@@ -137,7 +137,7 @@ class NodeInfo:
     - 两个字段均为创建后不变的标量拷贝；修改本视图不影响框架。
     - ``parent_id`` 为 ``None`` 当且仅当该条目是 Runtime 自身（链终点无
       亲节点）；Agent / Workflow 的根条目亲节点指针指向其 Runtime 的 ``node_id``
-      ——「根」由「亲节点是 Runtime」表达，不由 ``None`` 表达。
+      ——“根”由“亲节点是 Runtime”表达，不由 ``None`` 表达。
     - 不暴露节点的 hooks / provided / children 等任何可变结构。
     - 节点在快照生成后被 ``destroy()``，本视图仍保留生成时刻的值（快照不
       追踪后续变化；需要新鲜状态请重新调用 ``snapshot()``）。
@@ -164,16 +164,16 @@ class AgentInfo:
 
     ``RuntimeSnapshot.agents`` 的值类型：agent 池注册表（``agent_id`` →
     元数据）中一个条目的投影。池持久化的是注册表而非实例——实例懒创建，
-    因此 ``loaded`` 区分「有 key 有 value」与「有 key 无 value」两种状态。
+    因此 ``loaded`` 区分“有 key 有 value”与“有 key 无 value”两种状态。
 
     .. rubric:: 行为要点
 
     - ``loaded=False`` 不表示异常：它表示实例尚未创建（懒加载）或已
       ``destroy()`` （记录保留，可现场恢复）；``Runtime.get_agent(agent_id)``
-      触发「有 key 无 value → 现场恢复」。
+      触发“有 key 无 value → 现场恢复”。
     - ``agent_type`` 为字符串类型名（恢复重建实例的依据），非类对象。
     - ``created_at`` 取自注册表元数据，恢复后保持原值（身份连续、可重现，
-      ``node_id == agent_id``），不是「本次加载时间」。
+      ``node_id == agent_id``），不是“本次加载时间”。
     - 显式删除 session（删持久化目录）后条目从注册表移除，下一张快照中
       该 key 消失。
 
@@ -204,7 +204,7 @@ class ExecutionInfo:
     .. rubric:: 功能介绍
 
     ``AgentSnapshot.executions`` 的值类型：Agent 执行注册表中一个条目的
-    投影——观测者能看到「有哪些执行在飞、打了什么标签、跑了多久」。
+    投影——观测者能看到“有哪些执行在飞、打了什么标签、跑了多久”。
 
     .. rubric:: 行为要点
 
@@ -213,10 +213,10 @@ class ExecutionInfo:
       快照不做枚举校验，原样投影。
     - ``tags`` 为拷贝：快照后执行条目的 tag 变化不影响本视图。
     - 执行条目只在其存活期间出现于快照（清理在 ``finally`` 中保证，快照
-      里不会出现已结束的「幽灵条目」）。
-    - 快照生成后执行完成，本视图仍保留生成时刻的值——不得据此做「它还在
-      跑」的控制决策（快照是观察通道，不是控制依据）。
-    - 不提供经过时间与进度字段：「跑了多久」由观察者用 ``started_at`` 与
+      里不会出现已结束的“幽灵条目”）。
+    - 快照生成后执行完成，本视图仍保留生成时刻的值——不得据此做“它还在
+      跑”的控制决策（快照是观察通道，不是控制依据）。
+    - 不提供经过时间与进度字段：“跑了多久”由观察者用 ``started_at`` 与
       当前时间自行计算。
     - 不暴露 ``cancel`` / ``pause`` 两个控制信号 Event——取消 / 暂停是正式
       控制 API（``Agent.cancel()`` / ``Agent.pause()`` 族），不是观测面能力。
@@ -245,7 +245,7 @@ class EntryInfo:
     .. rubric:: 功能介绍
 
     ``AgentSnapshot.tool_entries`` 与 ``AgentSnapshot.subagent_entries``
-    的元素类型：三层能力描述中「Agent 级绑定」层的投影——同一个可执行对象在
+    的元素类型：三层能力描述中“Agent 级绑定”层的投影——同一个可执行对象在
     不同 Agent 上可经 entry 覆写别名与启用状态，快照呈现的是本 Agent 上的
     绑定结果，而非全局注册表。
 
@@ -257,7 +257,7 @@ class EntryInfo:
       影响——可见性≠可执行性）；条目本身仍在（可被重新置可见）。
     - ``agent_type`` 仅子 Agent 条目有值；工具条目恒为 ``None``。
     - 不投影 entry 的 schema 覆写内容（specified / inject 参数等）——观测
-      面只给「绑没绑、叫什么、开没开」；LLM 可见声明请经
+      面只给“绑没绑、叫什么、开没开”；LLM 可见声明请经
       ``ToolEntry.llm_definition()`` 获取。
     - 条目在快照生成后被移除 / 停用，本视图保留生成时刻的值。
 
@@ -297,7 +297,7 @@ class ModelInfo:
       新值。
     - 任何字段求值失败（如 Parsable 引用缺失）：该字段以 ``None`` 投影，
       快照整体不因此抛异常（观测通道不打穿核心）。
-    - ``model_tag`` 为当前标签；经「直接赋 ``ModelConfig``」路径换模型时
+    - ``model_tag`` 为当前标签；经“直接赋 ``ModelConfig``”路径换模型时
       （可指向配置中从未定义的模型）为 ``None``。
     - 不含 Provider 凭证、不含 ``api_key`` 等任何敏感配置（凭证不进消息、
       不落盘、不进快照）。
@@ -340,8 +340,8 @@ class TurnContextInfo:
 
     - 仅当逻辑 turn 执行期间（从 turn 开始到收尾清理为止）
       ``AgentSnapshot.current_turn`` 非 ``None``；收尾观察钩子
-      （``after_turn``）与交付期快照即无此项——「快照无此字段」不等于
-      「回合钩子已跑完」。
+      （``after_turn``）与交付期快照即无此项——“快照无此字段”不等于
+      “回合钩子已跑完”。
     - ``message_count`` 含 turn 首条（触发消息）在内；逻辑标识可用 turn
       首条消息 id（树中真实节点），快照不提供独立的逻辑 turn 标识符。
     - ``aborted`` 反映 TurnContext 的取消标记（协作式 cancel 已请求）；它
@@ -419,7 +419,7 @@ class MessageQueueInfo:
     ``AgentSnapshot.message_queue`` 的值类型：每 Agent 独立消息队列的两个
     计数投影——待消费消息数与等待 ``message()`` 结果的 pending 数。队列
     内部是 deque 与等待中的 Future，均为可变内部对象；观测只需要两个计数
-    即可回答「有没有积压」「有没有人等结果」。
+    即可回答“有没有积压”“有没有人等结果”。
 
     .. rubric:: 行为要点
 
@@ -470,8 +470,8 @@ class RuntimeSnapshot:
 
     .. rubric:: 行为要点
 
-    - 一致性：一次调用内全部字段同一时刻取值（见模块 docstring「单时刻
-      一致性」）；返回结构与内部存储隔离（副本 / 不可变视图），修改快照
+    - 一致性：一次调用内全部字段同一时刻取值（见模块 docstring“单时刻
+      一致性”）；返回结构与内部存储隔离（副本 / 不可变视图），修改快照
       不影响框架状态。
     - 无副作用、不抛异常：正常路径（含 shutdown 进行中）返回当前可得
       切片。
@@ -523,8 +523,8 @@ class AgentSnapshot:
     （``model``）、能力绑定（``tool_entries`` / ``subagent_entries``）、
     上下文占用估计（``context_usage``）。
 
-    与 ``RuntimeSnapshot`` 分工：池级「有没有、载没载」看 Runtime 快照；
-    实例级「在跑什么」看 Agent 快照（实例未加载时应先看
+    与 ``RuntimeSnapshot`` 分工：池级“有没有、载没载”看 Runtime 快照；
+    实例级“在跑什么”看 Agent 快照（实例未加载时应先看
     ``RuntimeSnapshot.agents[id].loaded``）。
 
     .. rubric:: 使用示例

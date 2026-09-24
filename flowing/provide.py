@@ -39,7 +39,7 @@ class ProvideNode(Protocol):
 
     .. rubric:: 功能介绍
 
-    统一「可 provide / 可 inject」的节点签名。框架内
+    统一“可 provide / 可 inject”的节点签名。框架内
     :class:`flowing.runtime.Runtime` （链终点）、:class:`flowing.agent.Agent`
     与 ``flowing.plugins.workflow.Workflow`` 都实现本协议。协议带
     ``@runtime_checkable``，可以用 ``isinstance(node, ProvideNode)`` 在

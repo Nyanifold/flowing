@@ -2,7 +2,7 @@
 
 .. rubric:: 功能介绍
 
-本扩展提供「规则性编排」能力：编排逻辑（分支、循环、并行、串行）由
+本扩展提供“规则性编排”能力：编排逻辑（分支、循环、并行、串行）由
 Python 代码显式写出，与 goal mode（LLM 按目标自主决定路径）是两种正交
 的编排方式。Workflow 适用于流程已知、要确定性、可重复的场景——审批流、
 验证-修复循环、固定步骤流水线。使用时继承 :class:`Workflow` 实现
@@ -62,7 +62,7 @@ Workflow 实例同时占据两个位置：
 Workflow 驱动子 Agent 的唯一入口是 :meth:`Workflow.create_agent`
 （字符串类型名，委托 ``runtime.create_agent``），创建后直接
 ``message()`` / ``query()``。没有 ``invoke_subagent``——那是 Agent 侧
-「LLM 唤起 + SubagentEntry 解析 + 钩子 + 池生命周期」的包装，workflow
+“LLM 唤起 + SubagentEntry 解析 + 钩子 + 池生命周期”的包装，workflow
 的编排代码自己就是包装层；workflow 路径也不经过
 ``on_subagent_invoke`` / ``on_subagent_returns`` 钩子（创建管线只有 ``before_create`` /
 ``after_create``）。并行无需专门 API——``asyncio.gather`` 即原语。
@@ -80,7 +80,7 @@ Workflow 可以反向驱动发起它的 Agent（``await self.caller.query(...)``
 （后台任务 + 立即返回收据，见 :class:`RunWorkflowTool`）。死锁成因：
 caller 的工作循环串行，当前逻辑 Turn（正在执行 ``run-workflow`` 工具）
 完成前不消费新消息；若工具同步等待 workflow 完成，双方互相等待。同步
-执行只允许「workflow 不反向调用 caller」的场景，由调用方自行保证。
+执行只允许“workflow 不反向调用 caller”的场景，由调用方自行保证。
 
 .. rubric:: 使用示例
 
@@ -121,7 +121,7 @@ caller 的工作循环串行，当前逻辑 Turn（正在执行 ``run-workflow``
       ``destroy()`` / ``TurnResult``。
     - :mod:`flowing.tool` —— ``Tool`` / ``ToolCall`` / ``ToolResult`` /
       ``ToolRegistry``。
-    - :mod:`flowing.plugins.skills` —— 同构的「插件提供能力」扩展形态。
+    - :mod:`flowing.plugins.skills` —— 同构的“插件提供能力”扩展形态。
     - :mod:`flowing.errors` —— ``ToolNotFoundError`` / ``Intercepted``。
 """
 
@@ -147,8 +147,8 @@ class Workflow(ABC):
     继承本类并实现 :meth:`run` （编排主体），然后以
     ``MyWorkflow(caller, runtime)`` 构造实例并 ``await instance.run(...)``
     驱动，或经 ``run-workflow`` 工具（LLM 入口）按定义文件路径拉起。
-    构造时实例在节点树与 provide 链上就位（见模块 docstring「对象图中的
-    位置与生命周期」）。实例拥有与 Agent 同构但完全独立的装备：``hooks``
+    构造时实例在节点树与 provide 链上就位（见模块 docstring“对象图中的
+    位置与生命周期”）。实例拥有与 Agent 同构但完全独立的装备：``hooks``
     （自己的 ``HookRegistry``，供工具调用拦截与观察）、``provide`` /
     ``inject`` （provide 链上的一环）、``create_agent`` / ``tool_call``
     （驱动子 Agent 与工具的入口）、``caller`` （发起方，可反向驱动）。
@@ -184,7 +184,7 @@ class Workflow(ABC):
 
     .. rubric:: 行为要点
 
-    - 实例只能经「``Workflow`` 子类构造（``caller`` + ``runtime``）」创建；
+    - 实例只能经“``Workflow`` 子类构造（``caller`` + ``runtime``）”创建；
       ``__init__`` 是同步方法（节点注册是结构操作）。每次运行拉起一个新
       对象：workflow 无跨运行状态（运行状态不持久化，崩溃不续跑）。
     - ``node_id`` 构造时分配（``workflow-*`` 前缀）并注册进
@@ -393,8 +393,8 @@ class Workflow(ABC):
           shortcut 与 after 改写两条缝）→ 返回最终 ``ToolResult``。
         - 返回值 ``status`` 四值语义与 Agent 路径一致（``completed`` /
           ``pending`` / ``blocked`` / ``error``）；``output`` 恒为归一化
-          五形态之一（与 ``Agent.tool_call`` 同一不变量：「出 tool_call
-          的 ``ToolResult.output`` 恒已归一」）。
+          五形态之一（与 ``Agent.tool_call`` 同一不变量：“出 tool_call
+          的 ``ToolResult.output`` 恒已归一”）。
         - 不查别名、不查 ``_tool_entries``、不做参数聚合；``tool_name``
           未注册 → :class:`flowing.errors.ToolNotFoundError`。
         - 工具声明了 ``caller`` 参数时收到 ``None``——依赖 caller 的工具

@@ -676,7 +676,7 @@ async def cmd_serve(
       以 ``str`` 调 :meth:`flowing.agent.Agent.query` （打包 USER 消息、
       入队、等待回合结果在其内部完成）→ ``200 {"message_id": str,
       "final_text": str}``。休眠 / 已销毁但有记录的 id 经
-      ``get_agent`` 现场恢复后投递。API 层没有「默认主 Agent」概念，
+      ``get_agent`` 现场恢复后投递。API 层没有“默认主 Agent”概念，
       目标必须显式指定。
     - ``GET /agents``：→ ``200``，body 为池名录全部 Agent 的列表
       （含休眠记录；每项含 ``agent_id`` / ``agent_type`` /

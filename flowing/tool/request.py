@@ -62,7 +62,7 @@ class RequestTool(Tool):
 
     ``type: request`` 的实例类。``url`` 与 ``args`` 必填；参数到请求的
     映射自动完成，可用 ``body`` / ``query`` 显式覆盖。与 `CliTool` 同理：
-    把「调一个 HTTP API」降为纯声明；凭证只经 ``{{ env.X }}`` 模板进入
+    把“调一个 HTTP API”降为纯声明；凭证只经 ``{{ env.X }}`` 模板进入
     请求头，不进消息、不落盘。
 
     .. rubric:: 使用示例

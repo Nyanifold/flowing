@@ -2,7 +2,7 @@
 
 .. rubric:: 功能介绍
 
-本模块是「``.fya`` → Agent 类」的合成层本体（三层架构：parser 字面层
+本模块是“``.fya`` → Agent 类”的合成层本体（三层架构：parser 字面层
 → 装配层 → 本模块合成层）。两个入口同源：
 
 - 内存形态（:func:`compile_fya_class`）：``.fya`` → 内存中的 Agent
@@ -131,7 +131,7 @@ def _find_mapping_key(mapping: Mapping[str, Any], segment: str) -> str | None:
     """dict 段寻址（规则 2）：精确 key 优先；``as`` 键仅以别名段寻址。
 
     含 ``as`` 的 key（``working_dir as cwd``）不匹配其规范名段——有了别名
-    就不允许规范名段寻址（与列表段「声明了 ``as`` 必须写别名」同一原则）。
+    就不允许规范名段寻址（与列表段“声明了 ``as`` 必须写别名”同一原则）。
     块路径段字符集不含空白（词法层保证），精确命中不可能落在 as 键上。
     """
     if segment in mapping:
@@ -158,7 +158,7 @@ def _merge_named_blocks(fields: dict[str, Any], blocks: Mapping[str, str]) -> No
     2. dict 段：精确 key；key 含 ``as`` 时仅以别名段寻址
        （``$tools.pay.args.cwd.description:`` 命中 ``working_dir as cwd``
        键，``...args.working_dir...`` 不命中）；中间段缺失 →
-       :class:`FormatError` （末端缺失才算「目标缺失」，见规则 4）；
+       :class:`FormatError` （末端缺失才算“目标缺失”，见规则 4）；
     3. PENDING 槽：其后还有路径段 → 物化为空映射继续深入
        （override 位 ``_`` = 空补丁语义）；即末端 → 按规则 4 写入；
     4. 末端：目标缺失或为 ``PENDING`` → 写入；已有实际值 → 冲突
@@ -618,7 +618,7 @@ def _emit_source(
 ) -> str:
     """发射产物 .py 源码（固定模板）。
 
-    模板：文件头注释（来源与「勿手改」提示）→ ``$script`` 拆出的
+    模板：文件头注释（来源与“勿手改”提示）→ ``$script`` 拆出的
     ``from __future__`` import（语法要求最前）→ 按需 import
     （``PENDING`` 永在首行：条目覆写常量也可能引用它，按需判定的
     扫描面曾漏过它们）→
@@ -807,7 +807,7 @@ def compile_fya_class(fya_path: Path, *,
     :func:`flowing.params.expand_args_schema` 归一化 +
     :func:`flowing.params.schema_to_model` 桥接为 ``args_model``）→
     合成（生成 Agent 子类：类属性注入 ``source_file``/``description``/
-    ``system_prompt`` 等；``$script`` 按「self 签名」二分——带 self 的
+    ``system_prompt`` 等；``$script`` 按“self 签名”二分——带 self 的
     顶层函数（``setup`` / ``@on`` handler / 实例方法）入类体，其余一切
     顶层语句（import / 无 self 函数 / 类声明 / 赋值等）按原序提升到
     模块级——类体层语句对方法体不可见，提升后才是用户直觉语义）。
@@ -859,7 +859,7 @@ def compile_fya_file(fya_path: Path, *,
        源码（字面层 + 装配 + 合成一步完成）；
     2. 发射：生成 ``.py`` 源码——Parsable 值以类体赋值形式写出
        （如 ``system_prompt = Parsable('$./system-prompt.md')``），
-       ``$script`` 按「self 签名」二分：self 方法入类体，其余顶层
+       ``$script`` 按“self 签名”二分：self 方法入类体，其余顶层
        语句按原序提升到模块级；
     3. meta 校验：读同目录 ``.flowing.meta.yaml`` （每目录一份，
        条目以 ``fya_path.name`` 为键）中本文件的条目——产物 ``.py``
@@ -940,7 +940,7 @@ def compile_project(path: Path) -> list[Path]:
     .. rubric:: 行为要点
 
     - 边缘情况：无 ``.fya`` 文件 → 返回空列表（调用方 CLI 打印
-      「无可编译文件」并正常退出）。
+      “无可编译文件”并正常退出）。
     - 重复执行：无变更时全量命中 ``fya_hash``，等价 no-op。
     - 不编译 tool / skill 形态的 ``.fya`` （``TOOL.fya`` /
       ``*.tool.fya`` / ``*.skill.fya``——见 :func:`_is_agent_fya`）。

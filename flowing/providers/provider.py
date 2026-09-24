@@ -78,7 +78,7 @@ class ProviderConfig(dict[str, Any]):
     - 实例化 Provider 后按只读对待：运行期修改 config 不属于支持的行为。
     - 不做 schema 校验；``adapter`` 键只由加载器用于选类。
     - 安全边界：本配置含凭证，禁止写入消息、``_provided`` 与任何落盘
-      文件（详见包 docstring「安全边界」）。
+      文件（详见包 docstring“安全边界”）。
 
     .. seealso::
 
@@ -101,8 +101,8 @@ class ProviderDelta:
 
     非流式路径同样产生一条：``stream=False`` 时 ``provider_gen()`` 在
     拿到完整响应后合成一条全量 delta 分发（从空到全量即一个增量），
-    两种路径的 delta 数据格式完全一致。订阅者因此永远可以依赖「每次
-    ``provider_gen()`` 至少收到一条 delta」。
+    两种路径的 delta 数据格式完全一致。订阅者因此永远可以依赖“每次
+    ``provider_gen()`` 至少收到一条 delta”。
 
     delta 本身是易失的：不落盘、不进消息树。落盘的是累积完成（或流式
     中断时以 ``partial=True`` 保留）的消息。
@@ -229,13 +229,13 @@ class Usage:
     .. rubric:: 行为要点
 
     - 七个计数字段为非负 ``int``；provider 无某概念（如无 cache、不
-      报告推理 token）时对应字段零填充。「未上报」信号只存在于整体层
+      报告推理 token）时对应字段零填充。“未上报”信号只存在于整体层
       （``message.usage is None``），不做逐字段 ``None`` 区分。
     - 恒等式由 adapter 归一保证（违反属 adapter 缺陷，框架不运行时
       校验）：``input == fresh_input + cache_read + cache_write``；
       ``total_tokens == input + output``。
     - ``reasoning`` 是 ``output`` 的子集标注，不是正交桶——参与聚合
-      （「本 turn 累计推理 token」），但不重复计入 ``total_tokens``。
+      （“本 turn 累计推理 token”），但不重复计入 ``total_tokens``。
     - provider 未返回用量时 ``message.usage`` 为 ``None``，不产生
       ``Usage`` 实例；``raw`` 为空 dict 合法。
     - 唯一权威：``Message.usage`` （仅 PROVIDER 消息携带，随消息落盘）
@@ -292,7 +292,7 @@ class ProviderResponse:
 
     ``Provider.generate()`` 的返回类型，也是 ``Agent.provider_gen()``
     的返回类型。无论底层是否流式，Turn 循环只见完整的本结构——
-    「``provider_gen()`` 返回完整响应」是把流式挡在逻辑 Turn 循环外的
+    “``provider_gen()`` 返回完整响应”是把流式挡在逻辑 Turn 循环外的
     契约。
 
     .. rubric:: 使用示例
@@ -336,8 +336,8 @@ class ProviderResponse:
       要求与请求侧 ``ModelConfig.model`` 相同，不回填任何结构体。流式
       路径（``Agent.provider_gen`` 累积 delta 后组装最终响应）由 Agent
       层填请求侧模型 ID；非流式路径填服务端返回的模型 ID。
-    - ``finish``：provider 层概念——「provider 完成了本次响应（无待
-      执行 tool_call）」。turn 是否关闭由 agent 层判断
+    - ``finish``：provider 层概念——“provider 完成了本次响应（无待
+      执行 tool_call）”。turn 是否关闭由 agent 层判断
       （``finish or cancelled`` → ``Message.turn_end``），本字段不直接
       承担。得出方式框架不强制，adapter 可覆写；推荐默认准则：响应含
       ``tool_call`` block → ``False``，其它（stop / length / error）
@@ -731,7 +731,7 @@ class FakeProvider(Provider):
     注入点做成实例属性而非构造参数：测试的 arrange 阶段可以先创建替身
     挂进 Runtime，再按用例逐步换绑函数（同一实例服务多个断言阶段）。
     带领域逻辑的测试替身推荐子类化 :class:`Provider` 并注册（见
-    :class:`Provider`「测试替身建议」）。
+    :class:`Provider`“测试替身建议”）。
 
     .. rubric:: 使用示例
 
@@ -896,7 +896,7 @@ class ProviderRegistry:
 
     - ``get(name)``：已缓存 → 返回缓存实例；未缓存 → 现场实例化并缓存
       后返回；条目名不在候选清单 → ``KeyError`` （dict 语义快速失败）。
-      注意本方法的 ``get`` 是「取或建」语义，不是 ``dict.get`` 的返回
+      注意本方法的 ``get`` 是“取或建”语义，不是 ``dict.get`` 的返回
       ``None`` 语义。
     - 不做 adapter 自动发现（adapter 类由 :func:`register_provider` 在
       import 期登记，本类只查表）；不校验条目配置（配置在加载期解析
@@ -998,7 +998,7 @@ def load_provider_candidates(
 
     本函数不碰环境变量与默认路径（``FLOWING_PROVIDERS_PATH`` /
     ``$FLOWING_CONFIG_HOME`` 的解析在调用方 Runtime 侧）——保持纯
-    「路径 → 候选清单」，测试与 CI 诊断可直接调用。
+    “路径 → 候选清单”，测试与 CI 诊断可直接调用。
 
     :param path: providers.yaml 的已解析路径。
     :return: 条目名 → ``(adapter 类, ProviderConfig)``，即
@@ -1053,12 +1053,12 @@ def register_provider(
 
     .. rubric:: 设计要点
 
-    - 注册全局（进程级）：与「一个进程可有多个 Runtime」兼容——adapter
+    - 注册全局（进程级）：与“一个进程可有多个 Runtime”兼容——adapter
       类是类型层资产，条目实例才属于 Runtime。
     - 注册时机是 import 期：装饰器在被装饰模块被 import 时执行。要让
       第三方 adapter 可用，嵌入方必须在 Runtime 构建候选清单之前 import
       相应模块——本框架不自动发现扩展 provider 包。
-    - 同名唯一，显式覆盖：「同名不同类」无需求；确需替换内置 adapter
+    - 同名唯一，显式覆盖：“同名不同类”无需求；确需替换内置 adapter
       时用 ``override=True``，语义明确且可告警。
 
     .. rubric:: 使用示例

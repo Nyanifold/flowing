@@ -2,16 +2,16 @@
 
 .. rubric:: 功能介绍
 
-本模块提供 ``use_prompt_until()``：为单个 Agent 实例启用「prompt until
-续跑循环」策略。启用后，每个逻辑 Turn 收尾（``after_turn``）时运行一次
+本模块提供 ``use_prompt_until()``：为单个 Agent 实例启用“prompt until
+续跑循环”策略。启用后，每个逻辑 Turn 收尾（``after_turn``）时运行一次
 断言回调：断言成立（返回真值）则通过、什么都不做；断言不成立则把导向
 内容求值为一条 ``Message(kind=EVENT, priority=STEER, ...)`` 经
 :meth:`flowing.agent.Agent.steer` 入队——该消息由下一个逻辑回合消费，
-从而把「任务未完成就继续」表达为普通的消息流转，不打断任何回合。
+从而把“任务未完成就继续”表达为普通的消息流转，不打断任何回合。
 
-典型用途：要求模型持续工作直到输出满足验收条件的场景（如「继续直到
-测试全绿」「产出包含结论标记才停」）。断言与导向内容都是策略，本模块
-只提供「回合收尾检查 + steer 续跑」的机制粘合。
+典型用途：要求模型持续工作直到输出满足验收条件的场景（如“继续直到
+测试全绿”“产出包含结论标记才停”）。断言与导向内容都是策略，本模块
+只提供“回合收尾检查 + steer 续跑”的机制粘合。
 
 本模块属应用层 / 内置 Composable：随 ``flowing`` 包发布但不自动启用，
 必须由 Agent 开发者在 ``setup()`` 中显式调用。不调用的 Agent 不持有
@@ -89,7 +89,7 @@
   返回 ``None``（放弃）、``remove_by_owner("prompt-until")`` 整组拆除。
 - 异常语义：断言回调或内容求值的普通异常按 ``after_turn`` handler
   异常语义处理——回合产物照常交付（``TurnResult.turn`` 为合成空载体），
-  异常上抛落工作循环日志（「turn crashed」），本模块不再导向、循环
+  异常上抛落工作循环日志（“turn crashed”），本模块不再导向、循环
   停摆；错误以异常形态可见，不被吞掉。
 - 重复调用：不做幂等去重——每次调用各叠加一个独立 handler（各自持有
   独立闭包），允许以不同断言多次启用。恢复时 ``setup()`` 在新实例上
@@ -137,7 +137,7 @@ def use_prompt_until(
     predicate: PromptPredicate,
     message: PromptMessage,
 ) -> None:
-    """为单个 Agent 实例启用「prompt until 续跑循环」策略（可选、非默认）。
+    """为单个 Agent 实例启用“prompt until 续跑循环”策略（可选、非默认）。
 
     .. rubric:: 功能介绍
 
@@ -146,10 +146,10 @@ def use_prompt_until(
     不成立则把 ``message`` 求值为一条
     ``Message(kind=EVENT, priority=STEER, source="prompt-until", ...)``，
     经 :meth:`flowing.agent.Agent.steer` 入队，由下一个逻辑回合消费。
-    「任务未完成就继续」由此表达为普通的消息流转，不打断任何回合。
+    “任务未完成就继续”由此表达为普通的消息流转，不打断任何回合。
 
-    ``message`` 与 ``predicate`` 是策略的两大可替换件：断言决定「何时
-    算完成」，导向内容决定「怎么催」。本函数是双层启用的阶段二入口，
+    ``message`` 与 ``predicate`` 是策略的两大可替换件：断言决定“何时
+    算完成”，导向内容决定“怎么催”。本函数是双层启用的阶段二入口，
     只能在 ``setup()`` （或实例存活期内的任意代码）中对已完成初始化的
     实例调用。
 

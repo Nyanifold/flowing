@@ -331,7 +331,7 @@ class ConfigNamespaceConflictError(ConfigError):
     .. rubric:: 功能介绍
 
     ``Runtime.register_config_namespace(name, schema)`` 检测到命名空间已被其它
-    扩展注册时抛出。命名空间注册声明「谁负责校验 / 提供默认值 / 类型转换」；
+    扩展注册时抛出。命名空间注册声明“谁负责校验 / 提供默认值 / 类型转换”；
     两个扩展认领同一命名空间会产生两套冲突的校验规则，必须在注册时立即失败
     （fail-fast）。未被任何扩展注册的命名空间可自由读取，不触发本异常。
 
@@ -415,8 +415,8 @@ class MissingProvideError(ProvideError):
     .. rubric:: 行为要点
 
     - ``key`` 字段为未命中的 provide key（``InjectionKey[T]`` 退化为其 ``name``
-      字符串）；仅诊断用途，不提供「最接近的 key」之类的猜测。
-    - ``inject`` 没有默认值参数：需要「缺失时用默认值」的语义，请自行捕获本
+      字符串）；仅诊断用途，不提供“最接近的 key”之类的猜测。
+    - ``inject`` 没有默认值参数：需要“缺失时用默认值”的语义，请自行捕获本
       异常后回退默认值。
     - 结构错误、不可重试。
     - 启动期插件的静态依赖校验（缺失警告、成环报错）由 ``DependencyError``
@@ -610,7 +610,7 @@ class RegistryNotFoundError(FlowingError):
     注册表与文件查找链均无法解析的资源时，抛出的是本类的某个具体子类
     （``ToolNotFoundError`` / ``AgentTypeNotFoundError`` /
     ``SkillNotFoundError``）。按类别捕获用 ``except RegistryNotFoundError``
-    （如「先探测再注册」的通用试探逻辑），精确捕获用具体子类。
+    （如“先探测再注册”的通用试探逻辑），精确捕获用具体子类。
 
     .. rubric:: 行为要点
 
@@ -793,7 +793,7 @@ class ToolError(FlowingError):
     工具系统（``script`` / ``mcp`` / ``cli`` / ``request`` 四种类型）的定义期
     与查找期异常公共基类。与工具业务错误严格区分：业务错误是
     ``ToolResult(status="error")`` 正常产物，LLM 可见，不走异常通道；本层只
-    承载「工具坏了」这一类（定义缺失、注册冲突、查找失败）。
+    承载“工具坏了”这一类（定义缺失、注册冲突、查找失败）。
 
     .. rubric:: 行为要点
 
@@ -957,7 +957,7 @@ class EntryNameConflictError(FlowingError):
     - 字段 ``alias`` （发生冲突的别名）与 ``kind`` （冲突所在的绑定层：
       ``"tool"`` / ``"skill"`` / ``"subagent"``）。
     - 定义期 / 安装期编程错误：调用方不捕获。
-    - 插件挂载前的「先查后跳」（如 ``use_skill`` 保留用户定义）是合法规避，
+    - 插件挂载前的“先查后跳”（如 ``use_skill`` 保留用户定义）是合法规避，
       只有未经检查的盲目写入才触发本异常。
 
     .. seealso::
@@ -1030,7 +1030,7 @@ class AmbiguousToolError(ToolError):
 
     script 工具的定向查找中，同一 ``.py`` 文件出现以下任一情况即抛出，框架
     无法判定用户意图：同时含 ``@flowing_tool`` 打标函数与 Tool 子类；或含多个
-    打标函数（违反「每文件至多一个」规则）。两种形态生成不同的 Tool 定义路径，
+    打标函数（违反“每文件至多一个”规则）。两种形态生成不同的 Tool 定义路径，
     按序选其一或隐式合并都会让行为依赖文件内容的出现顺序。
 
     .. rubric:: 行为要点
@@ -1072,7 +1072,7 @@ class AmbiguousMcpSourceError(ToolError):
 
     - ``name`` 字段为声明冲突的 MCP 工具规范名。
     - 定义期错误：调用方不捕获（fail-fast）。
-    - 与 ``MissingMcpSourceError`` （两者均未声明）构成「恰好一个来源」的对偶
+    - 与 ``MissingMcpSourceError`` （两者均未声明）构成“恰好一个来源”的对偶
       约束。
 
     .. seealso::
@@ -1148,7 +1148,7 @@ class ResourceError(FlowingError):
     - 本类是分类中间层：框架实际抛出的是其具体子类；按类别捕获用
       ``except ResourceError``。
     - ``get_resource(name, type_hint=...)`` 的 ``type_hint`` 仅供 IDE 推断，
-      运行时不做 isinstance 校验，不存在「类型不匹配」异常。
+      运行时不做 isinstance 校验，不存在“类型不匹配”异常。
 
     .. seealso::
 
@@ -1378,8 +1378,8 @@ class RateLimitedError(ProviderError):
       值）。
     - 未启用任何重试 handler 时，回合直接以 error 结局终止——框架不提供默认
       容错。
-    - 与 ``QuotaExhaustedError`` 区分：同为 429，本类是「太快了」，后者是「没
-      额度了」（不可重试）。
+    - 与 ``QuotaExhaustedError`` 区分：同为 429，本类是“太快了”，后者是“没
+      额度了”（不可重试）。
 
     .. seealso::
 
@@ -1394,8 +1394,8 @@ class QuotaExhaustedError(ProviderError):
 
     .. rubric:: 功能介绍
 
-    与 ``RateLimitedError`` 同为 429 但语义相反：「你太快了」（等一等能成功）
-    与「你没额度了」（等多久都不会成功，需要人介入——充值、换 key、换
+    与 ``RateLimitedError`` 同为 429 但语义相反：“你太快了”（等一等能成功）
+    与“你没额度了”（等多久都不会成功，需要人介入——充值、换 key、换
     provider）。重试配额耗尽是纯浪费：每次重试必然失败。刻意不做
     ``RateLimitedError`` 的子类：继承会让 ``except RateLimitedError`` 与
     isinstance 重试判定误捕本类——类型树本身即是重试策略的判定表。
@@ -1486,7 +1486,7 @@ class AuthenticationError(ProviderError):
 
     API key 无效、过期或权限不足。凭证问题不自愈，分类为不可重试——默认重试
     策略（``use_retry()``）对本类直接放行（不写 ``can_continue``）。凭证修复
-    需要人工介入（换 key、改配置）；应用层可自定义 handler 做「换凭证后重试」，
+    需要人工介入（换 key、改配置）；应用层可自定义 handler 做“换凭证后重试”，
     不可重试只是分类事实的默认值，策略仍可覆盖。
 
     .. rubric:: 行为要点
@@ -1530,7 +1530,7 @@ class ContentPolicyError(ProviderError):
     .. rubric:: 功能介绍
 
     Provider 侧内容审查（输入或输出触发安全策略）拒绝生成时抛出。内容拒绝与
-    限流 / 故障语义完全不同：不是暂时不可用，而是「这个内容不行」；应用层通常
+    限流 / 故障语义完全不同：不是暂时不可用，而是“这个内容不行”；应用层通常
     需要改写输入或告知用户，独立分类便于策略层区分处理。
 
     .. rubric:: 行为要点
@@ -1550,7 +1550,7 @@ class MissingEnvironmentVariableError(ProviderError):
 
     .. rubric:: 功能介绍
 
-    表示「配置引用了必须存在的环境变量，而它没有设置」的加载期错误。
+    表示“配置引用了必须存在的环境变量，而它没有设置”的加载期错误。
     **内置 providers.yaml 加载器不抛本异常**——它对 ``{{env.VAR}}`` 做
     纯字符串替换时，变量缺失替换为空串并 ``warnings.warn`` 告警、加载
     不中断（多条目配置只用一个时，其余条目的环境变量不必齐备）；缺失
@@ -1659,8 +1659,8 @@ class DependencyError(FlowingError):
 
     ``Runtime.install()`` 每次安装插件后对当前已装集合的依赖图做增量校验：已装子图
     成环（A 依赖 B、B 依赖 A）即抛出本异常，报错现场即引入环的那次 ``install()``。
-    依赖缺失只产生 ``warnings.warn`` 警告、不抛本异常（「声明了依赖但实际
-    用不上」是合法形态，``install()`` 可分批）；运行期真用到缺失依赖时由
+    依赖缺失只产生 ``warnings.warn`` 警告、不抛本异常（“声明了依赖但实际
+    用不上”是合法形态，``install()`` 可分批）；运行期真用到缺失依赖时由
     ``MissingProvideError`` 兜底。
 
     .. rubric:: 使用示例
@@ -1773,7 +1773,7 @@ class SignalDeliveryError(CommError):
 
     ``Communication.send()`` / ``request()`` 按目标端点 ID 路由失败时抛出——
     点对点信号的投递失败是调用方可修正的错误（端点未注册、ID 拼错）。``send``
-    是「立即返回」语义，路由失败属于同步可判定的错误，发送阶段当场抛出。与
+    是“立即返回”语义，路由失败属于同步可判定的错误，发送阶段当场抛出。与
     ``publish`` 的广播容错（单订阅者异常静默忽略）形成有意的语义对比。
 
     .. rubric:: 行为要点
@@ -1812,7 +1812,7 @@ class SignalTimeoutError(CommError):
     .. rubric:: 功能介绍
 
     请求-回复模式下，``correlation_id`` 匹配的回复在 ``timeout`` 秒内未到达即
-    抛出，pending future 随之清理。审批等交互场景的「超时」是正常业务分支
+    抛出，pending future 随之清理。审批等交互场景的“超时”是正常业务分支
     （典型用法：审批超时 → ``raise Intercepted("审批超时")`` 阻断工具调用），
     需要类型化异常供 handler 捕获，而非裸 ``asyncio.TimeoutError``。
 
@@ -1870,7 +1870,7 @@ class FormatError(FlowingError):
     .. rubric:: 功能介绍
 
     ``.fya`` 声明解析、创建管线 PENDING 检查、Parsable 求值上下文、保留属性名
-    等「声明与格式」层异常的公共基类。声明式与命令式两种 Agent 形式生成完全
+    等“声明与格式”层异常的公共基类。声明式与命令式两种 Agent 形式生成完全
     相同的 Python 类模型，格式错误必须在类生成 / 实例化早期暴露，归为一层便于
     工具（如 ``flowing compile``）统一报告。
 
@@ -1894,8 +1894,8 @@ class MissingFieldError(FormatError):
 
     ``.fya`` 中以 ``_`` 标记的延迟定义字段解析为 ``PENDING`` 哨兵；``setup()``
     结束后、``after_create`` 钩子前的 PENDING 检查点发现仍有 ``PENDING`` 字段
-    （典型：唯一必填的类属性 ``system_prompt`` 未赋值）时抛出。PENDING 是「延迟
-    定义承诺」——声明层允许先占位，但管线必须在固定检查点兑现承诺；缺失时
+    （典型：唯一必填的类属性 ``system_prompt`` 未赋值）时抛出。PENDING 是“延迟
+    定义承诺”——声明层允许先占位，但管线必须在固定检查点兑现承诺；缺失时
     fail-fast 优于带着 ``None`` 进入 Turn 循环。恢复管线同样检查。
 
     .. rubric:: 行为要点
@@ -1987,7 +1987,7 @@ class ReservedAttributeError(FormatError):
     Parsable 渲染上下文由框架注入四个保留名：``env`` （绑定 ``os.environ``）、
     ``config`` （Runtime 配置）、``agent`` 与 ``self`` （实例自身入口）。Agent
     实例属性占用这些名字会覆盖注入值，框架在求值前检测到即抛出——保留名冲突是
-    静默错误的高发源，显式保留名单加检测比「合并时谁覆盖谁」的隐式规则更清晰。
+    静默错误的高发源，显式保留名单加检测比“合并时谁覆盖谁”的隐式规则更清晰。
 
     .. rubric:: 行为要点
 
@@ -2179,8 +2179,8 @@ class CorruptionError(FlowingError):
 
     ``RecordStore.replay`` 按行解析时发现中间行（非撕裂末行）JSON 损坏即
     抛出。撕裂末行（崩溃半截写产物，无换行结尾）是合法容忍路径，截断丢弃、
-    不抛本异常；中间行损坏意味着已提交数据受损，属事故而非正常窗口——「中间行
-    损坏报警不容忍」是持久化层的既定约定。
+    不抛本异常；中间行损坏意味着已提交数据受损，属事故而非正常窗口——“中间行
+    损坏报警不容忍”是持久化层的既定约定。
 
     .. rubric:: 行为要点
 
@@ -2223,7 +2223,7 @@ class Intercepted(Exception):
     .. rubric:: 功能介绍
 
     handler 的三种合法出口之一（另两种：返回 value、设置 ``shortcut`` 字段
-    短路）。``raise Intercepted`` 表示「有意的阻止」——审批拒绝、安全阻断、权限
+    短路）。``raise Intercepted`` 表示“有意的阻止”——审批拒绝、安全阻断、权限
     检查等正常业务分支，而不是意外错误。dispatch 层捕获本信号后原样重抛：处理
     链停止、后续 handler 不执行、对应的 ``after_`` 钩子不触发（整个操作标记为
     无效）；不当作错误处理（INFO 级日志，非 ERROR）。``tool_call()`` 路径把本
@@ -2257,7 +2257,7 @@ class Intercepted(Exception):
       信号。
     - 本信号不触发任何错误钩子，也不进入 ``on_provider_error`` 决策树；与重试
       无关。
-    - 在「没有对应工具调用」的钩子点（如 ``before_turn``）抛出时，由该操作的
+    - 在“没有对应工具调用”的钩子点（如 ``before_turn``）抛出时，由该操作的
       发起路径决定如何呈现，框架不保证统一的 LLM 可见形式。
 
     .. seealso::
@@ -2294,6 +2294,6 @@ class UnpairedToolCallError(FlowingError):
     ``Agent._assemble_context``）对配对只做断言、不做读时修补——发现
     孤立 tool_call 即抛本异常。孤儿的合法来源是显式的树操作：
 ``MessageChain.remove`` 删除了调用或结果消息，或 ``Agent.fork`` 把
-未配对的调用切进新分支（fork docstring 的「配对断裂」条款）——操作方
+未配对的调用切进新分支（fork docstring 的“配对断裂”条款）——操作方
 负责随后重新封闭（``MessageChain.insert`` 补结果消息）或弃用该分支。
     """

@@ -25,7 +25,7 @@
    :mod:`flowing.persistence`）；任意历史修改走 :class:`MessageChain` 五
    op。tombstone（删除标记行）/ 撕裂末行容忍 / 压缩等持久化机制属
    :mod:`flowing.persistence` 与 ``flowing.agent`` 的职责，本模块只约束
-   「消息对象 ↔ 行」的映射语义（:func:`to_record` /
+   “消息对象 ↔ 行”的映射语义（:func:`to_record` /
    :func:`from_record`）。
 
 逻辑 Turn 只是执行概念：消费一条消息 → 产生一条 ``turn_end=True`` 的
@@ -112,11 +112,11 @@ kind → API role 发送映射（Provider adapter 职责）：
      - 同左
 
 - OpenAI 侧 PLUGIN / SUBAGENT 落 ``user`` role（XML 包裹）：外部结果
-  回喂属「输入」，不落 ``developer`` （避免给外部数据提指令权），更不伪造
+  回喂属“输入”，不落 ``developer`` （避免给外部数据提指令权），更不伪造
   ``assistant`` （会破坏轮次语义与 tool_calls 配对）。
 - SYSTEM / PEER / EVENT / PLUGIN / SUBAGENT 的 XML 包裹格式由 adapter
   按 Provider 能力决定，框架核心不约束具体格式。
-- 「某 block type 出现在哪些 kind 中」是典型情况而非硬约束；不合法排列
+- “某 block type 出现在哪些 kind 中”是典型情况而非硬约束；不合法排列
   （如 PROVIDER 消息含 image block）由 Provider adapter 在组装 API
   请求时验证并报错，框架核心不验证。
 
@@ -131,8 +131,8 @@ kind → API role 发送映射（Provider adapter 职责）：
 - ``SYSTEM`` 双通道：经队列投递（触发新逻辑 turn），或由上下文组装内部
   注入本 turn 的 system prompt 段（不触发新 turn）。
 - kind 无行为含义：消息类型只决定 adapter 的呈现映射（见上表），不改变
-  turn 语义——任何入队批次都正常开回合、正常调用 LLM，不存在「纯系统
-  消息不触发 LLM 调用」之类的短路。
+  turn 语义——任何入队批次都正常开回合、正常调用 LLM，不存在“纯系统
+  消息不触发 LLM 调用”之类的短路。
 
 流式与 partial：
 
@@ -161,7 +161,7 @@ kind → API role 发送映射（Provider adapter 职责）：
 .. rubric:: 行为要点
 
 - 媒体块一律 base64 内联（``data`` 必填且是权威表示）：消息层不感知
-  「文件最初从哪来」，也不做文件大小检查（大小治理分层：前端上传前校验 /
+  “文件最初从哪来”，也不做文件大小检查（大小治理分层：前端上传前校验 /
   ``on_enqueue`` 钩子 / Provider adapter 的 ``ContextLengthError``
   兜底）。
 - 历史消息不可在应用层直接修改——修改历史走 :class:`MessageChain` 五 op
@@ -224,7 +224,7 @@ __all__ = [
 
 
 class MessageKind(enum.Enum):
-    """消息来源枚举：判别「这条消息来自谁」（八值，跨版本稳定契约）。
+    """消息来源枚举：判别“这条消息来自谁”（八值，跨版本稳定契约）。
 
     .. rubric:: 功能介绍
 
@@ -233,9 +233,9 @@ class MessageKind(enum.Enum):
     Gemini ``model`` 等），UI 通过 ``kind`` 与 ``tags`` 自行决定渲染
     方式。
 
-    命名原则：所有 kind 描述「来自谁」而非「扮演什么角色」。``PROVIDER``
-    是 Provider 输出的统一来源名——不取会隐含「纯文本 LLM」的
-    「assistant」读法，以覆盖文生图 / 语音 / 视频等多模态输出。
+    命名原则：所有 kind 描述“来自谁”而非“扮演什么角色”。``PROVIDER``
+    是 Provider 输出的统一来源名——不取会隐含“纯文本 LLM”的
+    “assistant”读法，以覆盖文生图 / 语音 / 视频等多模态输出。
     ``PLUGIN`` / ``SUBAGENT`` 的存在是因为 Skill 渲染结果与子 Agent
     返回结果永远是独立消息，不能合并进工具结果消息。
 
@@ -255,7 +255,7 @@ class MessageKind(enum.Enum):
     - 枚举值跨版本稳定；序列化（``tree.jsonl`` 行）使用成员的字符串值
       （``"user"`` / ``"provider"`` 等）。
     - 各 kind 的典型 ``content`` 组合（典型情况而非硬约束，框架核心不
-      验证「某 kind 可否含某 block type」，合法性由 Provider adapter 在
+      验证“某 kind 可否含某 block type”，合法性由 Provider adapter 在
       组装 API 请求时验证）：
 
       .. list-table::
@@ -281,7 +281,7 @@ class MessageKind(enum.Enum):
     - ``PEER`` 与 ``EVENT`` 的区分：PEER = 另一个 Agent 实例有意图地
       主动发送（语义上更接近用户消息，``source`` 典型值 ``"message_to"`` /
       ``"agent_delegate"`` / ``"agent_steer"``）；EVENT = 非 Agent 实体
-      触发的「某事发生了」（辅助信息，``source`` 典型值
+      触发的“某事发生了”（辅助信息，``source`` 典型值
       ``"scheduled_task"`` / ``"plugin_event"`` / ``"tool_result"``）。
       钩子（如 ``before_turn``）可据此按触发来源做精准决策。
     - ``TOOL`` kind 不入队：同步工具结果在逻辑 turn 内经挂树直接进入
@@ -336,7 +336,7 @@ class MessagePriority(enum.IntEnum):
     五级优先级，决定工作循环的出队消费顺序：``INTERRUPT (0) > STEER (1)
     > HIGH (2) > NORMAL (3) > LOW (4)``。同优先级按入队顺序（FIFO）。
 
-    用 ``IntEnum`` 且「更优先 = 更小数值」使排序实现为普通数值升序 + 入队
+    用 ``IntEnum`` 且“更优先 = 更小数值”使排序实现为普通数值升序 + 入队
     序号，无需自定义比较器。``INTERRUPT`` 用于打断当前回合的插队场景；
     ``STEER`` 仅弱于它——回合进行中入队的 STEER 消息被当轮吸收，当轮
     LLM 调用的上下文即可见但不打断；``HIGH`` 的典型场景是人工催办、
@@ -397,7 +397,7 @@ class MessagePriority(enum.IntEnum):
 @dataclass(kw_only=True)
 class ContentBlock:
 
-    """消息内容片段基类：``type`` 字段判别「这一段是什么」（八种 type）。
+    """消息内容片段基类：``type`` 字段判别“这一段是什么”（八种 type）。
 
     .. rubric:: 功能介绍
 
@@ -520,7 +520,7 @@ class ToolCallBlock(ContentBlock):
     配对（1:1）。
 
     block 形式是消息层的权威表示（持久化、上下文组装都用它）；
-    :class:`flowing.tool.ToolCall` 是它的「解析后」形式——剥离通用字段，
+    :class:`flowing.tool.ToolCall` 是它的“解析后”形式——剥离通用字段，
     只保留 ``id`` / ``name`` / ``args`` （+ 通用短路字段 ``shortcut``），
     供 ``Agent.tool_call()`` 与工具钩子使用。两者经
     :meth:`flowing.tool.ToolCall.from_block` 单向转换（模块依赖保持
@@ -631,7 +631,7 @@ class MediaBlock(ContentBlock):
     转换为 base64，``data`` 持有权威表示；``name`` （必填，缺省合成）与
     ``mime_type`` 只是元数据，不替代 ``data``。
 
-    统一 base64 的意义：消息层不感知「文件最初从哪来」（消息对象自包含、
+    统一 base64 的意义：消息层不感知“文件最初从哪来”（消息对象自包含、
     可序列化、可持久化，不会隐式读盘），adapter 从统一 base64 出发做各
     API 转换（base64 内联 / URL / multipart）。
 
@@ -828,16 +828,16 @@ class Message:
     - ``turn_end``：由 agent 层在挂树时写入——本条 PROVIDER 消息落盘时
       turn 随之关闭（自然完成或取消 / abort）→ ``True``；与 provider 层
       的 ``ProviderResponse.finish`` 分层（中断的流式没有 finish，但
-      turn 照样关闭）。恢复时「最后一个 ``turn_end=True`` 的 PROVIDER
-      消息」之后的已落盘消息 = 半截 turn（崩溃撕裂或异常终结；保留不
+      turn 照样关闭）。恢复时“最后一个 ``turn_end=True`` 的 PROVIDER
+      消息”之后的已落盘消息 = 半截 turn（崩溃撕裂或异常终结；保留不
       续跑，照常进入 LLM 上下文，不截断）。
     - ``partial``：流式中断时置 ``True``，已累积内容保留落盘；正常完成
       的消息恒为 ``False``。
     - ``synthetic``：仅恢复流程合成的占位消息为 ``True`` （孤立 tool_call
-      的占位 TOOL 消息），标记「不是真实结果」；其余消息恒为 ``False``。
+      的占位 TOOL 消息），标记“不是真实结果”；其余消息恒为 ``False``。
     - ``tool_call_id`` / ``tool_status``：仅 ``kind=TOOL`` 非 None；
       ``__post_init__`` 双向强制（``kind=TOOL`` 与两字段非 ``None`` 互为
-      充要条件，违反抛 ``ValueError``）——把「孤儿结果」消灭在构造点。
+      充要条件，违反抛 ``ValueError``）——把“孤儿结果”消灭在构造点。
       其余 kind 条件字段（``turn_end`` / ``synthetic`` / ``priority``）
       维持文档约定，不追溯校验。
     - ``timestamp``：时区无关（UTC / epoch）——统一排序基准、延迟测量可
@@ -857,7 +857,7 @@ class Message:
     - 不变量：配对锚——同一分支上，PROVIDER 消息 ``ToolCallBlock.id`` 与
       后续 TOOL 消息的 ``tool_call_id`` 1:1 严格成对；孤立调用由恢复合成
       的 ``synthetic`` 占位 TOOL 消息封闭。
-    - 副线（``Agent.side_query``）消息从不进树（「副线」是调用路径属性
+    - 副线（``Agent.side_query``）消息从不进树（“副线”是调用路径属性
       而非消息属性）。
 
     .. seealso::
@@ -1138,7 +1138,7 @@ def estimate_block_tokens(block: ContentBlock) -> int:
       启发式之和；``StructBlock`` 计 ``json.dumps(ensure_ascii=False)``
       结果的字符启发式；``MediaBlock`` 族固定
       :data:`MEDIA_TOKEN_ESTIMATE`（不读 base64 ``data``）；未知块类型
-      按「无文本内容」计 0。
+      按“无文本内容”计 0。
 
     .. seealso::
 
@@ -1173,7 +1173,7 @@ def estimate_message_tokens(msg: Message) -> int:
 
     字符启发式口径：ASCII 约 4 字符/token、非 ASCII（CJK 等）约 1
     字符/token——中文场景下远优于统一除以 4。不用 tokenizer：估算只
-    服务于「该不该压缩、还剩多少余量」这类窗口预算判断（±20% 足够），
+    服务于“该不该压缩、还剩多少余量”这类窗口预算判断（±20% 足够），
     永不用于计费（计费走 ``TurnResult.token_usage`` 聚合，数据源是
     ``Message.usage`` 实测）。
 
@@ -1213,7 +1213,7 @@ class MessageQueue:
 
     每个 Agent 一个独立队列（``Agent._message_queue``），是外部消息进入
     逻辑 turn 循环的唯一通道。工作循环经 ``Agent._dequeue()`` 消费——
-    默认批次为「队首 INTERRUPT/STEER 连续段 + 其后第一条非紧急消息」
+    默认批次为“队首 INTERRUPT/STEER 连续段 + 其后第一条非紧急消息”
     （队首即非紧急时批次为单条），drain / 合并 / 按来源分组等更宽的
     批量策略由覆写 ``_dequeue()`` 实现，本类提供 ``drain_all`` /
     ``take_while`` 等批量取出原语支撑默认批次与覆写。
@@ -1221,7 +1221,7 @@ class MessageQueue:
     队列只承诺最小调度语义：按 ``MessagePriority`` 数值升序、同级按入队
     顺序 FIFO。防饿死、来源加权等策略不在框架核心。忙时不拒绝：活跃
     turn 中入队的消息自然排队，turn 结束后被消费；入队即保证会被常驻
-    工作循环消费（无需「入队触发」逻辑）。
+    工作循环消费（无需“入队触发”逻辑）。
 
     .. rubric:: 使用示例
 
@@ -1301,8 +1301,8 @@ class MessageQueue:
 
         .. rubric:: 功能介绍
 
-        「等消息」与「取消息」的拆分原语：``Agent._dequeue`` 的默认实现
-        用它保证「队列确实非空」才进入取批与 ``on_dequeue`` 派发，消除
+        “等消息”与“取消息”的拆分原语：``Agent._dequeue`` 的默认实现
+        用它保证“队列确实非空”才进入取批与 ``on_dequeue`` 派发，消除
         空转期的无效动作。enqueue 时唤醒等待者。
 
         .. rubric:: 行为要点
@@ -1320,7 +1320,7 @@ class MessageQueue:
         """非阻塞取出优先级最高的一条消息；队列空返回 ``None``。
 
         与 :meth:`wait_not_empty` 配套：``Agent._dequeue`` 在
-        ``take_while`` 取完紧急段后用它取「其后第一条非紧急消息」——
+        ``take_while`` 取完紧急段后用它取“其后第一条非紧急消息”——
         无紧急前缀的批次就是本方法取出的单条。
         """
         if not self._items:
@@ -1335,7 +1335,7 @@ class MessageQueue:
 
         .. rubric:: 功能介绍
 
-        队列空时挂起等待，直到有消息入队。本方法是「等消息 + 取消息」合体
+        队列空时挂起等待，直到有消息入队。本方法是“等消息 + 取消息”合体
         的便捷原语；``Agent._dequeue()`` 的默认实现不使用它——默认批次
         语义（队首紧急连续段 + 首条非紧急 + ``on_dequeue`` 派发）需要
         :meth:`wait_not_empty` + :meth:`take_while` /
@@ -1372,10 +1372,10 @@ class MessageQueue:
 
         .. rubric:: 行为要点
 
-        - 用于 ``_dequeue()`` 覆写实现「合并回合」：多条消息一次吸收，
+        - 用于 ``_dequeue()`` 覆写实现“合并回合”：多条消息一次吸收，
           回合收尾时每条消息的等待者共享同一 ``TurnResult`` 并被全部
           resolve（核心通用收尾天然兼容批量）。
-        - 边缘情况：调用与「另一生产者正在 enqueue」交错时，只保证取出
+        - 边缘情况：调用与“另一生产者正在 enqueue”交错时，只保证取出
           调用时刻的存量；新入队者留给下一次。
 
         .. seealso::
@@ -1419,19 +1419,19 @@ class MessageQueue:
         .. rubric:: 功能介绍
 
         按出队顺序（优先级 + 同级 FIFO）返回队首消息；指定 ``priority``
-        时返回该优先级带内 FIFO 队首（用于「只看某一带」的观察，如 UI
+        时返回该优先级带内 FIFO 队首（用于“只看某一带”的观察，如 UI
         分列预览各优先级各一条）。队列为空、或指定优先级带内无消息时
         返回 ``None``。
 
         ``dequeue`` 阻塞且移除、``drain_all`` / ``take_while`` 批量移除
-        ——队列此前没有「只看不动」的入口；``peek`` 补齐观测面，与
+        ——队列此前没有“只看不动”的入口；``peek`` 补齐观测面，与
         :meth:`__len__` 同属观测原语。
 
         .. rubric:: 行为要点
 
         - 同步、不阻塞、立即返回；不移除消息，队列状态不变。
         - 返回的消息仍在队列中：后续 ``dequeue`` / ``set_priority`` /
-          ``remove`` 照常作用于它；不得将返回值视为「已占有」。
+          ``remove`` 照常作用于它；不得将返回值视为“已占有”。
         - 无同步语义：跨 Task 观察时是瞬时值，不得据此做互斥决策
           （同 :meth:`__len__` 的观测约定）。
         - ``priority`` 过滤只选带内队首，不跨带比较；``None`` 表示全局
@@ -1484,8 +1484,8 @@ class MessageQueue:
         :meth:`flowing.agent.Agent.set_queued_priority`。
 
         优先级是入队后仍可变的调度属性（典型场景：用户催办、Guardrail
-        升级提醒）。重排保留原入队序号：语义为「这条消息从入队起就该是
-        新优先级」，而非「现在新来的一条高优先级消息」；它在新优先级带
+        升级提醒）。重排保留原入队序号：语义为“这条消息从入队起就该是
+        新优先级”，而非“现在新来的一条高优先级消息”；它在新优先级带
         内的 FIFO 位置由原入队早晚决定。
 
         .. rubric:: 使用示例
@@ -1537,7 +1537,7 @@ class MessageQueue:
         - 与 :meth:`__len__` 同口径的观测原语：``is_empty()`` 等价于
           ``len(self) == 0``；单事件循环内是调用时刻的精确值，跨 Task
           观察时是瞬时值，不得据此做互斥决策。
-        - 典型用途：回合收尾期判断「是否已有待消费消息」——非空时工作
+        - 典型用途：回合收尾期判断“是否已有待消费消息”——非空时工作
           循环自然开下一回合，外部续跑策略（如 prompt until）无需再
           入队导向消息。
         """
@@ -1555,10 +1555,10 @@ class MessageChain:
     零截断、零重写）；物理重写延迟到压缩期。
 
     消息产生即落盘，手术直接作用于已落盘历史：删除中间消息时，tombstone
-    （删除标记行）把「分散的逐行重写」变成「运行期 append 一条标记 +
-    压缩期一次整体重写」。
+    （删除标记行）把“分散的逐行重写”变成“运行期 append 一条标记 +
+    压缩期一次整体重写”。
 
-    一切内容走持久化路径：recap / reminder 等「临时上下文」也由本类挂上、
+    一切内容走持久化路径：recap / reminder 等“临时上下文”也由本类挂上、
     用完 ``remove`` 擦除；回合开头的附加式注入走 ``before_turn`` 的
     ``TurnContext.pending_messages`` （同样随批次挂树持久化）。
 
@@ -1625,15 +1625,15 @@ class MessageChain:
       节点、再 ``remove`` （定式）。
     - 不自动移动 ``current_head_id``：手术目标是历史结构，head 切换是
       ``Agent.fork`` 的职责；删除 / 重连当前 head 或其上溯路径上的消息
-      属于调用方责任（需要「删除当前 head 并回退到亲节点」的便捷语义用
+      属于调用方责任（需要“删除当前 head 并回退到亲节点”的便捷语义用
       ``Agent.remove`` / ``Agent.pop``）。
-    - 不变量：op 完成后内存链与「文件重放结果」一致（重放变更记录必得
+    - 不变量：op 完成后内存链与“文件重放结果”一致（重放变更记录必得
       同一权威链）。
     - 压缩（清理 tombstone、重写尾部）由持久化层
       （:class:`flowing.persistence.FileRecordStore` 的 drain 任务）在
-      「队列排空后且 tombstone 数量 ≥ 阈值（默认 256）」时自主触发，
+      “队列排空后且 tombstone 数量 ≥ 阈值（默认 256）”时自主触发，
       不是本类方法的同步副作用。
-    - 不做「级联删除」「自动 fork」「自动更新 head」等便利策略——策略在
+    - 不做“级联删除”“自动 fork”“自动更新 head”等便利策略——策略在
       应用层；不提供批量 op 糖衣（批量 = 循环调用五 op，变更记录逐条
       append）。
 
@@ -1689,7 +1689,7 @@ class MessageChain:
 
         .. rubric:: 功能介绍
 
-        「活跃分支回放」的正式读路径：``Agent._assemble_context`` 与
+        “活跃分支回放”的正式读路径：``Agent._assemble_context`` 与
         :meth:`flowing.agent.Agent.estimate_context_tokens` 的消息路径
         收集与本 op 同口径（内部已收敛为调用本方法）。
 
@@ -1732,7 +1732,7 @@ class MessageChain:
         （各自子树随之整体移动，其内部链不变）。若 ``after_id`` 无子消息，
         等价于追加一个新分支。
 
-        「单点 op、邻接调整」使线性链上的插入保持链序直觉：``m1 → m2``
+        “单点 op、邻接调整”使线性链上的插入保持链序直觉：``m1 → m2``
         上 ``insert("m1", x)`` 得 ``m1 → x → m2``。分支点上插入会把多个
         子分支合并到新消息之下——这是确定性规则而非特例处理；只想新增
         平行分支时用 :meth:`branch`。
@@ -1784,14 +1784,14 @@ class MessageChain:
         .. rubric:: 功能介绍
 
         将 ``msg`` 直接挂为 ``parent_id`` 的新子消息（``msg.parent_id =
-        parent_id``），不调整任何既有子消息——与 :meth:`insert` 的「既有
-        子消息重挂到新消息之下」规则正交。``parent_id=None`` 时 ``msg``
+        parent_id``），不调整任何既有子消息——与 :meth:`insert` 的“既有
+        子消息重挂到新消息之下”规则正交。``parent_id=None`` 时 ``msg``
         成为新根（森林模型的开根入口，见模块 docstring）。
 
-        ``insert`` 在分叉点的合并语义对「新增平行分支」（fork 分支上补
+        ``insert`` 在分叉点的合并语义对“新增平行分支”（fork 分支上补
         一条新消息、并行探索线等）是错的；``branch`` 提供无语义陷阱的
-        纯挂接原语。``None`` 开根使「上下文压缩换链（摘要作为新根开新链，
-        旧树完整保留）」等场景获得唯一的持久化开根入口——不新增
+        纯挂接原语。``None`` 开根使“上下文压缩换链（摘要作为新根开新链，
+        旧树完整保留）”等场景获得唯一的持久化开根入口——不新增
         ``add_root`` 之类同义方法，不引入虚拟根节点。
 
         .. rubric:: 行为要点
@@ -1846,11 +1846,11 @@ class MessageChain:
           它们的后代不动）；需要整棵删除时，先 :meth:`reparent` 子树到
           别处、或逐条 ``remove``。
         - 重挂目标 = 被删消息的亲节点：删除**尾部消息**是纯截断语义
-          （无子，不产生 move）；删除**中间消息**由「逐行重写」降为
-          「N 条 move + 1 条 tombstone」，运行期 O(子数)。
+          （无子，不产生 move）；删除**中间消息**由“逐行重写”降为
+          “N 条 move + 1 条 tombstone”，运行期 O(子数)。
         - 对不存在的 id 抛 ``KeyError`` （重复删除不是静默成功）。
         - 不移动 ``current_head_id``；删除 head 上溯路径上的消息属于调用
-          方责任。需要「删除当前 head 并回退到亲节点」时，请使用
+          方责任。需要“删除当前 head 并回退到亲节点”时，请使用
           ``Agent.remove`` / ``Agent.pop`` （Agent 层负责 head 维护）。
         - **配对警示**：删除一条 TOOL 结果消息或含 ``ToolCallBlock`` 的
           PROVIDER 消息会重新打开配对（tool_call 与结果不再 1:1）——树内
@@ -1890,7 +1890,7 @@ class MessageChain:
         - 消息自身 ``Message.tags`` 与给定 ``tags`` 相交；
         - 消息任一 ``content`` block 的 ``tags`` 与给定 ``tags`` 相交。
 
-        支撑「临时注入、响应后清洗」场景：``after_turn`` 钩子内按 tags
+        支撑“临时注入、响应后清洗”场景：``after_turn`` 钩子内按 tags
         擦除本回合附加的提醒消息，保证不累积到后续轮次。
 
         .. rubric:: 行为要点
@@ -1967,7 +1967,7 @@ class MessageChain:
 
         .. rubric:: 功能介绍
 
-        「单点 op，子树效应」——只改目标消息一个字段，其后代链不变，整个
+        “单点 op，子树效应”——只改目标消息一个字段，其后代链不变，整个
         子树自然跟着走。是五 op 中唯一能移动既有结构的 op：分支迁移、
         删除前的子树保全、压缩摘要分支的挂接都经它完成。
 

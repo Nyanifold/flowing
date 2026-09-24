@@ -3,14 +3,14 @@
 .. rubric:: 功能介绍
 
 本模块是 ``.fya`` 文件层与运行时对象模型之间的桥梁：``.fya`` 中所有
-「可解析字段」（``system_prompt``、``description`` 及各类具名块的内容）
+“可解析字段”（``system_prompt``、``description`` 及各类具名块的内容）
 在解析后统一表示为 :class:`Parsable`，运行时在使用方决定的时机现场求值。
 本模块同时承载两个模块级单例哨兵：:data:`PENDING` （延迟定义承诺）与
 ``_UNSET`` （未设置）。
 
-本模块只定义「存储求值指令 + 现场求值」的机制，不定义任何使用方的求值
+本模块只定义“存储求值指令 + 现场求值”的机制，不定义任何使用方的求值
 策略（何时求值、用什么上下文）——求值时机由各使用方各自决定，见下文
-「各使用方求值时机」表。
+“各使用方求值时机”表。
 
 .. rubric:: 五种形式判定
 
@@ -119,7 +119,7 @@
 - ``{% include %}`` 的路径基准与 ``$`` 引用同源：经同一个
   ``resolve_path``、同一个 ``source_dir`` （绑定实例的
   ``Agent.source_dir``）。内联模板（无文件身份的 ``source`` 字符串）中
-  的 include 亦然——不存在「相对于包含者文件」的解析，基准永远来自
+  的 include 亦然——不存在“相对于包含者文件”的解析，基准永远来自
   绑定实例。
 - ``FILE_REF`` 先剥 ``$`` 再进 ``resolve_path``：``source`` 的首字符
   ``$`` 只是形式标记、不是路径成分；``resolve_path`` 永远看不到 ``$``
@@ -168,7 +168,7 @@
 
 .. rubric:: 惰性求值
 
-``Parsable`` 存储的是「如何解析」的指令，不是解析结果。真正求值发生在
+``Parsable`` 存储的是“如何解析”的指令，不是解析结果。真正求值发生在
 实际使用时——这是功能正确性前提而非性能优化：若在文件解析阶段即求值，
 会出现三类正确性问题：
 
@@ -228,17 +228,17 @@
 .. rubric:: 插件自定义可解析字段
 
 ``.fya`` 解析时默认构造为 ``Parsable`` 的字段集合由框架核心固定（即上表
-「求值面内」字段，外加宿主显式声明 Parsable 承载的字段）。除此之外的
+“求值面内”字段，外加宿主显式声明 Parsable 承载的字段）。除此之外的
 可解析对象由插件 / 组件自行定义：
 
 - 插件自行决定自己的哪些字段是可解析的，并以对开发者的约定形式写进
-  插件文档（「本插件的 X 字段是 Parsable」是插件契约的一部分，框架不
+  插件文档（“本插件的 X 字段是 Parsable”是插件契约的一部分，框架不
   提供通用注册表）。
-- 机制：在 ``use_xxx()`` 启用钩子里，插件把对应变量重赋值为「由该变量
-  的 ``.fya`` 解析结果创建的 :class:`Parsable` 对象」——框架解析层不为
+- 机制：在 ``use_xxx()`` 启用钩子里，插件把对应变量重赋值为“由该变量
+  的 ``.fya`` 解析结果创建的 :class:`Parsable` 对象”——框架解析层不为
   插件字段自动包装，包装动作显式发生在启用时。
 - 求值同样由插件负责：重赋值后的 Parsable 由插件在需要时手动
-  ``resolve(context)`` （见下「求值面内 vs 求值面外」）。
+  ``resolve(context)`` （见下“求值面内 vs 求值面外”）。
 
 .. rubric:: 求值面内 vs 求值面外
 
@@ -260,7 +260,7 @@
 
 框架不为 Parsable 做隐式解包（类比 Vue 的 ref 但刻意不自动拆箱）：
 隐式解包会掩盖求值开销，且求值上下文未必总是 ``self``。判断标准：字段
-是否在上表「求值面内」；面外字段拿到的永远是 :class:`Parsable` 对象。
+是否在上表“求值面内”；面外字段拿到的永远是 :class:`Parsable` 对象。
 
 .. rubric:: 行为要点
 
@@ -270,16 +270,16 @@
 - 不提供响应式重算：``watch(name, handler)`` 只监听属性赋值事件，不
   监听解析值的逻辑变化（``self.c = Parsable("{{ a == b }}")`` 之后修改
   ``self.a``，``watch("c")`` 不触发——因为 ``self.c`` 从未被重新赋值）。
-  要「a 变导致 c 重算」，把 ``c`` 放进某个求值面让框架每次自动 resolve，
+  要“a 变导致 c 重算”，把 ``c`` 放进某个求值面让框架每次自动 resolve，
   或自己 ``watch("a")`` / ``watch("b")`` 在 handler 中给 ``self.c``
   直接赋值。
-- 不监听运行期文件变更（无文件系统 watcher）：``FILE_REF`` 的「文件
-  修改后下次求值反映新内容」仅指进程内再次求值。
+- 不监听运行期文件变更（无文件系统 watcher）：``FILE_REF`` 的“文件
+  修改后下次求值反映新内容”仅指进程内再次求值。
 - 双哨兵不混用：:data:`PENDING` （延迟定义承诺，``.fya`` 中
   ``field: _`` 的解析结果）与 ``_UNSET`` （未设置，现仅用于
   ``Agent.source_file`` 的自动推算触发条件）语义不同、不可混用。
-  ``PENDING`` 等待的是用户代码赋值；``_UNSET`` 表示「该位置从无默认 /
-  显式值」。创建管线 ``setup()`` 返回后、``after_create`` 前检查仍为
+  ``PENDING`` 等待的是用户代码赋值；``_UNSET`` 表示“该位置从无默认 /
+  显式值”。创建管线 ``setup()`` 返回后、``after_create`` 前检查仍为
   ``PENDING`` 的字段，抛 ``MissingFieldError``。
 - 稳定性分级：本模块全部公开签名（:class:`Parsable` 及其公开方法、
   五个形式常量、:data:`PENDING`）属于跨版本稳定契约；``_`` 前缀符号为
@@ -459,7 +459,7 @@ class _MissingType:
 
     保证 ``PENDING`` 是进程内唯一实例，支持 ``is`` 精确判断。外部代码只应
     使用 :data:`PENDING` 本身，不应实例化或子类化本类型。不提供布尔语义
-    保证——判定「是否未兑现承诺」唯一合法方式是 ``field is PENDING``；
+    保证——判定“是否未兑现承诺”唯一合法方式是 ``field is PENDING``；
     ``__repr__`` 返回字符串 ``"PENDING"``，便于调试输出与错误信息。
     """
 
@@ -554,7 +554,7 @@ class Parsable(Generic[T]):
 
     .. rubric:: 功能介绍
 
-    ``.fya`` 中所有「可解析字段」（``system_prompt``、``description`` 及
+    ``.fya`` 中所有“可解析字段”（``system_prompt``、``description`` 及
     各类具名块内容）与手写子类中的等价声明，统一表示为 ``Parsable[T]``。
     ``Parsable`` 不是固定数据类型：``type`` 由 ``source`` 样式自动推断
     （``LITERAL`` / ``FILE_REF`` / ``EXPRESSION`` / ``TEMPLATE`` / ``RAW``），
@@ -565,7 +565,7 @@ class Parsable(Generic[T]):
     惰性求值是功能正确性前提而非性能优化：文件解析阶段求值会在环境变量未
     加载、Agent 实例尚不存在、被引用文件未就绪三类场景下产生错误结果。
     统一抽象使 ``.fya`` 五种写法与 Python 手写声明走同一条渲染管线，
-    「用到的时候重新算」取代了响应式系统（无 Proxy、无依赖图、无缓存）。
+    “用到的时候重新算”取代了响应式系统（无 Proxy、无依赖图、无缓存）。
 
     .. rubric:: 使用示例
 
@@ -584,17 +584,17 @@ class Parsable(Generic[T]):
         $description:
         $"包含 {{ 花括号 }} 的原始文本"               # RAW
 
-    手写子类与 Python API 侧用法见模块 docstring「使用示例」。
+    手写子类与 Python API 侧用法见模块 docstring“使用示例”。
 
     .. rubric:: 行为要点
 
     - ``type`` 自动推断，构造时不接受手动指定；推断规则见模块级
-      「五种形式判定」。
+      “五种形式判定”。
     - 描述符行为：类级别访问返回自身（未绑定）；实例访问返回一个绑定了
       实例的浅拷贝（共享 ``source`` / ``type``，拷贝间互不影响）。本类只
       实现 ``__get__``，是非数据描述符——实例属性赋值（``self.x = ...``）
       正常遮蔽类级 Parsable，不会触发描述符协议。
-    - 求值上下文：见 :meth:`resolve`；渲染上下文构成见模块级「渲染上下文」。
+    - 求值上下文：见 :meth:`resolve`；渲染上下文构成见模块级“渲染上下文”。
     - 不变量：``source`` 与 ``type`` 创建后不变；求值不改变 Parsable 自身
       状态（无缓存、无记忆）。
     - 非行为：不做隐式解包（求值面外拿到的永远是 Parsable 对象）；不缓存
@@ -657,15 +657,15 @@ class Parsable(Generic[T]):
             哨兵，不构造 Parsable。
         :param source_dir: ``$``/``{% include %}`` 引用的**声明文件目录**
             （内部 API，不属稳定契约）。给定时作 ``./`` 引用的解析基准并
-            优先于绑定 Agent 的 ``source_dir()``——语义是「承载本求值指令的
-            文件所在目录」：SKILL.fya 的 ``content: $./notes.md`` 以
+            优先于绑定 Agent 的 ``source_dir()``——语义是“承载本求值指令的
+            文件所在目录”：SKILL.fya 的 ``content: $./notes.md`` 以
             SKILL.fya 目录为基准，而不是调用方 Agent 目录。缺省 ``None``
             → 回落绑定 Agent 的 ``source_dir()``（如 .fya 的
             ``system_prompt: $./x.md``，Agent 声明文件即该 .fya）。
 
         .. rubric:: 行为要点
 
-        - 按模块级「五种形式判定」自上而下推断 ``type``。
+        - 按模块级“五种形式判定”自上而下推断 ``type``。
         - 构造产物未绑定（``_instance is None``），需经
           ``flowing.agent.Agent.parsable`` / :meth:`bind` 或描述符协议绑定后
           才能无参 :meth:`resolve`。
@@ -689,8 +689,8 @@ class Parsable(Generic[T]):
 
         ``Parsable`` 存放在 Agent 类属性上。通过类访问（``OrderAgent.p``）
         返回原对象（未绑定）；通过实例访问（``agent.p``）返回一个绑定了该实例
-        的浅拷贝（共享 ``source`` / ``type``）。浅拷贝绑定使「类级声明共享、
-        实例级上下文独立」：``source`` / ``type`` 只有一份（声明是类级共享的），
+        的浅拷贝（共享 ``source`` / ``type``）。浅拷贝绑定使“类级声明共享、
+        实例级上下文独立”：``source`` / ``type`` 只有一份（声明是类级共享的），
         而求值上下文按访问的实例区分。
 
         .. rubric:: 使用示例
@@ -731,8 +731,8 @@ class Parsable(Generic[T]):
 
         .. rubric:: 功能介绍
 
-        与描述符实例访问同构的**显式绑定**入口：给「构造期无法预知调用方
-        的声明式 Parsable」补绑定。典型场景：SKILL.fya 的 ``content`` 在
+        与描述符实例访问同构的**显式绑定**入口：给“构造期无法预知调用方
+        的声明式 Parsable”补绑定。典型场景：SKILL.fya 的 ``content`` 在
         registry 解析期构造（此时无 Agent），使用时才绑定调用方 Agent——
         绑定后 ``resolve`` 能取到 ``config`` / ``env`` / FILE_REF 的 runtime
         来源；``source_dir``（构造时给的声明文件目录）在绑定后仍优先。
@@ -772,7 +772,7 @@ class Parsable(Generic[T]):
         对 ``source`` 按 ``type`` 求值：``RAW`` 直接返回引号内文本；``LITERAL``
         返回 ``source`` 原样；``FILE_REF`` 现场读文件后渲染；``EXPRESSION`` 返回
         表达式原生值；``TEMPLATE`` 返回渲染后的 ``str``。同步方法——求值可能
-        涉及文件读取，但均为本地小文件，不引入异步。「用到的时候重新算」是
+        涉及文件读取，但均为本地小文件，不引入异步。“用到的时候重新算”是
         框架取代响应式系统的核心机制：每次调用现场求值（无缓存）保证拿到的
         永远是最新的 ``env`` / ``config`` / 实例属性 / 被引用文件内容。
 
@@ -885,10 +885,10 @@ class Parsable(Generic[T]):
 
         Jinja2 渲染任意对象时默认调用 ``str()``——对 Parsable 而言 ``str()``
         只展示模板源（不求值，见 :meth:`__str__`）；因此模板内引用 Parsable
-        必须写显式的 ``.resolved`` （「这里是一次求值」意图可读，不依赖隐式
+        必须写显式的 ``.resolved`` （“这里是一次求值”意图可读，不依赖隐式
         字符串化）。模板中显式 ``{{ x.resolve() }}`` （无参、已绑定）与
         ``.resolved`` 语义等价，但 ``.resolved`` 是惯用写法。模板内完整示例见
-        :data:`TEMPLATE` 的「混合内容中的 Parsable 引用」。
+        :data:`TEMPLATE` 的“混合内容中的 Parsable 引用”。
 
         .. rubric:: 行为要点
 
@@ -911,8 +911,8 @@ class Parsable(Generic[T]):
 
         返回未渲染的 ``source`` 文本（非 ``str`` 类型的 ``source`` ——
         ``LITERAL`` 裸值——经 ``str()`` 转换）。字符串拼接、``str()``、f-string、
-        Jinja2 隐式字符串化拿到的是模板原文，不是求值结果。「展示模板」与
-        「渲染结果」分离：求值只有一个显式入口（:meth:`resolve` /
+        Jinja2 隐式字符串化拿到的是模板原文，不是求值结果。“展示模板”与
+        “渲染结果”分离：求值只有一个显式入口（:meth:`resolve` /
         :attr:`resolved`），``str()`` 不暗中触发渲染——Jinja2 模板内引用 Parsable
         必须写 ``{{ x.resolved }}``，隐式字符串化只用于调试与日志。
 
@@ -932,8 +932,8 @@ class Parsable(Generic[T]):
         .. rubric:: 功能介绍
 
         调试表示，始终展示未渲染的 ``source`` 与推断出的 ``type``，无论绑定
-        与否。调试 / 日志 / traceback 中需要看到「模板原文」而非「某次求值的
-        瞬时结果」；repr 无副作用、无前置条件（未绑定也能 repr）。
+        与否。调试 / 日志 / traceback 中需要看到“模板原文”而非“某次求值的
+        瞬时结果”；repr 无副作用、无前置条件（未绑定也能 repr）。
 
         .. rubric:: 行为要点
 
@@ -1001,7 +1001,7 @@ class Parsable(Generic[T]):
         不进入本方法。``{% include %}`` 的落点是框架为渲染 Environment 提供的
         自定义加载器，include 名经与 ``FILE_REF`` 同源的路径解析（同一个
         ``Runtime.resolve_path``、同一个 ``source_dir`` 基准——绑定实例的
-        ``Agent.source_dir``）；内联模板无「包含者文件」身份，include 基准一律
+        ``Agent.source_dir``）；内联模板无“包含者文件”身份，include 基准一律
         来自绑定实例。
         """
         # 第一步：$ 引用展开——仅 FILE_REF 在此现场读文件（不递归展开被引用
@@ -1038,7 +1038,7 @@ class Parsable(Generic[T]):
     def _infer_type(cls, source: Any) -> str:
         """按 ``source`` 样式推断形式常量。内部 API，不属稳定契约。
 
-        实现模块级「五种形式判定」的自上而下顺序：``$"..."`` → ``RAW``；
+        实现模块级“五种形式判定”的自上而下顺序：``$"..."`` → ``RAW``；
         ``$`` 开头 → ``FILE_REF``；``strip(source)`` 恰为一个完整 ``{{ expr }}``
         → ``EXPRESSION``；含 Jinja2 语法 → ``TEMPLATE``；其余（含非字符串）→
         ``LITERAL``。纯函数：同输入恒同输出，无副作用。``$"_"`` → ``RAW``；
@@ -1079,7 +1079,7 @@ class _ResolvePathLoader(jinja2.BaseLoader):
     ``Runtime.resolve_path``、同一 ``source_dir`` 基准。内部 API。
 
     include 名不剥 ``$`` （Jinja2 模板内的 include 语法本就不带 ``$`` 形式
-    标记）；内联模板无「包含者文件」身份，基准永远来自绑定实例——无绑定
+    标记）；内联模板无“包含者文件”身份，基准永远来自绑定实例——无绑定
     实例（resolver 为 None）时 include 一律 ``TemplateNotFound``。
     """
 
@@ -1114,7 +1114,7 @@ def _build_jinja_env(resolver: Any) -> jinja2.Environment:
     """按是否具备 include 解析基准构建渲染 Environment。内部 API。
 
     框架不注册任何模板全局函数 / 包；autoescape 关闭（prompt 文本场景，
-    非 HTML）；undefined 取 ``ChainableUndefined``——「未定义变量渲染为空」
+    非 HTML）；undefined 取 ``ChainableUndefined``——“未定义变量渲染为空”
     的规约对链式访问（``config.limits.turns`` 这类）同样成立。
     """
     return _FlowingEnvironment(

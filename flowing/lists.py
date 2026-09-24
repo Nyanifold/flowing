@@ -2,10 +2,10 @@
 
 .. rubric:: 功能介绍
 
-本模块提供「一批带来源与标签的可开关条目」的统一管理：:class:`ManagedList`
+本模块提供“一批带来源与标签的可开关条目”的统一管理：:class:`ManagedList`
 负责按标签（tag）或来源（owner）批量停用、恢复或删除条目，迭代时自动
 跳过已停用条目；:class:`Togglable` 是条目需要满足的最小结构契约。适合
-「按组临时停用一批能力、稍后整组恢复」的场景；框架内
+“按组临时停用一批能力、稍后整组恢复”的场景；框架内
 :class:`flowing.hooks.HookList` 与 :class:`flowing.context.PromptBlockList`
 都基于本模块实现。
 
@@ -37,8 +37,8 @@
   注册顺序不变、可随时恢复；删除才是把条目彻底移除、不可恢复。
 - 容器内条目的相对顺序等于注册顺序，停用与恢复不改变顺序。
 - 按来源的匹配是精确相等（``item.by == owner``，``None`` 与 ``None``
-  也相等）；按标签的匹配是「``tags`` 列表中任一元素与给定标签相等
-  即命中」。
+  也相等）；按标签的匹配是“``tags`` 列表中任一元素与给定标签相等
+  即命中”。
 
 .. seealso:: :class:`Togglable`、:class:`ManagedList`、
     :class:`flowing.hooks.HookList`、:class:`flowing.context.PromptBlockList`
@@ -67,8 +67,8 @@ class Togglable(Protocol):
       ``False``、恢复置 ``True``），条目本身不移动。
     - ``by``：来源或所有者标识。允许 ``None``；按来源的批量操作以
       精确相等匹配，``None`` 与 ``None`` 也相等。
-    - ``tags``：标签列表。按标签的批量操作以「列表中任一元素与给定
-      标签相等」匹配。
+    - ``tags``：标签列表。按标签的批量操作以“列表中任一元素与给定
+      标签相等”匹配。
     - 注意对照：``flowing.tool.ToolEntry`` 与
       ``flowing.plugins.skills.SkillEntry`` 的对应字段叫 ``visible``
       （Agent 级绑定层条目，存于按别名索引的 dict，不进
@@ -182,8 +182,8 @@ class ManagedList(Generic[Tg]):
 
         - 不做去重：同一个条目对象可以多次追加，每次追加都会在容器
           中产生一个位置，迭代与批量操作各处理一次。
-        - 本方法对子类形态不做约束：子类可把 append 特化为「构造并
-          追加」的工厂式签名（如 :class:`flowing.context.PromptBlockList`
+        - 本方法对子类形态不做约束：子类可把 append 特化为“构造并
+          追加”的工厂式签名（如 :class:`flowing.context.PromptBlockList`
           的 ``append(name, content, ...)``）；此时基类的元素式
           ``append(item)`` 在该子类上不可用，属有意为之。
 
@@ -218,8 +218,8 @@ class ManagedList(Generic[Tg]):
         - 插入后容器的条目顺序由 ``append`` 与 ``insert`` 共同决定——
           不再恒等于注册顺序；迭代与消费路径按列表新顺序处理条目。
         - 与 :meth:`append` 一样不做去重：同一个条目对象可多次插入。
-        - 本方法对子类形态不做约束：子类可把 insert 特化为「构造并
-          插入」的工厂式签名（如 :class:`flowing.context.PromptBlockList`
+        - 本方法对子类形态不做约束：子类可把 insert 特化为“构造并
+          插入”的工厂式签名（如 :class:`flowing.context.PromptBlockList`
           的 ``insert(index, name, content, ...)``）；此时基类的元素式
           ``insert(index, item)`` 在该子类上不可用，属有意为之。
 

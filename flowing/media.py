@@ -277,7 +277,7 @@ def register_media_converter(
 
 def _sniff_mime(data: bytes) -> str | None:
     """bytes 魔数嗅探：只内置常见魔数，推不出返回 ``None``
-    （调用方按「宁文件勿图」落 ``FileBlock``）。内部 API。"""
+    （调用方按“宁文件勿图”落 ``FileBlock``）。内部 API。"""
     if data.startswith(b"\x89PNG\r\n\x1a\n"):
         return "image/png"
     if data.startswith(b"\xff\xd8\xff"):
@@ -384,7 +384,7 @@ async def normalize_output(value: Any) -> Any:
     工具结果的统一归一入口：`Tool.__call__` 与 ``Agent.tool_call`` 收尾
     各调一次（两次都安全，见行为要点）。产物为五形态之一：``None`` /
     基础值原样 / 单块 / 纯基础 list / 混合 list（基础成员原样保留 +
-    非基础成员已转块）。「基础类型」指 ``None`` / ``bool`` / ``int`` /
+    非基础成员已转块）。“基础类型”指 ``None`` / ``bool`` / ``int`` /
     ``float`` / ``str`` / ``dict`` / ``list`` / ``tuple`` / dataclass
     实例 / pydantic ``BaseModel`` 实例（JSON 兼容及其常见载体）。
 

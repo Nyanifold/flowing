@@ -3,8 +3,8 @@
 .. rubric:: 功能介绍
 
 本子包是 Flowing 的暴露层：为 ``flowing`` 命令行工具提供进程入口与
-各子命令实现。暴露层的唯一职责是「``launch(path, **kwargs)`` 拿
-Runtime」——所有子命令拿到 Runtime 之后做什么，是本包各模块的全部
+各子命令实现。暴露层的唯一职责是“``launch(path, **kwargs)`` 拿
+Runtime”——所有子命令拿到 Runtime 之后做什么，是本包各模块的全部
 差异。
 
 子命令封闭集由 :data:`SUBCOMMANDS` 定义，共八个名字：``run`` /
@@ -14,7 +14,7 @@ Runtime」——所有子命令拿到 Runtime 之后做什么，是本包各模�
 REPL——二者无别名关系。``compile`` 不拉起 Runtime，是唯一不经
 :func:`flowing.runtime.launch` 的子命令。
 
-边界（暴露层只做「拉起」这一件事）：
+边界（暴露层只做“拉起”这一件事）：
 
 - 不解析配置文件（``providers.yaml`` / ``models.yaml`` 等）——配置
   读取是框架核心与子项目 ``main`` 执行期间的职责。
@@ -84,12 +84,12 @@ REPL——二者无别名关系。``compile`` 不拉起 Runtime，是唯一不�
 （``abort_turn``），空闲 / SIGTERM 走优雅关闭桥。优雅关闭桥只发起
 ``shutdown()``（非阻塞，立即返回）；``shutdown()`` 完成递归 destroy
 全部节点与插件收尾后置位退出事件，``await runtime`` 处随即唤醒，
-进程以退出码 ``0`` 退出。框架不实现「二次信号强制 kill」——关闭卡死
+进程以退出码 ``0`` 退出。框架不实现“二次信号强制 kill”——关闭卡死
 时的兜底是应用层职责。
 
 封闭观察窗口：默认 ``repl`` 的 slash-command 集合与默认 ``serve`` 的
 HTTP 端点集合都是封闭的，不接受运行时注册新命令 / 新端点——它们是
-「刚启动项目、想快速发条消息看看、查个快照」的最小观察窗口，不是可
+“刚启动项目、想快速发条消息看看、查个快照”的最小观察窗口，不是可
 扩展的交互框架。需要自定义命令或端点时，继承内置实现扩展（``repl-debug``
 对 ``repl`` 的扩展方式即内置注入点的用法），或自己实现一个 repl /
 HTTP server（经 ``query()`` / ``enqueue_message()`` / ``snapshot()``
@@ -259,8 +259,8 @@ def _last_reply_prefix(session_dir: Path, *, limit: int = 40) -> str:
     """懒读 session 目录 ``tree.jsonl`` 尾部最后一条 PROVIDER 消息的
     文本前缀（内部 API，不属稳定契约）。
 
-    repl ``/agents`` 与 serve ``GET /agents`` 名录行的「最后一次回复
-    前缀」数据源；未激活 Agent 没有内存对象，只能读盘，前缀不回写池
+    repl ``/agents`` 与 serve ``GET /agents`` 名录行的“最后一次回复
+    前缀”数据源；未激活 Agent 没有内存对象，只能读盘，前缀不回写池
     元数据。解析容错：撕裂末行截断、损坏行跳过、墓碑行移除对应消息；
     ``tree.jsonl`` 缺失或无存活 PROVIDER 消息时返回空串。前缀折叠为
     单行，超长截断加省略号。

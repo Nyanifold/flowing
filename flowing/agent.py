@@ -9,7 +9,7 @@
 - :class:`TurnContext` —— 逻辑 Turn 的执行期临时对象（``before_turn`` /
   ``on_turn_abort`` / ``after_turn`` 钩子点的 value 类型）。
 - :class:`TurnResult` —— 回合产物（``query()`` 等待语义的返回值）。
-- :class:`Execution` —— 异步执行追踪条目（「谁正在运行、谁可取消」）。
+- :class:`Execution` —— 异步执行追踪条目（“谁正在运行、谁可取消”）。
 - :class:`FieldUpdate` —— ``watch`` watcher 通道的 value（赋值事件快照）。
 - :class:`ProviderErrorContext` / :class:`CancelContext` ——
   ``on_provider_error`` / ``before_cancel`` / ``after_cancel`` 钩子点的
@@ -26,7 +26,7 @@
 落盘）在 :mod:`flowing.persistence`；24 个核心钩子点的触发时机 / value
 类型 / handler 能力见 :mod:`flowing.hooks` 模块 docstring 的全集表。
 
-本模块遵循「框架只提供机制，不提供策略」：核心只做错误分类、钩子点
+本模块遵循“框架只提供机制，不提供策略”：核心只做错误分类、钩子点
 分发与消息流转；重试、压缩、审批等策略全部放在扩展 / Composable /
 应用层。
 
@@ -48,7 +48,7 @@ async 方法约定：一切会在内部 dispatch 钩子的公开方法都是 asy
 恢复管线各自在一个新实例上执行 ``setup()``；实例诞生（``after_create`` /
 ``after_recover`` 完成）即启动常驻工作循环 Task，``destroy()`` 时取消。
 ``destroy()`` 递归销毁子树、丢弃实例，但 session 记录（tree.jsonl /
-state.jsonl）与池 key 保留——「有 key 无 value」可现场恢复。
+state.jsonl）与池 key 保留——“有 key 无 value”可现场恢复。
 
 消息级树：树节点是消息（``Message.id`` + ``parent_id`` 链，
 ``current_head_id`` 指向消息 id，``None`` 表示空树）。``fork`` 只切换
@@ -83,7 +83,7 @@ provide-inject 链：``provide(key, value)`` 在本节点注册值；``inject``
 等待图成环（A 等 B、B 等 A）同样是死锁，框架不做环检测。回合内需要
 驱动用 :meth:`Agent.steer` （STEER 优先级，当轮 context 可见）。
 
-无生命周期状态机：Agent 不提供 ``status`` 字段；「在干什么」的观测
+无生命周期状态机：Agent 不提供 ``status`` 字段；“在干什么”的观测
 由快照层从内部状态现场派生（``snapshot()``）。
 
 .. rubric:: 使用示例
@@ -230,7 +230,7 @@ def _estimate_tool_schema_tokens(definition: ToolDefinition) -> int:
     :func:`flowing.message._text_tokens` 估算（ASCII ÷ 4 + 非 ASCII × 1，
     向上取整），与消息 / system prompt 估算同一字符启发式口径——中文
     描述不再被统一除 4 系统性低估；``estimate_context_tokens`` 的
-    「锚点后新增工具补估」与「无锚点全估」共用。
+    “锚点后新增工具补估”与“无锚点全估”共用。
     """
     from dataclasses import asdict
 
@@ -292,8 +292,8 @@ class TurnContext:
 
     .. rubric:: 功能介绍
 
-    逻辑 Turn 是「消费一条（或按覆写的出队策略多条）消息、直到 Provider
-    响应 ``finish=True`` 才结束」的执行过程。本对象由回合执行体在 Turn
+    逻辑 Turn 是“消费一条（或按覆写的出队策略多条）消息、直到 Provider
+    响应 ``finish=True`` 才结束”的执行过程。本对象由回合执行体在 Turn
     开始时创建、收尾后丢弃，是 :attr:`TurnResult.turn` 与
     ``Agent.current_turn`` 的类型。它只承载回合执行期间的临时信息：不进入
     消息树、不写任何持久化文件、进程崩溃后不恢复（恢复只重建消息级树与
@@ -409,8 +409,8 @@ class TurnResult:
       首次 ``provider_gen`` 之前）时为空字符串。
     - ``token_usage`` 是本 Turn 各次成功 ``provider_gen`` 上报用量的
       聚合（对 ``TurnContext.usages`` 逐字段求和；``raw`` 不聚合）；为
-      ``None`` 当且仅当没有任何成功调用上报用量——区分「provider 未上报」
-      与「真用了 0」。部分调用上报时只就上报者求和。
+      ``None`` 当且仅当没有任何成功调用上报用量——区分“provider 未上报”
+      与“真用了 0”。部分调用上报时只就上报者求和。
     - ``finish_reason`` 是信息字段（原始停止原因，如 ``"end_turn"`` /
       ``"cancelled"`` / ``"intercepted"``），不参与控制流；Provider 侧的
       结束判定字段是 ``ProviderResponse.finish``，二者不要混用。
@@ -445,7 +445,7 @@ class TurnResult:
 
 @dataclass
 class Execution:
-    """活跃异步执行条目——「谁正在运行、谁可取消」的追踪单位。
+    """活跃异步执行条目——“谁正在运行、谁可取消”的追踪单位。
 
     .. rubric:: 功能介绍
 
@@ -570,7 +570,7 @@ class ProviderErrorContext:
     ``provider_gen()`` 抛出的异常被回合层捕获后，构造本对象并 dispatch
     ``on_provider_error``。handler 在内部执行动作（退避等待 / 改
     ``self.model`` / 调 ``abort_turn()``）并写 ``can_continue`` 表达决策。
-    核心只提供机制（错误分类与分发）；「该不该重试、重试几次」是策略——
+    核心只提供机制（错误分类与分发）；“该不该重试、重试几次”是策略——
     内置的可选 Composable ``use_retry()`` 以 ``by="retry"`` 注册 handler
     提供重试；不启用时 ``can_continue`` 保持 ``False``，错误直接终止
     回合（Agent 存活，可继续消费后续消息）。
@@ -631,7 +631,7 @@ class CancelContext:
     ``cancel()`` 在置位任何取消信号之前 dispatch ``before_cancel``，
     handler 可 ``raise Intercepted`` 阻止取消——适用于当前操作不可中断的
     场景（支付已提交、关键事务进行中）。``after_cancel`` 在信号置位后
-    立即 dispatch，是「取消请求已被接受」的事实事件（纯观察）。
+    立即 dispatch，是“取消请求已被接受”的事实事件（纯观察）。
 
     .. rubric:: 行为要点
 
@@ -711,7 +711,7 @@ def build_turn_result(turn: TurnContext, agent: "Agent", *,
       ``"cancelled"``；``intercepted=True`` → ``"blocked"``；
       ``error`` 非 ``None`` → ``"error"``；否则 ``"completed"``。
     - ``token_usage`` 聚合：``turn.usages`` 为空 → ``None`` （区分
-      「provider 未上报」与「真用了 0」）；非空 → 七个计数字段逐字段
+      “provider 未上报”与“真用了 0”）；非空 → 七个计数字段逐字段
       求和，聚合体的 ``raw`` 为空字典（逐次原始字段的消费方走
       ``after_provider_gen`` 钩子）。
     - ``finish_reason`` 取值：取消 / 拦截 / 异常结局填对应字面量
@@ -837,7 +837,7 @@ async def _segment_result(item: Any, name: str, call_id: str | None) -> ToolResu
     """单个 yield → ``ToolResult(completed, production="segment")`` （内部 API）。
 
     浅层违禁块（``ToolCallBlock`` / ``ThinkingBlock``）容错转普通文本说明
-    ——后台任务已脱离调用栈，「抛异常」无人接收（与 completed 路径的
+    ——后台任务已脱离调用栈，“抛异常”无人接收（与 completed 路径的
     ``ValueError`` 框架错误通道区分）。
     """
     if _has_forbidden_block(item):
@@ -1746,7 +1746,7 @@ class Agent:
         .. rubric:: 行为要点
 
         - destroy ≠ 删除：只丢实例；session（tree.jsonl + state.jsonl）
-          与池 key 保留到显式删除目录——「有 key 无 value → 现场恢复」
+          与池 key 保留到显式删除目录——“有 key 无 value → 现场恢复”
           （``Runtime.get_agent`` 触发）。
         - 幂等：重复调用安全（二次调用时子树已空、已摘除，直接返回）。
         - 与回合收尾窗口的关系：destroy 不以 ``current_turn`` 为守卫，
@@ -1943,7 +1943,7 @@ class Agent:
         kind: MessageKind = MessageKind.USER,
         **kwargs: Any,
     ) -> TurnResult:
-        """统一入口：打包 + 入队 + 等待「包含我这条消息的回合」产物。
+        """统一入口：打包 + 入队 + 等待“包含我这条消息的回合”产物。
 
         .. rubric:: 功能介绍
 
@@ -1963,7 +1963,7 @@ class Agent:
 
         .. rubric:: 行为要点
 
-        - 等待语义：等「包含我这条消息」的逻辑回合完成；空闲时可能被
+        - 等待语义：等“包含我这条消息”的逻辑回合完成；空闲时可能被
           出队合并（一次取出多条消息，共享同一产物），活跃回合中排队等
           当前回合完成。
         - 副线不走本方法——副线唯一入口是 :meth:`side_query`。
@@ -2106,7 +2106,7 @@ class Agent:
         - 时序：dispatch ``on_enqueue`` （可检查 / 修改 /
           ``raise Intercepted`` 拒绝——内容审核、速率限制、文件过大）→
           ``_message_queue.enqueue(msg)`` → 返回 ``msg.id``。
-        - 消费保证：入队即会被消费（常驻工作循环），无需「入队触发」逻辑。
+        - 消费保证：入队即会被消费（常驻工作循环），无需“入队触发”逻辑。
         - 可入队种类：USER / EVENT / SYSTEM / PLUGIN / SUBAGENT / PEER，
           以及异步工具最终结果（以 ``EVENT`` kind 入队，content 为标注块 +
           结果块列表）；``PROVIDER`` 消息永远不进队列（回合内产生）。
@@ -2152,7 +2152,7 @@ class Agent:
     def _pop_pending_cancelled(self, message_id: str) -> None:
         """摘除 ``_pending_turns`` 条目并联动 resolve cancelled（框架合成空
         ``TurnContext``；内部 API）——:meth:`cancel_queued` 与
-        :meth:`_dequeue` 的「已出队但未消费」处理共用同一填充规则。"""
+        :meth:`_dequeue` 的“已出队但未消费”处理共用同一填充规则。"""
         fut = self._pending_turns.pop(message_id, None)
         if fut is not None and not fut.done():
             fut.set_result(TurnResult(   # 联动 resolve cancelled（框架合成空 TurnContext）
@@ -2303,8 +2303,8 @@ class Agent:
 
         :meth:`flowing.message.MessageQueue.set_priority` 的 Agent 层入口：
         把排队中的消息提升 / 降低优先级，影响下一轮出队的消费顺序。与
-        :meth:`cancel_queued` 对称——那个管「反悔撤回」，这个管「催办 /
-        降级」。重排保留原入队序号：被改优先级的消息插入新优先级带时按
+        :meth:`cancel_queued` 对称——那个管“反悔撤回”，这个管“催办 /
+        降级”。重排保留原入队序号：被改优先级的消息插入新优先级带时按
         原入队早晚定位，如同它入队时就带着新优先级。
 
         .. rubric:: 使用示例
@@ -2331,7 +2331,7 @@ class Agent:
 
         .. rubric:: 功能介绍
 
-        回答「现在把上下文发给 LLM 大约多大」：沿 ``current_head_id`` 上溯
+        回答“现在把上下文发给 LLM 大约多大”：沿 ``current_head_id`` 上溯
         的当前路径上，找最近一条有效锚点（``kind == PROVIDER`` 且
         ``usage`` 非 ``None`` 且 ``usage.total_tokens > 0`` 的消息），
         锚点覆盖部分用实测值（``measured``），之后的新内容用
@@ -2353,7 +2353,7 @@ class Agent:
         - 路径收集口径与上下文组装相同（沿 ``current_head_id`` 上溯）。
         - 锚点命中时：``measured = 锚点.usage.total_tokens`` （含
           cache_read——缓存读的 token 也占窗口）；``estimated`` 追加
-          「当前启用工具中不在 ``_measured_tool_names`` 的 schema 估算」
+          “当前启用工具中不在 ``_measured_tool_names`` 的 schema 估算”
           ——锚点后新增工具的补估规则。
         - 无锚点时：``measured = None``，``estimated`` = system prompt 各
           segment 文本估算 + 当前全部启用工具 schema 估算 + 路径全部消息
@@ -2449,7 +2449,7 @@ class Agent:
         把 ``awaitable`` 包成 Task，与 ``_turn_abort`` / ``execution.cancel``
         两个信号的等待 Task 做 FIRST_COMPLETED 竞速：调用先完成 →
         ``(False, result)`` （调用异常经 ``task.result()`` 原样上抛，含
-        ``StopAsyncIteration``——「不捕获任何异常」契约不受影响）；信号先
+        ``StopAsyncIteration``——“不捕获任何异常”契约不受影响）；信号先
         置位 → ``cancel()`` 在途 Task（``CancelledError`` 注入 adapter 的
         HTTP await 点，adapter 不捕获、原样透传），suppress 收尾后返回
         ``(True, None)``，由调用方合成 cancelled 响应（cancel 是正常终止
@@ -2508,8 +2508,8 @@ class Agent:
           ``after_provider_gen`` 改整条消息；delta 本身不落盘）；
           ``stream=False``：非流式一次性请求，拿到完整响应后合成一条
           全量 delta 同样 dispatch——两种路径的 delta 数据格式完全一致，
-          订阅者永远可以依赖「每次正常完成的 ``provider_gen`` 至少一条
-          delta」（在途被取消的调用除外：无任何 delta、``message=None``）。
+          订阅者永远可以依赖“每次正常完成的 ``provider_gen`` 至少一条
+          delta”（在途被取消的调用除外：无任何 delta、``message=None``）。
         - ``by``：来源标记，透写到每条 ``ProviderDelta`` 与返回的
           ``ProviderResponse`` （adapter 不填，由本方法盖写）。主 Turn
           内层循环传 ``"_turn"``，``side_query`` 传 ``"_side"``；下划线
@@ -2701,7 +2701,7 @@ class Agent:
           丢弃——副线消息不落盘、不再进任何上下文，thinking 无 passback
           义务、工具请求无执行机制。``finish`` 字段不读（它是 Turn 循环
           的结束判断，副线不是 Turn）。
-        - 空文本二义性：abort 与「响应无 TextBlock」（如 thinking 烧光
+        - 空文本二义性：abort 与“响应无 TextBlock”（如 thinking 烧光
           预算、模型只想调工具）都返回 ``""``，不区分——调用方对空值做
           幂等兜底。
         - 截断：不设独立参数，输出上限由本次调用解析出的
@@ -2938,7 +2938,7 @@ class Agent:
         fork 是纯上下文操作，不碰执行：正在运行的工具 / 子 Agent 继续
         运行、结果照常交付；执行追踪、生命周期子树、prompt 块、provide
         存储、工具条目、消息队列均不被触碰（共享同一实例，不拷贝、不
-        冻结）。全时合法、无守卫：head 即「添加节点的位置」（每条消息挂树
+        冻结）。全时合法、无守卫：head 即“添加节点的位置”（每条消息挂树
         即前移），回合内 fork 的语义即 seek——本回合后续 append 与
         ``provider_gen`` 改在新基址上继续。
 
@@ -2960,7 +2960,7 @@ class Agent:
           须自知三件事：① 嫁接——fork 后的产物挂在目标所在链上，
           ``turn.message_ids`` 可能跨链（消费者均按 id 取消息，无机械
           故障）；② 上下文瞬移——下一轮上下文组装从新 head 上溯；③
-          配对断裂——fork 把「共享前缀里带 tool_call 的 PROVIDER 消息」
+          配对断裂——fork 把“共享前缀里带 tool_call 的 PROVIDER 消息”
           留在新分支、其结果消息留在旧分支时，新分支上该调用未配对，
           组装即抛 ``UnpairedToolCallError``（响亮失败）；恢复管线**不会
           自愈**——①b 的合成封闭按全局配对判定（结果在树里即不合成），
@@ -3044,8 +3044,8 @@ class Agent:
         .. rubric:: 功能介绍
 
         ``self.pause()`` 后对 ``_children`` 中每个活子 Agent 递归调用
-        ``pause_recursive()`` （深度优先）。典型场景：UI 的「暂停整个工作
-        流」按钮。
+        ``pause_recursive()`` （深度优先）。典型场景：UI 的“暂停整个工作
+        流”按钮。
 
         .. rubric:: 行为要点
 
@@ -3116,15 +3116,15 @@ class Agent:
         每个回合收尾恒做（无孤儿则空转）——abort / error / 正常结局统一
         走此：本回合 PROVIDER 消息里未配对的每个 ``ToolCallBlock``，按块序经
         :meth:`flowing.message.MessageChain.insert` 逐条补一条
-        ``tool_status="cancelled"``、空内容的 TOOL 消息——「因取消未执行」
+        ``tool_status="cancelled"``、空内容的 TOOL 消息——“因取消未执行”
         是事实记录（非合成占位）：与调用同分支、插在调用的直接后继位置，
         消息行与邻接调整记录一并落盘。已配对的调用（含在途工具返回的
         部分结果）不重复封闭。封闭行在 write-behind 窗口内丢失时，由恢复
         管线的合成封闭（``synthetic=True`` 占位）兜底。
 
         边界：封闭位置与 ``current_head_id`` 无关（按消息 id 定位，天然
-        落在调用所在分支）。head 上移只发生在「head 恰在某条 PROVIDER
-        消息上」时——批跳 / 取消响应意味着该消息无任何结果、封闭是新
+        落在调用所在分支）。head 上移只发生在“head 恰在某条 PROVIDER
+        消息上”时——批跳 / 取消响应意味着该消息无任何结果、封闭是新
         链尾；head 在结果消息上时 insert 已把结果重挂到封闭之后（链尾
         不变），head 已 fork 离开时不动。
         """
@@ -3160,12 +3160,12 @@ class Agent:
         时序：dispatch ``before_cancel`` （value 为 :class:`CancelContext`，
         handler ``raise Intercepted`` 阻止取消）→ 置位 ``_executions
         全部 abort + 置位回合退出信号 → dispatch ``after_cancel`` （信号
-        置位后立即触发——「取消请求已被接受」的事实事件；纯观察，日志 /
+        置位后立即触发——“取消请求已被接受”的事实事件；纯观察，日志 /
         通知 / 审计）。无状态值迁移（Agent 无生命周期状态机）。
 
-        观察点分工：``after_cancel`` 表达的是「取消已被接受、信号已置
-        位」，dispatch 点在本方法体内——协作式取消禁止本方法等待回合退出
-        （回合内的代码调 ``cancel()`` 时等待即自死锁）。「回合真正退出」
+        观察点分工：``after_cancel`` 表达的是“取消已被接受、信号已置
+        位”，dispatch 点在本方法体内——协作式取消禁止本方法等待回合退出
+        （回合内的代码调 ``cancel()`` 时等待即自死锁）。“回合真正退出”
         的观察归 ``after_turn`` （全路径，handler 读 ``turn.aborted`` 区分
         取消与正常结束）。空闲 Agent（无回合在跑）被 cancel 时
         ``after_cancel`` 照常触发：信号置位是事实，与有无回合无关。
@@ -3286,16 +3286,16 @@ class Agent:
 
         直接委托 ``runtime.create_agent``，把 ``agent_type`` 与
         ``**kwargs`` 原样透传、``parent_id`` 固定为 ``self.node_id``
-        ——不提供别的，只提供「自己
-        的 ``node_id`` 作为 ``parent_id``」。可选 ``name`` 为子代起语义
+        ——不提供别的，只提供“自己
+        的 ``node_id`` 作为 ``parent_id``”。可选 ``name`` 为子代起语义
         名（登记进 ``child_ids``，供 ``invoke_subagent(resume=...)`` 按名
         续接；语义名只存在亲代侧表中，子实例不自持名字）。
 
         与 :meth:`invoke_subagent` 的分工：本方法不做
         ``SubagentEntry.resolve()``、不经过 ``on_subagent_invoke`` /
         ``on_subagent_returns`` 钩子（仅走创建管线的 ``before_create`` /
-        ``after_create``）、不支持 ``resume`` 续接——适合「创建并持有
-        实例」的钩子回调 / 外部代码 / 回合内工具。
+        ``after_create``）、不支持 ``resume`` 续接——适合“创建并持有
+        实例”的钩子回调 / 外部代码 / 回合内工具。
 
         .. rubric:: 使用示例
 
@@ -3413,8 +3413,8 @@ class Agent:
           ``asyncio.create_task(agent.invoke_subagent(...))``。
         - 无论是否入队，``on_subagent_returns`` 都先于交付 dispatch，
           改写后的结果同时是返回值与后续交付内容。
-        - 不做 keep_alive 语义——生命周期由 agent 池「默认存续 + 显式
-          销毁」管理。
+        - 不做 keep_alive 语义——生命周期由 agent 池“默认存续 + 显式
+          销毁”管理。
 
         .. seealso::
 
@@ -3440,10 +3440,10 @@ class Agent:
         """``invoke_subagent`` 准备段（内部 API）：resolve + before 钩子 +
         Execution 注册 + 创建 / 续接。
 
-        同步 await 的唤起前半段。本段返回即保证「子 Agent 已成功创建
-        （或续接）」；本段内任何失败（``on_subagent_invoke`` 的
+        同步 await 的唤起前半段。本段返回即保证“子 Agent 已成功创建
+        （或续接）”；本段内任何失败（``on_subagent_invoke`` 的
         ``Intercepted`` / 校验错误 / 创建抛异常）同步上抛调用方，且
-        Execution 注册被回收——「成功创建或未创建」二态边界，无半登记
+        Execution 注册被回收——“成功创建或未创建”二态边界，无半登记
         状态。返回 ``(child, invocation, execution)`` 三元组，交由
         :meth:`_run_subagent` 消费；Execution 清理由运行段 finally 承担
         （本段异常路径自清理）。``name`` 经 ``SubagentInvocation.name``
@@ -3507,7 +3507,7 @@ class Agent:
         """``invoke_subagent`` 运行段（内部 API，可后台）：等待产出 +
         after 钩子 + 交付 + Execution 清理。
 
-        本段内不再有「创建失败」——结局只有 ``TurnResult`` 四态
+        本段内不再有“创建失败”——结局只有 ``TurnResult`` 四态
         （``subagent_status`` 承载）。``on_subagent_returns`` 先于交付
         dispatch：handler 改写 ``invocation.result`` 后，返回值与可选的
         SUBAGENT 消息同源采用改写后的结果；本钩子不接 ``Intercepted``
@@ -3574,7 +3574,7 @@ class Agent:
         调度（注册 ``Execution(kind="tool")``，finally 清理）→ 元信息
         接线（``name`` / ``tool_call_id`` / ``production``）→ dispatch
         ``on_tool_yields`` （仅 ``Tool.__call__`` 执行产出的非 blocked
-        结果触发——blocked 语义即「没有产物」；shortcut 与 LLM 校验失败
+        结果触发——blocked 语义即“没有产物”；shortcut 与 LLM 校验失败
         的产物不经过本点；可改写 ``output`` 原料值）→ dispatch
         ``after_tool_call`` （可改写结果；shortcut 路径照常触发）→ 收尾
         归一（return 前幂等再跑一次 ``normalize_output``，封 shortcut 与
@@ -3601,7 +3601,7 @@ class Agent:
           实现决定。``execute`` 是普通 ``async def`` → ``Tool.__call__``
           await 到底，本方法返回最终 ``ToolResult``，不 enqueue；
           ``execute`` 返回 ``asyncio.Task`` → 走异步工具透明化的固定
-          enqueue 路径。因此「是否入队」只取决于工具实现形态。
+          enqueue 路径。因此“是否入队”只取决于工具实现形态。
         - 异步工具透明化：``execute()`` 返回 ``asyncio.Task`` 时
           ``Tool.__call__`` 不等待，立即产 ``ToolResult(status="pending")``
           收据（经 ``as_message`` 塑形为 ``tool_status="pending"``、
@@ -3699,7 +3699,7 @@ class Agent:
            schema 校验（经 ``entry.llm_definition(...).params_schema``
            桥接；``strict=False`` 的工具不施加未知键拒绝）。校验失败：
            错误文本以 LLM 命名空间（别名）进入 ``ToolResult.error``；
-           LLM 传出 schema 未定义的参数（幻觉参数）按「未定义参数」校验
+           LLM 传出 schema 未定义的参数（幻觉参数）按“未定义参数”校验
            错误处理。
         2. :meth:`flowing.tool.ToolEntry.resolve`——别名映射回规范名 →
            ``specified`` 惰性求值覆盖（固定值 / 注入表达式——注入表达式
@@ -3744,8 +3744,8 @@ class Agent:
         ``source_file`` 是 ``@/`` 格式字符串，经 ``runtime.resolve_path``
         落地为绝对路径后取 ``.parent``；``source_file`` 为 ``None`` →
         返回 ``None`` （无文件上下文，下游裸名解析退化为纯注册表查询；
-        FILE_REF 用 ``./`` 相对路径时由 ``resolve_path`` 报错）。「文件 →
-        所在目录」换算的唯一承担者：``get_tool`` / ``get_agent_class``、
+        FILE_REF 用 ``./`` 相对路径时由 ``resolve_path`` 报错）。“文件 →
+        所在目录”换算的唯一承担者：``get_tool`` / ``get_agent_class``、
         插件挂载的技能工具、以及 Parsable 的 FILE_REF 求值一律经本方法，
         不允许调用方自行对 ``source_file`` 取 parent。
         """
@@ -3792,7 +3792,7 @@ class Agent:
           :meth:`flowing.tool.registry.ToolRegistry.glob` 展开为逐条
           条目，模式条目本身不进绑定列表；
         - 展开产物的别名与已收条目重复时：同一资源（同注册表键）跳过，
-          不同资源告警并跳过（已收条目胜出——「glob 显式优先」的名字
+          不同资源告警并跳过（已收条目胜出——“glob 显式优先”的名字
           空间延伸）。
         """
         registry = self.runtime.tool_registry
@@ -3956,7 +3956,7 @@ class Agent:
           每次生命周期（create / recover）都从 ``__init__`` 的空
           ``_tool_entries`` 开始重放 ``setup()``；同一生命周期内重复添加
           同 alias 是笔误，快速失败（tool / skill / subagent 绑定层统一
-          语义，「都报错不覆盖」）。
+          语义，“都报错不覆盖”）。
         - glob 显式优先：``tools:`` 装配层展开 glob 时，与已显式声明条目
           规范名相同的同一资源跳过；只有不同资源得到同一 alias 时，才按
           上一条报 ``EntryNameConflictError``。glob 命中经
@@ -3976,9 +3976,9 @@ class Agent:
             （JSON Schema 关键字）；键含 ``as`` → ``param_aliases``；
             ``_`` → 空补丁；其它值 → ``specified`` （包装 ``Parsable``，
             惰性求值；注入表达式在此落入）；
-          - ``output`` → 独立判别分支：值是「字段名 → JSON Schema 定义」
+          - ``output`` → 独立判别分支：值是“字段名 → JSON Schema 定义”
             映射，逐字段并入 ``override_params``，不经过 args 的关键字
-            校验（``type`` 等键在此合法）；「省略字段 = 移除」语义见
+            校验（``type`` 等键在此合法）；“省略字段 = 移除”语义见
             ``FinishTool`` 规约；
           - ``visible`` → 布尔原样。
         - 深层块（``$tools.<alias>.args.<param>.description:``）的填回先于
@@ -4079,8 +4079,8 @@ class Agent:
 
         命名注意：本方法添加的是类型绑定条目（Agent 类 + LLM 可见声明 +
         覆写），不是 Agent 实例——实例创建走 :meth:`create_subagent` /
-        :meth:`invoke_subagent`。「add」的对象是「这个 Agent 如何使用某子
-        Agent 类型」的声明。按引用找到子 Agent 类型，判别覆写体并构造
+        :meth:`invoke_subagent`。“add”的对象是“这个 Agent 如何使用某子
+        Agent 类型”的声明。按引用找到子 Agent 类型，判别覆写体并构造
         :class:`flowing.subagents.SubagentEntry`，以别名为 key 写入
         ``self._subagent_entries``。从此该类型进入本 Agent 的 catalog
         （``visible=True`` 时对 LLM 可见）与可唤起集
@@ -4551,8 +4551,8 @@ class Agent:
         （同 :meth:`cancel_queued` 填充规则）；``on_dequeue`` 把批次
         变换为空 = 丢弃本批，工作循环重新等待下一批。
 
-        覆写管「多条 / 策略」（``drain_all()`` 合并、批量、按来源分组），
-        钩子管「观察 / 变换」——分工不混。批次内各消息的等待者随回合
+        覆写管“多条 / 策略”（``drain_all()`` 合并、批量、按来源分组），
+        钩子管“观察 / 变换”——分工不混。批次内各消息的等待者随回合
         收尾共享同一 ``TurnResult`` 并全部 resolve。
         """
         while True:   # on_dequeue 空批（丢弃本批）→ 重新等待

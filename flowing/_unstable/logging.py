@@ -38,7 +38,7 @@
 - 挂载的钩子：按等级向各钩子点挂纯观察 handler，统一 ``by="logging"``
   （整组可经 ``remove_by_owner("logging")`` 移除）：
 
-  - INFO 关键节点：``use_logging`` 立即挂钩（21 点清单见「等级语义」）；
+  - INFO 关键节点：``use_logging`` 立即挂钩（21 点清单见“等级语义”）；
   - DEBUG 全集与扩展钩子点：延迟到内部 ``after_create`` /
     ``after_recover`` handler 中挂（此时其它 ``use_*()`` 已声明完各自
     钩子点，枚举才能覆盖全集；recover 由 ``after_recover`` 兜底重挂，
@@ -46,7 +46,7 @@
 
 - 作用域与副作用：只影响启用它的 Agent 实例——落盘到该 Agent 的
   session 目录；不写 ``tree.jsonl`` / ``state.jsonl``，不参与恢复；不写
-  Runtime 级全局日志。写盘失败静默降级（见「落盘」），绝不打断业务
+  Runtime 级全局日志。写盘失败静默降级（见“落盘”），绝不打断业务
   管线。
 
 .. rubric:: 等级语义（全局单档，非标准 logging 级别体系）
@@ -74,13 +74,13 @@
 
 ``install()`` 时经 ``runtime.get_plugin()`` 检测 ``"skill"`` /
 ``"comm"`` / ``"cron"`` / ``"workflow"`` 四个内置扩展是否已安装，
-结果记入 :attr:`LoggingPlugin.detected`。语义只是「白名单放行」：
+结果记入 :attr:`LoggingPlugin.detected`。语义只是“白名单放行”：
 被探测到的扩展的钩子点（``before_skill_load`` / ``after_skill_load`` /
 ``on_signal`` / ``on_event`` / ``on_cron_trigger``；workflow 无实例级
 钩子点）在该 Agent 已声明的前提下纳入 DEBUG 全集与 INFO 关键节点表；
 未安装的扩展对应点名不登记、不访问（避免对未声明的点挂钩抛
-:class:`flowing.errors.UnknownHookPointError`）。探测只回答「能不能
-理」，不替 Agent 声明钩子点。
+:class:`flowing.errors.UnknownHookPointError`）。探测只回答“能不能
+理”，不替 Agent 声明钩子点。
 
 .. rubric:: 落盘
 
@@ -189,7 +189,7 @@ class LoggingPlugin(Plugin):
     - 重复安装（再次 ``runtime.install(LoggingPlugin())``）→ 同名插件
       冲突，按框架既有规则报错（一个 Runtime 同时只装一个同名插件）。
 
-    .. seealso:: :func:`use_logging`、模块 docstring「注册面清单」。
+    .. seealso:: :func:`use_logging`、模块 docstring“注册面清单”。
     """
 
     name: ClassVar[str] = "logging"
@@ -272,12 +272,12 @@ def use_logging(agent: Agent) -> None:
 
     .. rubric:: 挂钩策略
 
-    - INFO 关键节点（清单见模块 docstring「等级语义」）：立即挂到各
+    - INFO 关键节点（清单见模块 docstring“等级语义”）：立即挂到各
       钩子点，``by="logging"``；handler 内早退判断当前等级。
     - DEBUG 全集与扩展钩子点：延迟到一个内部 ``after_create``
       handler（``by="logging"``）中执行——此刻其它 ``use_*()`` 已
       声明完各自钩子点，枚举该实例已声明的全部钩子点才能覆盖全集；
-      同时消除「``use_logging`` 必须在其它 ``use_*`` 之后调用」的
+      同时消除“``use_logging`` 必须在其它 ``use_*`` 之后调用”的
       顺序约束。recover 管线同理由 ``after_recover`` 内部 handler
       兜底重挂（幂等：已挂过的点名不重复挂钩）。
     - 所有 handler 为纯观察：不修改 value（原样透传返回）、不
@@ -290,13 +290,13 @@ def use_logging(agent: Agent) -> None:
       ``usage`` 概要以 :attr:`flowing.message.Message.usage` 为准，
       不在摘要中复述；``on_provider_error`` 记异常类型名。
     - ``on_enqueue`` 被 ``Intercepted`` 拦截的结果无从观察属
-      已知限制（拦截发生在 dispatch 内，观察点只见到「没触发
-      后续 handler」）。
+      已知限制（拦截发生在 dispatch 内，观察点只见到“没触发
+      后续 handler”）。
     - 不声明任何新钩子点；不写 state（无恢复义务）。
 
     :param agent: 启用日志的 Agent（``setup()`` 中的 ``self``）。
 
-    .. seealso:: :class:`LoggingPlugin`、模块 docstring「落盘」。
+    .. seealso:: :class:`LoggingPlugin`、模块 docstring“落盘”。
     """
     # 经 inject 沿链上溯取回插件实例；未安装本插件时抛
     # flowing.errors.MissingProvideError（不静默跳过）

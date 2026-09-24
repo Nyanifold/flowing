@@ -2,7 +2,7 @@
 
 .. rubric:: 功能介绍
 
-Flowing 的核心立场是「框架只提供机制，不提供策略」。包结构三层：
+Flowing 的核心立场是“框架只提供机制，不提供策略”。包结构三层：
 
 - **框架核心**：``runtime`` / ``agent`` / ``agent_registry`` /
   ``subagents`` / ``message`` / ``context`` /
@@ -22,7 +22,7 @@ Skill）；provide-inject 沿 ``_parent_id`` 链上溯；实例级钩子系统�
 
 .. rubric:: 设计动机
 
-顶层导出收敛到「写一个 Agent 项目一定会 import」的最小集合；其余符号
+顶层导出收敛到“写一个 Agent 项目一定会 import”的最小集合；其余符号
 （异常明细、快照视图、内部容器）经子模块显式导入，保持顶层命名空间
 可读、可记忆。
 

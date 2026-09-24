@@ -496,8 +496,8 @@ class ToolRegistry:
         合成名形态 ``<声明名>--<server 工具名>``（``--`` 为组分隔符）。
         裸名 ``name_or_pattern``（精确合成名或组内模式 ``demo--*``）同步
         解析不命中时，按首个 ``--`` 切分定组，经双锚点探测组声明——
-        文件锚优先（``source_dir`` 定向文件链命中 mcp 型声明，与「文件
-        覆盖注册表」同口径），其次注册表锚（``default::<组名>`` 为 MCP
+        文件锚优先（``source_dir`` 定向文件链命中 mcp 型声明，与“文件
+        覆盖注册表”同口径），其次注册表锚（``default::<组名>`` 为 MCP
         骨架）——命中则 ``await group.list_tools()`` 拉取服务端 schema
         展开，子代理由 ``register`` 按合成名注册进 ``default::``（撞名 →
         ``ToolNameConflictError``）。展开后合成名即可被 ``get`` 解析。
@@ -561,7 +561,7 @@ class ToolRegistry:
 
         目录内（``<name>/`` 存在时）：``TOOL.fya > <name>.tool.fya >
         <name>.fya > TOOL.py > tool.py > <name_snake>.py``；目录存在但无
-        合法入口 → 继续链上下一项（「继续向下」仅裸名语境）。目录外：
+        合法入口 → 继续链上下一项（“继续向下”仅裸名语境）。目录外：
         ``<name>.tool.fya > <name>.fya > <name_snake>.py``。
         """
         directory = source_dir / name
@@ -611,7 +611,7 @@ class ToolRegistry:
     def _derived_namespace(self, ns_dir: Path) -> str:
         """所在目录 → 派生命名空间字符串（``@/`` 下根相对、根外绝对——
         :func:`flowing.paths.to_project_path` 口径；无项目根（裸注册表）
-        时退化为绝对路径，与「根外绝对」一致）。内部 API，不属稳定契约。"""
+        时退化为绝对路径，与“根外绝对”一致）。内部 API，不属稳定契约。"""
         if self._project_root is not None:
             return to_project_path(ns_dir, project_root=self._project_root)
         return str(ns_dir)

@@ -221,7 +221,7 @@ class AgentRegistry:
           Workflow 定义文件的约定同构）；零个 →
           :class:`flowing.errors.FormatError`；多个 → 用 ``路径::ClassName``
           形态消歧（左段含路径特征——``/`` / 反斜杠 / ``.py`` 结尾——时
-          按「文件::类名」解析，绕开「恰好一个子类」限制；与命名空间
+          按“文件::类名”解析，绕开“恰好一个子类”限制；与命名空间
           限定名 ``ns::name`` 的区分在 ``flowing.paths.classify_ref`` 词法
           层完成）。
         - 目录候选链只含 ``.fya``——不接管手写类的目录组织（手写类的
@@ -239,7 +239,7 @@ class AgentRegistry:
           推断规则见 :class:`flowing.agent.Agent`。
         - 裸名目录外候选链 ``<name>.agent.fya`` > ``<name>.fya`` >
           ``<name_snake>.py``（首个存在者生效）；目录存在但无合法入口 →
-          继续链上下一项（「继续向下」仅裸名语境；显式路径语境下目录无
+          继续链上下一项（“继续向下”仅裸名语境；显式路径语境下目录无
           候选 → 直接报错，定点引用的目录为空几乎必为笔误）。
 
         :param agent_type: 类型名字符串（限定名 / 裸名 / 路径形态）。
@@ -404,7 +404,7 @@ class AgentRegistry:
         模块内需恰好一个本文件定义的 Agent 子类（``__module__`` 过滤掉
         import 进来的）；零个 → ``FormatError``；多个 → ``FormatError``
         （消息指明用 ``路径::ClassName`` 消歧）；``class_name`` 指定时
-        直接按名取（绕开「恰好一个」限制）。命中后注册到派生键（命名空间
+        直接按名取（绕开“恰好一个”限制）。命中后注册到派生键（命名空间
         从所在目录派生：``@/`` 下根相对、根外绝对——``to_project_path``
         形式，仅作内部身份标识）并回写 ``cls.registry_key``；派生键已在
         注册表 → 短路复用（不重复加载）。``::ClassName`` 消歧形态的派生键
@@ -457,7 +457,7 @@ class AgentRegistry:
     def _derived_namespace(self, ns_dir: Path) -> str:
         """所在目录 → 派生命名空间字符串（``@/`` 下根相对、根外绝对——
         :func:`flowing.paths.to_project_path` 口径；无项目根（裸注册表）
-        时退化为绝对路径，与「根外绝对」一致）。内部 API，不属稳定契约。"""
+        时退化为绝对路径，与“根外绝对”一致）。内部 API，不属稳定契约。"""
         if self._project_root is not None:
             return _paths_to_project_path(ns_dir, project_root=self._project_root)
         return str(ns_dir)

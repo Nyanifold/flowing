@@ -1,4 +1,4 @@
-"""``flowing.providers`` —— 「怎么和大模型 API 说话」的契约包。
+"""``flowing.providers`` —— “怎么和大模型 API 说话”的契约包。
 
 .. rubric:: 功能介绍
 
@@ -12,7 +12,7 @@ adapter 继承树（:mod:`flowing.providers.openai_completions` /
 :class:`ProviderRegistry`、内置测试替身 :class:`FakeProvider`。模型侧
 契约（``ModelConfig`` / models.yaml / 标签映射）在 :mod:`flowing.model`。
 
-Agent 对模型只做「持有 + 机械传递」：持有 ``self.model: ModelConfig``，
+Agent 对模型只做“持有 + 机械传递”：持有 ``self.model: ModelConfig``，
 每次 ``provider_gen()`` 前现场 ``resolve()`` 求值，再连同
 :class:`flowing.context.Context` 一起传给 ``Provider.generate()``。
 字段含义（``thinking_budget`` 等）只有 Provider adapter 解释，框架
@@ -38,8 +38,8 @@ Agent 对模型只做「持有 + 机械传递」：持有 ``self.model: ModelCon
   只影响三处：``provider_gen()`` 内部、``on_provider_delta`` 钩子
   （value 为 :class:`ProviderDelta`，易失不落盘）、``Message.partial``
   字段。非流式路径（``stream=False``）同样合成一条全量 delta 触发
-  钩子——订阅者永远可以依赖「每次 ``provider_gen()`` 至少一条
-  delta」，且两种路径的 delta 数据格式完全一致。副线查询
+  钩子——订阅者永远可以依赖“每次 ``provider_gen()`` 至少一条
+  delta”，且两种路径的 delta 数据格式完全一致。副线查询
   （``side_query``）固定 ``stream=False``，以 ``by="_side"`` 标记
   来源（delta 与响应均透写 ``by``，钩子可按来源过滤）。
 - 不在 ``main()`` 中声明 provider：``main.py`` 是可发布复用的智能体
@@ -48,15 +48,15 @@ Agent 对模型只做「持有 + 机械传递」：持有 ``self.model: ModelCon
 
 .. rubric:: 术语：adapter 类 vs provider 条目
 
-本包有两层「provider」概念，务必区分：
+本包有两层“provider”概念，务必区分：
 
 - adapter 类（类型层）：:class:`Provider` 的具体子类，如
-  ``DeepSeekProvider``。它回答「怎么和这种 API 说话」——请求/响应
+  ``DeepSeekProvider``。它回答“怎么和这种 API 说话”——请求/响应
   格式、字段解释、错误归类。以类属性 ``name`` （如 ``"deepseek"``）
   经 :func:`register_provider` 注册进进程级全局注册表；adapter 名是
   类型标识，全局唯一。
 - provider 条目（实例层）：``providers.yaml`` 里的一个 key，如
-  ``deepseek-team``。它回答「用哪个身份说话」——绑定唯一 API key /
+  ``deepseek-team``。它回答“用哪个身份说话”——绑定唯一 API key /
   base_url。Runtime 按条目的 ``adapter`` 字段查注册表选类，首次按
   条目名获取才懒创建实例并缓存（一条目一实例）；条目名是身份标识，
   同一 adapter 类的多个 key 写成多个条目。
@@ -64,7 +64,7 @@ Agent 对模型只做「持有 + 机械传递」：持有 ``self.model: ModelCon
 映射关系：条目名 →（adapter 名 → adapter 类）→ 实例。因此
 ``ModelConfig.provider`` 引用的是条目名（身份），``providers.yaml``
 条目的 ``adapter`` 字段引用的是 adapter 名（类型），``Provider.name``
-是后者——两个「name」分属两层，不混用。
+是后者——两个“name”分属两层，不混用。
 
 .. rubric:: 两阶段解析（加载时 vs 运行时）
 
@@ -151,7 +151,7 @@ TOOL/EVENT 消息的 ``content`` 是纯内容块（工具结果摊平设计，�
 - 空 content 兜底：返回 Task 路径的 pending 收据（``output=None`` →
   ``content=[]``）等空 TOOL 消息，其 API 层兜底形态（各家对空
   tool_result 的接受度不同）属各 adapter 职责；async gen 路径的
-  pending 收据带内容（首 yield + 「后台任务 ID」块），按正常
+  pending 收据带内容（首 yield + “后台任务 ID”块），按正常
   tool_result 映射。
 - 白名单组装：adapter 从 ``llm_definition()`` 产物只取已知字段
   （name / description / parameters 等）构造 API schema；产物可含非
@@ -173,7 +173,7 @@ API key 等凭证只存在于 :class:`ProviderConfig` 与 Provider 实例内部�
 
     async def main() -> flowing.Runtime:
         runtime = await flowing.launch("my-agent")   # 子项目根目录（含 main.py）
-        # 条目名须存在于 providers.yaml（见「配置文件 schema」）；
+        # 条目名须存在于 providers.yaml（见“配置文件 schema”）；
         # 首次按条目名获取才实例化（懒创建）
         runtime.provider_registry.get("deepseek-team")
         return runtime

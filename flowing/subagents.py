@@ -4,7 +4,7 @@
 
 本模块承载子智能体（子 Agent）子系统的绑定与结果类型：
 
-- :class:`SubagentEntry` —— Agent 对子 Agent 类型的一次「用法声明」，
+- :class:`SubagentEntry` —— Agent 对子 Agent 类型的一次“用法声明”，
   三层能力描述（可执行对象 / LLM 可见声明 / Agent 级绑定三层）的
   Agent 级绑定层（与 :class:`flowing.tool.ToolEntry` 同构）：LLM 看到
   的别名与描述、参数覆写 / 指定值 / 注入。
@@ -85,8 +85,8 @@ class SubagentResult:
     .. rubric:: 行为要点
 
     - ``subagent_id``：子 Agent 的 ``node_id``。调用方需要活实例时，
-      经 ``runtime.get_agent(subagent_id)`` 按「有记录无实例 → 现场
-      恢复」语义获取；不要在本对象上保留实例引用。
+      经 ``runtime.get_agent(subagent_id)`` 按“有记录无实例 → 现场
+      恢复”语义获取；不要在本对象上保留实例引用。
     - ``result``：子 Agent 的最终产出——默认是其最后回复文本（字符串）；
       子 Agent 调用 ``FinishTool`` 结构化返回时为结构化字段 dict；
       无任何产出（如取消且无完整响应）为 ``None``。取自
@@ -191,12 +191,12 @@ class SubagentInvocation:
 
 @dataclass
 class SubagentEntry:
-    """Agent 对子 Agent 类型的一次「用法声明」——三层能力描述的 Agent 级绑定层。
+    """Agent 对子 Agent 类型的一次“用法声明”——三层能力描述的 Agent 级绑定层。
 
     .. rubric:: 功能介绍
 
-    与 :class:`flowing.tool.ToolEntry` 同构：回答「这个 Agent 如何使用
-    这个子 Agent 类型」——LLM 看到的别名与描述、参数覆写 / 指定值 /
+    与 :class:`flowing.tool.ToolEntry` 同构：回答“这个 Agent 如何使用
+    这个子 Agent 类型”——LLM 看到的别名与描述、参数覆写 / 指定值 /
     注入。每个 Agent 实例的条目表（以别名为键）持有自己的 entry 集合。
 
     绑定层的存在理由：同一子 Agent 类型在不同亲代 Agent 上 LLM 应看到
@@ -258,7 +258,7 @@ class SubagentEntry:
     - 同 alias 重复（``.fya`` ``subagents:`` 列表内，含推断撞名——如
       ``./a/payment`` 与 ``./b/payment`` 都推断出 ``payment``）→
       :class:`flowing.errors.EntryNameConflictError`——与 tool / skill
-      绑定层统一 fail-fast，不做「后声明覆盖先声明」。例外（与 skills
+      绑定层统一 fail-fast，不做“后声明覆盖先声明”。例外（与 skills
       同构）：glob 展开命中与已显式声明条目规范名相同的同一资源时
       跳过（先解析显式条目，再展开 glob）；只有不同资源得出同别名才
       报错。glob 命中在进入本条判定前先经形态过滤（纯名字分析，见
@@ -459,7 +459,7 @@ def _entry_params_xml(entry: SubagentEntry, cls: "type[Agent]") -> str:
     （规范名 → LLM 别名；撞名 → ``FormatError``，与 tool 侧
     ``_apply_param_aliases`` 同口径）。
 
-    排布格式（以「specified 排除」为硬契约）：
+    排布格式（以“specified 排除”为硬契约）：
     ``<params><param name=".." type=".." required="true|false">[<description>..</description>]</param>...</params>``，无换行。
     """
     args_model = getattr(cls, "args_model", None)
@@ -510,7 +510,7 @@ def _expand_glob_entries(
     project_root: Path | None = None,
     glob_accept: "Callable[[Path], bool] | None" = None,
 ) -> "list[EntryRef]":
-    """装配层的条目列表 glob 展开（「glob 显式优先」规则的落点）。
+    """装配层的条目列表 glob 展开（“glob 显式优先”规则的落点）。
 
     内部 API，不属稳定契约——``.fya`` 装配层（compiler）对
     ``subagents:`` / ``tools:`` / ``skills:`` 条目列表统一调用。入参是
@@ -551,7 +551,7 @@ def _expand_glob_entries(
       缺省 ``None`` 不过滤（调用方自管命中面）。过滤只作用于 glob
       命中；显式条目不受影响（定点引用错误照常报错）。
 
-    .. seealso:: :class:`SubagentEntry` 行为要点「同 alias 重复」的例外
+    .. seealso:: :class:`SubagentEntry` 行为要点“同 alias 重复”的例外
         条款（规则文本的权威出处）。
     """
     from flowing.parser import EntryRef, normalize_entries   # 函数内 import：本模块头部对 parser 只留 TYPE_CHECKING 边

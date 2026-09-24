@@ -115,10 +115,10 @@ async def cmd_test(
     :data:`EXIT_OK`；``launch`` 或快照断言失败返回
     :data:`EXIT_RUNTIME_ERROR`。
 
-    「拿 Runtime 做断言后停」中断言什么（项目级行为断言）是子项目的
+    “拿 Runtime 做断言后停”中断言什么（项目级行为断言）是子项目的
     策略，不是框架机制：由用户经嵌入 API 自行编写（``launch`` +
     ``query()`` + ``snapshot()``，放进 pytest 等任意测试框架）。
-    ``test`` 子命令只提供零配置的「项目能否拉起」冒烟检查。
+    ``test`` 子命令只提供零配置的“项目能否拉起”冒烟检查。
 
     .. rubric:: 使用示例
 

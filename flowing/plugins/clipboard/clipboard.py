@@ -3,7 +3,7 @@
 .. rubric:: 功能介绍
 
 剪贴板是 Flowing 的内置扩展（随 ``flowing`` 包发布但不自动启用），
-为 Agent 提供「文件区段的剪切 / 复制 / 粘贴」能力——面向 LLM 跨文件
+为 Agent 提供“文件区段的剪切 / 复制 / 粘贴”能力——面向 LLM 跨文件
 搬运代码段的常见场景：LLM 先 cut/copy 一个区段（小内容进内存剪贴板、
 大内容落文件），再 paste 到目标位置，避免在上下文里来回复述大段文本。
 
@@ -41,7 +41,7 @@
 - 挂载的钩子：无。
 - 未启用时的行为（未调用 ``use_clipboard`` 的 Agent）：零开销——无
   ``clipboard_buffer`` 状态键、无阈值属性；此时调用三件工具 → 
-  「剪贴板未启用」error ``ToolResult``。
+  “剪贴板未启用”error ``ToolResult``。
 
 .. rubric:: 缓冲契约（state 键 ``clipboard_buffer``）
 
@@ -63,7 +63,7 @@
   ``cwd=None`` （默认）时一切文件参数仅收绝对路径；``cwd`` 非
   ``None`` 时允许相对路径（相对 ``cwd`` 解析）；``cwd`` 自身必须是
   绝对路径。相对路径无基准或 ``cwd`` 非绝对 → error ``ToolResult``。
-  ``cwd`` 同时是「``.fya`` 定义期经智能体属性传参」的示范位
+  ``cwd`` 同时是“``.fya`` 定义期经智能体属性传参”的示范位
   （Parsable 覆写 ``cwd: "{{ cwd }}"``，完整示例见
   :mod:`flowing.builtins.tools` 模块 docstring）。
 - 行号 1 起（对齐编辑器）、offset 0 起（对齐 Python 切片）；

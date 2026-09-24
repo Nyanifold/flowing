@@ -68,7 +68,7 @@ def _parse_flowing_args(subcommand: str, rest: list[str]):
     三个专属参数——``-t <agent-id>``（目标 Agent）/ ``-m <model-tag>``
     （本回合模型标签）/ ``-v``（verbose 过程输出），收入 ``sub_opts``
     由 ``cmd_cli`` 消费，不进 main 的 kwargs；其余子命令遇到这三个参数
-    按「未知单横线参数」报用法错误。
+    按“未知单横线参数”报用法错误。
 
     裸位置参数仅 ``cli`` 子命令有一个许可名额——INPUT（一段话或一条
     slash command），收入 ``sub_opts["input"]``；缺失或出现第二个 →
@@ -148,7 +148,7 @@ def main(argv: list[str] | None = None) -> int:
     为子命令名，第二个位置参数为子项目路径 ``<path>`` （缺省 ``.``）；
     剥离 flowing 级单横线参数（``-h`` / ``--help`` / ``-f`` / ``-a`` /
     ``-p`` 通用集 + ``cli`` 专属的 ``-t`` / ``-m`` / ``-v``，归属见包
-    docstring「参数分层」与 :func:`_parse_flowing_args`），其余
+    docstring“参数分层”与 :func:`_parse_flowing_args`），其余
     ``--key value`` 参数经 :func:`parse_kv_args` 收集，然后分发到对应
     的 ``cmd_*`` 协程并以 ``asyncio.run`` 驱动（``compile`` 除外，它是
     同步函数，直接调用）。
@@ -297,7 +297,7 @@ def cmd_compile(path: str) -> int:
       是幂等的，重跑可继续）。
     - 不删除无对应 ``.fya`` 的孤儿 ``.py`` （编译只覆盖 ``.fya``
       一侧，不清理产物目录）。
-    - 项目内无 ``*.fya`` → 打印「无可编译文件」，返回
+    - 项目内无 ``*.fya`` → 打印“无可编译文件”，返回
       :data:`EXIT_OK`。
     - 无变更时重复执行等价 no-op（全量命中 hash，产物不变）。
 

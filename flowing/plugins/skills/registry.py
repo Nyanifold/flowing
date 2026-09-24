@@ -62,10 +62,10 @@ class SkillRegistry:
     .. rubric:: 功能介绍
 
     Runtime 级单例（``SkillPlugin.install()`` 创建并经
-    :data:`skill_registry_key` provide）。持有「规范名 → Skill」缓存；
+    :data:`skill_registry_key` provide）。持有“规范名 → Skill”缓存；
     ``use_skill()`` 在声明期把 Agent 声明的全部条目（含 disabled）
     一次性解析入缓存，此后 catalog 渲染与 ``skill_load()`` 均为纯内存
-    操作（文件发现优先级见模块 docstring「Skill 定义文件与查找规则」）。
+    操作（文件发现优先级见模块 docstring“Skill 定义文件与查找规则”）。
     读取与渲染分离：读取不惰性（所有声明的定义文件在声明期一次
     读入，catalog 渲染永不触发文件 IO）；渲染保持动态
     （``description`` / ``content`` 是 Parsable，每次使用时以调用方
@@ -85,7 +85,7 @@ class SkillRegistry:
     - ``name`` 已在缓存 → 直接返回共享实例；否则按定向查找优先级
       定位并解析定义文件，缓存后返回。常规路径下声明期
       （``use_skill()``）已把全部声明条目预解析入缓存；未命中分支
-      只服务「声明外的编程式按需解析」。
+      只服务“声明外的编程式按需解析”。
     - 不做目录扫描预热；不做文件变更监听（解析一次即缓存，运行期
       内文件变化不生效）。
     - 同一规范名的并发解析不会发生（解析是同步文件 IO）。
@@ -268,7 +268,7 @@ def _dir_candidates(name: str) -> list[str]:
 
 def _derive_namespace(ns_dir: Path, project_root: "Path | None" = None) -> str:
     """所在目录 → 派生命名空间字符串（``@/`` 下根相对、根外绝对；无项目根
-    （裸注册表）时退化为绝对路径，与「根外绝对」一致）。内部 API。"""
+    （裸注册表）时退化为绝对路径，与“根外绝对”一致）。内部 API。"""
     if project_root is not None:
         return to_project_path(ns_dir, project_root=project_root)
     return str(ns_dir)

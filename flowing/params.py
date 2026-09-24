@@ -15,7 +15,7 @@
 
 fya 声明层（``args:`` 块）的书写规则：逐参数展开，无 ``type: object``
 顶层包装、无 ``required:`` 清单——必填性由 ``default`` 有无派生（无
-``default`` → 必填，与 Pydantic「无默认值字段必填」语义同构）::
+``default`` → 必填，与 Pydantic“无默认值字段必填”语义同构）::
 
     args:
       user_id: {type: string, description: 用户 ID}   # 无 default → 必填
@@ -227,7 +227,7 @@ def bridge_properties(props: Mapping[str, Mapping[str, Any]]) -> dict[str, dict[
 
     从 pydantic ``model_json_schema()`` 等**机器派生**的 property 表收敛为
     桥接子集成员——丢弃 ``title`` 等纯展示键，保留 ``SCHEMA_KEYWORDS``
-    内关键字原值。调用点是框架内部把「模型 → params_schema」的转换处
+    内关键字原值。调用点是框架内部把“模型 → params_schema”的转换处
     （``ScriptTool.__init__`` 等）；**手写** .fya ``args:`` 与覆写体不走本
     函数，超子集键仍由 :func:`schema_to_model` fail-fast（用户笔误要报错，
     机器噪音要滤掉，两通道分开）。
@@ -512,7 +512,7 @@ class InjectionKey(Generic[T]):
     .. rubric:: 功能介绍
 
     ``InjectionKey[T]`` 是一个带泛型参数的具名键：``name`` 是运行期唯一
-    实质内容，``T`` 是给类型检查器与读者的「该键应注入什么类型的值」
+    实质内容，``T`` 是给类型检查器与读者的“该键应注入什么类型的值”
     标注。与裸字符串 key 共存：需要类型安全（共享的 ``keys.py``、框架
     插件内部的键定义如 ``communication_key``）用 ``InjectionKey``；
     简单一次性场景用字符串简写（``inject("locale")``，类型为 ``Any``）。
@@ -635,7 +635,7 @@ class InjectionKey(Generic[T]):
 
         .. rubric:: 行为要点
 
-        键对象经 ``str()`` 归一后落键名，与「键与同名裸字符串同槽位」
+        键对象经 ``str()`` 归一后落键名，与“键与同名裸字符串同槽位”
         契约一致；调试形态由 :meth:`__repr__` 承担。纯函数、无副作用。
 
         .. seealso:: :attr:`name`、:meth:`__repr__`
@@ -665,7 +665,7 @@ class ConfigKey(Generic[T]):
     类型：泛型参数 ``T`` 声明该配置值的 Python 类型，``name`` 是配置项
     的键名（约定为含命名空间的点分路径，如 ``"retry.max_attempts"`` /
     ``"i18n.locale"``）。``get_config(key, default=...)`` 的 ``default``
-    参数类型须与 ``T`` 一致，否则静态检查报错——这把「键名 → 值类型」
+    参数类型须与 ``T`` 一致，否则静态检查报错——这把“键名 → 值类型”
     的对应关系固化为可静态检查的契约。与裸字符串 key 共存：字符串简写
     返回值类型为 ``Any``。与 ``InjectionKey`` 同模式——类型信息只在
     调用侧生效，配置存储层按字符串键存取，不感知泛型。
@@ -690,7 +690,7 @@ class ConfigKey(Generic[T]):
     .. rubric:: 行为要点
 
     - ``name`` 创建后不可变；命名空间段（``retry``、``i18n``）是约定
-      而非本类强制——命名空间的注册与「谁负责校验」由
+      而非本类强制——命名空间的注册与“谁负责校验”由
       :meth:`flowing.runtime.Runtime.register_config_namespace` 管理；
       ``get_config`` 不做命名空间访问控制，任何代码可读取任何命名空间
       下的值。
@@ -779,7 +779,7 @@ class ConfigKey(Generic[T]):
         .. rubric:: 行为要点
 
         与 :meth:`InjectionKey.__str__` 同语义：键对象经 ``str()`` 归一
-        后落键名，与「与同名裸字符串等价」契约一致；调试形态由
+        后落键名，与“与同名裸字符串等价”契约一致；调试形态由
         :meth:`__repr__` 承担。纯函数、无副作用。
 
         .. seealso:: :attr:`name`、:meth:`__repr__`、:meth:`InjectionKey.__str__`

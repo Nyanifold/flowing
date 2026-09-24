@@ -2,7 +2,7 @@
 
 .. rubric:: 功能介绍
 
-本模块承载 Agent 与「用哪个模型说话」之间的契约：模型规格结构体
+本模块承载 Agent 与“用哪个模型说话”之间的契约：模型规格结构体
 :class:`ModelConfig` 与两个具名加载器——``models.yaml`` 的
 :func:`load_models` 与 ``model-tags.yaml`` 的 :func:`load_model_tags`
 （后者只产标签 → 条目名映射，``ModelConfig`` 经两产物 join 得出）。
@@ -10,7 +10,7 @@ Provider 侧契约（adapter 继承树 / ``ProviderResponse`` / token 用量
 记录 :class:`flowing.providers.Usage` / 注册与懒实例化）在
 :mod:`flowing.providers` 包。
 
-Agent 对模型只做「持有 + 机械传递」：持有 ``self.model: ModelConfig``，
+Agent 对模型只做“持有 + 机械传递”：持有 ``self.model: ModelConfig``，
 每次 ``provider_gen()`` 前现场 ``resolve()`` 求值，再连同
 :class:`flowing.context.Context` 一起传给 ``Provider.generate()``。
 字段含义（``thinking_budget`` 等）只有 Provider adapter 解释，框架
@@ -116,9 +116,9 @@ class ModelConfig:
     就拿到了该模型的全部行为参数。Agent 实例属性 ``self.model`` 永远是
     ``ModelConfig``，可解析性由自带的 :meth:`resolve` 方法体现。
 
-    「换模型」在 Flowing 中始终是「换一份完整规格」：``provider`` 字段是
+    “换模型”在 Flowing 中始终是“换一份完整规格”：``provider`` 字段是
     绑定关系（单个 provider 条目名），换提供商 = 换模型（或动态构造新
-    结构体）；不存在「只换 ID、其他参数沿用旧模型」的中间态。
+    结构体）；不存在“只换 ID、其他参数沿用旧模型”的中间态。
 
     字段分流：:func:`load_models` 把固定内建字段集（``model`` /
     ``provider`` / ``thinking_budget`` / ``context_window`` /
@@ -213,7 +213,7 @@ class ModelConfig:
     ) -> None:
         """构造一份完整模型规格。
 
-        :func:`load_models` （models.yaml 加载器）与「命令式直接改结构体」路径
+        :func:`load_models` （models.yaml 加载器）与“命令式直接改结构体”路径
         （``agent.model = ModelConfig(...)``）共用此入口。关键字参数强制调用方
         明确每个元信息字段。
 
@@ -263,8 +263,8 @@ class ModelConfig:
         对含 Parsable 的字段逐一求值（Jinja2，渲染上下文为 ``agent`` 的实例
         属性，可引用 env / config / 运行时状态），产出一份字段均为静态值的
         ``ModelConfig``。``Agent.provider_gen()`` 在每次调用 Provider 之前
-        调用本方法——「同 Turn 内改模型立即生效」的契约由「每次 provider_gen
-        前重新 resolve」保证。
+        调用本方法——“同 Turn 内改模型立即生效”的契约由“每次 provider_gen
+        前重新 resolve”保证。
 
         .. rubric:: 使用示例
 
@@ -331,9 +331,9 @@ def load_models(path: Path) -> dict[str, ModelConfig]:
     （``FILE_REF`` / ``EXPRESSION`` / ``TEMPLATE`` / ``RAW``）包装为
     Parsable，纯字面量保持静态原值。
 
-    与 :func:`load_model_tags` 同样保持纯「路径 → 映射」，不碰环境变量与
+    与 :func:`load_model_tags` 同样保持纯“路径 → 映射”，不碰环境变量与
     默认路径。``Runtime`` 启动期默认加载共用本入口（产物与
-    :func:`load_model_tags` 的产物 join 出「标签 → ``ModelConfig``」的最终
+    :func:`load_model_tags` 的产物 join 出“标签 → ``ModelConfig``”的最终
     解析）。
 
     :param path: models.yaml 的已解析路径。
@@ -387,13 +387,13 @@ def _maybe_wrap_parsable(value: Any) -> Any:
 def load_model_tags(path: Path) -> dict[str, str]:
     """读 ``model-tags.yaml`` 构建标签 → 模型条目名映射。
 
-    标签映射文件解析器：产物是「标签 → 模型条目名」的纯字符串映射（单值
-    化——一个标签只映射一个模型条目名）。不产出 ``ModelConfig``——「标签 →
-    条目名 → ``ModelConfig``」的最后一跳是与 :func:`load_models` 产物的
+    标签映射文件解析器：产物是“标签 → 模型条目名”的纯字符串映射（单值
+    化——一个标签只映射一个模型条目名）。不产出 ``ModelConfig``——“标签 →
+    条目名 → ``ModelConfig``”的最后一跳是与 :func:`load_models` 产物的
     join，由 ``Runtime`` 启动期默认加载与 ``runtime.set_model_tags(path)``
     登记后的现场求值完成。
 
-    与 :func:`load_models` 同样保持纯「路径 → 映射」，不碰环境变量与默认
+    与 :func:`load_models` 同样保持纯“路径 → 映射”，不碰环境变量与默认
     路径。
 
     :param path: model-tags.yaml 的已解析路径。

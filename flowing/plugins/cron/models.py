@@ -15,11 +15,11 @@ from datetime import datetime
 
 @dataclass
 class CronJob:
-    """一条定时任务——「cron 表达式 + 推送内容」的持久化单元。
+    """一条定时任务——“cron 表达式 + 推送内容”的持久化单元。
 
     .. rubric:: 功能介绍
 
-    描述「什么时候、给 Agent 推一条什么消息」：``cron`` 是触发节奏，
+    描述“什么时候、给 Agent 推一条什么消息”：``cron`` 是触发节奏，
     ``content`` 是到点推送的消息文本（可含 ``{{current_time}}``
     占位符），``source`` 是供 ``on_cron_trigger`` 钩子 pattern 分组过滤
     的语义标签。任务由 Agent 逐智能体携带，以 ``cron_jobs`` 状态键
@@ -32,7 +32,7 @@ class CronJob:
       非空、cron 可解析、job_id 不冲突、占位符格式合法）由注册 API
       :func:`flowing.plugins.cron.schedule` 在注册边界维护。
     - ``source`` 不进消息文本，只服务钩子过滤与 EVENT 消息来源标识；
-      空串表示「未设标签」（对非 ``"*"`` 的钩子 pattern 不命中）。
+      空串表示“未设标签”（对非 ``"*"`` 的钩子 pattern 不命中）。
     - ``recurring=False`` 表示一次性任务：第一次成功交付后自移除；
       到点未交付（被跳过）不算成功交付，不移除。
     - 时间字段为系统本地 naive ``datetime``（不做时区归一化）；
