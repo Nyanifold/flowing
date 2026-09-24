@@ -1,4 +1,4 @@
-"""``flowing`` —— 单机小型 Agent 框架：最终 API 规约（顶层导出）。
+"""``flowing`` —— 轻量式 Agent 框架：最终 API 规约（顶层导出）。
 
 .. rubric:: 功能介绍
 
