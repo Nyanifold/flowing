@@ -2107,7 +2107,7 @@ class Agent:
           ``raise Intercepted`` 拒绝——内容审核、速率限制、文件过大）→
           ``_message_queue.enqueue(msg)`` → 返回 ``msg.id``。
         - 消费保证：入队即会被消费（常驻工作循环），无需“入队触发”逻辑。
-        - 可入队种类：USER / EVENT / SYSTEM / PLUGIN / SUBAGENT / PEER，
+        - 可入队种类：USER / EVENT / SYSTEM / SUBAGENT / PEER，
           以及异步工具最终结果（以 ``EVENT`` kind 入队，content 为标注块 +
           结果块列表）；``PROVIDER`` 消息永远不进队列（回合内产生）。
         - 优先级插队只影响消费顺序，不影响 ``_pending_turns`` 关联

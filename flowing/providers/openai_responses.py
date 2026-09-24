@@ -342,7 +342,7 @@ class OpenAIResponsesProvider(Provider):
         if msg.kind is MessageKind.SYSTEM:
             text, _ = self._map_content_blocks(msg)
             return [{"role": "system", "content": text}]
-        # USER / EVENT / PEER / PLUGIN / SUBAGENT → user
+        # USER / EVENT / PEER / SUBAGENT → user
         content = self._map_user_content(msg)
         if not content:
             return []   # 空内容位不合法，跳过本条消息

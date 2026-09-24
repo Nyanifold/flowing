@@ -306,7 +306,7 @@ class OpenAICompletionsProvider(Provider):
         if msg.kind is MessageKind.SYSTEM:
             text, _ = self._map_content_blocks(msg)
             return [{"role": "system", "content": text}]
-        # USER / EVENT / PEER / PLUGIN / SUBAGENT → user
+        # USER / EVENT / PEER / SUBAGENT → user
         return [{"role": "user", "content": self._map_user_content(msg)}]
 
     # ── 响应映射（chat/completions 响应 → ProviderResponse）──────────────

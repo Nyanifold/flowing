@@ -45,7 +45,7 @@ Message 字段规约总表：
    * - ``parent_id``
      - 消息级亲代链；``None`` = 根标记（允许多根，森林模型）；树上溯与上下文组装的唯一依据
    * - ``kind``
-     - 对象层唯一角色判别，八值枚举 :class:`MessageKind`；消息没有 ``role`` 属性
+     - 对象层唯一角色判别，七值枚举 :class:`MessageKind`；消息没有 ``role`` 属性
    * - ``content``
      - :class:`ContentBlock` 列表，不同 type 可交错排列
    * - ``turn_end``
@@ -102,19 +102,15 @@ kind → API role 发送映射（Provider adapter 职责）：
      - ``user`` （XML 包裹）
      - ``user``
      - ``user``
-   * - ``PLUGIN``
-     - 独立消息，XML 包裹（格式由 adapter 定）
-     - ``user``
-     - 同左
    * - ``SUBAGENT``
      - 独立消息，XML 包裹（格式由 adapter 定）
      - ``user``
      - 同左
 
-- OpenAI 侧 PLUGIN / SUBAGENT 落 ``user`` role（XML 包裹）：外部结果
+- OpenAI 侧 SUBAGENT 落 ``user`` role（XML 包裹）：外部结果
   回喂属“输入”，不落 ``developer`` （避免给外部数据提指令权），更不伪造
   ``assistant`` （会破坏轮次语义与 tool_calls 配对）。
-- SYSTEM / PEER / EVENT / PLUGIN / SUBAGENT 的 XML 包裹格式由 adapter
+- SYSTEM / PEER / EVENT / SUBAGENT 的 XML 包裹格式由 adapter
   按 Provider 能力决定，框架核心不约束具体格式。
 - “某 block type 出现在哪些 kind 中”是典型情况而非硬约束；不合法排列
   （如 PROVIDER 消息含 image block）由 Provider adapter 在组装 API
@@ -122,7 +118,7 @@ kind → API role 发送映射（Provider adapter 职责）：
 
 入队规则：
 
-- 进队列：``USER`` / ``EVENT`` / ``PEER`` / ``PLUGIN`` / ``SUBAGENT`` /
+- 进队列：``USER`` / ``EVENT`` / ``PEER`` / ``SUBAGENT`` /
   ``SYSTEM`` （可选）/ 异步工具最终结果（以 ``EVENT`` kind 入队，
   ``source="tool_result"``，多块 content = 标注块 + 结果块；拦截通知
   与终止通知——异常 / 取消——同走本通道）。``TOOL``
@@ -224,7 +220,7 @@ __all__ = [
 
 
 class MessageKind(enum.Enum):
-    """消息来源枚举：判别“这条消息来自谁”（八值，跨版本稳定契约）。
+    """消息来源枚举：判别“这条消息来自谁”（七值，跨版本稳定契约）。
 
     .. rubric:: 功能介绍
 
@@ -236,8 +232,8 @@ class MessageKind(enum.Enum):
     命名原则：所有 kind 描述“来自谁”而非“扮演什么角色”。``PROVIDER``
     是 Provider 输出的统一来源名——不取会隐含“纯文本 LLM”的
     “assistant”读法，以覆盖文生图 / 语音 / 视频等多模态输出。
-    ``PLUGIN`` / ``SUBAGENT`` 的存在是因为 Skill 渲染结果与子 Agent
-    返回结果永远是独立消息，不能合并进工具结果消息。
+    Skill 正文以 ``EVENT`` 消息送达。子 Agent 返回结果使用独立的
+    ``SUBAGENT`` kind，避免与工具结果混淆。
 
     .. rubric:: 使用示例
 
@@ -252,8 +248,9 @@ class MessageKind(enum.Enum):
 
     .. rubric:: 行为要点
 
-    - 枚举值跨版本稳定；序列化（``tree.jsonl`` 行）使用成员的字符串值
-      （``"user"`` / ``"provider"`` 等）。
+    - 序列化（``tree.jsonl`` 行）使用当前枚举成员的字符串值
+      （``"user"`` / ``"provider"`` 等）；``from_record`` 将 ``kind``
+      严格还原为当前枚举值。
     - 各 kind 的典型 ``content`` 组合（典型情况而非硬约束，框架核心不
       验证“某 kind 可否含某 block type”，合法性由 Provider adapter 在
       组装 API 请求时验证）：
@@ -315,13 +312,10 @@ class MessageKind(enum.Enum):
     """来自另一个 Agent 实例的有意图消息。
     """
     EVENT = "event"
-    """外部事件（Cron、事件插件、Composable 提醒注入、异步工具最终结果）；
-    通常附带 ``source`` 说明来路（如 ``"system-reminder"``）。
+    """外部事件或扩展交付内容（Cron、事件插件、Composable 提醒、Skill
+    正文、异步工具最终结果）；通常附带 ``source`` 说明来路（如
+    ``"system-reminder"``、``"skill:review"``）。
     异步最终结果为多块 content（标注块 + 结果块），不参与配对。
-    """
-    PLUGIN = "plugin"
-    """扩展产生的内容（Skill 渲染结果等）；永远以独立消息入队，不合并进
-    工具结果消息。
     """
     SUBAGENT = "subagent"
     """子 Agent 返回结果；永远以独立消息入队，与普通工具结果明确分离。
@@ -1072,7 +1066,7 @@ def from_record(record: dict) -> Message:
       providers 的单向依赖在运行期无环）。
 
     :raises ValueError: ``record`` 不是消息行（``type`` 字段不是
-        ``"message"``）。
+        ``"message"``），或 ``kind`` / ``priority`` 不属于当前枚举。
 
     .. seealso::
        :func:`to_record`、:meth:`flowing.agent.Agent._restore`。
@@ -1249,7 +1243,7 @@ class MessageQueue:
     - 排序：``priority`` 升序（``INTERRUPT`` 最先）；同优先级 FIFO
       （入队序号，单调递增，无需比较 ``timestamp``）。
     - 进队列的 kind：``USER`` / ``EVENT`` / ``PEER`` / ``SYSTEM`` /
-      ``PLUGIN`` / ``SUBAGENT`` （异步工具最终结果以 ``EVENT`` 入队）；
+      ``SUBAGENT`` （异步工具最终结果以 ``EVENT`` 入队）；
       ``PROVIDER`` 永不入队。本类不校验 kind——投递纪律由调用方与
       ``Agent.enqueue_message`` 的钩子链负责。
     - 不防低优先级饿死；本类自身不持久化（队列待消费消息的恢复语义属

@@ -1,7 +1,7 @@
 """skills 加载流程测试：测试清单 T24–T32、T34。
 
 LLM 入口（skill-load 工具）由 FakeProvider 脚本回放驱动；编程式入口直接
-``await agent.skill_load(...)``。观测点用钩子（``on_enqueue`` 捕 PLUGIN
+``await agent.skill_load(...)``。观测点用钩子（``on_enqueue`` 捕 EVENT
 消息、``after_tool_call`` 捕 ToolResult）——不读内部队列结构。
 """
 
@@ -58,7 +58,7 @@ def _capture_tool_results(agent) -> list:
 
 
 # ---------------------------------------------------------------------------
-# T24：LLM 经 skill-load 加载——PLUGIN 消息入队 + 收据不含正文
+# T24：LLM 经 skill-load 加载——EVENT 消息入队 + 收据不含正文
 # ---------------------------------------------------------------------------
 
 
@@ -71,7 +71,7 @@ async def test_t24_llm_skill_load_roundtrip(tmp_path):
         "skill-host", skills=["summarize as sum"])
     use_skill(agent)
     agent.add_tool("skill-load")
-    plugin_messages = _capture_messages(agent, MessageKind.PLUGIN)
+    skill_messages = _capture_messages(agent, MessageKind.EVENT)
     tool_results = _capture_tool_results(agent)
 
     step1, _ = tool_call_response(("skill-load", {"name": "sum"}))
@@ -79,9 +79,9 @@ async def test_t24_llm_skill_load_roundtrip(tmp_path):
     result = await agent.query("加载技能")
     assert result.status == "completed"
 
-    # 恰好一条 PLUGIN 消息，kind/source 正确且承载正文
-    assert len(plugin_messages) == 1
-    msg = plugin_messages[0]
+    # 恰好一条 EVENT 消息，kind/source 正确且承载正文
+    assert len(skill_messages) == 1
+    msg = skill_messages[0]
     assert msg.source == "skill:sum"
     assert "SUM_BODY_UNIQUE 标记" in msg.content[0].text
     # ToolResult 是简短收据且不含正文
@@ -105,7 +105,7 @@ async def test_t25_disabled_entry_llm_rejected_programmatic_allowed(tmp_path):
         "skill-host", skills=[{"audit": {"visible": False}}])
     use_skill(agent)
     agent.add_tool("skill-load")
-    plugin_messages = _capture_messages(agent, MessageKind.PLUGIN)
+    skill_messages = _capture_messages(agent, MessageKind.EVENT)
     tool_results = _capture_tool_results(agent)
 
     step1, _ = tool_call_response(("skill-load", {"name": "audit"}))
@@ -114,7 +114,7 @@ async def test_t25_disabled_entry_llm_rejected_programmatic_allowed(tmp_path):
     assert result.status == "completed"
     assert tool_results[0].status == "error"   # FlowingError 包装为 LLM 可见 error
     assert "audit" in tool_results[0].error
-    assert plugin_messages == []               # 无 PLUGIN 消息
+    assert skill_messages == []                # 无 EVENT 消息
 
     loaded = await agent.skill_load("audit")   # 编程式入口不做 visible 检查
     assert "AUDIT_BODY" in loaded.content
@@ -156,7 +156,7 @@ async def test_t27_intercepted_blocks_load(tmp_path):
         "skill-host", skills=["with-args as wa"])
     use_skill(agent)
     agent.add_tool("skill-load")
-    plugin_messages = _capture_messages(agent, MessageKind.PLUGIN)
+    skill_messages = _capture_messages(agent, MessageKind.EVENT)
     tool_results = _capture_tool_results(agent)
     after_calls = []
 
@@ -176,12 +176,12 @@ async def test_t27_intercepted_blocks_load(tmp_path):
     assert result.status == "completed"
     assert tool_results[0].status == "blocked"   # Intercepted 传播为 blocked 结果
     assert not hasattr(agent, "_on_load_args")   # on_load 未执行
-    assert plugin_messages == []                 # 无 PLUGIN 入队
+    assert skill_messages == []                  # 无 EVENT 入队
     assert after_calls == []                     # after_skill_load 不触发
 
 
 # ---------------------------------------------------------------------------
-# T28：after_skill_load 改写 body → PLUGIN 与 SkillResult 逐字相同；空串合法
+# T28：after_skill_load 改写 body → EVENT 与 SkillResult 逐字相同；空串合法
 # ---------------------------------------------------------------------------
 
 
@@ -191,7 +191,7 @@ async def test_t28_after_hook_rewrites_body(tmp_path):
     agent = await runtime.create_agent(
         "skill-host", start_loop=False, skills=["audit"])
     use_skill(agent)
-    plugin_messages = _capture_messages(agent, MessageKind.PLUGIN)
+    skill_messages = _capture_messages(agent, MessageKind.EVENT)
 
     def _rewrite(agent, content):
         content.body = "改写后正文"
@@ -200,9 +200,9 @@ async def test_t28_after_hook_rewrites_body(tmp_path):
     agent.hooks.after_skill_load(_rewrite, by="test")
     result = await agent.skill_load("audit")
     assert result.content == "改写后正文"
-    assert plugin_messages[-1].content[0].text == "改写后正文"   # 逐字相同
+    assert skill_messages[-1].content[0].text == "改写后正文"   # 逐字相同
 
-    # body 改为空串合法：PLUGIN 照常入队
+    # body 改为空串合法：EVENT 照常入队
     agent.hooks.after_skill_load.remove_by_owner("test")
 
     def _blank(agent, content):
@@ -212,7 +212,7 @@ async def test_t28_after_hook_rewrites_body(tmp_path):
     agent.hooks.after_skill_load(_blank, by="test")
     result2 = await agent.skill_load("audit")
     assert result2.content == ""
-    assert plugin_messages[-1].content[0].text == ""
+    assert skill_messages[-1].content[0].text == ""
 
 
 # ---------------------------------------------------------------------------

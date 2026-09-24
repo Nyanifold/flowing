@@ -410,7 +410,7 @@ class SkillContent:
 
     加载流程第 4 步的钩子 value：``content.resolve()`` 的产物。
     handler 可修改 ``body`` （追加审计标记、裁减敏感段等），改写后的
-    正文进入 PLUGIN 消息与 :class:`SkillResult`。
+    正文进入 EVENT 消息与 :class:`SkillResult`。
 
     .. rubric:: 使用示例
 
@@ -426,9 +426,9 @@ class SkillContent:
     .. rubric:: 行为要点
 
     - handler 出口规则与 ``before_skill_load`` 相同；此处
-      ``raise Intercepted`` 使加载“看似完成但结果被丢弃”——PLUGIN
+      ``raise Intercepted`` 使加载“看似完成但结果被丢弃”——EVENT
       消息不入队、``skill_load()`` 不返回（异常上抛给调用方）。慎用。
-    - 边缘情况：``body`` 被改为空串是合法的（PLUGIN 消息照常入队，
+    - 边缘情况：``body`` 被改为空串是合法的（EVENT 消息照常入队，
       内容为空文本块）。
 
     .. seealso:: :class:`SkillLoadContext`、:class:`SkillResult`
@@ -438,7 +438,7 @@ class SkillContent:
     """已加载 Skill 的别名。
     """
     body: str
-    """渲染后的 Skill 正文。handler 可改写；最终值同时进入 PLUGIN
+    """渲染后的 Skill 正文。handler 可改写；最终值同时进入 EVENT
     消息的 ``TextBlock`` 与 ``SkillResult.content``。
     """
 
@@ -449,16 +449,16 @@ class SkillResult:
 
     .. rubric:: 功能介绍
 
-    加载流程的编程式产物。它与 PLUGIN 消息承载同一份渲染正文，
+    加载流程的编程式产物。它与 EVENT 消息承载同一份渲染正文，
     但两者通道不同：``SkillResult`` 给代码调用方（含 ``skill-load``
-    工具内部），PLUGIN 消息给 LLM（后续逻辑 Turn 的上下文）。Skill
+    工具内部），EVENT 消息给 LLM（后续逻辑 Turn 的上下文）。Skill
     结果不合并进 ToolResult——``skill-load`` 对 LLM 只回简短收据，
     正文经消息队列送达。
 
     .. rubric:: 行为要点
 
     - 不变量：``content`` 是 ``after_skill_load`` 钩子链之后的最终
-      正文，与入队 PLUGIN 消息的文本逐字相同。
+      正文，与入队 EVENT 消息的文本逐字相同。
     - 不携带渲染耗时、来源路径等观测数据（观测走钩子）。
 
     .. seealso:: :class:`SkillContent`、:class:`SkillLoadTool`

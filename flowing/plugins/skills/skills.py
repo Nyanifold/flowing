@@ -156,14 +156,12 @@ catalog 懒注入：``use_skill()`` 把 :class:`LazySkillsPrompt` 注册为
 4. ``after_skill_load`` 钩子（value 为 :class:`SkillContent`，可改
    渲染后正文）。
 5. 渲染结果不合并进 ToolResult，而是以独立 ``Message`` 入队：
-   ``kind=MessageKind.PLUGIN``、``source=f"skill:{name}"``、
+   ``kind=MessageKind.EVENT``、``source=f"skill:{name}"``、
    ``priority=MessagePriority.NORMAL``；``skill_load()`` 返回
    :class:`SkillResult`。
 
-PLUGIN 消息进入消息级树（``Message.id`` 与 ``parent_id`` 构成的链、正常
-落盘），在后续逻辑 Turn 被消费时进入 LLM 上下文。Skill 结果
-（PLUGIN）与子 Agent 结果（SUBAGENT）永远不会与 TOOL 结果混淆——
-Provider adapter 构建 LLM 上下文时按 ``kind`` 单独处理。
+EVENT 消息进入消息级树并正常落盘，在后续逻辑 Turn 被消费时进入 LLM
+上下文。Skill 正文与工具结果通过不同的 kind 保持区分。
 
 .. rubric:: Skill 参数（全部来自声明期）
 
@@ -235,7 +233,7 @@ LLM 不给 skill 传参：``skill-load`` 工具与 ``agent.skill_load()``
       Skill 复用 Tool 机制（参数优先级一致，见上文）。
     - :mod:`flowing.hooks` —— ``HookRegistry.declare`` / dispatch 算法。
     - :mod:`flowing.parsable` —— ``Parsable.resolve`` 与两步渲染。
-    - :mod:`flowing.message` —— ``MessageKind.PLUGIN`` 与消息级树。
+    - :mod:`flowing.message` —— ``MessageKind.EVENT`` 与消息级树。
     - :mod:`flowing.errors` —— ``Intercepted`` / ``MissingProvideError``。
 """
 
@@ -407,10 +405,10 @@ class SkillLoadTool(Tool):
     .. rubric:: 行为要点
 
     - ``name`` 按别名在 ``caller._skill_entries`` 查找；命中且
-      ``visible=True`` → 调 ``skill_load(name)``；加载流程（含 PLUGIN
+      ``visible=True`` → 调 ``skill_load(name)``；加载流程（含 EVENT
       消息入队）见 :func:`use_skill` 的“skill_load 契约”。工具对
       LLM 的返回是简短收据（``{"loaded": <别名>}``），正文不经
-      ToolResult——PLUGIN 消息在后续逻辑 Turn 进入上下文。
+      ToolResult——EVENT 消息在后续逻辑 Turn 进入上下文。
     - visible 检查在 LLM 入口：条目 ``visible=False`` 或未声明 →
       抛 :class:`flowing.errors.FlowingError` （由 ``Tool.__call__``
       包装为 ``status="error"`` 的 LLM 可见结果），不加载、不入队。
@@ -420,7 +418,7 @@ class SkillLoadTool(Tool):
       → 工具调用以 ``blocked`` 告终。
     - 前置条件：``caller`` 必须经 ``use_skill()`` 启用（否则
       ``skill_load`` 不存在——同名属性错误，属编程错误）。
-    - 不变量：同一 Skill 一次调用只产生一条 PLUGIN 消息；
+    - 不变量：同一 Skill 一次调用只产生一条 EVENT 消息；
       ``skill-load`` 的 ToolResult 永不包含正文。
 
     .. seealso:: :class:`flowing.tool.Tool` （``execute()`` 签名契约与
@@ -445,14 +443,14 @@ class SkillLoadTool(Tool):
         - 等价于 ``return await caller.skill_load(name)`` 的收据化封装；
           返回 dict 由 ``Tool.__call__`` 自动包装为
           ``status="completed"`` 的 ToolResult。
-        - 不自行构造 PLUGIN 消息、不做参数校验（都在 ``skill_load()``）；
+        - 不自行构造 EVENT 消息、不做参数校验（都在 ``skill_load()``）；
           不认识 ``specified`` （本工具不经 ``ToolEntry`` 覆写使用——
           ``use_skill()`` 以默认条目注册）。
 
         :param name: 目标 Skill 的别名（与 catalog ``<name>`` 一致）。
         :param caller: 发起调用的 Agent 实例（须经 ``use_skill()``
             启用）。
-        :return: 收据 ``{"loaded": <别名>}``；正文经 PLUGIN 消息送达。
+        :return: 收据 ``{"loaded": <别名>}``；正文经 EVENT 消息送达。
         :raises flowing.errors.FlowingError: ``name`` 未声明或条目
             ``visible=False`` 时（由 ``Tool.__call__`` 包装为 error
             结果，LLM 可见）。
@@ -466,7 +464,7 @@ class SkillLoadTool(Tool):
                 f"programmatic skill_load is unaffected)",
             )
         skill_result = await caller.skill_load(name)  # -> SkillResult（同一执行路径，五步流程见 use_skill）
-        receipt = {"loaded": name}  # 收据化封装：正文不经 ToolResult（PLUGIN 消息在 skill_load 内入队）
+        receipt = {"loaded": name}  # 收据化封装：正文不经 ToolResult（EVENT 消息在 skill_load 内入队）
         return receipt
 
 
@@ -686,7 +684,7 @@ def use_skill(
        agent 局部变量与合并 args；先 ``$`` 展开再 Jinja2，同步）。
     7. dispatch ``after_skill_load`` （value 为 :class:`SkillContent`，
        可改正文）。
-    8. ``agent.enqueue_message(Message(kind=MessageKind.PLUGIN,
+    8. ``agent.enqueue_message(Message(kind=MessageKind.EVENT,
        source=f"skill:{name}", content=[TextBlock(text=body)],
        priority=MessagePriority.NORMAL))``。
     9. 返回 ``SkillResult(content=body)``。
@@ -999,10 +997,10 @@ async def _load_skill(
     rendered = skill.content.bind(agent).resolve(render_context)  # 先 $ 展开再 Jinja2，同步
     content = SkillContent(name=name, body=rendered)
     content = await agent.hooks.after_skill_load.dispatch(agent, content)  # 第 7 步：可改渲染后正文
-    await agent.enqueue_message(Message(  # 第 8 步：独立 PLUGIN 消息入队，不合并进 ToolResult
-        kind=MessageKind.PLUGIN,  # -> flowing.message.MessageKind
+    await agent.enqueue_message(Message(  # 第 8 步：独立 EVENT 消息入队，不合并进 ToolResult
+        kind=MessageKind.EVENT,  # -> flowing.message.MessageKind
         source=f"skill:{name}",
         content=[TextBlock(text=content.body)],
         priority=MessagePriority.NORMAL,
     ))
-    return SkillResult(content=content.body)  # 第 9 步：与 PLUGIN 消息正文逐字相同
+    return SkillResult(content=content.body)  # 第 9 步：与 EVENT 消息正文逐字相同

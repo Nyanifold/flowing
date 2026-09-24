@@ -36,13 +36,13 @@ def _capture_tool_results(agent) -> list:
     return collected
 
 
-def _capture_plugin_messages(agent, done: asyncio.Event,
+def _capture_event_messages(agent, done: asyncio.Event,
                              *, source: str | None = None) -> list:
-    """经 on_enqueue 钩子收集 PLUGIN 消息（按 source 过滤），到时置位。"""
+    """经 on_enqueue 钩子收集 EVENT 消息（按 source 过滤），到时置位。"""
     collected = []
 
     def _collect(agent, msg):
-        if msg.kind is MessageKind.PLUGIN and (source is None or msg.source == source):
+        if msg.kind is MessageKind.EVENT and (source is None or msg.source == source):
             collected.append(msg)
             done.set()
         return msg
@@ -64,9 +64,9 @@ async def test_t88_receipt_before_run_completes(project, tmp_path):
         gate = asyncio.Event()
         agent.wf_gate = gate   # verify_fix.py 的 run 先等闸门（证明收据先于完成）
         tool_results = _capture_tool_results(agent)
-        plugin_done = asyncio.Event()
-        plugin_msgs = _capture_plugin_messages(
-            agent, plugin_done, source="workflow:verify-fix")
+        event_done = asyncio.Event()
+        event_msgs = _capture_event_messages(
+            agent, event_done, source="workflow:verify-fix")
 
         step1, _ = tool_call_response(
             ("run-workflow", {"path": "@/verify_fix.py", "max_rounds": 2}))
@@ -83,11 +83,11 @@ async def test_t88_receipt_before_run_completes(project, tmp_path):
         assert receipt.background_task_id is not None   # B10：注册键随收据交付
         assert receipt.output == {"status": "started",
                                   "workflow": "@/verify_fix.py"}
-        assert plugin_msgs == []   # gate 未置位：run 未完成 → 收据严格在先
+        assert event_msgs == []   # gate 未置位：run 未完成 → 收据严格在先
 
-        gate.set()   # 放行 run：PLUGIN 消息交付 = run 完成信号
-        await asyncio.wait_for(plugin_done.wait(), 2.0)
-        echo = json.loads(plugin_msgs[0].content[0].text)
+        gate.set()   # 放行 run：EVENT 消息交付 = run 完成信号
+        await asyncio.wait_for(event_done.wait(), 2.0)
+        echo = json.loads(event_msgs[0].content[0].text)
         assert echo["caller"] == agent.node_id   # 实例的 caller 是该 Agent
         assert echo["max_rounds"] == 2           # 其余参数透传给 run()
         assert "path" not in echo                # path 不透传
@@ -105,12 +105,11 @@ async def test_t89_caller_query_no_deadlock(project, tmp_path):
     agent = await runtime.create_agent("test-agent")
     try:
         agent.add_tool("run-workflow")
-        plugin_done = asyncio.Event()
         texts = []
         done = asyncio.Event()
 
         def _collect(a, msg):
-            if msg.kind is MessageKind.PLUGIN and msg.source == "workflow:caller-query":
+            if msg.kind is MessageKind.EVENT and msg.source == "workflow:caller-query":
                 texts.append(msg.content[0].text)
                 done.set()
             return msg

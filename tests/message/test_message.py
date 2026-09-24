@@ -36,10 +36,11 @@ def make_message(kind=MessageKind.USER, **kw) -> Message:
 
 class TestMessageKindAndPriority:
     def test_m1_kind_enum(self):
-        """M1：八值枚举，字符串值为落盘值，无 ASSISTANT 旧名。"""
-        assert len(MessageKind) == 8
-        for name in ("USER", "PROVIDER", "TOOL", "SYSTEM", "PEER", "EVENT", "PLUGIN", "SUBAGENT"):
+        """M1：七值枚举，字符串值为落盘值，无 ASSISTANT 旧名。"""
+        assert len(MessageKind) == 7
+        for name in ("USER", "PROVIDER", "TOOL", "SYSTEM", "PEER", "EVENT", "SUBAGENT"):
             assert hasattr(MessageKind, name)
+        assert not hasattr(MessageKind, "PLUGIN")
         assert MessageKind.PROVIDER.value == "provider"
         assert not hasattr(MessageKind, "ASSISTANT")
 
