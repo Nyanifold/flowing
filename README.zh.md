@@ -2,6 +2,8 @@
 
 [English](README.md) | **中文**
 
+[📖 文档](https://flowing-agent.readthedocs.io/zh_CN/index.html)
+
 Flowing 是一个为复杂交互设计的轻量级、可扩展的描述式 Agent 运行时框架（Python ≥ 3.13）。在 Flowing 中，一个 Agent 的全部定义，包括角色与提示词、大语言模型、工具与子智能体、 Composable 扩展、钩子代码等，都写在同一个 `.fya` 文件里；框架在执行管线的关键时点向扩展开放，它的运行时亦可作为普通对象嵌入任意 Python 宿主应用。框架核心仅承担消息流转、错误分类与钩子点分发三项职责；重试、压缩、审批等策略均以 Composable 或插件形式按需挂载。
 
 ## 它适合谁

@@ -2,6 +2,8 @@
 
 **English** | [中文](README.zh.md)
 
+[📖 Documentation](https://flowing-agent.readthedocs.io/en/index.html)
+
 Flowing is a lightweight, extensible, descriptive agent runtime framework for complex interactions (Python ≥ 3.13). In Flowing, an agent's entire definition — its role and prompt, the LLM it uses, its tools and subagents, composable extensions, and hook code — lives in a single `.fya` file. The framework opens its execution pipeline to extensions at key points, and its runtime can be embedded into any Python host application as an ordinary object. The core does only three things: message flow, error classification, and hook dispatch; policies such as retries, compaction, and approvals are mounted on demand as composables or plugins.
 
 ## Who it's for
