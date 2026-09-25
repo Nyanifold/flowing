@@ -1,0 +1,2 @@
+What are the preferences and todos I saved? And what about the visit count and the launch count?
+/exit

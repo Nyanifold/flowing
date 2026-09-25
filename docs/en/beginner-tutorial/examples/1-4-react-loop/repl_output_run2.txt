@@ -1,0 +1,4 @@
+(agent-main)>>>OK
+[steer] Acceptance condition not met: your final reply must contain DONE on its own line. Please answer the previous question again and append DONE at the end.
+OK
+(agent-main)>>>

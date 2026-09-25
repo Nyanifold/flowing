@@ -1,0 +1,5 @@
+# 标签 → 模型条目名映射（单值：一个标签只映射一个条目）。
+tags:
+  default: deepseek-flash
+  fast: deepseek-flash      # 多标签可以指向同一条目
+  chat: deepseek-chat       # 不同 Agent 指定不同 model_tag 的素材

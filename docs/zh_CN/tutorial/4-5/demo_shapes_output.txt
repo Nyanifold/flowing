@@ -1,0 +1,13 @@
+① 归一五形态（execute 普通值出 → 统一出口）：
+   None       → blocks=[]
+   str        → blocks=['text']
+   标量         → blocks=['text']
+   dict       → blocks=['struct']
+   纯基础 list   → blocks=['struct']
+   混合 list    → blocks=['text', 'image']
+② 违禁块（ToolCallBlock / ThinkingBlock 任何路径 → ValueError）：
+   forbidden block type in tool result: ToolCallBlock
+③ 媒体载体（Image → ImageBlock，base64 内联）：
+   Image → ['image']（mime=image/png）
+④ error 追加（output_to_blocks 末尾补错误文本块）：
+   ['struct', 'text']（末块='构建失败：缺依赖'）

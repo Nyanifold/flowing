@@ -1,0 +1,12 @@
+① Context 三正交字段：
+  system_prompt: [('system_prompt', 'dynamic'), ('mode-explain', 'static')]
+  tools: ['switch-mode']
+  messages: 10 条（根 → head 路径）
+② Parsable 常用形式（字面量 / 模板 / 文件引用）：
+  字面量   : '你好'
+  模板     : '当前模式：讲解'
+  文件引用 : '先组装，再提问；上下文是视图，不是仓库。'
+  现场求值 : 改 current_mode 后同一模板 → '当前模式：实验模式'（取最新值）
+③ before_provider_gen 改写 Context：
+  改写后最后一段: marker = '[改写标记]'
+  [0] 核心引用块仍在: system_prompt

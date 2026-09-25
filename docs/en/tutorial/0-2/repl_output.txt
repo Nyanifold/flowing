@@ -1,0 +1,36 @@
+(agent-main)>>>I'll inspect the project structure and read the notes file.
+[tool_call] glob {"pattern": "**/*", "path": "<repo-root>/dev-docs/tutorial-en/0-2"}
+[tool_call] read {"path": "<repo-root>/dev-docs/tutorial-en/0-2/notes/使用说明.md"}
+[tool:completed] read -> 0	# Usage Guide
+1	
+2	This directory is a demo note library.
+3	
+4	## Installation
+5	
+6	Requires Python 3.13 or later.
+7	
+8	## Common commands
+9	
+10	- `uv sync`: install dependencies
+11	- `uv run pytest`: run tests
+12	
+13	## Notes
+14	
+15	Credentials are always held in environment variables; never write them into any file.
+[tool:completed] glob -> <repo-root>/dev-docs/tutorial-en/0-2/.flowing/agent-main/tree.jsonl
+<repo-root>/dev-docs/tutorial-en/0-2/.flowing/agent-main/core.jsonl
+<repo-root>/dev-docs/tutorial-en/0-2/repl_output.txt
+<repo-root>/dev-docs/tutorial-en/0-2/.flowing/core.jsonl
+<repo-root>/dev-docs/tutorial-en/0-2/.flowing/agent-main/meta.json
+<repo-root>/dev-docs/tutorial-en/0-2/__pycache__/main.cpython-313.pyc
+<repo-root>/dev-docs/tutorial-en/0-2/tests/test_semantics.py
+<repo-root>/dev-docs/tutorial-en/0-2/root.fya
+<repo-root>/dev-docs/tutorial-en/0-2/main.py
+<repo-root>/dev-docs/tutorial-en/0-2/repl_input.txt
+<repo-root>/dev-docs/tutorial-en/0-2/model-tags.yaml
+<repo-root>/dev-docs/tutorial-en/0-2/models.yaml
+<repo-root>/dev-docs/tutorial-en/0-2/providers.yaml
+<repo-root>/dev-docs/tutorial-en/0-2/notes/使用说明.md
+<repo-root>/dev-docs/tutorial-en/0-2/notes/路线图.md
+The project contains `main.py` and `root.fya` at the root, config files (`providers.yaml`, `models.yaml`, `model-tags.yaml`), test and sample data (`tests/test_semantics.py`, `repl_input.txt`, `repl_output.txt`), a `notes/` folder with `使用说明.md` and `路线图.md`, plus `.flowing/` agent state files and a `__pycache__` directory. The `notes/使用说明.md` file is a short usage guide for what it calls a demo note library; it states Python 3.13+ is required, lists common commands (`uv sync` to install dependencies, `uv run pytest` to run tests), and warns that credentials must always live in environment variables and never be written into any file.
+(agent-main)>>>

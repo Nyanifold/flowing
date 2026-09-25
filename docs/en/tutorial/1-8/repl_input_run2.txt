@@ -1,0 +1,3 @@
+Introduce yourself in one sentence.
+/messages
+/exit

@@ -1,0 +1,21 @@
+description: "Checkout orchestrator: pay is the customized view of make-payment."
+model_tag: default
+tools:
+  - ./tools/probe.py                 # probe with strict=False (control group)
+  - ./tools/make_payment.py as pay:   # path form + as alias (bare-name chains do not recurse into subdirectories)
+      description: "Initiate a payment (confirmed orders only)"
+      args:
+        amount: {description: "Payment amount (yuan), capped at 50000"}  # sparse patch → override_params
+        currency: USD                     # bare value → specified (fixed value invisible to the LLM)
+        user_id: "{{ self.inject('user_id') }}"   # injection expression → specified (resolved along the provide chain)
+        order_id as oid: _                 # parameter rename (_ = empty patch)
+subagents:
+  - ./agents/cashier
+---
+$system_prompt:
+You are the checkout. When the user confirms a payment, use the pay tool to
+complete it and report the result truthfully.
+---
+$script:
+async def setup(self):
+    self.provide("user_id", "u-10086")   # host identity injected into tool args via the provide chain

@@ -1,0 +1,19 @@
+description: "Programming agent: reads and writes files within the target directory, executes commands, and delivers."
+model_tag: default
+tools:
+  - read
+  - write
+  - edit
+  - grep
+  - glob
+  - bash
+  - finish
+---
+$system_prompt:
+You are the programming agent. Working directory: {{ cwd }} (always use absolute paths for files; do not guess).
+Carry out the received task by reading and writing files and executing commands within that directory; when done, hand in with finish: put what you did in summary and the list of changed files in files. Do not touch anything outside the working directory.
+---
+$script:
+async def setup(self):
+    # A sub-agent injects "cwd" from the root agent's provide along the parent chain (shared across layers)
+    self.cwd = self.inject("cwd")

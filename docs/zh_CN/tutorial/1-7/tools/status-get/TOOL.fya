@@ -1,0 +1,9 @@
+# request 型工具：GET + 路径参数（执行期渲染）；参数自动进 query/body。
+name: status-get
+type: request
+description: 查询演示服务器的健康状态。
+url: http://127.0.0.1:8641/api/status
+method: GET
+args:
+  verbose: {type: boolean, default: false, description: 是否返回详细字段}
+output: {type: object, properties: {status: {type: string}, uptime: {type: number}}}

@@ -1,0 +1,2 @@
+Based on the structure and task list from before, dispatch coder to write the README.md; when it finishes, have it self-check with read and report back to you.
+/exit

@@ -1,0 +1,8 @@
+# Model entry: one entry = one concrete model (bound to one provider entry).
+deepseek-flash:
+  provider: deepseek
+  model: deepseek-v4-flash
+openrouter-gpt-6-luna:
+  provider: openrouter
+  model: openai/gpt-6-luna
+  "reasoning.effort": high

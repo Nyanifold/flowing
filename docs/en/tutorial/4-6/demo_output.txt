@@ -1,0 +1,7 @@
+① Rate-limit retry: status=completed
+   on_retry observed: [{'attempt': 1, 'error': 'RateLimitedError'}, {'attempt': 2, 'error': 'RateLimitedError'}]
+   FlakyProvider actual calls: 3 (2 failures + 1 success)
+② cancel intercepted by before_cancel: Intercepted(payment already committed: this turn cannot be cancelled)
+   signal not set — the cancellation never happened (standard usage for non-interruptible scenarios)
+③ abort_turn: status=cancelled (turn terminated, agent alive)
+   next turn as usual: status=completed final='Still here.'

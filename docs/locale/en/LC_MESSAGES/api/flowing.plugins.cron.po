@@ -1,0 +1,858 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C)
+# This file is distributed under the same license as the flowing-agent
+# package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: flowing-agent \n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-09-11 07:02+0800\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: en\n"
+"Language-Team: en <LL@li.org>\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: ../../api/flowing.plugins.cron.rst:2
+msgid "flowing.plugins.cron package"
+msgstr "flowing.plugins.cron package"
+
+#: flowing.plugins.cron:1 of
+msgid "``flowing.plugins.cron`` —— 定时扩展子包。"
+msgstr "``flowing.plugins.cron`` —— the cron (scheduled task) extension subpackage."
+
+#: flowing.plugins.cron:3 of
+msgid ""
+"本包承载定时扩展的全部公开符号：:class:`CronPlugin`（工具注册插件）、 :func:`use_cron`（per-Agent "
+"启用）、:class:`CronJob`（定时任务记录）、 "
+":class:`CronFireContext`（``on_cron_trigger`` 钩子 value），以及模块级 任务 "
+"API（:func:`schedule` / :func:`unschedule` / :func:`jobs`）。对外 API 经本 "
+"``__init__`` 统一再导出。"
+msgstr ""
+"This package hosts all public symbols of the cron extension: :class:`CronPlugin` (the tool-registration "
+"plugin), :func:`use_cron` (per-Agent enablement), :class:`CronJob` (cron job record), "
+":class:`CronFireContext` (the value of the ``on_cron_trigger`` hook), and the module-level job "
+"API (:func:`schedule` / :func:`unschedule` / :func:`jobs`). The public API is uniformly "
+"re-exported through this ``__init__``."
+
+#: flowing.plugins.cron:9 of
+msgid ""
+":mod:`flowing.plugins.cron.cron`（插件与 ``use_cron``）、 "
+":mod:`flowing.plugins.cron.jobs`（任务运行时与模块 API）、 "
+":mod:`flowing.plugins.cron.models`（数据对象）、 "
+":mod:`flowing.plugins.cron.tools`（LLM 工具）"
+msgstr ""
+":mod:`flowing.plugins.cron.cron` (plugin and ``use_cron``), "
+":mod:`flowing.plugins.cron.jobs` (job runtime and module API), "
+":mod:`flowing.plugins.cron.models` (data objects), "
+":mod:`flowing.plugins.cron.tools` (LLM tools)"
+
+#: flowing.plugins.cron.cron.CronPlugin:1 of
+msgid "定时扩展插件——只注册两件 LLM 工具，无 Runtime 级服务。"
+msgstr "The cron extension plugin — registers only two LLM tools; no Runtime-level services."
+
+#: flowing.plugins.cron.cron.CronPlugin:3 of
+msgid ""
+"``runtime.install(CronPlugin())`` 时框架调用 ``install(runtime)``： "
+"``runtime.register_tool`` 注册 ``schedule-cron`` / ``manage-cron``。 不 "
+"provide、不创建调度器、不挂状态持久化（``cron_jobs`` 键是 ``use_cron`` 的 per-Agent 声明）。"
+msgstr ""
+"On ``runtime.install(CronPlugin())`` the framework calls ``install(runtime)``: "
+"``runtime.register_tool`` registers ``schedule-cron`` / ``manage-cron``. It does not "
+"provide anything, create a scheduler, or attach state persistence (the ``cron_jobs`` key is a per-Agent declaration of ``use_cron``)."
+
+#: flowing.plugins.cron.cron.CronPlugin:9 flowing.plugins.cron.cron.use_cron:19
+#: flowing.plugins.cron.models.CronFireContext:12
+#: flowing.plugins.cron.models.CronJob:13
+#: flowing.plugins.cron.tools.ManageCronTool:10
+#: flowing.plugins.cron.tools.ScheduleCronTool:14 of
+msgid "行为要点"
+msgstr "Key Behaviors"
+
+#: flowing.plugins.cron.cron.CronPlugin:10 of
+msgid ""
+"安装与否不影响 ``use_cron`` 与模块 API 的可用性——工具只是 LLM 入口（Agent 仍需 ``add_tool`` 才对 "
+"LLM 暴露）。"
+msgstr ""
+"Installing or not does not affect the availability of ``use_cron`` and the module API — the tools are merely the LLM "
+"entry point (an Agent still needs ``add_tool`` to expose them to the LLM)."
+
+#: flowing.plugins.cron.cron.CronPlugin:12 of
+msgid "无收尾资源：定时器全部在 Agent 侧（随 destroy 取消）， ``shutdown`` 无事可做。"
+msgstr "There are no resources to wind down: all timers live on the Agent side (cancelled on destroy), so ``shutdown`` has nothing to do."
+
+#: flowing.plugins.cron.CronPlugin.name:1
+#: flowing.plugins.cron.cron.CronPlugin.name:1 of
+msgid "插件注册名（``runtime.get_plugin(\"cron\")`` 查询用）。"
+msgstr "The plugin registration name (used by ``runtime.get_plugin(\"cron\")`` lookups)."
+
+#: flowing.plugins.cron.CronPlugin.dependencies:1
+#: flowing.plugins.cron.cron.CronPlugin.dependencies:1 of
+msgid "无依赖声明。"
+msgstr "No dependency declarations."
+
+#: flowing.plugins.cron.cron.CronPlugin.install:1 of
+msgid "注册两件 LLM 工具（install 只注册，不读取任何持久状态）。"
+msgstr "Registers the two LLM tools (install only registers; it does not read any persistent state)."
+
+#: ../../api/flowing.plugins.cron.rst
+#: flowing.plugins.cron.cron.CronPlugin.install
+#: flowing.plugins.cron.jobs.substitute_current_time
+#: flowing.plugins.cron.jobs.validate_placeholders
+#: flowing.plugins.cron.models.CronJob.from_dict of
+msgid "参数"
+msgstr "Parameters"
+
+#: ../../api/flowing.plugins.cron.rst
+#: flowing.plugins.cron.cron.CronPlugin.install
+#: flowing.plugins.cron.jobs.substitute_current_time
+#: flowing.plugins.cron.jobs.validate_placeholders
+#: flowing.plugins.cron.models.CronJob.from_dict
+#: flowing.plugins.cron.models.CronJob.to_dict of
+msgid "返回类型"
+msgstr "Returns"
+
+#: flowing.plugins.cron.cron.use_cron:1 of
+msgid "为 Agent 实例启用定时能力（``setup()`` 中调用，每实例恰好一次）。"
+msgstr "Enable cron capability for an Agent instance (called in ``setup()``, exactly once per instance)."
+
+#: flowing.plugins.cron.cron:4 flowing.plugins.cron.cron.use_cron:4
+#: flowing.plugins.cron.models.CronFireContext:4
+#: flowing.plugins.cron.models.CronJob:4
+#: flowing.plugins.cron.tools.ManageCronTool:4
+#: flowing.plugins.cron.tools.ScheduleCronTool:4 of
+msgid "功能介绍"
+msgstr "Overview"
+
+#: flowing.plugins.cron.cron.use_cron:5 of
+msgid "完成四件事："
+msgstr "It does four things:"
+
+#: flowing.plugins.cron.cron.use_cron:7 of
+msgid ""
+"``agent.state.register(\"cron_jobs\", [])``——登记任务总表状态键 （缺省即写、幂等），此后 "
+"``agent.state.cron_jobs`` 恒存在；"
+msgstr ""
+"``agent.state.register(\"cron_jobs\", [])`` — registers the master job-list state key (writes the default "
+"on registration, idempotent); from then on ``agent.state.cron_jobs`` always exists;"
+
+#: flowing.plugins.cron.cron.use_cron:9 of
+msgid ""
+"``agent.hooks.declare(\"on_cron_trigger\", by=\"cron\", "
+"match_on=\"source\")``——声明实例级钩子点（handler 按 value 顶层 ``source`` 字段 fnmatch"
+" 过滤注册）；"
+msgstr ""
+"``agent.hooks.declare(\"on_cron_trigger\", by=\"cron\", "
+"match_on=\"source\")`` — declares the instance-level hook point (handlers register with fnmatch "
+"filtering on the value's top-level ``source`` field);"
+
+#: flowing.plugins.cron.cron.use_cron:12 of
+msgid "建立任务运行时并挂在内部槽位 ``agent._cron``（只持定时器句柄， 不持任务数据镜像——数据以总表为唯一真相）；"
+msgstr "Builds the job runtime and attaches it to the internal slot ``agent._cron`` (it holds only timer handles, not a data mirror of the jobs — the master list is the single source of truth);"
+
+#: flowing.plugins.cron.cron.use_cron:14 of
+msgid ""
+"挂 ``after_recover``（by=\"cron\"：读总表补发过期 + 重建定时器） 与 "
+"``before_destroy``（by=\"cron\"：取消全部定时器句柄；任务记录 留总表随 session 存续，miss "
+"由下次恢复补发）。"
+msgstr ""
+"Attaches ``after_recover`` (by=\"cron\": re-deliver overdue jobs from the master list + rebuild timers) and "
+"``before_destroy`` (by=\"cron\": cancel all timer handles; job records stay in the master list and persist "
+"with the session; misses are re-delivered on the next recovery)."
+
+#: flowing.plugins.cron.cron.use_cron:20 of
+msgid "**不设防**：每实例恰好执行一次；同一实例重复调用属编程错误 （handler 重复挂载），后果自负，不提供幂等保证。"
+msgstr "**Not guarded**: must run exactly once per instance; calling it again on the same instance is a programming error (handlers would be attached twice) — do so at your own risk; no idempotence guarantee is provided."
+
+#: flowing.plugins.cron.cron.use_cron:22 of
+msgid "不注册任何任务（按需注册）；不依赖 ``CronPlugin`` 安装；不为 Agent 声明任何其他资源。"
+msgstr "Registers no jobs (jobs are registered on demand); does not depend on ``CronPlugin`` being installed; declares no other resources for the Agent."
+
+#: flowing.plugins.cron.cron.use_cron:24 of
+msgid "恢复路径：``setup()`` 在新实例上执行，本函数以新实例为起点展开 ——声明与挂载不跨实例叠加。"
+msgstr "Recovery path: ``setup()`` runs on the new instance, and this function unfolds from that new instance — declarations and attachments do not stack across instances."
+
+#: flowing.plugins.cron.cron.use_cron:26 of
+msgid "零开销不变量：未调用的 Agent 无钩子点、无运行时槽、无定时器。"
+msgstr "Zero-overhead invariant: an Agent that never calls it has no hook point, no runtime slot, and no timers."
+
+#: flowing.plugins.cron.cron.use_cron:28 of
+msgid "目标 Agent 实例。"
+msgstr "The target Agent instance."
+
+#: flowing.plugins.cron.cron.use_cron:30 of
+msgid ""
+":class:`CronPlugin`、:mod:`flowing.plugins.cron.jobs`、 "
+":meth:`CronJob`、:meth:`CronFireContext`"
+msgstr ""
+":class:`CronPlugin`, :mod:`flowing.plugins.cron.jobs`, "
+":meth:`CronJob`, :meth:`CronFireContext`"
+
+#: flowing.plugins.cron.models.CronJob:1 of
+msgid "一条定时任务——「cron 表达式 + 推送内容」的持久化单元。"
+msgstr "A single cron job — the persistence unit of \"cron expression + content to push\"."
+
+#: flowing.plugins.cron.models.CronJob:5 of
+msgid ""
+"描述「什么时候、给 Agent 推一条什么消息」：``cron`` 是触发节奏， ``content`` 是到点推送的消息文本（可含 "
+"``{{current_time}}`` 占位符），``source`` 是供 ``on_cron_trigger`` 钩子 pattern "
+"分组过滤 的语义标签。任务由 Agent 逐智能体携带，以 ``cron_jobs`` 状态键 "
+"（``list[dict]``）写透落盘；对象本体只在读侧按需重建，运行期不留 数据镜像。"
+msgstr ""
+"Describes \"when to push which message to the Agent\": ``cron`` is the trigger cadence, ``content`` is the "
+"message text pushed at the due time (may contain ``{{current_time}}`` placeholders), and ``source`` is a "
+"semantic label used for pattern-based filtering by the ``on_cron_trigger`` hook. Jobs are carried per agent "
+"and written through to disk under the ``cron_jobs`` state key (``list[dict]``); the object itself is rebuilt "
+"on demand on the read side, with no data mirror kept at runtime."
+
+#: flowing.plugins.cron.models.CronJob:14 of
+msgid ""
+"纯数据容器：无构造校验、无 ``__post_init__``——不变式（content 非空、cron 可解析、job_id "
+"不冲突、占位符格式合法）由注册 API :func:`flowing.plugins.cron.schedule` 在注册边界维护。"
+msgstr ""
+"A pure data container: no constructor validation, no ``__post_init__`` — the invariants (non-empty content, "
+"parseable cron, no job_id conflicts, legal placeholder formats) are maintained at the registration boundary "
+"by the registration API :func:`flowing.plugins.cron.schedule`."
+
+#: flowing.plugins.cron.models.CronJob:17 of
+msgid ""
+"``source`` 不进消息文本，只服务钩子过滤与 EVENT 消息来源标识； 空串表示「未设标签」（对非 ``\"*\"`` 的钩子 "
+"pattern 不命中）。"
+msgstr ""
+"``source`` does not go into the message text; it only serves hook filtering and the source identity of EVENT "
+"messages; an empty string means \"no label\" (does not match hook patterns other than ``\"*\"``)."
+
+#: flowing.plugins.cron.models.CronJob:19 of
+msgid "``recurring=False`` 表示一次性任务：第一次成功交付后自移除； 到点未交付（被跳过）不算成功交付，不移除。"
+msgstr "``recurring=False`` means a one-shot job: it removes itself after the first successful delivery; a due time that was not delivered (skipped) does not count as successful delivery and does not remove it."
+
+#: flowing.plugins.cron.models.CronJob:21 of
+msgid ""
+"时间字段为系统本地 naive ``datetime``（不做时区归一化）； ``last_fired_at=None`` "
+"表示从未交付（合并计数基数退化为 ``created_at``）。"
+msgstr ""
+"Time fields are system-local naive ``datetime`` values (no timezone normalization); ``last_fired_at=None`` "
+"means never delivered (the coalescing-count base degenerates to ``created_at``)."
+
+#: flowing.plugins.cron.models.CronJob:25 of
+msgid ":class:`CronFireContext`、:mod:`flowing.plugins.cron.jobs`"
+msgstr ":class:`CronFireContext`, :mod:`flowing.plugins.cron.jobs`"
+
+#: flowing.plugins.cron.CronJob.id:1 flowing.plugins.cron.models.CronJob.id:1
+#: of
+msgid "任务 ID（该 Agent 作用域内唯一；注册时缺省生成 8 位随机 hex）。"
+msgstr "Job ID (unique within the scope of this Agent; an 8-character random hex is generated by default at registration)."
+
+#: flowing.plugins.cron.CronJob.cron:1
+#: flowing.plugins.cron.models.CronJob.cron:1 of
+msgid "五字段 cron 表达式（``分 时 日 月 周``，分精度），按系统本地 时刻解释。"
+msgstr "Five-field cron expression (``minute hour day month weekday``, minute precision), interpreted against the system local clock."
+
+#: flowing.plugins.cron.CronJob.content:1
+#: flowing.plugins.cron.models.CronJob.content:1 of
+msgid "到点推送的消息文本；可含 ``{{current_time}}`` 占位符。"
+msgstr "The message text pushed at the due time; may contain ``{{current_time}}`` placeholders."
+
+#: flowing.plugins.cron.CronJob.created_at:1
+#: flowing.plugins.cron.models.CronJob.created_at:1 of
+msgid "创建时间（系统本地 naive）；从未交付任务的合并计数基数。"
+msgstr "Creation time (system-local naive); the coalescing-count base for never-delivered jobs."
+
+#: flowing.plugins.cron.CronJob.source:1
+#: flowing.plugins.cron.models.CronJob.source:1 of
+msgid ""
+"语义标签：``on_cron_trigger`` 钩子的 ``match_on=\"source\"`` 过滤 字段（fnmatch），也是 "
+"EVENT 消息来源（空串时消息 source 落 ``\"cron\"``）。不进消息文本。"
+msgstr ""
+"Semantic label: the ``match_on=\"source\"`` filter field (fnmatch) of the ``on_cron_trigger`` hook, and "
+"also the EVENT message source (when empty, the message source falls back to ``\"cron\"``). Does not go into "
+"the message text."
+
+#: flowing.plugins.cron.CronJob.recurring:1
+#: flowing.plugins.cron.models.CronJob.recurring:1 of
+msgid "``False`` = 一次性任务：第一次成功交付后自移除（写透落盘）。"
+msgstr "``False`` = one-shot job: removes itself after the first successful delivery (written through to disk)."
+
+#: flowing.plugins.cron.CronJob.last_fired_at:1
+#: flowing.plugins.cron.models.CronJob.last_fired_at:1 of
+msgid "上次成功交付时刻（系统本地 naive）。合并计数游标：只在成功交付 时推进；``None`` 表示从未交付。"
+msgstr "Time of the last successful delivery (system-local naive). The coalescing-count cursor: advances only on successful delivery; ``None`` means never delivered."
+
+#: flowing.plugins.cron.models.CronJob.to_dict:1 of
+msgid "序列化为 JSON 可化纯 dict——进出 ``cron_jobs`` 状态键的写通道。"
+msgstr "Serialize to a plain JSON-able dict — the write channel in and out of the ``cron_jobs`` state key."
+
+#: flowing.plugins.cron.models.CronJob.to_dict:3 of
+msgid "字段平铺；时间为 ISO 8601 字符串（``None`` 保持 ``None``）； ``source`` 恒写出（空串也写，落盘结构自描述）。"
+msgstr "Fields are flattened; times are ISO 8601 strings (``None`` stays ``None``); ``source`` is always written (even an empty string, so the on-disk structure is self-describing)."
+
+#: flowing.plugins.cron.models.CronJob.from_dict:1 of
+msgid "从落盘 dict 重建（纯字段映射，不做领域校验——盘即数据源）。"
+msgstr "Rebuild from an on-disk dict (pure field mapping, no domain validation — the disk is the data source)."
+
+#: flowing.plugins.cron.models.CronFireContext:1 of
+msgid "``on_cron_trigger`` 钩子点的 value——一次即将交付的触发视图。"
+msgstr "The value of the ``on_cron_trigger`` hook point — a view of one imminent delivery."
+
+#: flowing.plugins.cron.models.CronFireContext:5 of
+msgid ""
+"任务到点（或恢复补发）时，交付例程先构造本对象并 ``agent.hooks.on_cron_trigger.dispatch(agent, "
+"ctx)``，随后才组装并 入队消息。handler 可改写 ``ctx.content``（仅本次生效，不落盘）或置 "
+"``ctx.shortcut = True`` 跳过本次推送；``raise Intercepted`` 硬阻断 语义同 "
+"shortcut（游标不推进，miss 继续累积）。"
+msgstr ""
+"When a job comes due (or is re-delivered on recovery), the delivery routine first constructs this object and calls "
+"``agent.hooks.on_cron_trigger.dispatch(agent, ctx)``, and only then assembles and enqueues the message. "
+"A handler may rewrite ``ctx.content`` (effective for this delivery only, not persisted) or set "
+"``ctx.shortcut = True`` to skip this push; ``raise Intercepted`` has the same hard-blocking semantics as "
+"shortcut (the cursor does not advance and misses keep accumulating)."
+
+#: flowing.plugins.cron.models.CronFireContext:13 of
+msgid ""
+"``match_on=\"source\"``：钩子按 value 顶层 ``source`` 字段做 fnmatch 过滤（pattern "
+"注册形态）。"
+msgstr ""
+"``match_on=\"source\"``: hooks filter with fnmatch on the value's top-level ``source`` field (handlers "
+"register with patterns)."
+
+#: flowing.plugins.cron.models.CronFireContext:15 of
+msgid ""
+"``coalesced_count`` 为 ``(last_fired_at ?? created_at, fired_at]`` "
+"区间内理想触发次数：``== 1`` 为到点裸发；``>= 2`` 为错过多次的 合并补发（文案走唯一补发模板）。"
+msgstr ""
+"``coalesced_count`` is the number of ideal firings in the interval ``(last_fired_at ?? created_at, fired_at]``: "
+"``== 1`` is a plain on-time firing; ``>= 2`` is a coalesced re-delivery after multiple misses (the text uses "
+"the single re-delivery template)."
+
+#: flowing.plugins.cron.models.CronFireContext:18 of
+msgid ""
+"``content`` 初值为任务原文（未做 ``{{current_time}}`` 替换）； 替换发生在组装阶段，handler "
+"改写后的文本同样会被替换。"
+msgstr ""
+"The initial value of ``content`` is the job's original text (without ``{{current_time}}`` substitution); "
+"substitution happens during the assembly phase, and text rewritten by a handler is substituted as well."
+
+#: flowing.plugins.cron.models.CronFireContext:21 of
+msgid ":class:`CronJob`、:func:`flowing.plugins.cron.use_cron`"
+msgstr ":class:`CronJob`, :func:`flowing.plugins.cron.use_cron`"
+
+#: flowing.plugins.cron.CronFireContext.id:1
+#: flowing.plugins.cron.models.CronFireContext.id:1 of
+msgid "任务 ID（= ``job.id``）。"
+msgstr "Job ID (= ``job.id``)."
+
+#: flowing.plugins.cron.CronFireContext.source:1
+#: flowing.plugins.cron.models.CronFireContext.source:1 of
+msgid "任务语义标签（= ``job.source``）——钩子 pattern 过滤字段。"
+msgstr "The job's semantic label (= ``job.source``) — the hook pattern filter field."
+
+#: flowing.plugins.cron.CronFireContext.cron:1
+#: flowing.plugins.cron.models.CronFireContext.cron:1 of
+msgid "任务 cron 表达式（只读）。"
+msgstr "The job's cron expression (read-only)."
+
+#: flowing.plugins.cron.CronFireContext.content:1
+#: flowing.plugins.cron.models.CronFireContext.content:1 of
+msgid "本次将推送的文本（初值 ``job.content`` 原文；handler 可改写， 仅本次生效，不落盘）。"
+msgstr "The text to be pushed this time (initial value is the original ``job.content``; a handler may rewrite it, effective for this delivery only, not persisted)."
+
+#: flowing.plugins.cron.CronFireContext.recurring:1
+#: flowing.plugins.cron.models.CronFireContext.recurring:1 of
+msgid "任务是否周期（只读）。"
+msgstr "Whether the job is recurring (read-only)."
+
+#: flowing.plugins.cron.CronFireContext.scheduled_at:1
+#: flowing.plugins.cron.models.CronFireContext.scheduled_at:1 of
+msgid "区间内最后一个理想触发点（本次交付对应的理想时刻）。"
+msgstr "The last ideal firing point in the interval (the ideal time this delivery corresponds to)."
+
+#: flowing.plugins.cron.CronFireContext.fired_at:1
+#: flowing.plugins.cron.models.CronFireContext.fired_at:1 of
+msgid "实际交付时刻（系统本地 naive）。"
+msgstr "The actual delivery time (system-local naive)."
+
+#: flowing.plugins.cron.CronFireContext.coalesced_count:1
+#: flowing.plugins.cron.models.CronFireContext.coalesced_count:1 of
+msgid "区间内理想触发次数（含本次），``>= 1``。"
+msgstr "Number of ideal firings in the interval (including this one), ``>= 1``."
+
+#: flowing.plugins.cron.CronFireContext.last_fired_at:1
+#: flowing.plugins.cron.models.CronFireContext.last_fired_at:1 of
+msgid "上次成功交付时刻（交付前游标）；``None`` = 从未交付。"
+msgstr "Time of the last successful delivery (the pre-delivery cursor); ``None`` = never delivered."
+
+#: flowing.plugins.cron.CronFireContext.shortcut:1
+#: flowing.plugins.cron.models.CronFireContext.shortcut:1 of
+msgid "跳过标记（初值 ``None``）。任一 handler 置 ``True`` 即跳过本次 推送（不推进游标，miss 继续累积）。"
+msgstr "Skip flag (initial value ``None``). Any handler setting it to ``True`` skips this push (the cursor does not advance; misses keep accumulating)."
+
+#: flowing.plugins.cron.jobs.schedule:1 of
+msgid ""
+"为 Agent 注册一条定时任务，返回 ``job_id``（详见 "
+":meth:`_CronRuntime.schedule`——校验与落盘语义都在该处）。"
+msgstr ""
+"Register a cron job for an Agent and return the ``job_id`` (see "
+":meth:`_CronRuntime.schedule` for details — validation and persistence semantics live there)."
+
+#: ../../api/flowing.plugins.cron.rst
+msgid "抛出"
+msgstr "Raises"
+
+#: flowing.plugins.cron.jobs.schedule:4 of
+msgid "agent 未 ``use_cron``、content 为空、cron 非法、 占位符格式非法或 job_id 冲突时。"
+msgstr "When the agent has not called ``use_cron``, content is empty, the cron is invalid, placeholder formats are illegal, or the job_id conflicts."
+
+#: flowing.plugins.cron.jobs.unschedule:1 of
+msgid "取消 Agent 的一条任务（不存在返回 ``False``）。"
+msgstr "Cancel one of the Agent's jobs (returns ``False`` if it does not exist)."
+
+#: flowing.plugins.cron.jobs.jobs:3 flowing.plugins.cron.jobs.unschedule:3 of
+msgid "agent 未 ``use_cron`` 时。"
+msgstr "When the agent has not called ``use_cron``."
+
+#: flowing.plugins.cron.jobs.jobs:1 of
+msgid "Agent 的任务只读快照（``list[CronJob]``）。"
+msgstr "A read-only snapshot of the Agent's jobs (``list[CronJob]``)."
+
+#: ../../api/flowing.plugins.cron.rst:10
+msgid "Submodules"
+msgstr "Submodules"
+
+#: ../../api/flowing.plugins.cron.rst:13
+msgid "flowing.plugins.cron.cron module"
+msgstr "flowing.plugins.cron.cron module"
+
+#: flowing.plugins.cron.cron:1 of
+msgid "``flowing.plugins.cron`` —— 插件主模块（CronPlugin / use_cron）。"
+msgstr "``flowing.plugins.cron`` —— the plugin's main module (CronPlugin / use_cron)."
+
+#: flowing.plugins.cron.cron:5 of
+msgid "定时扩展的启用模型是双层解耦的："
+msgstr "The enablement model of the cron extension is decoupled into two layers:"
+
+#: flowing.plugins.cron.cron:7 of
+msgid ""
+"``runtime.install(CronPlugin())`` 只做一件事：向全局注册表注册两件 LLM 工具（``schedule-"
+"cron`` / ``manage-cron``）。不 provide 任何注入键、 不创建任何 Runtime 级服务——任务随 Agent "
+"走，不存在中央调度器；"
+msgstr ""
+"``runtime.install(CronPlugin())`` does exactly one thing: registers the two LLM tools (``schedule-"
+"cron`` / ``manage-cron``) into the global registry. It does not provide any inject keys and creates no "
+"Runtime-level service — jobs travel with the Agent; there is no central scheduler;"
+
+#: flowing.plugins.cron.cron:10 of
+msgid ""
+"``use_cron(agent)`` 在 Agent 的 ``setup()`` 中调用，为该实例登记 ``cron_jobs`` 状态键、声明"
+" ``on_cron_trigger`` 钩子点、建立任务运行时 并挂生命周期 handler。**不依赖** ``CronPlugin`` "
+"是否安装：不装插件时 Agent 仍可编程使用模块 API（``schedule`` / ``unschedule`` / ``jobs``）， "
+"只是 LLM 没有工具入口。"
+msgstr ""
+"``use_cron(agent)`` is called in the Agent's ``setup()``: it registers the ``cron_jobs`` state key for "
+"that instance, declares the ``on_cron_trigger`` hook point, builds the job runtime, and attaches lifecycle "
+"handlers. It does **not depend** on whether ``CronPlugin`` is installed: without the plugin the Agent can "
+"still use the module API programmatically (``schedule`` / ``unschedule`` / ``jobs``); the LLM simply has no "
+"tool entry point."
+
+#: flowing.plugins.cron.cron:16 of
+msgid ""
+"任务注册不在 ``use_cron`` 内：声明式注册写在应用层的 ``after_create`` handler 里（只跑一次），LLM "
+"路径经 ``add_tool(\"schedule-cron\")`` 暴露。"
+msgstr ""
+"Job registration does not live inside ``use_cron``: declarative registration is written in the application "
+"layer's ``after_create`` handler (runs only once); the LLM path is exposed via ``add_tool(\"schedule-cron\")``."
+
+#: flowing.plugins.cron.cron:20 of
+msgid "注册面清单"
+msgstr "Registration Surface"
+
+#: flowing.plugins.cron.cron:21 of
+msgid ""
+"状态键：``cron_jobs``（``agent.state.register(\"cron_jobs\", [])``—— "
+"缺省即写，此后键恒存在，写透到该 Agent 的 ``state.jsonl``）。"
+msgstr ""
+"State key: ``cron_jobs`` (``agent.state.register(\"cron_jobs\", [])`` — writes the default on "
+"registration; the key always exists thereafter and is written through to the Agent's ``state.jsonl``)."
+
+#: flowing.plugins.cron.cron:23 of
+msgid ""
+"钩子点：``on_cron_trigger``（``by=\"cron\"``，``match_on=\"source\"``， 由 "
+"``use_cron`` 声明、由交付例程在使用处 dispatch——谁声明谁 dispatch）。"
+msgstr ""
+"Hook point: ``on_cron_trigger`` (``by=\"cron\"``, ``match_on=\"source\"``; declared by ``use_cron`` "
+"and dispatched by the delivery routine at the point of use — whoever declares it dispatches it)."
+
+#: flowing.plugins.cron.cron:26 of
+msgid ""
+"挂载的钩子：``after_recover``（by=\"cron\"：恢复补发 + 重建定时器）、 "
+"``before_destroy``（by=\"cron\"：取消全部定时器句柄）。"
+msgstr ""
+"Attached hooks: ``after_recover`` (by=\"cron\": recovery re-delivery + rebuild timers), "
+"``before_destroy`` (by=\"cron\": cancel all timer handles)."
+
+#: flowing.plugins.cron.cron:28 of
+msgid ""
+"未启用的 Agent（未调 ``use_cron``）：无钩子点、无运行时槽、无定时器、 ``state.jsonl`` 无 cron "
+"键；对其调模块 API 抛 ``ValueError``。"
+msgstr ""
+"An Agent that has not enabled cron (never called ``use_cron``): no hook point, no runtime slot, no timers, "
+"and no cron key in ``state.jsonl``; calling the module API on it raises ``ValueError``."
+
+#: flowing.plugins.cron.cron:32 of
+msgid "使用示例"
+msgstr "Examples"
+
+#: flowing.plugins.cron.cron:54 of
+msgid ""
+":mod:`flowing.plugins.cron.jobs`（运行时与模块 API）、 "
+":mod:`flowing.plugins.cron.models`（数据对象）、 "
+":mod:`flowing.plugins.cron.tools`（LLM 工具）"
+msgstr ""
+":mod:`flowing.plugins.cron.jobs` (job runtime and module API), "
+":mod:`flowing.plugins.cron.models` (data objects), "
+":mod:`flowing.plugins.cron.tools` (LLM tools)"
+
+#: ../../api/flowing.plugins.cron.rst:21
+msgid "flowing.plugins.cron.jobs module"
+msgstr "flowing.plugins.cron.jobs module"
+
+#: flowing.plugins.cron.jobs:1 of
+msgid "``flowing.plugins.cron.jobs`` —— 任务运行时与模块 API。"
+msgstr "``flowing.plugins.cron.jobs`` —— the job runtime and module API."
+
+#: flowing.plugins.cron.jobs:3 of
+msgid ""
+"本模块承载定时扩展的逐智能体运行时：croniter 解析与合并计数、 ``{{current_time}}`` 机械替换、唯一补发模板、每 "
+"Agent 的定时器句柄容器， 以及到点/恢复补发共用的统一交付例程。公开的模块 API（ :func:`schedule` / "
+":func:`unschedule` / :func:`jobs`）以 ``agent`` 为 首个参数，操作该 Agent "
+"的状态总表（``cron_jobs`` 键）。"
+msgstr ""
+"This module hosts the per-agent runtime of the cron extension: croniter parsing and coalescing counts, "
+"mechanical ``{{current_time}}`` substitution, the single re-delivery template, the per-Agent timer-handle "
+"container, and the unified delivery routine shared by on-time firing and recovery re-delivery. The public "
+"module API (:func:`schedule` / :func:`unschedule` / :func:`jobs`) takes ``agent`` as its first parameter "
+"and operates on that Agent's master state list (the ``cron_jobs`` key)."
+
+#: flowing.plugins.cron.jobs:10 of
+msgid "持久化模型（委托总表）"
+msgstr "Persistence Model (Delegated to the Master List)"
+
+#: flowing.plugins.cron.jobs:11 of
+msgid ""
+"任务的唯一真相是 ``agent.state.cron_jobs``（``use_cron`` 登记、缺省即 "
+"写，此后键恒存在）。本模块**不留数据镜像**：每次变更 = 「读总表 → 改 → 二次赋值（写透）」；交付例程含 await（钩子 "
+"dispatch、消息入队）， 其写回步骤在 await 后**重新读当前总表、只按 id 替换/移除自己那条**， "
+"并发到点的多个任务互不覆盖游标。"
+msgstr ""
+"The single source of truth for jobs is ``agent.state.cron_jobs`` (registered by ``use_cron`` with the "
+"default written immediately; the key always exists thereafter). This module keeps **no data mirror**: every "
+"change is \"read the master list, modify, reassign (write through)\"; the delivery routine contains awaits "
+"(hook dispatch, message enqueue), and its write-back step **re-reads the current master list after the "
+"awaits and replaces/removes only its own entry by id**, so multiple jobs coming due concurrently never "
+"overwrite each other's cursors."
+
+#: flowing.plugins.cron.jobs:18 of
+msgid "时间与占位符"
+msgstr "Time and Placeholders"
+
+#: flowing.plugins.cron.jobs:19 of
+msgid ""
+"全模块唯一时间入口 :func:`_now` = ``datetime.now()``（系统本地 naive， 不做时区归一化）；cron "
+"表达式按本地墙钟解释。"
+msgstr ""
+"The module's single time entry point :func:`_now` = ``datetime.now()`` (system-local naive, no timezone "
+"normalization); cron expressions are interpreted against the local wall clock."
+
+#: flowing.plugins.cron.jobs:21 of
+msgid ""
+"消息文本占位符：``{{current_time}}``（默认格式）与 ``{{current_time:<strftime>}}``；组装时对 "
+"content 先做一次机械正则 替换，再决定裸发或套补发模板。非法格式在注册期（:func:`schedule`） 以探针渲染报 "
+"``ValueError``，不在触发期爆雷。"
+msgstr ""
+"Message-text placeholders: ``{{current_time}}`` (default format) and ``{{current_time:<strftime>}}``; "
+"during assembly the content gets one mechanical regex substitution first, then the routine decides between "
+"a plain send and wrapping it in the re-delivery template. Illegal formats are reported as ``ValueError`` at "
+"registration time (:func:`schedule`) via a probe render, so they never blow up at trigger time."
+
+#: flowing.plugins.cron.jobs:26 of
+msgid ""
+":mod:`flowing.plugins.cron`（扩展整体契约）、 "
+":mod:`flowing.plugins.cron.models`（数据对象）、 "
+":mod:`flowing.plugins.cron.cron`（插件与 ``use_cron``）"
+msgstr ""
+":mod:`flowing.plugins.cron` (the extension's overall contract), "
+":mod:`flowing.plugins.cron.models` (data objects), "
+":mod:`flowing.plugins.cron.cron` (plugin and ``use_cron``)"
+
+#: flowing.plugins.cron.jobs.MISSED_NOTICE:1 of
+msgid "唯一补发模板（模块常量，无注入面）：错过多次（``coalesced_count >= 2``） 时渲染的完整消息，自含内容。"
+msgstr "The single re-delivery template (a module constant, no injection surface): the complete message rendered when multiple firings were missed (``coalesced_count >= 2``); self-contained content."
+
+#: flowing.plugins.cron.jobs.MISSED_NOTICE:4 of
+msgid ""
+"允许的 token（渲染器按固定顺序 ``str.replace``，不用 ``str.format``—— content 内可含任意花括号与 "
+"``{{current_time}}`` 占位符，不受转义影响）："
+msgstr ""
+"Allowed tokens (the renderer applies ``str.replace`` in a fixed order instead of ``str.format`` — content "
+"may contain arbitrary braces and ``{{current_time}}`` placeholders, unaffected by escaping):"
+
+#: flowing.plugins.cron.jobs.MISSED_NOTICE:7 of
+#, python-brace-format
+msgid "``{count}`` —— 错过次数（十进制）"
+msgstr "``{count}`` —— number of misses (decimal)"
+
+#: flowing.plugins.cron.jobs.MISSED_NOTICE:8 of
+#, python-brace-format
+msgid "``{cron}`` —— 任务 cron 表达式原文"
+msgstr "``{cron}`` —— the job's cron expression, verbatim"
+
+#: flowing.plugins.cron.jobs.MISSED_NOTICE:9 of
+#, python-brace-format, python-format
+msgid "``{last_fired_at}`` —— 上次成功交付时刻（本地 ``%Y-%m-%d %H:%M``； 从未交付渲染「从未交付」）"
+msgstr "``{last_fired_at}`` —— time of the last successful delivery (local ``%Y-%m-%d %H:%M``; renders as \"never delivered\" if never delivered)"
+
+#: flowing.plugins.cron.jobs.MISSED_NOTICE:11 of
+#, python-brace-format
+msgid "``{content}`` —— 本次推送内容（已做 ``{{current_time}}`` 替换）"
+msgstr "``{content}`` —— the content pushed this time (``{{current_time}}`` already substituted)"
+
+#: flowing.plugins.cron.jobs.MISSED_NOTICE:13 of
+msgid "模板不提单一应触发时刻：多次错过没有「某一个本应触发时刻」。"
+msgstr "The template does not mention a single expected firing time: with multiple misses there is no \"one time it should have fired\"."
+
+#: flowing.plugins.cron.jobs.substitute_current_time:1 of
+msgid "把文本内全部 ``{{current_time}}`` 占位符机械替换为 ``now`` 的格式化值。"
+msgstr "Mechanically replace all ``{{current_time}}`` placeholders in the text with the formatted value of ``now``."
+
+#: flowing.plugins.cron.jobs.substitute_current_time:3 of
+msgid ""
+"纯正则替换、无 Parsable/Jinja。格式串非法时 ``strftime`` 抛 "
+"``ValueError``（注册期探针已挡第一道，触发期不再出现）。"
+msgstr ""
+"Pure regex substitution, no Parsable/Jinja. An illegal format string makes ``strftime`` raise "
+"``ValueError`` (the registration-time probe is the first line of defense; it no longer occurs at trigger time)."
+
+#: flowing.plugins.cron.jobs.validate_placeholders:1 of
+msgid "注册期探针：content 内全部占位符格式做指令集白名单校验。"
+msgstr "Registration-time probe: validates all placeholder formats in the content against an instruction whitelist."
+
+#: flowing.plugins.cron.jobs.validate_placeholders:3 of
+msgid ""
+"格式含白名单外指令（或孤立 ``%``）→ ``ValueError``（配置错误在注册 边界暴露；``strftime`` "
+"本身对未知指令不报错，故须显式校验）。"
+msgstr ""
+"A format containing instructions outside the whitelist (or a lone ``%``) → ``ValueError`` (configuration "
+"errors surface at the registration boundary; ``strftime`` itself does not error on unknown instructions, so "
+"explicit validation is required)."
+
+#: ../../api/flowing.plugins.cron.rst:29
+msgid "flowing.plugins.cron.models module"
+msgstr "flowing.plugins.cron.models module"
+
+#: flowing.plugins.cron.models:1 of
+msgid "``flowing.plugins.cron.models`` —— 定时扩展的数据对象。"
+msgstr "``flowing.plugins.cron.models`` —— the data objects of the cron extension."
+
+#: flowing.plugins.cron.models:3 of
+msgid ""
+"本模块定义两个公开数据对象：:class:`CronJob`（一条定时任务，逐智能体 携带的持久化单元）与 "
+":class:`CronFireContext`（``on_cron_trigger`` 钩子点的 value——一次即将交付的触发视图）。"
+msgstr ""
+"This module defines two public data objects: :class:`CronJob` (a single cron job, the persistence unit "
+"carried per agent) and :class:`CronFireContext` (the value of the ``on_cron_trigger`` hook point — a view "
+"of one imminent delivery)."
+
+#: flowing.plugins.cron.models:7 of
+msgid ""
+":mod:`flowing.plugins.cron`（扩展的整体契约）、 "
+":mod:`flowing.plugins.cron.jobs`（任务运行时与模块 API）、 "
+":mod:`flowing.plugins.cron.cron`（插件与 ``use_cron``）"
+msgstr ""
+":mod:`flowing.plugins.cron` (the extension's overall contract), "
+":mod:`flowing.plugins.cron.jobs` (job runtime and module API), "
+":mod:`flowing.plugins.cron.cron` (plugin and ``use_cron``)"
+
+#: ../../api/flowing.plugins.cron.rst:37
+msgid "flowing.plugins.cron.tools module"
+msgstr "flowing.plugins.cron.tools module"
+
+#: flowing.plugins.cron.tools:1 of
+msgid "``flowing.plugins.cron.tools`` —— 定时扩展的 LLM 工具。"
+msgstr "``flowing.plugins.cron.tools`` —— the LLM tools of the cron extension."
+
+#: flowing.plugins.cron.tools:3 of
+msgid ""
+"本模块定义两件全局工具：:class:`ScheduleCronTool`（``schedule-cron``， 为调用方注册一条定时消息任务）与"
+" :class:`ManageCronTool` （``manage-cron``，查询 / 取消）。由 "
+"``CronPlugin.install()`` 注册进 全局工具注册表；任何 Agent 可按需 ``add_tool(...)`` 暴露给 "
+"LLM。两件 工具的目标都固定为调用方（``caller``），LLM 不能为其他 Agent 操作任务。"
+msgstr ""
+"This module defines two global tools: :class:`ScheduleCronTool` (``schedule-cron``, registers a scheduled "
+"message job for the caller) and :class:`ManageCronTool` (``manage-cron``, query / cancel). They are "
+"registered into the global tool registry by ``CronPlugin.install()``; any Agent can expose them to the LLM "
+"on demand via ``add_tool(...)``. Both tools' targets are fixed to the caller (``caller``); the LLM cannot "
+"operate on other Agents' jobs."
+
+#: flowing.plugins.cron.tools:9 of
+msgid ""
+":mod:`flowing.plugins.cron`（扩展整体契约）、 :mod:`flowing.plugins.cron.jobs`（模块 "
+"API 与校验语义）"
+msgstr ""
+":mod:`flowing.plugins.cron` (the extension's overall contract), :mod:`flowing.plugins.cron.jobs` "
+"(module API and validation semantics)"
+
+#: flowing.plugins.cron.tools.ScheduleCronTool:1 of
+msgid "全局工具 ``schedule-cron``——为调用方 Agent 注册一条定时消息任务。"
+msgstr "The global tool ``schedule-cron`` — registers a scheduled message job for the calling Agent."
+
+#: flowing.plugins.cron.tools.ScheduleCronTool:5 of
+msgid ""
+"由 ``CronPlugin.install()`` 注册；任何 Agent 可按需 ``add_tool(\"schedule-"
+"cron\")`` 暴露给 LLM。目标锁定 ``caller`` （经 ``execute()`` 的 ``caller`` "
+"参数由框架注入）。等价于 ``schedule(caller, cron, content, job_id=..., source=..., "
+"recurring=...)`` 并包装收据。校验失败（content 空 / cron 非法 / 占位符格式非法 / job_id 冲突）由 "
+"``Tool.__call__`` 包装为 ``status=\"error\"`` 的 ``ToolResult``（LLM "
+"可见，不触发错误钩子）。"
+msgstr ""
+"Registered by ``CronPlugin.install()``; any Agent can expose it to the LLM on demand via "
+"``add_tool(\"schedule-cron\")``. The target is locked to ``caller`` (injected by the framework through "
+"``execute()``'s ``caller`` parameter). Equivalent to ``schedule(caller, cron, content, job_id=..., "
+"source=..., recurring=...)`` plus a receipt wrapper. Validation failures (empty content / invalid cron / "
+"illegal placeholder formats / job_id conflicts) are wrapped by ``Tool.__call__`` into a ``ToolResult`` "
+"with ``status=\"error\"`` (visible to the LLM; does not trigger error hooks)."
+
+#: flowing.plugins.cron.tools.ScheduleCronTool:15 of
+#, python-brace-format
+msgid ""
+"调用成功返回收据 dict：``{\"job_id\",\"cron\",\"source\",\"recurring\", "
+"\"next_fire\"}``（``next_fire`` 为下一理想点 ISO 8601，本地 naive）。"
+msgstr ""
+"On success returns a receipt dict: ``{\"job_id\",\"cron\",\"source\",\"recurring\", "
+"\"next_fire\"}`` (``next_fire`` is the next ideal firing point in ISO 8601, local naive)."
+
+#: flowing.plugins.cron.tools.ScheduleCronTool:17 of
+msgid ""
+"``source`` 为可选语义标签（``on_cron_trigger`` 钩子 pattern 过滤 与 EVENT "
+"source）；``job_id`` 可选（显式语义化 id 便于钩子按 精确 id 过滤与 manage-cron 取消）。"
+msgstr ""
+"``source`` is an optional semantic label (used for ``on_cron_trigger`` hook pattern filtering and as the "
+"EVENT source); ``job_id`` is optional (an explicit, meaningful id makes it easier for hooks to filter by "
+"exact id and for manage-cron to cancel)."
+
+#: flowing.plugins.cron.tools.ScheduleCronTool:21 of
+msgid ""
+":class:`flowing.tool.Tool`、:class:`ManageCronTool`、 "
+":func:`flowing.plugins.cron.schedule`"
+msgstr ""
+":class:`flowing.tool.Tool`, :class:`ManageCronTool`, "
+":func:`flowing.plugins.cron.schedule`"
+
+#: flowing.plugins.cron.tools.ManageCronTool.definition:1
+#: flowing.plugins.cron.tools.ScheduleCronTool.definition:1 of
+msgid ""
+"默认 LLM 声明。类属性或实例属性（`ScriptTool.__init__` 自动生成）。 Agent 级覆写不修改本对象（见 "
+"`ToolEntry`）。"
+msgstr ""
+"The default LLM declaration. A class attribute or instance attribute (auto-generated by "
+"`ScriptTool.__init__`). Agent-level overrides do not modify this object (see `ToolEntry`)."
+
+#: flowing.plugins.cron.tools.ScheduleCronTool.execute:1 of
+msgid "以 ``caller`` 为目标注册任务，返回收据 dict。"
+msgstr "Register a job targeting ``caller`` and return the receipt dict."
+
+#: flowing.plugins.cron.tools.ScheduleCronTool.execute:3 of
+msgid "五字段 cron 表达式。"
+msgstr "A five-field cron expression."
+
+#: flowing.plugins.cron.tools.ScheduleCronTool.execute:4 of
+msgid "到点推送的消息文本。"
+msgstr "The message text pushed at the due time."
+
+#: flowing.plugins.cron.tools.ScheduleCronTool.execute:5 of
+msgid "语义标签；缺省 ``\"\"``。"
+msgstr "Semantic label; defaults to ``\"\"``."
+
+#: flowing.plugins.cron.tools.ScheduleCronTool.execute:6 of
+msgid "``False`` = 一次性任务。"
+msgstr "``False`` = one-shot job."
+
+#: flowing.plugins.cron.tools.ScheduleCronTool.execute:7 of
+msgid "显式任务 id（可选）。"
+msgstr "Explicit job id (optional)."
+
+#: flowing.plugins.cron.tools.ManageCronTool.execute:5
+#: flowing.plugins.cron.tools.ScheduleCronTool.execute:8 of
+msgid "调用方 Agent（框架注入，LLM 不可见）。"
+msgstr "The calling Agent (injected by the framework, not visible to the LLM)."
+
+#: ../../api/flowing.plugins.cron.rst
+msgid "返回"
+msgstr "Returns"
+
+#: flowing.plugins.cron.tools.ScheduleCronTool.execute:9 of
+#, python-brace-format
+msgid "``{\"job_id\",\"cron\",\"source\",\"recurring\",\"next_fire\"}``。"
+msgstr "``{\"job_id\",\"cron\",\"source\",\"recurring\",\"next_fire\"}``."
+
+#: flowing.plugins.cron.tools.ScheduleCronTool.execute:10 of
+msgid "校验失败（经 ``Tool.__call__`` 包装为 error 结果）。"
+msgstr "On validation failure (wrapped into an error result by ``Tool.__call__``)."
+
+#: flowing.plugins.cron.tools.ManageCronTool:1 of
+msgid "全局工具 ``manage-cron``——查询 / 取消调用方自己的定时任务。"
+msgstr "The global tool ``manage-cron`` — query / cancel the caller's own cron jobs."
+
+#: flowing.plugins.cron.tools.ManageCronTool:5 of
+msgid ""
+"``action=\"list\"`` 列出 caller 的任务，``action=\"cancel\"`` 按 ``job_id`` "
+"取消。目标锁定 caller。校验失败（``cancel`` 缺 ``job_id``）经 ``Tool.__call__`` 包装为 "
+"``status=\"error\"`` 结果。"
+msgstr ""
+"``action=\"list\"`` lists the caller's jobs; ``action=\"cancel\"`` cancels by ``job_id``. The target is "
+"locked to the caller. Validation failures (``cancel`` missing ``job_id``) are wrapped by ``Tool.__call__`` "
+"into a ``status=\"error\"`` result."
+
+#: flowing.plugins.cron.tools.ManageCronTool:11 of
+#, python-brace-format
+msgid "``list`` 返回 ``{\"jobs\": [CronJob dict…]}``（仅 caller 的任务）；"
+msgstr "``list`` returns ``{\"jobs\": [CronJob dict…]}`` (only the caller's jobs);"
+
+#: flowing.plugins.cron.tools.ManageCronTool:12 of
+#, python-brace-format
+msgid ""
+"``cancel`` 返回 ``{\"cancelled\": bool}``（不存在返回 ``False``， 与 "
+":func:`flowing.plugins.cron.unschedule` 语义一致）。"
+msgstr ""
+"``cancel`` returns ``{\"cancelled\": bool}`` (``False`` if it does not exist, consistent with "
+":func:`flowing.plugins.cron.unschedule` semantics)."
+
+#: flowing.plugins.cron.tools.ManageCronTool:15 of
+msgid ":class:`ScheduleCronTool`、:func:`flowing.plugins.cron.jobs`"
+msgstr ":class:`ScheduleCronTool`, :func:`flowing.plugins.cron.jobs`"
+
+#: flowing.plugins.cron.tools.ManageCronTool.execute:1 of
+msgid "执行管理动作，返回结果 dict。"
+msgstr "Execute a management action and return the result dict."
+
+#: flowing.plugins.cron.tools.ManageCronTool.execute:3 of
+msgid "``\"list\"`` 列出 / ``\"cancel\"`` 取消。"
+msgstr "``\"list\"`` to list / ``\"cancel\"`` to cancel."
+
+#: flowing.plugins.cron.tools.ManageCronTool.execute:4 of
+msgid "要取消的任务 id（``cancel`` 时必填）。"
+msgstr "The id of the job to cancel (required for ``cancel``)."
+
+#: flowing.plugins.cron.tools.ManageCronTool.execute:6 of
+#, python-brace-format
+msgid "``{\"jobs\": [...]}``（list）或 ``{\"cancelled\": bool}`` （cancel）。"
+msgstr "``{\"jobs\": [...]}`` (list) or ``{\"cancelled\": bool}`` (cancel)."
+
+#: flowing.plugins.cron.tools.ManageCronTool.execute:8 of
+msgid "``cancel`` 未提供 ``job_id`` 时。"
+msgstr "When ``cancel`` is called without ``job_id``."

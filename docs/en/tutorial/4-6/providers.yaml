@@ -1,0 +1,10 @@
+# Provider entries: one entry = one API key identity.
+deepseek:
+  adapter: deepseek
+  base_url: https://api.deepseek.com
+  api_key: "{{env.DEEPSEEK_API_KEY}}"
+# Fault-injection entry: the adapter is registered by @register_provider in demo_control.py.
+flaky:
+  adapter: flaky
+  base_url: https://api.deepseek.com
+  api_key: "{{env.DEEPSEEK_API_KEY}}"

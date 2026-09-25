@@ -1,0 +1,20 @@
+[project]
+name = "beginner-tutorial-en"
+version = "0.0.0"
+description = "Environment root for the multi-agent systems course examples (beginner-tutorial-en)"
+requires-python = ">=3.13"
+dependencies = [
+    "flowing-agent",
+]
+
+[tool.uv.sources]
+flowing-agent = { path = "../../", editable = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+# Keep example test runs self-contained: without this section pytest would
+# ascend to the repository root pyproject.toml and pick up its settings.

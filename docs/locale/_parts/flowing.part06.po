@@ -1,0 +1,2789 @@
+#: flowing.hooks:135 of
+msgid ""
+"唯一可决策的错误钩子：handler 在内部执行退避等待（sleep） / 换模型 / ``abort_turn()`` 等动作并写 "
+"``ctx.can_continue`` （为 ``True`` 则 同一回合内重试）；观察 / 换模型 / 压缩后重试等处置均属 handler"
+" 内部逻辑"
+msgstr ""
+"The only error hook with decision power: the handler internally performs actions such as backoff waiting "
+"(sleep), switching models, and ``abort_turn()``, and writes ``ctx.can_continue`` (if ``True``, retry within "
+"the same turn); dispositions such as observing, switching models, and retrying after compaction are all internal handler logic."
+
+#: flowing.hooks:139 of
+msgid "消息队列 / fork / 取消钩子点"
+msgstr "Message queue / fork / cancel hook points"
+
+#: flowing.hooks:147 of
+msgid "``before_enqueue``"
+msgstr "``before_enqueue``"
+
+#: flowing.hooks:148 of
+msgid "消息入队之前"
+msgstr "Before a message is enqueued"
+
+#: flowing.hooks:150 of
+msgid "可改写消息；``raise Intercepted`` 则拦截入队（队列不变）"
+msgstr "May rewrite the message; ``raise Intercepted`` intercepts the enqueue (queue unchanged)"
+
+#: flowing.hooks:151 of
+msgid "``after_enqueue``"
+msgstr "``after_enqueue``"
+
+#: flowing.hooks:152 of
+msgid "消息入队之后"
+msgstr "After a message is enqueued"
+
+#: flowing.hooks:154 of
+msgid "观察（日志 / 审计）"
+msgstr "Observe (logging / auditing)"
+
+#: flowing.hooks:155 of
+msgid "``before_dequeue``"
+msgstr "``before_dequeue``"
+
+#: flowing.hooks:156 of
+msgid "工作循环出队之前（队列已确认非空）"
+msgstr "Before the work loop dequeues (queue already confirmed non-empty)"
+
+#: flowing.hooks:158 of
+msgid "观察队列"
+msgstr "Observe the queue"
+
+#: flowing.hooks:159 of
+msgid "``after_dequeue``"
+msgstr "``after_dequeue``"
+
+#: flowing.hooks:160 of
+msgid "出队之后、回合开始之前"
+msgstr "After dequeue, before the turn starts"
+
+#: flowing.hooks:161 of
+msgid "``list[Message]``"
+msgstr "``list[Message]``"
+
+#: flowing.hooks:162 of
+msgid "可改写（变换本逻辑 turn 消费的消息列表）"
+msgstr "May rewrite (transform the message list consumed by this logical turn)"
+
+#: flowing.hooks:163 of
+msgid "``before_fork``"
+msgstr "``before_fork``"
+
+#: flowing.hooks:164 of
+msgid "``fork()`` 切换 head 之前"
+msgstr "Before ``fork()`` switches head"
+
+#: flowing.hooks:165 of
+msgid "``str`` （目标消息 id）"
+msgstr "``str`` (target message id)"
+
+#: flowing.hooks:166 of
+msgid "可改写 target；``raise Intercepted`` 阻止切换"
+msgstr "May rewrite target; ``raise Intercepted`` blocks the switch"
+
+#: flowing.hooks:167 of
+msgid "``after_fork``"
+msgstr "``after_fork``"
+
+#: flowing.hooks:168 of
+msgid "``fork()`` 切换 head 之后"
+msgstr "After ``fork()`` switches head"
+
+#: flowing.hooks:169 of
+msgid "``str`` （切换前的原 head 消息 id）"
+msgstr "``str`` (the previous head message id before the switch)"
+
+#: flowing.hooks:170 of
+msgid "纯观察（日志 / 通知 UI 刷新）"
+msgstr "Pure observation (logging / notifying UI refresh)"
+
+#: flowing.hooks:171 of
+msgid "``before_cancel``"
+msgstr "``before_cancel``"
+
+#: flowing.hooks:172 of
+msgid "``cancel()`` / ``stop()`` 置位取消信号之前"
+msgstr "Before ``cancel()`` / ``stop()`` set the cancel signal"
+
+#: flowing.hooks:173 flowing.hooks:177 of
+msgid ":class:`flowing.agent.CancelContext`"
+msgstr ":class:`flowing.agent.CancelContext`"
+
+#: flowing.hooks:174 of
+msgid "``raise Intercepted`` 阻止取消（信号不置位）"
+msgstr "``raise Intercepted`` blocks the cancel (signal not set)"
+
+#: flowing.hooks:175 of
+msgid "``after_cancel``"
+msgstr "``after_cancel``"
+
+#: flowing.hooks:176 of
+msgid "取消信号置位后立即触发"
+msgstr "Fires immediately after the cancel signal is set"
+
+#: flowing.hooks:178 of
+msgid "纯观察（日志 / 通知 / 审计）"
+msgstr "Pure observation (logging / notification / auditing)"
+
+#: flowing.hooks:180 of
+msgid ""
+"扩展声明集（不在预填集内；未启用对应扩展的实例访问这些钩子点抛 "
+":class:`flowing.errors.UnknownHookPointError`）："
+msgstr ""
+"Extension-declared set (not in the pre-filled set; accessing these hook points on an instance without the "
+"corresponding extension installed raises :class:`flowing.errors.UnknownHookPointError`):"
+
+#: flowing.hooks:183 of
+msgid ""
+"``before_skill_load`` / ``after_skill_load``：Skill 扩展声明， "
+"``by=\"skill\"``，``match_on=\"name\"`` （见 :mod:`flowing.plugins.skills`）。"
+msgstr ""
+"``before_skill_load`` / ``after_skill_load``: declared by the Skill extension, "
+"``by=\"skill\"``, ``match_on=\"name\"`` (see :mod:`flowing.plugins.skills`)."
+
+#: flowing.hooks:185 of
+msgid ""
+"``on_signal``：Comm 扩展声明，``by=\"comm\"``，``match_on=\"type\"`` （见 "
+":mod:`flowing.plugins.comm`）。"
+msgstr ""
+"``on_signal``: declared by the Comm extension, ``by=\"comm\"``, ``match_on=\"type\"`` (see "
+":mod:`flowing.plugins.comm`)."
+
+#: flowing.hooks:187 of
+msgid "``on_event``：Comm 扩展声明，``by=\"comm\"``，``match_on=\"topic\"``。"
+msgstr "``on_event``: declared by the Comm extension, ``by=\"comm\"``, ``match_on=\"topic\"``."
+
+#: flowing.hooks:188 of
+msgid ""
+"``on_cron_trigger``：Cron 扩展声明，``by=\"cron\"``，``match_on=\"source\"`` （见 "
+":mod:`flowing.plugins.cron`）。"
+msgstr ""
+"``on_cron_trigger``: declared by the Cron extension, ``by=\"cron\"``, ``match_on=\"source\"`` (see "
+":mod:`flowing.plugins.cron`)."
+
+#: flowing.hooks:190 of
+msgid ""
+"``on_compact``：Compact Composable 声明，``by=\"compact\"`` （见 "
+":mod:`flowing.composables.compact`）。"
+msgstr ""
+"``on_compact``: declared by the Compact composable, ``by=\"compact\"`` (see "
+":mod:`flowing.composables.compact`)."
+
+#: flowing.hooks:192 of
+msgid ""
+"``on_retry``：Retry Composable 声明，``by=\"retry\"`` （见 "
+":mod:`flowing.composables.retry`）。"
+msgstr ""
+"``on_retry``: declared by the Retry composable, ``by=\"retry\"`` (see "
+":mod:`flowing.composables.retry`)."
+
+#: flowing.hooks:197 of
+msgid ""
+"手写 Agent 子类在 ``setup()`` 中注册 handler，或经 :func:`on` 装饰器在类体 中声明（``@on`` "
+"注册发生在 ``__init__`` 阶段、早于 ``setup()``，是注册 创建期钩子的唯一方式）："
+msgstr ""
+"Hand-written Agent subclasses register handlers in ``setup()``, or declare them in the class body via the "
+":func:`on` decorator (``@on`` registration happens during ``__init__``, earlier than ``setup()``, and is the only way to register creation-phase hooks):"
+
+#: flowing.hooks:231 of
+msgid ""
+"``.fya`` 声明式入口等价写法（``$script`` 中的 ``@on`` 在实例 ``__init__`` 阶段注册，早于 "
+"``setup()``）："
+msgstr ""
+"Equivalent ``.fya`` declarative entry (``@on`` in ``$script`` registers during the instance "
+"``__init__`` phase, earlier than ``setup()``):"
+
+#: flowing.hooks:247 of
+msgid "handler 统一签名与三种合法出口："
+msgstr "Unified handler signature and three legal exits:"
+
+#: flowing.hooks:249 of
+msgid ""
+"所有钩子 handler 签名统一为 ``(agent, value) -> value``：``agent`` 是钩子 宿主对象（Agent "
+"专属钩子点上是当前 Agent 实例；Workflow 自带钩子点上是 ``Workflow`` 实例），``value`` "
+"的类型由钩子点决定（见上方全集表）。无 value 的钩子点（如 ``after_create``）handler 只收 ``agent`` "
+"一个参数。"
+msgstr ""
+"All hook handlers share the unified signature ``(agent, value) -> value``: ``agent`` is the hook host object "
+"(the current ``Agent`` instance on Agent-specific hook points; the ``Workflow`` instance on Workflow's own "
+"hook points); the type of ``value`` is determined by the hook point (see the full table above). Hook points without a value (e.g. ``after_create``) take only the ``agent`` parameter."
+
+#: flowing.hooks:253 of
+msgid "出口一：``return value`` （改写后或原样）——结果传给下一个 handler，最终 返回给 dispatch 的调用方。"
+msgstr "Exit one: ``return value`` (rewritten or as-is) — the result is passed to the next handler and finally returned to the dispatch caller."
+
+#: flowing.hooks:255 of
+msgid ""
+"出口二：在 value 上设置 ``shortcut`` 字段后返回——分发链停止，调用方跳过 默认逻辑（如缓存命中时直接采用 handler "
+"提供的工具结果）；对应操作的 ``after_`` 钩子照常触发。"
+msgstr ""
+"Exit two: return after setting the ``shortcut`` field on value — the dispatch chain stops and the caller skips the "
+"default logic (e.g. directly adopting the handler-provided tool result on a cache hit); the corresponding operation's ``after_`` hook fires as usual."
+
+#: flowing.hooks:258 of
+msgid ""
+"出口三：``raise Intercepted``——硬阻断信号，分发链停止、整个操作标记为 无效、对应操作的 ``after_`` "
+"钩子不触发。:class:`flowing.errors.Intercepted` 刻意不是 ``FlowingError`` "
+"的子类，捕获框架错误时不会误捕它。"
+msgstr ""
+"Exit three: ``raise Intercepted`` — a hard-blocking signal: the dispatch chain stops, the whole operation is marked "
+"invalid, and the corresponding operation's ``after_`` hook does not fire. :class:`flowing.errors.Intercepted` is "
+"deliberately not a subclass of ``FlowingError``, so it is not accidentally caught when catching framework errors."
+
+#: flowing.hooks:261 of
+msgid ""
+"携带 value 的钩子点要求每个 handler 返回值：返回 ``None`` 视为编程错误， 抛 "
+":class:`flowing.errors.FlowingError` （消息含钩子点名与 handler 标识）。 无 value "
+"的钩子点不施加该检查。"
+msgstr ""
+"Hook points carrying a value require every handler to return a value: returning ``None`` is treated as a programming "
+"error and raises :class:`flowing.errors.FlowingError` (the message contains the hook point name and the handler identifier). "
+"Hook points without a value are not subject to this check."
+
+#: flowing.hooks:264 of
+msgid ""
+"同步与异步 handler 透明混用：分发器检测到 awaitable 结果就 ``await``。 全部钩子点（含创建 / 销毁 / "
+"恢复管线）均接受同步或异步 handler；注册时 不校验 handler 签名，签名错误在分发时按普通异常上抛。"
+msgstr ""
+"Sync and async handlers mix transparently: the dispatcher ``await``s awaitable results. All hook points (including the "
+"create / destroy / recover pipelines) accept sync or async handlers; handler signatures are not validated at registration — signature errors are raised as ordinary exceptions at dispatch time."
+
+#: flowing.hooks:268 of
+msgid "dispatch 统一算法（:meth:`HookList.dispatch` 是全局唯一的钩子分发实现）："
+msgstr "Unified dispatch algorithm (:meth:`HookList.dispatch` is the globally unique hook dispatch implementation):"
+
+#: flowing.hooks:270 of
+msgid ""
+"按注册顺序遍历活跃条目（``enabled=False`` 的条目跳过），每个条目先按 其 ``pattern`` 过滤（用 "
+"``fnmatch`` 匹配 value 的 ``match_on`` 字段）， 不匹配则跳过、value 原样透传给后续 handler。"
+msgstr ""
+"Iterate active entries in registration order (entries with ``enabled=False`` are skipped); each entry is first filtered by "
+"its ``pattern`` (``fnmatch`` against the value's ``match_on`` field); non-matching entries are skipped and the value passes through unchanged to subsequent handlers."
+
+#: flowing.hooks:273 of
+msgid ""
+"普通异常直接上抛：不捕获、不通知、不继续后续 handler、无任何兜底钩子。 ``Intercepted`` 被捕获后立即重抛（链停止、后续 "
+"handler 不执行），只记 INFO 级日志。"
+msgstr ""
+"Ordinary exceptions propagate directly: not caught, not notified, subsequent handlers not continued, no fallback hook of any kind. "
+"``Intercepted`` is re-raised immediately after being caught (the chain stops and subsequent handlers do not run), with only an INFO-level log."
+
+#: flowing.hooks:276 of
+msgid "没有活跃 handler（或全部被过滤）时原样返回传入的 value。"
+msgstr "When there are no active handlers (or all are filtered out), the incoming value is returned as-is."
+
+#: flowing.hooks:278 of
+msgid "两类钩子语义："
+msgstr "Two kinds of hook semantics:"
+
+#: flowing.hooks:280 of
+msgid "``before_`` / ``after_`` 钩子点：Agent 自身控制流（主动操作）前后的拦截、 加工与通知点。"
+msgstr "``before_`` / ``after_`` hook points: interception, processing, and notification points before and after the Agent's own control flow (active operations)."
+
+#: flowing.hooks:282 of
+msgid ""
+"``on_`` 钩子点：外部触发（被动响应）。命名只描述触发方向，不承诺 handler 能力——各 ``on_`` "
+"钩子点独立定义（``on_provider_error`` 可决策、 ``on_signal`` 可改 "
+"payload、``on_provider_delta`` 纯观察）。不要假设 ``on_`` handler 都只能观察。"
+msgstr ""
+"``on_`` hook points: external triggers (passive responses). The naming only describes the trigger direction and does not promise handler capabilities — "
+"each ``on_`` hook point is defined independently (``on_provider_error`` can decide, ``on_signal`` can rewrite the "
+"payload, ``on_provider_delta`` is pure observation). Do not assume ``on_`` handlers can only observe."
+
+#: flowing.hooks:287 of
+msgid "watcher 通道（``watch``，与钩子点并列的扩展契约）："
+msgstr "Watcher channel (``watch``, an extension contract parallel to hook points):"
+
+#: flowing.hooks:289 of
+msgid ""
+"``self.hooks.watch(name, handler)`` 注册 ``(agent, value)`` 形态的 "
+"watcher；``Agent.watch`` 是 ``(new, old)`` 回调糖。``name`` 按 ``fnmatch`` "
+"pattern 匹配 value（:class:`flowing.agent.FieldUpdate`， 含 ``name`` / ``new``"
+" / ``old`` 字段）的 ``name`` 属性，字面量即精确匹配。"
+msgstr ""
+"``self.hooks.watch(name, handler)`` registers a watcher of the form ``(agent, value)``; ``Agent.watch`` is "
+"``(new, old)`` callback sugar. ``name`` is matched as an ``fnmatch`` pattern against the ``name`` attribute of the value "
+"(:class:`flowing.agent.FieldUpdate`, with ``name`` / ``new`` / ``old`` fields); a literal matches exactly."
+
+#: flowing.hooks:293 of
+msgid ""
+"watcher 以 fire-and-forget 方式触发（``asyncio.ensure_future``，不 await）：赋值语句不等待"
+" watcher 执行，watcher 的执行时序与赋值本身不 保证先后——这是 watcher 与普通钩子的根本区别（其余钩子点都在异步管线 "
+"上被显式 await）。"
+msgstr ""
+"Watchers fire in a fire-and-forget manner (``asyncio.ensure_future``, not awaited): the assignment statement does not wait "
+"for the watcher to run, and the execution order of the watcher relative to the assignment itself is not guaranteed — this is the "
+"fundamental difference between watchers and ordinary hooks (all other hook points are explicitly awaited on the async pipeline)."
+
+#: flowing.hooks:297 of
+msgid ""
+"watcher 是纯观察：修改 ``new`` 无效（赋值已经发生，watcher 的返回值被 忽略）；``raise Intercepted``"
+" 与普通异常同处理——终止本次 watcher 链、 记录日志，不干扰赋值。"
+msgstr ""
+"Watchers are pure observation: modifying ``new`` has no effect (the assignment has already happened and the watcher's return value is "
+"ignored); ``raise Intercepted`` is handled the same as an ordinary exception — it terminates this watcher chain and is logged, without disturbing the assignment."
+
+#: flowing.hooks:300 of
+msgid "无运行中 event loop 时 watcher 静默跳过（赋值照常）。"
+msgstr "When there is no running event loop, watchers are silently skipped (the assignment proceeds normally)."
+
+#: flowing.hooks:301 of
+msgid ""
+"顶层槽位的赋值只能观察、不能拦截（拦截请用 Python 原生的 property setter）；插件托管变量应以插件自有对象为载体（如 "
+"``agent.i18n.locale = \"en\"`` 走该对象自己的 ``__setattr__``）。"
+msgstr ""
+"Assignment to top-level slots can only be observed, not intercepted (use Python's native property setter for interception); plugin-hosted variables should be carried "
+"by the plugin's own object (e.g. ``agent.i18n.locale = \"en\"`` goes through that object's own ``__setattr__``)."
+
+#: flowing.hooks:305 of
+msgid "声明独占、注册开放、谁声明谁 dispatch："
+msgstr "Exclusive declaration, open registration, whoever declares dispatches:"
+
+#: flowing.hooks:307 of
+msgid ""
+"同名钩子点只允许一个声明者（冲突规则见 :meth:`HookRegistry.declare`）； ``by`` 必填——框架核心 "
+"``by=\"core\"``，扩展用自身标识。"
+msgstr ""
+"Only one declarer is allowed per hook point name (see :meth:`HookRegistry.declare` for conflict rules); ``by`` is required — "
+"the framework core uses ``by=\"core\"`` and extensions use their own identifier."
+
+#: flowing.hooks:309 of
+msgid "声明后任何代码都可以向该钩子点挂 handler，无需再声明：声明者是 「所有者」，注册者是「使用者」。"
+msgstr "After declaration, any code may attach handlers to that hook point without further declaration: the declarer is the \"owner\", registrants are \"users\"."
+
+#: flowing.hooks:311 of
+msgid ""
+"框架只在创建 / 恢复 / 销毁管线与 Turn 循环的固定位置 dispatch 核心钩子 点；扩展自行 dispatch "
+"自己声明的钩子点，调用方式与框架内部一致 （``await hooks.<name>.dispatch(agent, value)``）。"
+msgstr ""
+"The framework dispatches core hook points only at fixed positions in the create / recover / destroy pipelines and the Turn loop; extensions "
+"dispatch the hook points they declared themselves, in the same way as the framework internals (``await hooks.<name>.dispatch(agent, value)``)."
+
+#: flowing.hooks:315 of
+msgid "注册时机与外部观察者："
+msgstr "Registration timing and external observers:"
+
+#: flowing.hooks:317 of
+msgid ""
+"注册不限于 ``setup()``：分发在触发时现场读 handler 列表，运行中途挂上 即生效。REPL / HTTP 服务层 / "
+"测试代码与插件走同一个公开注册入口，无 权限分级；外部 handler 与插件 handler 权力相同（挂在决策型钩子点上同样 可以改写 "
+"value 或 ``raise Intercepted``，纯观察用途请挂 ``after_*`` / ``on_*`` 点并原样返回 "
+"value）。"
+msgstr ""
+"Registration is not limited to ``setup()``: dispatch reads the handler list on the spot when triggered, so attaching midway takes effect immediately. The REPL / "
+"HTTP service layer / test code / plugins all use the same public registration entry with no permission tiers; external handlers have the same power as plugin handlers "
+"(attached to a decision-type hook point they may likewise rewrite the value or ``raise Intercepted``; for pure observation, attach to ``after_*`` / ``on_*`` points and return the value as-is)."
+
+#: flowing.hooks:322 of
+msgid ""
+"带自己的 ``by=`` （如 ``by=\"web\"``）可获得整组管理能力 "
+"（``remove_by_owner`` / 启停），不与插件 handler 混淆。"
+msgstr ""
+"Bringing your own ``by=`` (e.g. ``by=\"web\"``) gives you whole-group management capability "
+"(``remove_by_owner`` / enable-disable), without being confused with plugin handlers."
+
+#: flowing.hooks:324 of
+msgid "钩子只能从进程内代码注册：框架没有经 HTTP 挂钩子的端点，需要远程推送 通道的服务层自行在进程内挂钩后转发。"
+msgstr "Hooks can only be registered from in-process code: the framework has no HTTP endpoint for attaching hooks; service layers needing a remote push channel attach hooks in-process and forward themselves."
+
+#: flowing.hooks:326 of
+msgid ""
+"错误不是事件：内部错误以异常上抛（无 ``on_error`` 兜底钩子），唯一可 决策的错误钩子是 "
+"``on_provider_error``；观测后台错误的现成通道是 :mod:`flowing._unstable.logging` （落盘 "
+"logging.jsonl）。"
+msgstr ""
+"Errors are not events: internal errors are raised as exceptions (no ``on_error`` fallback hook); the only error hook with decision power is "
+"``on_provider_error``; the ready-made channel for observing background errors is :mod:`flowing._unstable.logging` (persists to logging.jsonl)."
+
+#: flowing.hooks:330 of
+msgid "``by=`` 惯例与整组管理："
+msgstr "``by=`` convention and whole-group management:"
+
+#: flowing.hooks:332 of
+msgid ""
+"``by`` 是整组管理的锚点：同一来源的 handler 共用同一个 ``by``，可以整组 "
+"停用（``disable_by_owner``）或整组移除（``remove_by_owner``）。"
+msgstr ""
+"``by`` is the anchor of whole-group management: handlers from the same source share the same ``by`` and can be "
+"disabled as a group (``disable_by_owner``) or removed as a group (``remove_by_owner``)."
+
+#: flowing.hooks:334 of
+msgid "注册顺序即执行顺序：同一钩子点上先注册的 handler 先执行；不做去重， 同一 handler 重复注册、每次触发都会执行多次。"
+msgstr "Registration order is execution order: on the same hook point, handlers registered earlier run first; no deduplication — registering the same handler repeatedly executes it multiple times per trigger."
+
+#: flowing.hooks:339 of
+msgid ""
+":class:`flowing.agent.Agent` （``hooks`` 属性、``watch`` 方法） "
+":class:`flowing.agent.TurnContext` （turn 族钩子的 value 类型） "
+":class:`flowing.errors.Intercepted` （handler 的硬阻断信号） "
+":class:`flowing.errors.UnknownHookPointError` / "
+":class:`flowing.errors.DuplicateHookPointError` （钩子点访问与声明错误） "
+":class:`flowing.lists.ManagedList` （分组管理容器抽象） "
+":mod:`flowing.plugins.skills` / :mod:`flowing.plugins.comm` / "
+":mod:`flowing.plugins.cron` （扩展钩子点的声明方） :mod:`flowing.composables.retry` "
+"/ :mod:`flowing.composables.compact` （Composable 钩子点声明方）"
+msgstr ""
+":class:`flowing.agent.Agent` (the ``hooks`` attribute, the ``watch`` method) "
+":class:`flowing.agent.TurnContext` (the value type of the turn-family hooks) "
+":class:`flowing.errors.Intercepted` (the handler's hard-blocking signal) "
+":class:`flowing.errors.UnknownHookPointError` / "
+":class:`flowing.errors.DuplicateHookPointError` (hook point access and declaration errors) "
+":class:`flowing.lists.ManagedList` (the grouped-management container abstraction) "
+":mod:`flowing.plugins.skills` / :mod:`flowing.plugins.comm` / "
+":mod:`flowing.plugins.cron` (declarers of extension hook points) :mod:`flowing.composables.retry` "
+"/ :mod:`flowing.composables.compact` (declarers of composable hook points)"
+
+#: flowing.hooks.HookList:1 of
+msgid "单个钩子点的容器。"
+msgstr "Container for a single hook point."
+
+#: flowing.hooks.HookList:5 of
+msgid ""
+"每个钩子点一个实例，由 :class:`HookRegistry` 持有。提供统一注册入口 （``hook(handler, by=..., "
+"tags=...)``）、``__getitem__`` 三形态索引 与统一分发入口 :meth:`dispatch`；分组管理能力继承自 "
+":class:`ManagedList`。"
+msgstr ""
+"One instance per hook point, held by :class:`HookRegistry`. Provides the unified registration entry "
+"(``hook(handler, by=..., tags=...)``), the three-form ``__getitem__`` indexing, and the unified dispatch entry "
+":meth:`dispatch`; whole-group management capability is inherited from :class:`ManagedList`."
+
+#: flowing.hooks.HookList:10 of
+msgid "注册顺序即执行顺序：同一钩子点上先注册的 handler 先执行。"
+msgstr "Registration order is execution order: on the same hook point, handlers registered earlier run first."
+
+#: flowing.hooks.HookList:25 of
+msgid ""
+"注册入口：``__call__(handler, *, by=None, tags=None) -> HookHandler``， 返回被注册的原"
+" handler，追加到末尾（注册顺序即执行顺序）；``by`` 省略记为 ``None`` （与 "
+":meth:`HookRegistry.declare` 的必填 ``by`` 是 两个层面）。"
+msgstr ""
+"Registration entry: ``__call__(handler, *, by=None, tags=None) -> HookHandler``, returns the registered original "
+"handler, appended to the end (registration order is execution order); an omitted ``by`` is recorded as ``None`` (a different layer "
+"from the required ``by`` of :meth:`HookRegistry.declare`)."
+
+#: flowing.hooks.HookList:29 of
+msgid ""
+"``__getitem__`` 三形态见下；``int`` / ``slice`` 基于含 disabled 的 "
+"完整底层列表做位置索引（用于自省），与 ``__iter__`` / :meth:`dispatch` 的「跳过 disabled」语义互不干扰。"
+msgstr ""
+"``__getitem__`` has three forms, see below; ``int`` / ``slice`` do positional indexing on the full underlying list "
+"including disabled entries (for introspection), which does not interfere with the \"skip disabled\" semantics of ``__iter__`` / :meth:`dispatch`."
+
+#: flowing.hooks.HookList:32 of
+msgid ""
+"构造阶段钩子点（``before_create`` / ``after_create`` / ``before_destroy`` / "
+"``after_destroy`` / ``before_recover`` / "
+"``after_recover``）与运行期钩子点一样接受同步或异步 handler；注册时 不做同步性检查，分发统一处理 awaitable。"
+msgstr ""
+"Construction-phase hook points (``before_create`` / ``after_create`` / ``before_destroy`` / "
+"``after_destroy`` / ``before_recover`` / "
+"``after_recover``) accept sync or async handlers just like runtime hook points; no synchronicity check at registration — dispatch handles awaitables uniformly."
+
+#: flowing.hooks.HookList:39 of
+msgid ""
+":class:`HookRegistry`、:class:`HookEntry`、:class:`PatternRegistrar`、 "
+":class:`ManagedList`"
+msgstr ""
+":class:`HookRegistry`, :class:`HookEntry`, :class:`PatternRegistrar`, "
+":class:`ManagedList`"
+
+#: flowing.hooks.HookList.name:1 of
+msgid "钩子点名（如 ``\"before_tool_call\"``），在所属 ``HookRegistry`` 内唯一。"
+msgstr "Hook point name (e.g. ``\"before_tool_call\"``), unique within its owning ``HookRegistry``."
+
+#: flowing.hooks.HookList.by:1 of
+msgid ""
+"钩子点的声明者标识（框架核心 ``\"core\"``，扩展用自身标识）；必填， 见 :meth:`HookRegistry.declare` "
+"的声明独占规则。"
+msgstr ""
+"The hook point's declarer identifier (``\"core\"`` for the framework core; extensions use their own identifier); required, "
+"see the declaration-exclusivity rule of :meth:`HookRegistry.declare`."
+
+#: flowing.hooks.HookList.match_on:1 of
+msgid ""
+"pattern 过滤时读取 value 的属性名，默认 ``\"name\"``；通信扩展使用 ``\"type\"`` "
+"（``on_signal``）/ ``\"topic\"`` （``on_event``）。"
+msgstr ""
+"The attribute name of the value read during pattern filtering, default ``\"name\"``; the comm extension uses ``\"type\"`` "
+"(``on_signal``) / ``\"topic\"`` (``on_event``)."
+
+#: flowing.hooks.HookList.dispatch:1 of
+msgid "统一分发算法：按注册顺序执行活跃 handler 的改写链。"
+msgstr "Unified dispatch algorithm: execute the rewrite chain of active handlers in registration order."
+
+#: flowing.hooks.HookList.dispatch:5 of
+msgid ""
+"全框架唯一的钩子分发实现。框架在创建 / 恢复 / 销毁管线与 Turn 循环 固定位置 dispatch 核心钩子点；扩展 dispatch "
+"自己声明的钩子点时调用 的也是本方法（谁声明谁 dispatch）。"
+msgstr ""
+"The framework's only hook dispatch implementation. The framework dispatches core hook points at fixed positions in the create / recover / "
+"destroy pipelines and the Turn loop; extensions also call this method when dispatching hook points they declared themselves (whoever declares dispatches)."
+
+#: flowing.hooks.HookList.dispatch:18 of
+msgid ""
+"迭代活跃条目（跳过 ``enabled=False``），逐条执行： ``entry.pattern`` 非空时先 "
+"``fnmatch(getattr(value, self.match_on), entry.pattern)`` 过滤，不匹配则跳过（value"
+" 原样透传）。"
+msgstr ""
+"Iterate active entries (skipping ``enabled=False``) and execute one by one: when ``entry.pattern`` is non-empty, filter first with "
+"``fnmatch(getattr(value, self.match_on), entry.pattern)``; non-matching entries are skipped (value "
+"passes through unchanged)."
+
+#: flowing.hooks.HookList.dispatch:21 of
+msgid ""
+"``result = entry.handler(agent, value)``；检测为 awaitable 则 ``await``——同步 / "
+"异步 handler 透明混用。"
+msgstr ""
+"``result = entry.handler(agent, value)``; if the result is awaitable, ``await`` it — sync / "
+"async handlers mix transparently."
+
+#: flowing.hooks.HookList.dispatch:23 of
+msgid ""
+"首参 ``agent`` 是钩子宿主对象：Agent 专属钩子点上是 ``Agent`` 实例；Workflow 自己的 ``hooks`` "
+"（``before_tool_call`` / ``after_tool_call``）上是 ``Workflow`` 实例。dispatch "
+"自身只透传、 从不访问其属性；需要 Agent 能力的 handler 自行 ``isinstance`` 判断。"
+msgstr ""
+"The first argument ``agent`` is the hook host object: an ``Agent`` instance on Agent-specific hook points; a ``Workflow`` instance on "
+"Workflow's own ``hooks`` (``before_tool_call`` / ``after_tool_call``). dispatch "
+"itself only passes it through and never accesses its attributes; handlers needing Agent capabilities do their own ``isinstance`` check."
+
+#: flowing.hooks.HookList.dispatch:28 of
+msgid ""
+"携带 value 的钩子点（``value`` 参数非 ``None`` 调入）要求每个 handler 返回值：handler 返回 "
+"``None`` 视为编程错误，抛 :class:`flowing.errors.FlowingError` （消息含钩子点名与 handler "
+"标识）。无 value 的钩子点（``after_create`` 等）不施加该检查。"
+msgstr ""
+"Hook points carrying a value (invoked with a non-``None`` ``value`` parameter) require every handler to return a value: a handler returning "
+"``None`` is treated as a programming error and raises :class:`flowing.errors.FlowingError` (the message contains the hook point name and the handler "
+"identifier). Hook points without a value (``after_create`` etc.) are not subject to this check."
+
+#: flowing.hooks.HookList.dispatch:32 of
+msgid ""
+"``value = result`` 后检查 ``getattr(value, \"shortcut\", None)``： 非 ``None``"
+" 立即停止链并返回该 value（协商短路；对应操作的 ``after_`` 钩子由调用方保证照常触发）。"
+msgstr ""
+"After ``value = result``, check ``getattr(value, \"shortcut\", None)``: if non-``None``, "
+"stop the chain immediately and return that value (negotiated short-circuit; the caller guarantees the corresponding operation's ``after_`` hook still fires)."
+
+#: flowing.hooks.HookList.dispatch:35 of
+msgid ""
+":class:`flowing.errors.Intercepted`：捕获后立即重抛——链停止、 后续 handler "
+"不执行、不当作错误（对应操作的 ``after_`` 钩子不 触发）。"
+msgstr ""
+":class:`flowing.errors.Intercepted`: re-raised immediately after being caught — the chain stops, subsequent "
+"handlers do not run, and it is not treated as an error (the corresponding operation's ``after_`` hook does "
+"not fire)."
+
+#: flowing.hooks.HookList.dispatch:38 of
+msgid "普通异常直接上抛：不捕获、不通知、不继续后续 handler、无任何兜底 钩子。"
+msgstr "Ordinary exceptions propagate directly: not caught, not notified, subsequent handlers not continued, no fallback hook of any kind."
+
+#: flowing.hooks.HookList.dispatch:40 of
+msgid "无 handler（或全部 disabled / 被 pattern 过滤）时原样返回 ``value``。"
+msgstr "When there are no handlers (or all are disabled / filtered by pattern), ``value`` is returned as-is."
+
+#: flowing.hooks.HookList.dispatch:45 of
+msgid ":class:`flowing.errors.Intercepted`、 :meth:`ManagedList.__iter__`"
+msgstr ":class:`flowing.errors.Intercepted`, :meth:`ManagedList.__iter__`"
+
+#: flowing.hooks.HookEntry:1 of
+msgid "单个 handler 条目：注册元信息 + 过滤条件 + 开关。"
+msgstr "A single handler entry: registration metadata + filter condition + switch."
+
+#: flowing.hooks.HookEntry:5 of
+msgid ""
+":class:`HookList` 的元素类型，满足 :class:`Togglable` 契约。由 "
+":meth:`HookList.__call__` / :meth:`PatternRegistrar.__call__` 构造； "
+"用户通常不直接实例化，而是通过注册与分组管理 API 间接持有。"
+msgstr ""
+"The element type of :class:`HookList`, satisfying the :class:`Togglable` contract. Constructed by "
+":meth:`HookList.__call__` / :meth:`PatternRegistrar.__call__`; "
+"users usually do not instantiate it directly, but hold it indirectly through the registration and group-management APIs."
+
+#: flowing.hooks.HookEntry:9 of
+msgid ""
+"pattern 过滤条件与 handler 绑定为一条记录，使 disable / enable / remove 等分组操作对「带 "
+"pattern 的 handler」同样生效。"
+msgstr ""
+"The pattern filter condition and the handler are bound into one record, so that group operations such as disable / enable / remove "
+"also apply to \"pattern-carrying handlers\"."
+
+#: flowing.hooks.HookEntry:14 of
+msgid ""
+"``pattern`` 非 ``None`` 时，分发先按 ``fnmatch(getattr(value, "
+"hook_list.match_on), pattern)`` 过滤， 不匹配则跳过本条目（value 原样透传给后续 handler）。"
+msgstr ""
+"When ``pattern`` is non-``None``, dispatch first filters with ``fnmatch(getattr(value, "
+"hook_list.match_on), pattern)``; non-matching entries are skipped (value passes through unchanged to subsequent handlers)."
+
+#: flowing.hooks.HookEntry:17 of
+msgid ""
+"``enabled=False`` 的条目仍保留在容器中（注册顺序不变），但不出现在 迭代与分发中；之后调用 "
+"``enable_by_owner`` / ``enable_by_tag`` 可恢复。"
+msgstr ""
+"Entries with ``enabled=False`` remain in the container (registration order unchanged) but do not appear in iteration or dispatch; "
+"they can later be restored via ``enable_by_owner`` / ``enable_by_tag``."
+
+#: flowing.hooks.HookEntry:23 of
+msgid ":class:`HookList`、:class:`PatternRegistrar`、:class:`Togglable`"
+msgstr ":class:`HookList`, :class:`PatternRegistrar`, :class:`Togglable`"
+
+#: flowing.hooks.HookEntry.handler:1 of
+msgid "钩子 handler，签名 ``(agent, value) -> value`` （同步或返回 awaitable）。"
+msgstr "The hook handler, signature ``(agent, value) -> value`` (sync or returning an awaitable)."
+
+#: flowing.hooks.HookEntry.by:1 of
+msgid ""
+"来源 / 所有者单一标识（如 ``\"retry\"``、``\"guardrail\"``）；注册时省略 则记为 "
+"``None``。与钩子点声明的 ``by`` （必填）是两个层面的字段。"
+msgstr ""
+"Single identifier of the source / owner (e.g. ``\"retry\"``, ``\"guardrail\"``); recorded as ``None`` if omitted at registration. "
+"This is a different layer from the hook point declaration's ``by`` (required)."
+
+#: flowing.hooks.HookEntry.tags:1 of
+msgid "任意标签列表，供批量分组管理。"
+msgstr "Arbitrary tag list, for batch group management."
+
+#: flowing.hooks.HookEntry.pattern:1 of
+msgid "fnmatch 过滤模式；仅经 ``hook[\"pattern\"](handler)`` 注册时非 ``None``。"
+msgstr "fnmatch filter pattern; non-``None`` only when registered via ``hook[\"pattern\"](handler)``."
+
+#: flowing.hooks.HookEntry.enabled:1 of
+msgid "启用标记；``ManagedList`` 的 disable/enable 直接翻转本字段。"
+msgstr "Enable flag; ``ManagedList``'s disable/enable flip this field directly."
+
+#: collections.abc.Callable:1 of
+msgid ""
+"handler 统一签名 ``(agent, value) -> value``；同步返回或返回 awaitable 均可， 分发器检测到 "
+"awaitable 结果就 ``await`` （含构造阶段钩子点）。 此处用 ``Callable[..., Any]`` 承载是因为各钩子点 "
+"value 类型不同； 精确契约见模块 docstring 的「核心钩子点全集」。"
+msgstr ""
+"Unified handler signature ``(agent, value) -> value``; returning synchronously or returning an awaitable both work — the dispatcher "
+"``await``s awaitable results (including construction-phase hook points). ``Callable[..., Any]`` is used here because each hook point "
+"has a different value type; the precise contract is in the module docstring's \"Complete Set of Core Hook Points\"."
+
+#: flowing.lists.Togglable:1 of
+msgid "``ManagedList`` 的元素契约：条目具备 ``enabled`` / ``by`` / ``tags`` 三个属性即可被容器管理。"
+msgstr "``ManagedList``'s element contract: an entry can be managed by the container as long as it has the three attributes ``enabled`` / ``by`` / ``tags``."
+
+#: flowing.lists.Togglable:5 of
+msgid ""
+":class:`ManagedList` 只感知条目的这三个属性，其余字段一概不关心。 "
+"本协议是结构契约：条目类无需显式继承本协议，具备三个属性即满足； 协议未加 ``@runtime_checkable``，不要用 "
+"``isinstance`` 检查条目 是否满足契约（会抛 ``TypeError``）。"
+msgstr ""
+":class:`ManagedList` only perceives these three attributes of an entry and does not care about any other fields. "
+"This protocol is a structural contract: entry classes need not explicitly inherit this protocol — having the three attributes suffices; the protocol is not "
+"``@runtime_checkable``, so do not use ``isinstance`` to check whether an entry satisfies the contract (it raises ``TypeError``)."
+
+#: flowing.lists.Togglable:12 of
+msgid "``enabled``：启用标记。容器对它的修改是原地赋值（停用置 ``False``、恢复置 ``True``），条目本身不移动。"
+msgstr "``enabled``: enable flag. The container's modification of it is in-place assignment (set to ``False`` to disable, ``True`` to restore); the entry itself does not move."
+
+#: flowing.lists.Togglable:14 of
+msgid "``by``：来源或所有者标识。允许 ``None``；按来源的批量操作以 精确相等匹配，``None`` 与 ``None`` 也相等。"
+msgstr "``by``: source or owner identifier. ``None`` is allowed; batch operations by source match by exact equality, and ``None`` equals ``None``."
+
+#: flowing.lists.Togglable:16 of
+msgid "``tags``：标签列表。按标签的批量操作以「列表中任一元素与给定 标签相等」匹配。"
+msgstr "``tags``: tag list. Batch operations by tag match on \"any element of the list equals the given tag\"."
+
+#: flowing.lists.Togglable:18 of
+msgid ""
+"注意对照：``flowing.tool.ToolEntry`` 与 ``flowing.plugins.skills.SkillEntry`` "
+"只有 ``enabled`` 一个 同名字段（Agent 级绑定层条目，存于按别名索引的 dict，不进 "
+"``ManagedList``）——它们**不满足**本协议，不享有按 by/tags 的整组管理。"
+msgstr ""
+"Note the contrast: ``flowing.tool.ToolEntry`` and ``flowing.plugins.skills.SkillEntry`` have only one same-named field, ``enabled`` "
+"(Agent-level binding-layer entries, stored in an alias-indexed dict, not in a "
+"``ManagedList``) — they do **not** satisfy this protocol and do not enjoy by/tags whole-group management."
+
+#: flowing.lists.Togglable:24 of
+msgid ""
+":class:`ManagedList`、:class:`flowing.hooks.HookEntry`、 "
+":class:`flowing.context.PromptBlock`"
+msgstr ""
+":class:`ManagedList`, :class:`flowing.hooks.HookEntry`, "
+":class:`flowing.context.PromptBlock`"
+
+#: flowing.hooks.Togglable.enabled:1 flowing.lists.Togglable.enabled:1 of
+msgid ""
+"启用标记。``True`` 表示启用：条目参与迭代，进而参与钩子分发、 上下文组装等消费路径。``False`` 表示停用：条目被迭代跳过，但仍 "
+"保留在容器中、注册顺序不变，调用对应的 ``enable_*`` 方法可恢复。"
+msgstr ""
+"Enable flag. ``True`` means enabled: the entry participates in iteration, and thereby in hook dispatch, context assembly, and other consumption "
+"paths. ``False`` means disabled: the entry is skipped during iteration but remains in the container with registration order unchanged, and can be restored via the corresponding ``enable_*`` method."
+
+#: flowing.hooks.Togglable.by:1 flowing.lists.Togglable.by:1 of
+msgid ""
+"来源或所有者标识，供 ``disable_by_owner`` / ``enable_by_owner`` / "
+"``remove_by_owner`` 按来源批量操作时精确匹配。允许 ``None``：按 ``item.by == owner`` 判断相等时"
+" ``None`` 与 ``None`` 也相等，因此 ``disable_by_owner(None)`` "
+"一类调用能命中注册时未提供来源的条目。"
+msgstr ""
+"Source or owner identifier, matched exactly by ``disable_by_owner`` / ``enable_by_owner`` / "
+"``remove_by_owner`` during batch-by-source operations. ``None`` is allowed: when judging equality by ``item.by == owner``, "
+"``None`` equals ``None``, so calls like ``disable_by_owner(None)`` "
+"can hit entries registered without a source."
+
+#: flowing.hooks.Togglable.tags:1 flowing.lists.Togglable.tags:1 of
+msgid ""
+"标签列表（``list[str]``，可为空、可含多个），供 ``disable_by_tag`` / ``enable_by_tag`` / "
+"``remove_by_tag`` 按标签 批量操作时匹配。匹配规则：列表中任一元素与给定标签相等即命中。"
+msgstr ""
+"Tag list (``list[str]``, may be empty, may contain multiple), matched by ``disable_by_tag`` / ``enable_by_tag`` / "
+"``remove_by_tag`` during batch-by-tag operations. Matching rule: any element of the list equal to the given tag is a hit."
+
+#: flowing.hooks.PatternRegistrar:1 of
+msgid "``hook[\"pattern\"](handler)`` 语法糖返回的注册器。"
+msgstr "The registrar returned by the ``hook[\"pattern\"](handler)`` sugar."
+
+#: flowing.hooks.PatternRegistrar:5 of
+msgid ""
+":meth:`HookList.__getitem__` 传入 ``str`` 时返回本对象；调用它即完成 「仅当 value 的 "
+"``match_on`` 属性匹配 pattern 时才执行」的 handler 注册。"
+msgstr ""
+"Returned by :meth:`HookList.__getitem__` when a ``str`` is passed; calling it completes the registration of a handler that "
+"runs \"only when the value's ``match_on`` attribute matches the pattern\"."
+
+#: flowing.hooks.PatternRegistrar:9 of
+msgid ""
+"「按名称过滤注册」是高频需求（只对 ``payment-*`` 工具做审批）。 独立 Registrar 类型使 "
+"``hook[\"pattern\"]`` 与 ``hook(handler)`` 共享 同一调用形态，注册产物仍是普通 "
+":class:`HookEntry` （``pattern`` 字段 非空），因此分组管理、注册顺序、分发算法完全一致，无第二套语义。"
+msgstr ""
+"\"Filter-by-name registration\" is a high-frequency need (approving only ``payment-*`` tools). A standalone Registrar type lets "
+"``hook[\"pattern\"]`` and ``hook(handler)`` share the same calling form, and the registration product is still an ordinary "
+":class:`HookEntry` (with a non-empty ``pattern`` field), so group management, registration order, and the dispatch algorithm are identical — no second set of semantics."
+
+#: flowing.hooks.PatternRegistrar:23 of
+msgid ""
+"调用即构造 ``HookEntry(handler=..., by=..., tags=..., pattern=<pattern>)`` "
+"并追加到所属 :class:`HookList` 末尾；返回被注册的原 handler（装饰器 形态不遮蔽被装饰名；需要 "
+":class:`HookEntry` 句柄时经 ``HookList`` 的 ``int`` / ``slice`` 索引或批量管理 API "
+"获取）。"
+msgstr ""
+"Calling it constructs ``HookEntry(handler=..., by=..., tags=..., pattern=<pattern>)`` "
+"and appends it to the end of the owning :class:`HookList`; returns the registered original handler (the decorator form does not shadow the decorated name; when a "
+":class:`HookEntry` handle is needed, get it via ``HookList``'s ``int`` / ``slice`` indexing or the batch management API)."
+
+#: flowing.hooks.PatternRegistrar:27 of
+msgid "不匹配时 handler 不被调用，value 原样透传，不影响链的传递。"
+msgstr "When not matching, the handler is not called and the value passes through unchanged, without affecting the chain's propagation."
+
+#: flowing.hooks.PatternRegistrar:28 of
+msgid ""
+"pattern 过滤在分发时按 entry 惰性求值（而非注册时生成包装函数）， 使 ``entry.pattern`` 可观测、可随 "
+"disable / enable 整体管理。"
+msgstr ""
+"Pattern filtering is lazily evaluated per entry at dispatch time (rather than generating a wrapper function at registration time), "
+"so ``entry.pattern`` is observable and can be managed as a whole with disable / enable."
+
+#: flowing.hooks.PatternRegistrar:30 of
+msgid ""
+"边缘情况：对 value 不具有 ``match_on`` 属性的钩子点做 pattern 注册， 注册本身成功；分发时 ``getattr`` "
+"失败按 handler 普通异常规则直接 上抛（属编程错误，不做兜底）。"
+msgstr ""
+"Edge case: pattern-registering on a hook point whose value lacks the ``match_on`` attribute succeeds at registration; at dispatch, "
+"the ``getattr`` failure propagates directly per the ordinary-exception rule for handlers (a programming error, no fallback)."
+
+#: flowing.hooks.PatternRegistrar:36 of
+msgid ":meth:`HookList.__getitem__`、:class:`HookEntry`、 :attr:`HookList.match_on`"
+msgstr ":meth:`HookList.__getitem__`, :class:`HookEntry`, :attr:`HookList.match_on`"
+
+#: ../../api/flowing.rst:65
+msgid "flowing.lists module"
+msgstr "flowing.lists module"
+
+#: flowing.lists:1 of
+msgid "flowing.lists —— 一批带来源与标签的可开关条目的分组管理容器（``ManagedList`` / ``Togglable``）。"
+msgstr "flowing.lists — grouped management containers (``ManagedList`` / ``Togglable``) for a batch of toggleable entries with source and tags."
+
+#: flowing.lists:5 of
+msgid ""
+"本模块提供「一批带来源与标签的可开关条目」的统一管理：:class:`ManagedList` "
+"负责按标签（tag）或来源（owner）批量停用、恢复或删除条目，迭代时自动 跳过已停用条目；:class:`Togglable` "
+"是条目需要满足的最小结构契约。适合 「按组临时停用一批能力、稍后整组恢复」的场景；框架内 "
+":class:`flowing.hooks.HookList` 与 "
+":class:`flowing.context.PromptBlockList` 都基于本模块实现。"
+msgstr ""
+"This module provides unified management of \"a batch of toggleable entries with source and tags\": :class:`ManagedList` "
+"handles batch disabling, restoring, or deleting entries by tag or owner, and automatically skips disabled entries during iteration; :class:`Togglable` "
+"is the minimal structural contract entries must satisfy. Suitable for scenarios like \"temporarily disable a group of capabilities and restore "
+"the whole group later\"; in the framework, :class:`flowing.hooks.HookList` and "
+":class:`flowing.context.PromptBlockList` are both built on this module."
+
+#: flowing.lists:12 of
+msgid "本模块只提供容器管理：不规定条目除 :class:`Togglable` 三个属性之外的 任何字段，也不关心条目的业务含义。"
+msgstr "This module only provides container management: it does not prescribe any fields of entries beyond the three :class:`Togglable` attributes, nor does it care about entries' business meaning."
+
+#: flowing.lists:36 of
+msgid ""
+"停用只把条目的 ``enabled`` 字段置为 ``False``：条目保留在容器中、 "
+"注册顺序不变、可随时恢复；删除才是把条目彻底移除、不可恢复。"
+msgstr ""
+"Disabling only sets the entry's ``enabled`` field to ``False``: the entry remains in the container, "
+"registration order is unchanged, and it can be restored at any time; deletion is what truly removes an entry, irreversibly."
+
+#: flowing.lists:38 of
+msgid "容器内条目的相对顺序等于注册顺序，停用与恢复不改变顺序。"
+msgstr "The relative order of entries in the container equals the registration order; disabling and restoring do not change the order."
+
+#: flowing.lists:39 of
+msgid ""
+"按来源的匹配是精确相等（``item.by == owner``，``None`` 与 ``None`` "
+"也相等）；按标签的匹配是「``tags`` 列表中任一元素与给定标签相等 即命中」。"
+msgstr ""
+"Matching by source is exact equality (``item.by == owner``, and ``None`` equals ``None``); "
+"matching by tag is \"any element of the ``tags`` list equals the given tag\"."
+
+#: flowing.lists:43 of
+msgid ""
+":class:`Togglable`、:class:`ManagedList`、 "
+":class:`flowing.hooks.HookList`、:class:`flowing.context.PromptBlockList`"
+msgstr ""
+":class:`Togglable`, :class:`ManagedList`, "
+":class:`flowing.hooks.HookList`, :class:`flowing.context.PromptBlockList`"
+
+#: ../../api/flowing.rst:73
+msgid "flowing.message module"
+msgstr "flowing.message module"
+
+#: flowing.message:1 of
+msgid "``flowing.message`` —— 对象层消息模型、消息队列与消息级树手术。"
+msgstr "``flowing.message`` — the object-layer message model, message queue, and message-level tree surgery."
+
+#: flowing.message:5 of
+msgid ""
+"本模块定义 Flowing 的对象层消息表示（与任何 Provider API 的 ``role`` 字段、任何 UI 渲染样式解耦）、Agent"
+" 的消息队列（优先级排序 + 同级 FIFO）， 以及消息级树的手术入口 :class:`MessageChain`。"
+msgstr ""
+"This module defines Flowing's object-layer message representation (decoupled from any Provider API's ``role`` field and any UI rendering style), the Agent's "
+"message queue (priority ordering + same-level FIFO), and :class:`MessageChain`, the entry point for message-level tree surgery."
+
+#: flowing.message:9 of
+msgid "职责边界："
+msgstr "Responsibility boundaries:"
+
+#: flowing.message:11 of
+msgid "消息的产生与表示：任意来源（用户、LLM、工具、外部 Agent、系统事件） 产生的新信息统一表示为 :class:`Message`。"
+msgstr "Message production and representation: new information from any source (user, LLM, tools, external agents, system events) is uniformly represented as :class:`Message`."
+
+#: flowing.message:13 of
+msgid ""
+"消息的组织结构：消息级树（允许多根的森林）——树节点 = 消息， ``Message.id`` + ``Message.parent_id`` "
+"构成亲代链；``parent_id=None`` 是根标记，一棵树允许多个根（根集合 = 全部 ``parent_id=None`` 的 "
+"消息），新根由 :meth:`MessageChain.branch` 以 ``parent_id=None`` "
+"开启（典型场景：上下文压缩换链——摘要作为新根开新链，旧树完整保留）。 不设虚拟根节点。``Agent.current_head_id`` "
+"指向某条消息的 id；fork 只切视角、从不创建节点。"
+msgstr ""
+"Message organization structure: the message-level tree (a forest allowing multiple roots) — tree nodes = messages, ``Message.id`` + ``Message.parent_id`` "
+"form the parent chain; ``parent_id=None`` is the root marker, and a tree allows multiple roots (the root set = all messages "
+"with ``parent_id=None``); new roots are opened by :meth:`MessageChain.branch` with ``parent_id=None`` "
+"(typical scenario: context compaction switches chains — the summary opens a new chain as a new root while the old tree is fully preserved). No virtual root node. ``Agent.current_head_id`` "
+"points to some message's id; fork only switches the viewpoint and never creates nodes."
+
+#: flowing.message:20 of
+msgid ""
+"消息的排队与调度：外部消息经 :class:`MessageQueue` 按优先级排序消费； ``MessageKind.PROVIDER`` "
+"永不进队列（永远在逻辑 turn 内由 Provider adapter 产生）。"
+msgstr ""
+"Message queuing and scheduling: external messages are consumed via :class:`MessageQueue` sorted by priority; ``MessageKind.PROVIDER`` "
+"never enters the queue (it is always produced by the Provider adapter within a logical turn)."
+
+#: flowing.message:23 of
+msgid ""
+"消息的持久化与手术：一行一个 Message、消息完整后 append（append-only）； 任意历史修改走 "
+":class:`MessageChain` 五 op。tombstone（删除标记行）/ 撕裂末行容忍 / 压缩等持久化机制属 "
+":mod:`flowing.persistence` 与 ``flowing.agent`` 的职责，本模块只约束「消息对象 ↔ 行」的映射语义 "
+"（:func:`to_record` / :func:`from_record`）。"
+msgstr ""
+"Message persistence and surgery: one Message per line, appended once the message is complete (append-only); any historical modification goes through "
+":class:`MessageChain`'s five ops. Persistence mechanisms such as tombstones (deletion marker lines), torn-last-line tolerance, and compaction belong "
+"to :mod:`flowing.persistence` and ``flowing.agent``; this module only constrains the mapping semantics of \"message object ↔ line\" "
+"(:func:`to_record` / :func:`from_record`)."
+
+#: flowing.message:29 of
+msgid ""
+"逻辑 Turn 只是执行概念：消费一条消息 → 产生一条 ``turn_end=True`` 的 PROVIDER 消息（或被 "
+"abort）的过程；执行期载体是 ``flowing.agent.TurnContext`` （不落盘、不进树、崩溃后不恢复）。"
+msgstr ""
+"A logical Turn is only an execution concept: the process of consuming one message and producing one ``turn_end=True`` PROVIDER message (or being "
+"aborted); its execution-time carrier is ``flowing.agent.TurnContext`` (not persisted, not in the tree, not recovered after a crash)."
+
+#: flowing.message:33 of
+msgid "Message 字段规约总表："
+msgstr "Message field spec summary table:"
+
+#: flowing.message:40 of
+msgid "规约要点"
+msgstr "Key spec points"
+
+#: flowing.message:41 of
+msgid "``id``"
+msgstr "``id``"
+
+#: flowing.message:42 of
+msgid "Agent 内自增序列号（纯数字字符串），同时是消息级树的节点 id；缺省 ``None`` 由 Agent 边界铸造"
+msgstr "Auto-increment sequence number within the Agent (pure digit string), also the node id of the message-level tree; default ``None`` is minted at the Agent boundary"
+
+#: flowing.message:43 of
+msgid "``parent_id``"
+msgstr "``parent_id``"
+
+#: flowing.message:44 of
+msgid "消息级亲代链；``None`` = 根标记（允许多根，森林模型）；树上溯与上下文组装的唯一依据"
+msgstr "Message-level parent chain; ``None`` = root marker (multiple roots allowed, forest model); the sole basis for tree traversal and context assembly"
+
+#: flowing.message:45 of
+msgid "``kind``"
+msgstr "``kind``"
+
+#: flowing.message:46 of
+msgid "对象层唯一角色判别，八值枚举 :class:`MessageKind`；消息没有 ``role`` 属性"
+msgstr "The object layer's only role discriminator, the eight-value enum :class:`MessageKind`; messages have no ``role`` attribute"
+
+#: flowing.message:47 of
+msgid "``content``"
+msgstr "``content``"
+
+#: flowing.message:48 of
+msgid ":class:`ContentBlock` 列表，不同 type 可交错排列"
+msgstr ":class:`ContentBlock` list; blocks of different types may interleave"
+
+#: flowing.message:49 of
+msgid "``turn_end``"
+msgstr "``turn_end``"
+
+#: flowing.message:50 of
+msgid "逻辑 turn 关闭的边界标记；由 agent 层在挂树时写入（turn 随本条消息关闭 → ``True``）"
+msgstr "Boundary marker for closing a logical turn; written by the agent layer when attaching to the tree (turn closes with this message → ``True``)"
+
+#: flowing.message:51 of
+msgid "``partial``"
+msgstr "``partial``"
+
+#: flowing.message:52 of
+msgid "流式中断的未完成消息标记；中断时已累积内容保留落盘（非丢弃）"
+msgstr "Marker for an unfinished message interrupted mid-stream; accumulated content at interruption is persisted (not discarded)"
+
+#: flowing.message:53 of
+msgid "``synthetic``"
+msgstr "``synthetic``"
+
+#: flowing.message:54 of
+msgid "``True`` = 恢复时合成的占位消息（孤立 tool_call 的占位 TOOL 消息），非真实产物"
+msgstr "``True`` = placeholder message synthesized at recovery time (placeholder TOOL message for an orphaned tool_call), not a real artifact"
+
+#: flowing.message:55 of
+msgid "``tool_call_id``"
+msgstr "``tool_call_id``"
+
+#: flowing.message:56 of
+msgid ""
+"配对锚（仅 ``kind=TOOL`` 非 ``None``）：与 PROVIDER 消息 ``ToolCallBlock.id`` 1:1 "
+"严格成对"
+msgstr ""
+"Pairing anchor (non-``None`` only for ``kind=TOOL``): strictly paired 1:1 with the ``ToolCallBlock.id`` "
+"of a PROVIDER message"
+
+#: flowing.message:57 of
+msgid "``tool_status``"
+msgstr "``tool_status``"
+
+#: flowing.message:58 of
+msgid "工具结果状态四值（仅 ``kind=TOOL`` 非 ``None``）；``__post_init__`` 双向强制"
+msgstr "Four-value tool result status (non-``None`` only for ``kind=TOOL``); enforced both ways by ``__post_init__``"
+
+#: flowing.message:59 of
+msgid "``source``"
+msgstr "``source``"
+
+#: flowing.message:60 of
+msgid "自由字符串二级分类（框架不枚举），投递方填写"
+msgstr "Free-form string secondary classification (not enumerated by the framework), filled in by the deliverer"
+
+#: flowing.message:61 of
+msgid "``tags``"
+msgstr "``tags``"
+
+#: flowing.message:62 of
+msgid "任意标签列表，用于分组 / 过滤 / 清洗"
+msgstr "Arbitrary tag list, for grouping / filtering / cleaning"
+
+#: flowing.message:63 of
+msgid "``priority``"
+msgstr "``priority``"
+
+#: flowing.message:64 of
+msgid "队列排序依据（``INTERRUPT > STEER > HIGH > NORMAL > LOW``）"
+msgstr "Queue ordering basis (``INTERRUPT > STEER > HIGH > NORMAL > LOW``)"
+
+#: flowing.message:65 of
+msgid "``timestamp``"
+msgstr "``timestamp``"
+
+#: flowing.message:66 of
+msgid "时区无关（UTC / epoch）；附着于消息，是否进 LLM 上下文由 adapter 决定"
+msgstr "Timezone-agnostic (UTC / epoch); attached to the message; whether it enters the LLM context is decided by the adapter"
+
+#: flowing.message:67 of
+msgid "``usage``"
+msgstr "``usage``"
+
+#: flowing.message:68 of
+msgid "本消息对应的 Provider 实测用量（仅 PROVIDER 消息携带），随消息落盘、恢复后仍在"
+msgstr "The Provider's measured usage corresponding to this message (carried only by PROVIDER messages); persisted with the message and still present after recovery"
+
+#: flowing.message:70 of
+msgid "kind → API role 发送映射（Provider adapter 职责）："
+msgstr "kind → API role send mapping (Provider adapter responsibility):"
+
+#: flowing.message:76 of
+msgid "Anthropic"
+msgstr "Anthropic"
+
+#: flowing.message:77 of
+msgid "OpenAI"
+msgstr "OpenAI"
+
+#: flowing.message:78 of
+msgid "Gemini"
+msgstr "Gemini"
+
+#: flowing.message:80 flowing.message:81 flowing.message:82 flowing.message:94
+#: flowing.message:97 flowing.message:98 flowing.message:101
+#: flowing.message:102 flowing.message:105 flowing.message:109 of
+msgid "``user``"
+msgstr "``user``"
+
+#: flowing.message:84 flowing.message:85 of
+msgid "``assistant``"
+msgstr "``assistant``"
+
+#: flowing.message:86 of
+msgid "``model``"
+msgstr "``model``"
+
+#: flowing.message:88 of
+msgid "``user`` （tool_result）"
+msgstr "``user`` (tool_result)"
+
+#: flowing.message:89 flowing.message:90 of
+msgid "``tool``"
+msgstr "``tool``"
+
+#: flowing.message:92 flowing.message:96 flowing.message:100 of
+msgid "``user`` （XML 包裹）"
+msgstr "``user`` (XML wrapped)"
+
+#: flowing.message:93 of
+msgid "``system``"
+msgstr "``system``"
+
+#: flowing.message:103 of
+msgid "``PLUGIN``"
+msgstr "``PLUGIN``"
+
+#: flowing.message:104 flowing.message:108 of
+msgid "独立消息，XML 包裹（格式由 adapter 定）"
+msgstr "Standalone message, XML wrapped (format decided by the adapter)"
+
+#: flowing.message:106 flowing.message:110 of
+msgid "同左"
+msgstr "Same as left"
+
+#: flowing.message:107 of
+msgid "``SUBAGENT``"
+msgstr "``SUBAGENT``"
+
+#: flowing.message:112 of
+msgid ""
+"OpenAI 侧 PLUGIN / SUBAGENT 落 ``user`` role（XML 包裹）：外部结果 回喂属「输入」，不落 "
+"``developer`` （避免给外部数据提指令权），更不伪造 ``assistant`` （会破坏轮次语义与 tool_calls 配对）。"
+msgstr ""
+"On the OpenAI side, PLUGIN / SUBAGENT land on the ``user`` role (XML wrapped): feeding back external results is \"input\" — it does not land on "
+"``developer`` (to avoid granting external data instruction authority), and certainly does not fake ``assistant`` (which would break turn semantics and tool_calls pairing)."
+
+#: flowing.message:115 of
+msgid ""
+"SYSTEM / PEER / EVENT / PLUGIN / SUBAGENT 的 XML 包裹格式由 adapter 按 Provider "
+"能力决定，框架核心不约束具体格式。"
+msgstr ""
+"The XML wrapping format for SYSTEM / PEER / EVENT / PLUGIN / SUBAGENT is decided by the adapter according to Provider "
+"capabilities; the framework core does not constrain the concrete format."
+
+#: flowing.message:117 of
+msgid ""
+"「某 block type 出现在哪些 kind 中」是典型情况而非硬约束；不合法排列 （如 PROVIDER 消息含 image block）由"
+" Provider adapter 在组装 API 请求时验证并报错，框架核心不验证。"
+msgstr ""
+"\"Which block types appear in which kinds\" describes typical cases, not hard constraints; invalid arrangements (e.g. a PROVIDER message containing an "
+"image block) are validated and reported by the Provider adapter when assembling the API request — the framework core does not validate."
+
+#: flowing.message:121 of
+msgid "入队规则："
+msgstr "Enqueue rules:"
+
+#: flowing.message:123 of
+msgid ""
+"进队列：``USER`` / ``EVENT`` / ``PEER`` / ``PLUGIN`` / ``SUBAGENT`` / "
+"``SYSTEM`` （可选）/ 异步工具最终结果（以 ``EVENT`` kind 入队， "
+"``source=\"tool_result\"``，多块 content = 标注块 + 结果块）。``TOOL`` kind "
+"本身不入队——同步工具结果在逻辑 turn 内经挂树直接进入消息树。"
+msgstr ""
+"Enqueued: ``USER`` / ``EVENT`` / ``PEER`` / ``PLUGIN`` / ``SUBAGENT`` / "
+"``SYSTEM`` (optional) / async tool final results (enqueued with ``EVENT`` kind, "
+"``source=\"tool_result\"``, multi-block content = annotation block + result block). The ``TOOL`` kind "
+"itself is not enqueued — sync tool results enter the message tree directly via tree attachment within the logical turn."
+
+#: flowing.message:127 of
+msgid "不进队列：``PROVIDER``——永远在逻辑 turn 内产生。"
+msgstr "Not enqueued: ``PROVIDER`` — always produced within a logical turn."
+
+#: flowing.message:128 of
+msgid ""
+"``SYSTEM`` 双通道：经队列投递（触发新逻辑 turn），或由上下文组装内部 注入本 turn 的 system prompt "
+"段（不触发新 turn）。"
+msgstr ""
+"``SYSTEM`` dual channel: delivered via the queue (triggers a new logical turn), or injected internally by context assembly into this turn's system prompt "
+"segment (does not trigger a new turn)."
+
+#: flowing.message:130 of
+msgid ""
+"kind 无行为含义：消息类型只决定 adapter 的呈现映射（见上表），不改变 turn 语义——任何入队批次都正常开回合、正常调用 "
+"LLM，不存在「纯系统 消息不触发 LLM 调用」之类的短路。"
+msgstr ""
+"kind has no behavioral meaning: the message type only determines the adapter's presentation mapping (see the table above) and does not change turn semantics — "
+"any enqueued batch opens a turn and calls the LLM normally; there is no short-circuit like \"pure system messages don't trigger LLM calls\"."
+
+#: flowing.message:134 of
+msgid "流式与 partial："
+msgstr "Streaming and partial:"
+
+#: flowing.message:136 of
+msgid ""
+"流式中断（abort）时，已累积内容以 ``partial=True`` 的消息保留落盘， 而不是丢弃；正常完成的消息恒为 "
+"``partial=False``。"
+msgstr ""
+"On stream interruption (abort), accumulated content is persisted as a ``partial=True`` message instead of being discarded; normally completed messages are always "
+"``partial=False``."
+
+#: flowing.message:138 of
+msgid "``on_provider_delta`` 钩子收到的 delta 本身不落盘（volatile），中断时 的已累积内容作为持久化状态保留。"
+msgstr "The delta received by the ``on_provider_delta`` hook is itself not persisted (volatile); the accumulated content at interruption is retained as persistent state."
+
+#: flowing.message:160 of
+msgid ""
+"媒体块一律 base64 内联（``data`` 必填且是权威表示）：消息层不感知 "
+"「文件最初从哪来」，也不做文件大小检查（大小治理分层：前端上传前校验 / ``before_enqueue`` 钩子 / Provider "
+"adapter 的 ``ContextLengthError`` 兜底）。"
+msgstr ""
+"Media blocks are always base64-inlined (``data`` is required and is the authoritative representation): the message layer is agnostic about "
+"\"where the file originally came from\" and does no file-size checks (size governance is layered: front-end validation before upload / the ``before_enqueue`` hook / the Provider "
+"adapter's ``ContextLengthError`` as the final fallback)."
+
+#: flowing.message:164 of
+msgid "历史消息不可在应用层直接修改——修改历史走 :class:`MessageChain` 五 op 或 fork（切分支）。"
+msgstr "Historical messages must not be modified directly at the application layer — modifying history goes through :class:`MessageChain`'s five ops or fork (branch switching)."
+
+#: flowing.message:166 of
+msgid ""
+"本模块只提供机制：优先级排序队列、五 op 手术原语、媒体 base64 统一编码。 策略（防饿死加权、drain "
+"合并、何时压缩上下文、摘要如何生成）由覆写 ``Agent._dequeue()``、Composable 或应用层决定。"
+msgstr ""
+"This module only provides mechanisms: a priority-sorted queue, five surgery primitives, unified base64 encoding for media. Policies (anti-starvation "
+"weighting, drain merging, when to compact context, how to generate summaries) are decided by overriding ``Agent._dequeue()``, composables, or the application layer."
+
+#: flowing.message:172 of
+msgid ""
+":class:`flowing.agent.Agent` （消息队列与工作循环的宿主； ``Agent.chain`` 是 "
+":class:`MessageChain` 的访问入口） :class:`flowing.agent.TurnContext` （逻辑 turn "
+"的执行期临时对象： ``started_at`` / ``message_ids`` / ``aborted`` / "
+"``pending_messages`` / ``usages``） :mod:`flowing.tool` （``ToolCall`` / "
+"``ToolResult`` 的定义处，与 block 形式互转） :mod:`flowing.context` （``Context`` / "
+"``PromptBlock`` / ``PromptSegment`` ——上下文组装产物）"
+msgstr ""
+":class:`flowing.agent.Agent` (host of the message queue and work loop; ``Agent.chain`` is "
+"the access entry to :class:`MessageChain`) :class:`flowing.agent.TurnContext` (the execution-time temporary object of a logical turn: "
+"``started_at`` / ``message_ids`` / ``aborted`` / "
+"``pending_messages`` / ``usages``) :mod:`flowing.tool` (where ``ToolCall`` / "
+"``ToolResult`` are defined, convertible to and from block form) :mod:`flowing.context` (``Context`` / "
+"``PromptBlock`` / ``PromptSegment`` — context assembly products)"
+
+#: flowing.message.VideoBlock:1 of
+msgid "视频内容块（时间维度连续帧）。"
+msgstr "Video content block (temporally continuous frames)."
+
+#: flowing.message.VideoBlock:5 of
+msgid "视频输入。多数 Provider 不原生支持视频——降级策略属 adapter / UI 层（首帧截图、转为文件引用或略过），框架核心只做承载。"
+msgstr "Video input. Most Providers do not natively support video — degradation strategies belong to the adapter / UI layer (first-frame screenshot, converting to a file reference, or skipping); the framework core only carries it."
+
+#: flowing.message.VideoBlock:10 of
+msgid "字段与 :class:`MediaBlock` 一致；``type`` 固定 ``\"video\"``。"
+msgstr "Fields are identical to :class:`MediaBlock`; ``type`` is fixed to ``\"video\"``."
+
+#: flowing.message.VideoBlock:11 of
+msgid "与 :class:`ImageBlock` 的边界：单帧静态用 ``image``；连续帧用 ``video``。"
+msgstr "Boundary with :class:`ImageBlock`: a single static frame uses ``image``; continuous frames use ``video``."
+
+#: flowing.message.VideoBlock:15 of
+msgid ":class:`flowing.message.MediaBlock`、 :class:`flowing.message.ImageBlock`。"
+msgstr ":class:`flowing.message.MediaBlock`, :class:`flowing.message.ImageBlock`."
+
+#: flowing.message.VideoBlock.type:1 of
+msgid "固定为 ``\"video\"``。"
+msgstr "Fixed to ``\"video\"``."
+
+#: flowing.message.AudioBlock:1 of
+msgid "音频内容块（需要语音理解时使用）。"
+msgstr "Audio content block (used when speech understanding is needed)."
+
+#: flowing.message.AudioBlock:5 of
+msgid ""
+"语音 / 音频输入。不支持的 Provider 由 adapter 降级（``<audio>`` 占位文本或语音转文字）；仅传递 ``.mp3``"
+" 等文件而无需理解时用 :class:`FileBlock`。"
+msgstr ""
+"Speech / audio input. Providers that do not support it are degraded by the adapter (``<audio>`` placeholder text or speech-to-text); use :class:`FileBlock` "
+"when you merely pass a ``.mp3``-style file without needing understanding."
+
+#: flowing.message.AudioBlock:11 of
+msgid "字段与 :class:`MediaBlock` 一致；``type`` 固定 ``\"audio\"``。"
+msgstr "Fields are identical to :class:`MediaBlock`; ``type`` is fixed to ``\"audio\"``."
+
+#: flowing.message.AudioBlock:14 of
+msgid ":class:`flowing.message.MediaBlock`、 :class:`flowing.message.FileBlock`。"
+msgstr ":class:`flowing.message.MediaBlock`, :class:`flowing.message.FileBlock`."
+
+#: flowing.message.AudioBlock.type:1 of
+msgid "固定为 ``\"audio\"``。"
+msgstr "Fixed to ``\"audio\"``."
+
+#: flowing.message.MEDIA_TOKEN_ESTIMATE:1 of
+msgid "单个媒体块的固定 token 估算值。"
+msgstr "Fixed token estimate for a single media block."
+
+#: flowing.message.MEDIA_TOKEN_ESTIMATE:3 of
+msgid ""
+"消息层媒体一律 base64 内联，但其 token 成本由 provider 按图像 / 媒体 规格定档，与 base64 "
+"长度无关——按字符数估会失真几个数量级，故 :func:`estimate_message_tokens` 对 "
+":class:`MediaBlock` 及其子类固定计 此常数、不看内容。"
+msgstr ""
+"Message-layer media are always base64-inlined, but their token cost is tiered by the provider according to image / media "
+"specifications and is unrelated to base64 length — estimating by character count would be off by orders of magnitude, so :func:`estimate_message_tokens` counts "
+"this constant for :class:`MediaBlock` and its subclasses, ignoring content."
+
+#: flowing.message.estimate_message_tokens:1 of
+msgid "估算一条消息的 token 数（字符启发式，仅供上下文窗口预算观测）。"
+msgstr "Estimate the token count of a message (character heuristic, for context window budget observation only)."
+
+#: flowing.message.estimate_message_tokens:5 of
+msgid ""
+"对消息逐块展开的本地估算：文本类块（``TextBlock.text`` / ``ThinkingBlock.thinking``）与 "
+"``ToolCallBlock`` 的 ``name`` + JSON 序列化参数、``StructBlock`` 的 "
+"``json.dumps`` 序列化长度均按 字符启发式计；``MediaBlock`` 及其子类固定计 "
+":data:`MEDIA_TOKEN_ESTIMATE`。被 "
+":meth:`flowing.agent.Agent.estimate_context_tokens` 用于估算—— "
+"锚点指最近一条携带实测用量（``Message.usage``）的消息，估算覆盖 锚点之后（或无锚点时全部）路径上的消息。"
+msgstr ""
+"A local estimate expanded block by block: text-like blocks (``TextBlock.text`` / ``ThinkingBlock.thinking``), "
+"``ToolCallBlock``'s ``name`` + JSON-serialized args, and ``StructBlock``'s "
+"``json.dumps`` serialized length are all counted by the character heuristic; ``MediaBlock`` and its subclasses count the fixed "
+":data:`MEDIA_TOKEN_ESTIMATE`. Used by "
+":meth:`flowing.agent.Agent.estimate_context_tokens` for estimation — "
+"the anchor is the most recent message carrying measured usage (``Message.usage``), and the estimate covers messages on the path after the anchor (or all of them when there is no anchor)."
+
+#: flowing.message.estimate_message_tokens:14 of
+msgid ""
+"字符启发式口径：ASCII 约 4 字符/token、非 ASCII（CJK 等）约 1 字符/token——中文场景下远优于统一除以 4。不用 "
+"tokenizer：估算只 服务于「该不该压缩、还剩多少余量」这类窗口预算判断（±20% 足够）， 永不用于计费（计费走 "
+"``TurnResult.token_usage`` 聚合，数据源是 ``Message.usage`` 实测）。"
+msgstr ""
+"Character heuristic calibration: ASCII ~4 chars/token, non-ASCII (CJK etc.) ~1 char/token — far better than uniformly dividing by 4 in Chinese scenarios. "
+"No tokenizer is used: the estimate only serves window-budget judgments like \"should we compact, how much headroom remains\" (±20% suffices), and is never "
+"used for billing (billing aggregates via ``TurnResult.token_usage``, sourced from measured ``Message.usage``)."
+
+#: flowing.message.estimate_message_tokens:28 of
+msgid "同步纯函数：只读 ``msg``，无副作用、无缓存，每次现场求值。"
+msgstr "Synchronous pure function: only reads ``msg``, no side effects, no caching, evaluated on the spot each time."
+
+#: flowing.message.estimate_message_tokens:29 of
+msgid ""
+"逐块规则：文本类块按（ASCII 字符数 ÷ 4 + 非 ASCII 字符数）向上 取整；``ToolCallBlock`` 计 ``name``"
+" 与 ``args`` JSON 序列化后的 字符启发式之和；``StructBlock`` 计 "
+"``json.dumps(ensure_ascii=False)`` 结果的字符启发式；``MediaBlock`` 族固定 "
+"``MEDIA_TOKEN_ESTIMATE``，不读 base64 ``data``。"
+msgstr ""
+"Per-block rules: text-like blocks count ceil(ASCII char count ÷ 4 + non-ASCII char count); ``ToolCallBlock`` counts the character-heuristic sum of ``name`` "
+"plus the JSON-serialized ``args``; ``StructBlock`` counts the character heuristic of the "
+"``json.dumps(ensure_ascii=False)`` result; the ``MediaBlock`` family counts the fixed "
+"``MEDIA_TOKEN_ESTIMATE`` without reading the base64 ``data``."
+
+#: flowing.message.estimate_message_tokens:34 of
+msgid "不计入：消息元数据（``id`` / ``source`` / ``tags`` 等）不进 LLM 上下文，不参与估算。"
+msgstr "Not counted: message metadata (``id`` / ``source`` / ``tags`` etc.) does not enter the LLM context and does not participate in the estimate."
+
+#: flowing.message.estimate_message_tokens:36 of
+msgid "边缘情况：空 ``content`` 返回 0；未知块类型按「无文本内容」计 0。"
+msgstr "Edge cases: empty ``content`` returns 0; unknown block types count 0 as \"no text content\"."
+
+#: flowing.message.estimate_message_tokens:39 of
+msgid ""
+":data:`MEDIA_TOKEN_ESTIMATE`、 "
+":meth:`flowing.agent.Agent.estimate_context_tokens`。"
+msgstr ""
+":data:`MEDIA_TOKEN_ESTIMATE`, "
+":meth:`flowing.agent.Agent.estimate_context_tokens`."
+
+#: flowing.message.to_record:1 of
+msgid "把 ``Message`` 序列化为 ``tree.jsonl`` 的一行（JSON 兼容 dict）。"
+msgstr "Serialize a ``Message`` into one line of ``tree.jsonl`` (a JSON-compatible dict)."
+
+#: flowing.message.to_record:5 of
+msgid ""
+"消息对象与持久化行映射的序列化点（:func:`from_record` 的逆映射）。 行格式的字段级 schema 冻结在本函数与 "
+":func:`from_record` 一对中， ``Agent._persist_message`` 以本函数为唯一序列化点。"
+msgstr ""
+"The serialization point of the message-object-to-persistence-line mapping (the inverse of :func:`from_record`). The field-level schema of the line "
+"format is frozen in this function–:func:`from_record` pair, and ``Agent._persist_message`` uses this function as its sole serialization point."
+
+#: flowing.message.to_record:9 of
+msgid "落盘行格式（JSON 对象）："
+msgstr "On-disk line format (JSON object):"
+
+#: flowing.message.to_record:33 of
+msgid ""
+"``kind`` 落盘为枚举字符串值；``priority`` 落盘为枚举数值； ``timestamp`` 落盘为 ISO 格式（naive "
+"UTC）。"
+msgstr ""
+"``kind`` is persisted as the enum string value; ``priority`` as the enum numeric value; ``timestamp`` in ISO format (naive "
+"UTC)."
+
+#: flowing.message.to_record:35 of
+msgid "``content`` 逐块序列化，每块含 ``type`` 判别字段。"
+msgstr "``content`` is serialized block by block; each block carries a ``type`` discriminator field."
+
+#: flowing.message.to_record:36 of
+msgid ""
+"``usage`` 为 ``None`` 或七计数字段（``input`` / ``fresh_input`` / ``output`` / "
+"``cache_read`` / ``cache_write`` / ``reasoning`` / ``total_tokens``）+ "
+"``raw`` 的 dict（存量行的 ``\"usage\": null`` 兼容）。message 不 import "
+"providers（单向依赖）， 序列化按 ``Usage`` 的字段名读取，还原端在函数内局部 import。"
+msgstr ""
+"``usage`` is ``None`` or a dict of seven counter fields (``input`` / ``fresh_input`` / ``output`` / "
+"``cache_read`` / ``cache_write`` / ``reasoning`` / ``total_tokens``) + "
+"``raw`` (compatible with existing lines' ``\"usage\": null``). message does not import "
+"providers (one-way dependency); serialization reads by ``Usage``'s field names, and the restore side does a local import inside the function."
+
+#: flowing.message.to_record:43 of
+msgid ":func:`from_record`、:meth:`flowing.agent.Agent._persist_message`。"
+msgstr ":func:`from_record`, :meth:`flowing.agent.Agent._persist_message`."
+
+#: flowing.message.from_record:1 of
+msgid "把 ``tree.jsonl`` 的一行（dict）还原为 ``Message``。"
+msgstr "Restore one line (dict) of ``tree.jsonl`` into a ``Message``."
+
+#: flowing.message.from_record:5 of
+msgid "要求 ``record[\"type\"] == \"message\"``，否则抛 ``ValueError``。"
+msgstr "Requires ``record[\"type\"] == \"message\"``, otherwise raises ``ValueError``."
+
+#: flowing.message.from_record:6 of
+msgid ""
+"逐字段还原：``kind`` / ``priority`` 重建为枚举，``timestamp`` 经 "
+"``datetime.fromisoformat`` 还原；``usage`` 为 ``None`` 或重建为 "
+"``flowing.providers.Usage`` （局部 import——message 不 import providers "
+"的单向依赖在运行期无环）。"
+msgstr ""
+"Field-by-field restore: ``kind`` / ``priority`` are rebuilt as enums, ``timestamp`` is restored via "
+"``datetime.fromisoformat``; ``usage`` is ``None`` or rebuilt as "
+"``flowing.providers.Usage`` (local import — the one-way dependency of message not importing providers "
+"remains acyclic at runtime)."
+
+#: flowing.message.from_record:11 of
+msgid "``record`` 不是消息行（``type`` 字段不是 ``\"message\"``）。"
+msgstr "``record`` is not a message line (the ``type`` field is not ``\"message\"``)."
+
+#: flowing.message.from_record:15 of
+msgid ":func:`to_record`、:meth:`flowing.agent.Agent._restore`。"
+msgstr ":func:`to_record`, :meth:`flowing.agent.Agent._restore`."
+
+#: ../../api/flowing.rst:81
+msgid "flowing.model module"
+msgstr "flowing.model module"
+
+#: flowing.model:1 of
+msgid "``flowing.model`` —— 模型规格结构体与模型配置文件加载。"
+msgstr "``flowing.model`` — model spec structure and model config file loading."
+
+#: flowing.model:5 of
+msgid ""
+"本模块承载 Agent 与「用哪个模型说话」之间的契约：模型规格结构体 :class:`ModelConfig` "
+"与两个具名加载器——``models.yaml`` 的 :func:`load_models` 与 ``model-tags.yaml`` 的 "
+":func:`load_model_tags` （后者只产标签 → 条目名映射，``ModelConfig`` 经两产物 join 得出）。 "
+"Provider 侧契约（adapter 继承树 / ``ProviderResponse`` / token 用量 记录 "
+":class:`flowing.providers.Usage` / 注册与懒实例化）在 :mod:`flowing.providers` 包。"
+msgstr ""
+"This module carries the contract between the Agent and \"which model to speak with\": the model spec structure :class:`ModelConfig` "
+"and two named loaders — :func:`load_models` for ``models.yaml`` and :func:`load_model_tags` for "
+"``model-tags.yaml`` (the latter only produces a tag → entry name mapping; ``ModelConfig`` is obtained by joining the two products). "
+"The Provider-side contract (adapter inheritance tree / ``ProviderResponse`` / token usage record "
+":class:`flowing.providers.Usage` / registration and lazy instantiation) lives in the :mod:`flowing.providers` package."
+
+#: flowing.model:13 of
+msgid ""
+"Agent 对模型只做「持有 + 机械传递」：持有 ``self.model: ModelConfig``， 每次 "
+"``provider_gen()`` 前现场 ``resolve()`` 求值，再连同 "
+":class:`flowing.context.Context` 一起传给 ``Provider.generate()``。 "
+"字段含义（``thinking_budget`` 等）只有 Provider adapter 解释，框架 核心不解释任何模型字段。"
+msgstr ""
+"The Agent only \"holds + mechanically passes\" the model: it holds ``self.model: ModelConfig``, evaluates it on the spot with ``resolve()`` before each "
+"``provider_gen()``, and passes it together with "
+":class:`flowing.context.Context` to ``Provider.generate()``. "
+"Field meanings (``thinking_budget`` etc.) are interpreted only by the Provider adapter; the framework core interprets no model fields."
+
+#: flowing.model:19 of
+msgid ""
+"模型 ↔ Provider 是 1:1 单值绑定：``ModelConfig.provider`` 是绑定关系 （单个 provider "
+"条目名），不是候选列表；``models.yaml`` 每条目只声明 一个具体模型；``model-tags.yaml`` "
+"每标签只映射一个模型条目名。没有 内置重试、没有 fallback、没有能力校验。"
+msgstr ""
+"Model ↔ Provider is a 1:1 single-value binding: ``ModelConfig.provider`` is a binding relation (a single provider "
+"entry name), not a candidate list; each ``models.yaml`` entry declares exactly one concrete model; each ``model-tags.yaml`` "
+"tag maps to exactly one model entry name. No built-in retry, no fallback, no capability validation."
+
+#: flowing.model:25 of
+msgid "配置文件 schema"
+msgstr "Config file schema"
+
+#: flowing.model:26 of
+msgid ""
+"``models.yaml`` （默认 ``$FLOWING_CONFIG_HOME/models.yaml``，可团队 共享，经 "
+"``FLOWING_MODELS_PATH`` 重定向）::"
+msgstr ""
+"``models.yaml`` (default ``$FLOWING_CONFIG_HOME/models.yaml``, team-shareable, redirected via "
+"``FLOWING_MODELS_PATH``)::"
+
+#: flowing.model:36 of
+msgid "``model-tags.yaml`` （默认 ``$FLOWING_CONFIG_HOME/model-tags.yaml``）::"
+msgstr "``model-tags.yaml`` (default ``$FLOWING_CONFIG_HOME/model-tags.yaml``)::"
+
+#: flowing.model:43 of
+msgid ""
+"标签优先级从高到低：``runtime.set_model_tags(path)`` （代码级，``@/`` "
+"前缀指向项目根）、``FLOWING_MODEL_TAGS`` 环境变量指向的文件、默认 ``$FLOWING_CONFIG_HOME"
+"/model-tags.yaml``。未定义标签回退 ``default``； ``default`` 也未定义 → 报错（不静默回退）。"
+msgstr ""
+"Tag priority from high to low: ``runtime.set_model_tags(path)`` (code-level, the ``@/`` "
+"prefix points to the project root), the file pointed to by the ``FLOWING_MODEL_TAGS`` environment variable, the default ``$FLOWING_CONFIG_HOME"
+"/model-tags.yaml``. Undefined tags fall back to ``default``; if ``default`` is also undefined → error (no silent fallback)."
+
+#: flowing.model:61 of
+msgid ""
+"两阶段解析：provider 条目（加载时 ``{{env.VAR}}`` 纯字符串替换）与 模型配置（运行时 Parsable "
+"求值）的解析表、``{{env.VAR}}`` 替换规则 全文见 :mod:`flowing.providers` 包 "
+"docstring。要点：providers.yaml 中的 ``{{env.VAR}}`` 缺失在加载时抛 "
+":class:`flowing.errors.MissingEnvironmentVariableError` （fail-fast， "
+"不静默降级）；``ModelConfig`` 字段中的 ``{{env.VAR}}`` 是运行时 Parsable "
+"求值，其失败按普通求值异常处理，不属该异常。"
+msgstr ""
+"Two-phase resolution: the resolution tables for provider entries (``{{env.VAR}}`` pure string replacement at load time) and model configs (runtime Parsable "
+"evaluation), and the full ``{{env.VAR}}`` replacement rules, are in the :mod:`flowing.providers` package "
+"docstring. Key points: a missing ``{{env.VAR}}`` in providers.yaml raises at load time "
+":class:`flowing.errors.MissingEnvironmentVariableError` (fail-fast, "
+"no silent degradation); ``{{env.VAR}}`` in ``ModelConfig`` fields is runtime Parsable "
+"evaluation, whose failure is handled as an ordinary evaluation exception, not that error."
+
+#: flowing.model:68 of
+msgid ""
+"最小行为：用户只写 ``model_tag: fast`` + 三个配置文件时：标签 → 单个模型条目 → 加载凭证 → "
+"调用一次；成功返回，失败异常上抛由 ``on_provider_error`` 决定。没有内置重试、没有 fallback、没有能力 校验。"
+msgstr ""
+"Minimal behavior: when the user only writes ``model_tag: fast`` plus three config files: tag → single model entry → load credentials → "
+"one call; success returns, failure raises an exception whose handling is decided by ``on_provider_error``. No built-in retry, no fallback, no capability validation."
+
+#: flowing.model:74 of
+msgid "环境变量表（本模块相关）"
+msgstr "Environment variable table (relevant to this module)"
+
+#: flowing.model:75 of
+msgid "``FLOWING_CONFIG_HOME`` —— 用户级配置目录（默认 ``~/.flowing``， 与 provider 侧共享）。"
+msgstr "``FLOWING_CONFIG_HOME`` — user-level config directory (default ``~/.flowing``, shared with the provider side)."
+
+#: flowing.model:77 of
+msgid "``FLOWING_MODELS_PATH`` —— 重定向 ``models.yaml``。"
+msgstr "``FLOWING_MODELS_PATH`` — redirect ``models.yaml``."
+
+#: flowing.model:78 of
+msgid "``FLOWING_MODEL_TAGS`` —— 最优先的标签映射文件（级联保留，非完全 重定向）。"
+msgstr "``FLOWING_MODEL_TAGS`` — the highest-priority tag mapping file (cascading retained, not a full redirect)."
+
+#: flowing.model:83 of
+msgid ":mod:`flowing.providers`"
+msgstr ":mod:`flowing.providers`"
+
+#: flowing.model:84 of
+msgid "Provider 侧契约：adapter 继承树、providers.yaml、注册与懒实例化、 异常分类与安全边界。"
+msgstr "Provider-side contract: adapter inheritance tree, providers.yaml, registration and lazy instantiation, exception classification and security boundaries."
+
+#: flowing.model:87 of
+msgid "``self.model`` / ``self.model_tag`` 的持有者，``provider_gen()`` 双模式与当场解析的调用方。"
+msgstr "Holder of ``self.model`` / ``self.model_tag``; caller of ``provider_gen()``'s dual modes and on-the-spot resolution."
+
+#: flowing.model:89 flowing.params:81 of
+msgid ":mod:`flowing.parsable`"
+msgstr ":mod:`flowing.parsable`"
+
+#: flowing.model:90 of
+msgid "``ModelConfig`` 字段级求值依赖的 Parsable 机制。"
+msgstr "The Parsable mechanism that ``ModelConfig`` field-level evaluation depends on."
+
+#: flowing.model:91 of
+msgid ":class:`flowing.runtime.Runtime`"
+msgstr ":class:`flowing.runtime.Runtime`"
+
+#: flowing.model:92 of
+msgid "``set_model_tags()`` 的宿主。"
+msgstr "Host of ``set_model_tags()``."
+
+#: flowing.model.load_models:1 of
+msgid "读 ``models.yaml`` 构建模型条目名 → ``ModelConfig`` 映射。"
+msgstr "Read ``models.yaml`` to build a model entry name → ``ModelConfig`` mapping."
+
+#: flowing.model.load_models:3 of
+msgid ""
+"字段分流在此发生：固定内建字段集（``model`` / ``provider`` / ``thinking_budget`` / "
+"``context_window`` / ``max_output_tokens``）提升 为 ``ModelConfig`` "
+"实例属性；条目中的其余字段进 ``_extra``，不参与 求值、不进 LLM 可见面。字符串字段值按 Parsable 判定：模板形态 "
+"（``FILE_REF`` / ``EXPRESSION`` / ``TEMPLATE`` / ``RAW``）包装为 "
+"Parsable，纯字面量保持静态原值。"
+msgstr ""
+"Field triage happens here: the fixed built-in field set (``model`` / ``provider`` / ``thinking_budget`` / "
+"``context_window`` / ``max_output_tokens``) is promoted to ``ModelConfig`` "
+"instance attributes; remaining fields in an entry go into ``_extra``, not participating in evaluation and not entering the LLM-visible surface. String field values are judged as Parsable: template-shaped values "
+"(``FILE_REF`` / ``EXPRESSION`` / ``TEMPLATE`` / ``RAW``) are wrapped as "
+"Parsable, while pure literals keep their static original values."
+
+#: flowing.model.load_models:10 of
+msgid ""
+"与 :func:`load_model_tags` 同样保持纯「路径 → 映射」，不碰环境变量与 默认路径。``Runtime`` "
+"启动期默认加载共用本入口（产物与 :func:`load_model_tags` 的产物 join 出「标签 → "
+"``ModelConfig``」的最终 解析）。"
+msgstr ""
+"Like :func:`load_model_tags`, keeps pure \"path → mapping\" semantics and does not touch environment variables or default paths. The default load at "
+"``Runtime`` startup shares this entry (its product is joined with :func:`load_model_tags`'s product into the final \"tag → "
+"``ModelConfig``\" resolution)."
+
+#: flowing.model.load_models:15 of
+msgid "models.yaml 的已解析路径。"
+msgstr "Resolved path of models.yaml."
+
+#: flowing.model.load_models:16 of
+msgid "模型条目名 → ``ModelConfig``。"
+msgstr "Model entry name → ``ModelConfig``."
+
+#: flowing.model.load_models:20 of
+msgid ""
+"每个条目必须含 ``model`` / ``provider`` 两个必填字段（缺失时 ``ModelConfig`` 构造报 "
+"``TypeError``）。"
+msgstr ""
+"Each entry must contain the two required fields ``model`` / ``provider`` (missing ones cause ``ModelConfig`` construction to raise "
+"``TypeError``)."
+
+#: flowing.model.load_model_tags:19 flowing.model.load_models:22 of
+msgid "文件不存在 → 原生 ``FileNotFoundError`` （不包装）。"
+msgstr "File does not exist → native ``FileNotFoundError`` (not wrapped)."
+
+#: flowing.model.load_models:24 of
+msgid ""
+":class:`ModelConfig` —— ``_extra`` 与分流语义； :func:`load_model_tags` —— "
+"标签映射文件的对应解析器。"
+msgstr ""
+":class:`ModelConfig` — ``_extra`` and triage semantics; :func:`load_model_tags` — "
+"the corresponding parser for the tag mapping file."
+
+#: flowing.model.load_model_tags:1 of
+msgid "读 ``model-tags.yaml`` 构建标签 → 模型条目名映射。"
+msgstr "Read ``model-tags.yaml`` to build a tag → model entry name mapping."
+
+#: flowing.model.load_model_tags:3 of
+msgid ""
+"标签映射文件解析器：产物是「标签 → 模型条目名」的纯字符串映射（单值 化——一个标签只映射一个模型条目名）。不产出 "
+"``ModelConfig``——「标签 → 条目名 → ``ModelConfig``」的最后一跳是与 :func:`load_models` "
+"产物的 join，由 ``Runtime`` 启动期默认加载与 ``runtime.set_model_tags(path)`` "
+"登记后的现场求值完成。"
+msgstr ""
+"Parser for the tag mapping file: the product is a pure string mapping of \"tag → model entry name\" (single-valued — one tag maps to exactly one model "
+"entry name). It does not produce ``ModelConfig`` — the last hop of \"tag → entry name → ``ModelConfig``\" is a join with :func:`load_models`' "
+"product, done by the default load at ``Runtime`` startup and the on-the-spot evaluation after ``runtime.set_model_tags(path)`` "
+"registration."
+
+#: flowing.model.load_model_tags:9 of
+msgid "与 :func:`load_models` 同样保持纯「路径 → 映射」，不碰环境变量与默认 路径。"
+msgstr "Like :func:`load_models`, keeps pure \"path → mapping\" semantics and does not touch environment variables or default paths."
+
+#: flowing.model.load_model_tags:12 of
+msgid "model-tags.yaml 的已解析路径。"
+msgstr "Resolved path of model-tags.yaml."
+
+#: flowing.model.load_model_tags:13 of
+msgid "模型标签 → 模型条目名。"
+msgstr "Model tag → model entry name."
+
+#: flowing.model.load_model_tags:17 of
+msgid "文件顶层必须含 ``tags`` 映射键；缺失时抛 ``KeyError`` （fail-fast， 不静默回退）。"
+msgstr "The file's top level must contain the ``tags`` mapping key; missing it raises ``KeyError`` (fail-fast, no silent fallback)."
+
+#: flowing.model.load_model_tags:21 of
+msgid ":func:`load_models` —— 模型条目文件的对应解析器。"
+msgstr ":func:`load_models` — the corresponding parser for the model entry file."
+
+#: ../../api/flowing.rst:89
+msgid "flowing.params module"
+msgstr "flowing.params module"
+
+#: flowing.params:1 of
+msgid "``flowing.params`` —— 参数声明（Pydantic 模型 / JSON Schema）与类型安全键。"
+msgstr "``flowing.params`` — parameter declarations (Pydantic models / JSON Schema) and type-safe keys."
+
+#: flowing.params:5 of
+msgid ""
+"本模块承载工具与子 Agent 的参数声明基础设施，以及两个与参数声明无关 的类型安全键（:class:`InjectionKey` / "
+":class:`ConfigKey`）。参数声明有 两种同构形态，由同一份声明派生出 LLM 可见的 JSON Schema 与执行层校验 "
+"模型，没有需要独立维护的第二份声明："
+msgstr ""
+"This module carries the parameter declaration infrastructure for tools and sub-agents, plus two type-safe keys unrelated to parameter declaration "
+"(:class:`InjectionKey` / :class:`ConfigKey`). Parameter declarations have two isomorphic forms; the LLM-visible JSON Schema and the execution-layer "
+"validation model are both derived from the same declaration — there is no second declaration to maintain independently:"
+
+#: flowing.params:10 of
+msgid ""
+"Python 层：Pydantic ``BaseModel`` 子类——手写工具 / Agent 子类的 声明方式。LLM 可见 schema 由"
+" ``model_json_schema()`` 派生，执行层 校验即模型本身（``model_validate``）；"
+msgstr ""
+"Python layer: Pydantic ``BaseModel`` subclasses — the declaration form for hand-written tools / Agent subclasses. The LLM-visible schema is derived "
+"from ``model_json_schema()``, and execution-layer validation is the model itself (``model_validate``);"
+
+#: flowing.params:13 of
+msgid ""
+"fya 层：``args:`` 块的展开式 JSON Schema——装配期经 :func:`schema_to_model` 桥接为等价 "
+"Pydantic 模型。"
+msgstr ""
+"fya layer: the expanded JSON Schema of the ``args:`` block — bridged into an equivalent "
+"Pydantic model at assembly time via :func:`schema_to_model`."
+
+#: flowing.params:16 of
+msgid ""
+"fya 声明层（``args:`` 块）的书写规则：逐参数展开，无 ``type: object`` 顶层包装、无 ``required:`` "
+"清单——必填性由 ``default`` 有无派生（无 ``default`` → 必填，与 Pydantic「无默认值字段必填」语义同构）::"
+msgstr ""
+"Writing rules for the fya declaration layer (``args:`` block): expand parameter by parameter, with no ``type: object`` top-level wrapper and no "
+"``required:`` list — requiredness is derived from the presence of ``default`` (no ``default`` → required, isomorphic to Pydantic's \"fields without defaults are required\" semantics)::"
+
+#: flowing.params:27 of
+msgid "两种简写糖（:func:`expand_args_schema` 归一化，声明端专用；覆写端零糖）："
+msgstr "Two shorthand sugars (normalized by :func:`expand_args_schema`, declaration-side only; zero sugar on the override side):"
+
+#: flowing.params:29 of
+#, python-brace-format
+msgid ""
+"裸类型字符串：``str`` / ``int`` / ``float`` / ``bool`` / ``list`` / ``dict`` → "
+"对应 ``{type: ...}`` 单键 property（必填）；"
+msgstr ""
+"Bare type strings: ``str`` / ``int`` / ``float`` / ``bool`` / ``list`` / ``dict`` → "
+"the corresponding single-key ``{type: ...}`` property (required);"
+
+#: flowing.params:31 of
+msgid "YAML 字面量：标量 / 列表字面量 → 按值类型推断 ``type`` 并以值为 ``default`` （可选）。"
+msgstr "YAML literals: scalar / list literals → ``type`` inferred from the value type, with the value as ``default`` (optional)."
+
+#: flowing.params:34 of
+#, python-brace-format
+msgid ""
+"其余值一律是完整 JSON Schema property dict（``{}`` 合法，表示匹配一切 的 any 类型）。``type:`` "
+"的取值同时识别 Python 风格简写名与 JSON Schema 名（``type: str`` ≡ ``type: string``，别名表 "
+":data:`TYPE_ALIASES`），并 支持类型表达式：联合（``str | None``）与泛型嵌套（``list[str]`` / "
+"``dict[str, int]``）可组合。可空参数写标准 nullable 形态 ``{type: [string, \"null\"], "
+"default: null}`` （Pydantic 侧对应 ``str | None = None``）。"
+msgstr ""
+"All other values are complete JSON Schema property dicts (``{}`` is legal, meaning the any type that matches everything). ``type:`` "
+"values recognize both Python-style shorthand names and JSON Schema names (``type: str`` ≡ ``type: string``, alias table "
+":data:`TYPE_ALIASES`), and support type expressions: unions (``str | None``) and generic nesting (``list[str]`` / "
+"``dict[str, int]``) compose. Nullable parameters are written in the standard nullable form ``{type: [string, \"null\"], "
+"default: null}`` (corresponding to ``str | None = None`` on the Pydantic side)."
+
+#: flowing.params:42 of
+msgid ""
+"桥接（:func:`schema_to_model`）认识的 JSON Schema 关键字子集：``type`` / "
+"``description`` / ``default`` / ``enum`` / ``minimum`` / ``maximum`` / "
+"``minLength`` / ``maxLength`` / ``pattern`` / ``items`` / ``properties`` "
+"——逐关键字映射为 Pydantic 字段约束；超出子集（``oneOf`` / ``anyOf`` / ``$ref`` / ``allOf``"
+" 等组合子）在装配期抛 :class:`flowing.errors.FormatError` （fail-fast：出错即刻抛异常、不静默 "
+"降级）。"
+msgstr ""
+"The subset of JSON Schema keywords known to bridging (:func:`schema_to_model`): ``type`` / "
+"``description`` / ``default`` / ``enum`` / ``minimum`` / ``maximum`` / "
+"``minLength`` / ``maxLength`` / ``pattern`` / ``items`` / ``properties`` "
+"— mapped keyword by keyword into Pydantic field constraints; anything beyond the subset (``oneOf`` / ``anyOf`` / ``$ref`` / ``allOf`` "
+"and other combinators) raises :class:`flowing.errors.FormatError` at assembly time (fail-fast: raise immediately on error, no silent "
+"degradation)."
+
+#: flowing.params:50 of
+msgid ""
+"覆写（:func:`apply_param_overrides`）供绑定层（``ToolEntry`` / ``SubagentEntry``）的"
+" ``override_params`` 使用：对基底 JSON Schema properties "
+"做稀疏深合并，只写要改的参数与关键字；覆写端零语法糖（类型 必须写 ``type:`` 关键字），未知关键字抛 "
+"``FormatError``，未提及的 关键字原样沿用基底，未知参数名视为新增参数。"
+msgstr ""
+"Overriding (:func:`apply_param_overrides`) serves the binding layer's (``ToolEntry`` / ``SubagentEntry``) "
+"``override_params``: it does a sparse deep merge over the base JSON Schema properties — write only the parameters and keywords to change; "
+"the override side has zero syntactic sugar (types must be written with the ``type:`` keyword); unknown keywords raise "
+"``FormatError``; unmentioned keywords keep the base as-is; unknown parameter names are treated as new parameters."
+
+#: flowing.params:56 of
+msgid ""
+"安全边界：``args`` / ``parameters`` 最终序列化为 JSON 经 function calling 传给 "
+"LLM，因此只接受 JSON 兼容值（``str`` / ``int`` / ``float`` / ``bool`` 标量及其 ``list``"
+" / ``dict`` 嵌套组合）。复杂对象（数据库连接、 服务客户端、函数、生成器）不允许走参数声明；``specified`` 也不是复杂 "
+"对象通道——它只是为 LLM 不可见的标量参数提供值（固定值或注入表达式）。 复杂对象的两条替代路径："
+msgstr ""
+"Security boundary: ``args`` / ``parameters`` are ultimately serialized to JSON and passed to the LLM via function calling, so only JSON-compatible "
+"values are accepted (``str`` / ``int`` / ``float`` / ``bool`` scalars and their ``list`` "
+"/ ``dict`` nested combinations). Complex objects (database connections, service clients, functions, generators) are not allowed in parameter declarations; ``specified`` is not a complex-object "
+"channel either — it only provides values (fixed values or injection expressions) for scalar parameters invisible to the LLM. Two alternative paths for complex objects:"
+
+#: flowing.params:63 of
+msgid "传可序列化标识符（``connection_id: \"main\"``），工具内部按标识符查找；"
+msgstr "Pass a serializable identifier (``connection_id: \"main\"``), and the tool looks it up internally by identifier;"
+
+#: flowing.params:64 of
+msgid "``execute()`` 声明 ``caller`` 参数，从调用方 Agent 实例上取对象。"
+msgstr "``execute()`` declares a ``caller`` parameter and gets the object from the calling Agent instance."
+
+#: flowing.params:66 of
+msgid ""
+"类型安全键：:class:`InjectionKey` 与 :class:`ConfigKey` 是两个仅在调用 侧生效的泛型类型安全键：泛型参数"
+" ``T`` 只提供编译期类型标注，运行期 完全退化为按 ``name`` 的字符串匹配（注入存储的 key 恒为 ``str``），框架 "
+"不做运行期类型校验。因此类型不匹配（亲节点 provide 了 ``int``、子按 ``InjectionKey[str]`` "
+"inject）不会被框架拦截——需要运行期校验的场景走 参数声明（Pydantic 模型校验），而非 provide / inject。"
+msgstr ""
+"Type-safe keys: :class:`InjectionKey` and :class:`ConfigKey` are two generic type-safe keys that only take effect on the call side: the generic "
+"parameter ``T`` only provides compile-time type annotation and fully degenerates at runtime to string matching by ``name`` (injection store keys are always ``str``); the framework "
+"does no runtime type checking. Therefore type mismatches (a parent provided an ``int``, a child injects with ``InjectionKey[str]``) "
+"are not intercepted by the framework — scenarios needing runtime validation go through parameter declaration (Pydantic model validation), not provide / inject."
+
+#: flowing.params:73 of
+msgid ""
+"本模块的公开面为下列符号：常量 ``ARG_SHORTHAND`` / ``TYPE_ALIASES`` / "
+"``SCHEMA_KEYWORDS``，函数 ``expand_args_schema`` / ``schema_to_model`` / "
+"``apply_param_overrides``，类 :class:`InjectionKey` / :class:`ConfigKey` "
+"——属跨版本稳定契约；其余符号（类型变量 ``T`` 与下划线前缀符号）为内部 实现。"
+msgstr ""
+"The module's public surface consists of the following symbols: constants ``ARG_SHORTHAND`` / ``TYPE_ALIASES`` / "
+"``SCHEMA_KEYWORDS``, functions ``expand_args_schema`` / ``schema_to_model`` / "
+"``apply_param_overrides``, classes :class:`InjectionKey` / :class:`ConfigKey` "
+"— part of the cross-version stable contract; the remaining symbols (type variable ``T`` and underscore-prefixed symbols) are internal implementation."
+
+#: flowing.params:82 of
+msgid "Parsable 惰性求值、渲染上下文与 ``PENDING`` 哨兵的定义模块。"
+msgstr "The module defining Parsable lazy evaluation, render context, and the ``PENDING`` sentinel."
+
+#: flowing.params:84 of
+msgid "``args_model`` 的宿主。"
+msgstr "Host of ``args_model``."
+
+#: flowing.params:85 of
+msgid ":class:`flowing.tool.ToolDefinition`、:class:`flowing.tool.ToolEntry`"
+msgstr ":class:`flowing.tool.ToolDefinition`, :class:`flowing.tool.ToolEntry`"
+
+#: flowing.params:86 of
+msgid "Tool 侧参数声明与 ``specified`` 聚合的消费者。"
+msgstr "Consumer of Tool-side parameter declarations and ``specified`` aggregation."
+
+#: flowing.params:88 of
+msgid "``ConfigKey`` 的消费入口。"
+msgstr "Consumption entry of ``ConfigKey``."
+
+#: flowing.params:89 of
+msgid ":func:`flowing.runtime.inject_from`"
+msgstr ":func:`flowing.runtime.inject_from`"
+
+#: flowing.params:90 of
+msgid "``InjectionKey`` 跨节点退化为按 ``name`` 匹配的执行点。"
+msgstr "The execution point where ``InjectionKey`` degenerates to by-``name`` matching across nodes."
+
+#: flowing.params.ARG_SHORTHAND:1 of
+#, python-brace-format
+msgid ""
+"裸类型字符串简写表（``str`` → ``\"string\"`` 等）：fya ``args:`` 声明 块里写 ``category: "
+"str`` 时按本表展开为 ``{type: \"string\"}``。声明端 专用——覆写端（Entry 补丁）不做任何糖，类型必须写 "
+"``type:`` 关键字。"
+msgstr ""
+"Bare type string shorthand table (``str`` → ``\"string\"`` etc.): writing ``category: "
+"str`` in an fya ``args:`` declaration block expands to ``{type: \"string\"}`` per this table. Declaration-side "
+"only — the override side (Entry patches) applies no sugar at all; types must be written with the "
+"``type:`` keyword."
+
+#: flowing.params.TYPE_ALIASES:1 of
+msgid ""
+"``type:`` 关键字取值的别名表：Python 风格简写名（``str`` / ``int`` / ``float`` / ``bool``"
+" / ``list`` / ``dict``）与 JSON Schema 名 （``string`` / ``integer`` / "
+"...）等价。声明端与覆写端均识别，桥接 （:func:`schema_to_model`）统一归一为 JSON Schema 名。"
+msgstr ""
+"Alias table for ``type:`` keyword values: Python-style shorthand names (``str`` / ``int`` / ``float`` / ``bool`` "
+"/ ``list`` / ``dict``) are equivalent to JSON Schema names (``string`` / ``integer`` / "
+"...). Recognized on both the declaration and override sides; bridging (:func:`schema_to_model`) uniformly normalizes them to JSON Schema names."
+
+#: flowing.params.SCHEMA_KEYWORDS:1 of
+msgid ""
+"桥接子集关键字集合：:func:`schema_to_model` 认识的 JSON Schema 关键字。property "
+"中出现子集之外的关键字（``oneOf`` / ``anyOf`` / ``$ref`` / ``allOf`` 等）→ 桥接期 "
+":class:`flowing.errors.FormatError`。"
+msgstr ""
+"Bridging-subset keyword set: the JSON Schema keywords known to :func:`schema_to_model`. Keywords outside the subset appearing in a property "
+"(``oneOf`` / ``anyOf`` / ``$ref`` / ``allOf`` etc.) → :class:`flowing.errors.FormatError` at bridge time."
+
+#: flowing.params.bridge_properties:1 of
+msgid "把 JSON Schema ``properties`` 收敛到桥接子集（内部 API，声明即模型侧用）。"
+msgstr "Converge JSON Schema ``properties`` to the bridging subset (internal API, used by the declare-as-model side)."
+
+#: flowing.params.bridge_properties:5 of
+msgid ""
+"从 pydantic ``model_json_schema()`` 等**机器派生**的 property 表收敛为 桥接子集成员——丢弃 "
+"``title`` 等纯展示键，保留 ``SCHEMA_KEYWORDS`` 内关键字原值。调用点是框架内部把「模型 → "
+"params_schema」的转换处 （``ScriptTool.__init__`` 等）；**手写** .fya ``args:`` "
+"与覆写体不走本 函数，超子集键仍由 :func:`schema_to_model` fail-fast（用户笔误要报错， "
+"机器噪音要滤掉，两通道分开）。"
+msgstr ""
+"Converges a **machine-derived** property table (from pydantic ``model_json_schema()`` etc.) into bridging-subset members — drops "
+"pure display keys like ``title`` and keeps the original values of keywords within ``SCHEMA_KEYWORDS``. Call sites are where the framework internally converts "
+"\"model → params_schema\" (``ScriptTool.__init__`` etc.); **hand-written** .fya ``args:`` "
+"and override bodies do not go through this function — out-of-subset keys there still fail-fast in :func:`schema_to_model` (user typos must be reported, "
+"machine noise must be filtered; the two channels are kept separate)."
+
+#: flowing.params.bridge_properties:14 of
+msgid "只滤键、不改值；输入不被修改（返回新 dict）。"
+msgstr "Only filters keys, never modifies values; the input is not modified (a new dict is returned)."
+
+#: flowing.params.bridge_properties:15 of
+msgid "子集外关键字（``title`` 等）直接丢弃——它们是 pydantic/工具链的 展示元数据，对桥接无意义。"
+msgstr "Out-of-subset keywords (``title`` etc.) are dropped directly — they are display metadata of pydantic/toolchains and meaningless for bridging."
+
+#: flowing.params.bridge_properties:17 of
+msgid "值非 dict 的畸形 property 原样透传（错误留给下游判别）。"
+msgstr "Malformed properties whose value is not a dict pass through as-is (the error is left for downstream judgment)."
+
+#: flowing.params.bridge_properties:19 of
+msgid ":data:`SCHEMA_KEYWORDS`、:func:`schema_to_model`。"
+msgstr ":data:`SCHEMA_KEYWORDS`, :func:`schema_to_model`."
+
+#: flowing.params.expand_args_schema:1 of
+msgid "把 fya ``args:`` 声明块归一化为 JSON Schema properties（展开两种简写糖）。"
+msgstr "Normalize an fya ``args:`` declaration block into JSON Schema properties (expanding the two shorthand sugars)."
+
+#: flowing.params.expand_args_schema:5 of
+msgid "声明端唯一的糖处理点，逐参数按固定顺序判别："
+msgstr "The declaration side's only sugar processing point, judging parameter by parameter in a fixed order:"
+
+#: flowing.params.expand_args_schema:7 of
+#, python-brace-format
+msgid "值是裸类型字符串（:data:`ARG_SHORTHAND` 六个保留字之一）→ ``{type: <展开值>}`` （必填）；"
+msgstr "Value is a bare type string (one of :data:`ARG_SHORTHAND`'s six reserved words) → ``{type: <expanded value>}`` (required);"
+
+#: flowing.params.expand_args_schema:9 of
+#, python-brace-format
+msgid ""
+"值是 dict → 原样作为完整 JSON Schema property（``{}`` 合法， any 语义；键超出 "
+":data:`SCHEMA_KEYWORDS` 子集的报错推迟到 :func:`schema_to_model` 桥接时）；"
+msgstr ""
+"Value is a dict → taken as-is as a complete JSON Schema property (``{}`` is legal, any semantics; errors for keys outside the "
+":data:`SCHEMA_KEYWORDS` subset are deferred until bridging in :func:`schema_to_model`);"
+
+#: flowing.params.expand_args_schema:12 of
+msgid ""
+"值是其余 YAML 字面量（标量 / 列表）→ 按值类型推断 ``type`` 并 以值为 ``default`` （可选）；值是 "
+"``None`` （YAML ``key:`` 空值） → :class:`flowing.errors.FormatError` "
+"（连声明意图都无法确认， fail-fast）。"
+msgstr ""
+"Value is any other YAML literal (scalar / list) → ``type`` inferred from the value type with the value as ``default`` (optional); value is "
+"``None`` (YAML ``key:`` empty value) → :class:`flowing.errors.FormatError` "
+"(even the declaration intent cannot be confirmed — fail-fast)."
+
+#: flowing.params.expand_args_schema:17 of
+msgid ""
+"归一化产物不含 required 信息——必填性恒由 property 的 ``default`` 有无派生（无 ``default`` → "
+"必填）。"
+msgstr ""
+"The normalized product contains no required information — requiredness is always derived from the presence of the property's ``default`` "
+"(no ``default`` → required)."
+
+#: flowing.params.expand_args_schema:20 of
+msgid "fya ``args:`` 块的原始映射（参数名 → 值）。"
+msgstr "The raw mapping of an fya ``args:`` block (parameter name → value)."
+
+#: flowing.params.expand_args_schema:21 of
+#, python-brace-format
+msgid "``{参数名: property dict}``，新构造的 dict（输入不被修改）。"
+msgstr "``{parameter_name: property dict}``, a newly constructed dict (input not modified)."
+
+#: flowing.params.expand_args_schema:22 of
+msgid "某参数值为 ``None`` （空声明）时。"
+msgstr "When some parameter's value is ``None`` (empty declaration)."
+
+#: flowing.params.expand_args_schema:24 of
+msgid ":func:`schema_to_model` —— 下一步桥接。"
+msgstr ":func:`schema_to_model` — the next bridging step."
+
+#: flowing.params.schema_to_model:1 of
+msgid "把 JSON Schema properties 桥接为 Pydantic 模型（基础子集，fail-fast）。"
+msgstr "Bridge JSON Schema properties into a Pydantic model (basic subset, fail-fast)."
+
+#: flowing.params.schema_to_model:5 of
+msgid ""
+"fya 声明（经 :func:`expand_args_schema` 归一化）与 Entry 补丁后的 最终 schema "
+"共用同一个建模入口（经 ``pydantic.create_model`` 动态 建模）。逐 property 映射："
+msgstr ""
+"fya declarations (normalized via :func:`expand_args_schema`) and the final schema after Entry patches share the same "
+"modeling entry (dynamic modeling via ``pydantic.create_model``). Per-property mapping:"
+
+#: flowing.params.schema_to_model:9 of
+msgid ""
+"``type`` → Python 类型（``string``→``str``、``integer``→``int``、 "
+"``number``→``float``、``boolean``→``bool``、``array``→``list``、 "
+"``object``→``dict``；``[T, \"null\"]`` 可空形态 → ``T | None``）； 取值先经 "
+":data:`TYPE_ALIASES` 归一（``type: str`` ≡ ``type: string``）；含 ``|`` "
+"或方括号的复合类型表达式（如 ``str | None``、``list[str]``）经 :func:`_parse_type_expr` "
+"展开；"
+msgstr ""
+"``type`` → Python type (``string``→``str``, ``integer``→``int``, "
+"``number``→``float``, ``boolean``→``bool``, ``array``→``list``, "
+"``object``→``dict``; the ``[T, \"null\"]`` nullable form → ``T | None``); values are first normalized via "
+":data:`TYPE_ALIASES` (``type: str`` ≡ ``type: string``); composite type expressions containing ``|`` "
+"or brackets (e.g. ``str | None``, ``list[str]``) are expanded via :func:`_parse_type_expr`;"
+
+#: flowing.params.schema_to_model:15 of
+msgid ""
+"约束关键字 → ``pydantic.Field`` 约束（``minimum``→``ge``、 "
+"``maximum``→``le``、``minLength``→``min_length``、 "
+"``maxLength``→``max_length``、``pattern`` 同名）； ``description`` → "
+"``Field(description=...)``；``enum`` → ``Literal``；"
+msgstr ""
+"constraint keywords → ``pydantic.Field`` constraints (``minimum``→``ge``, "
+"``maximum``→``le``, ``minLength``→``min_length``, "
+"``maxLength``→``max_length``, ``pattern`` same-named); ``description`` → "
+"``Field(description=...)``; ``enum`` → ``Literal``;"
+
+#: flowing.params.schema_to_model:19 of
+msgid "必填性派生：property 无 ``default`` → 必填字段；有 → 以 ``default`` 为字段默认值。"
+msgstr "Requiredness derivation: property without ``default`` → required field; with → ``default`` becomes the field default."
+
+#: flowing.params.schema_to_model:22 of
+msgid "生成的模型类名。"
+msgstr "Name of the generated model class."
+
+#: flowing.params.schema_to_model:23 of
+#, python-brace-format
+msgid "``{参数名: JSON Schema property dict}``。"
+msgstr "``{parameter_name: JSON Schema property dict}``."
+
+#: flowing.params.schema_to_model:24 of
+msgid "新的 Pydantic 模型类。"
+msgstr "A new Pydantic model class."
+
+#: flowing.params.schema_to_model:26 of
+msgid "property 含超出 :data:`SCHEMA_KEYWORDS` 子集的关键字时（报错信息列出参数名与 非法关键字）。"
+msgstr "When a property contains keywords outside the :data:`SCHEMA_KEYWORDS` subset (the error message lists the parameter name and the illegal keyword)."
+
+#: flowing.params.schema_to_model:32 of
+#, python-brace-format
+msgid "``{}`` 空 property → 字段类型为 ``Any`` （匹配一切）。"
+msgstr "``{}`` empty property → field type is ``Any`` (matches everything)."
+
+#: flowing.params.schema_to_model:33 of
+msgid "``enum`` 与 ``default`` 共存合法（``default`` 须在 ``enum`` 内， 校验交 Pydantic）。"
+msgstr "``enum`` coexisting with ``default`` is legal (``default`` must be within ``enum``; validation is left to Pydantic)."
+
+#: flowing.params.schema_to_model:35 of
+msgid "返回新模型类，不修改入参；每次调用都创建新模型类，不缓存 （调用方可自行缓存）。"
+msgstr "Returns a new model class without modifying the input; each call creates a new model class, no caching (callers may cache themselves)."
+
+#: flowing.params.schema_to_model:37 of
+msgid "不做 JSON Schema 全量合规校验：只认上述子集，超子集 fail-fast。"
+msgstr "No full JSON Schema compliance validation: only the above subset is recognized; anything beyond it fails fast."
+
+#: flowing.params.schema_to_model:38 of
+msgid ""
+"多成员非 null 联合（如 ``[string, integer]``）超出 Python 单类型 表达精度，桥接为 ``Any`` "
+"（子集只承诺 ``[T, \"null\"]`` 可空形态）。"
+msgstr ""
+"Multi-member non-null unions (e.g. ``[string, integer]``) exceed Python single-type expression precision and are bridged to ``Any`` "
+"(the subset only promises the ``[T, \"null\"]`` nullable form)."
+
+#: flowing.params.schema_to_model:41 of
+msgid ""
+":func:`expand_args_schema` —— 前置归一化； :func:`apply_param_overrides` —— "
+"补丁应用。"
+msgstr ""
+":func:`expand_args_schema` — the preceding normalization; :func:`apply_param_overrides` — "
+"patch application."
+
+#: flowing.params.apply_param_overrides:1 of
+msgid "对 JSON Schema properties 应用稀疏补丁，产出新 dict（输入不变）。"
+msgstr "Apply a sparse patch to JSON Schema properties, producing a new dict (input unchanged)."
+
+#: flowing.params.apply_param_overrides:5 of
+msgid ""
+"绑定层（``ToolEntry`` / ``SubagentEntry``）覆写参数声明的唯一应用 点：``override_params`` "
+"是基底 schema 的稀疏镜像——只写要改的参数、 只写要改的关键字，未提及的从基底深合并回填。``ToolDefinition`` 的 LLM"
+" 视图生成与子 Agent catalog 的 ``<params>`` 生成共用本函数。"
+msgstr ""
+"The sole application point for the binding layer (``ToolEntry`` / ``SubagentEntry``) to override parameter declarations: ``override_params`` "
+"is a sparse mirror of the base schema — write only the parameters to change, write only the keywords to change; unmentioned parts are backfilled from the base "
+"via deep merge. ``ToolDefinition``'s LLM view generation and sub-agent catalog ``<params>`` generation both share this function."
+
+#: flowing.params.apply_param_overrides:10 of
+#, python-brace-format
+msgid "基底 ``{参数名: JSON Schema property dict}``。"
+msgstr "Base ``{parameter_name: JSON Schema property dict}``."
+
+#: flowing.params.apply_param_overrides:11 of
+#, python-brace-format
+msgid "补丁 ``{参数名: {JSON Schema 关键字: 值}}``。"
+msgstr "Patch ``{parameter_name: {JSON Schema keyword: value}}``."
+
+#: flowing.params.apply_param_overrides:12 of
+msgid "合并后的新 dict；基底及其 property dict 不被修改。"
+msgstr "The merged new dict; the base and its property dicts are not modified."
+
+#: flowing.params.apply_param_overrides:14 of
+msgid "补丁含超出 :data:`SCHEMA_KEYWORDS` 子集的关键字时（fail-fast）。"
+msgstr "When the patch contains keywords outside the :data:`SCHEMA_KEYWORDS` subset (fail-fast)."
+
+#: flowing.params.apply_param_overrides:19 of
+#, python-brace-format
+msgid ""
+"零语法糖：补丁子字段一律是 JSON Schema 关键字，类型必须写 ``type:``；覆写端不做裸类型字符串 / "
+"字面量推断——裸值在覆写语境 由解析层归入 specified（指定值），到不了本函数。注意陷阱：覆写端 写 ``id: str`` "
+"不会展开为类型声明，而是得到指定值字符串 ``\"str\"`` ——想改类型必须写 ``id: {type: string}``。"
+msgstr ""
+"Zero syntactic sugar: patch subfields are always JSON Schema keywords, and types must be written with ``type:``; the override side does no bare-type-string / "
+"literal inference — bare values in the override context are classified by the parsing layer into specified (specified values) and never reach this function. "
+"Note the pitfall: writing ``id: str`` on the override side does not expand into a type declaration but yields the specified value string ``\"str\"`` "
+"— to change the type you must write ``id: {type: string}``."
+
+#: flowing.params.apply_param_overrides:24 of
+msgid "稀疏回填：未出现的参数、未出现的关键字保持基底原值。"
+msgstr "Sparse backfill: parameters and keywords not present keep the base's original values."
+
+#: flowing.params.apply_param_overrides:25 of
+msgid ""
+"必填性：补丁没写 ``default`` → 沿用基底（含基底无 ``default`` 的 必填性）；显式给了 ``default`` → "
+"该参数变可选；不支持删除已有 ``default`` （稀疏补丁无删除语义）。"
+msgstr ""
+"Requiredness: if the patch does not write ``default``, the base's is kept (including requiredness when the base has no ``default``); an explicit "
+"``default`` makes the parameter optional; deleting an existing ``default`` is not supported (sparse patches have no deletion semantics)."
+
+#: flowing.params.apply_param_overrides:28 of
+msgid ""
+"未知参数名：``overrides`` 中出现 ``params_schema`` 不存在的键 → 视为新增参数（补丁 property "
+"直接并入）——Tool 侧 ``FinishTool`` 动态 schema 依赖此语义。"
+msgstr ""
+"Unknown parameter names: keys appearing in ``overrides`` but not in ``params_schema`` → treated as new parameters (the patch property "
+"is merged directly) — the Tool side's ``FinishTool`` dynamic schema depends on this semantics."
+
+#: flowing.params.apply_param_overrides:43 of
+msgid ""
+":func:`schema_to_model` —— 补丁后最终 schema 的建模 "
+"桥接；:class:`flowing.tool.ToolDefinition` —— Tool 侧封装（另含 别名 / 描述 / "
+"specified 参数隐藏）。"
+msgstr ""
+":func:`schema_to_model` — modeling bridge of the post-patch final schema; "
+":class:`flowing.tool.ToolDefinition` — Tool-side wrapper (also covering alias / description / "
+"specified parameter hiding)."
+
+#: ../../api/flowing.rst:97
+msgid "flowing.parsable module"
+msgstr "flowing.parsable module"
+
+#: flowing.parsable:1 of
+msgid "``flowing.parsable`` —— Parsable 统一抽象、惰性求值与双哨兵。"
+msgstr "``flowing.parsable`` — the unified Parsable abstraction, lazy evaluation, and dual sentinels."
+
+#: flowing.parsable:5 of
+msgid ""
+"本模块是 ``.fya`` 文件层与运行时对象模型之间的桥梁：``.fya`` 中所有 "
+"「可解析字段」（``system_prompt``、``description`` 及各类具名块的内容） 在解析后统一表示为 "
+":class:`Parsable`，运行时在使用方决定的时机现场求值。 本模块同时承载两个模块级单例哨兵：:data:`PENDING` "
+"（延迟定义承诺）与 ``_UNSET`` （未设置）。"
+msgstr ""
+"This module is the bridge between the ``.fya`` file layer and the runtime object model: all "
+"\"parsable fields\" in ``.fya`` (``system_prompt``, ``description``, and the contents of various named blocks) are uniformly represented as "
+":class:`Parsable` after parsing, and are evaluated on the spot at runtime at a time decided by the consumer. This module also hosts two module-level singleton sentinels: :data:`PENDING` "
+"(deferred-definition promise) and ``_UNSET`` (not set)."
+
+#: flowing.parsable:11 of
+msgid ""
+"本模块只定义「存储求值指令 + 现场求值」的机制，不定义任何使用方的求值 策略（何时求值、用什么上下文）——求值时机由各使用方各自决定，见下文 "
+"「各使用方求值时机」表。"
+msgstr ""
+"This module only defines the mechanism of \"store evaluation instructions + evaluate on the spot\", not any consumer's evaluation policy (when to "
+"evaluate, with what context) — evaluation timing is decided by each consumer individually; see the \"Per-Consumer Evaluation Timing\" table below."
+
+#: flowing.parsable:16 flowing.parsable:20 of
+msgid "五种形式判定"
+msgstr "Five-form determination"
+
+#: flowing.parsable:17 of
+msgid ""
+"``Parsable`` 的 ``type`` 按 ``source`` 字符串样式自动推断，不允许手动 "
+"指定。判定按下表自上而下进行，首个命中者生效："
+msgstr ""
+"``Parsable``'s ``type`` is automatically inferred from the ``source`` string's shape; manual "
+"specification is not allowed. Determination proceeds top-down per the table below; the first hit takes effect:"
+
+#: flowing.parsable:23 of
+msgid "type"
+msgstr "type"
+
+#: flowing.parsable:24 of
+msgid "source 样式"
+msgstr "``source`` shape"
+
+#: flowing.parsable:25 of
+msgid "resolve 结果类型"
+msgstr "resolve result type"
+
+#: flowing.parsable:26 of
+msgid "是否进入两步渲染"
+msgstr "Whether it enters two-step rendering"
+
+#: flowing.parsable:27 of
+msgid "``RAW``"
+msgstr "``RAW``"
+
+#: flowing.parsable:28 of
+msgid "``$\"...\"`` （从首个 ``$\"`` 到最后一个 ``\"`` 贪婪匹配，内部可含 引号与 ``{{ }}``）"
+msgstr "``$\"...\"`` (greedy match from the first ``$\"`` to the last ``\"``, may contain quotes and ``{{ }}`` inside)"
+
+#: flowing.parsable:30 flowing.parsable:35 flowing.parsable:44 of
+msgid "``str``"
+msgstr "``str``"
+
+#: flowing.parsable:31 of
+msgid "否（直接取引号内文本）"
+msgstr "No (directly take the text inside the quotes)"
+
+#: flowing.parsable:32 of
+msgid "``FILE_REF``"
+msgstr "``FILE_REF``"
+
+#: flowing.parsable:33 of
+msgid "以 ``$`` 开头的路径（非 ``$\"`` 形式），如 ``$./prompt.md``、 ``$@/shared/x.md``"
+msgstr "A path starting with ``$`` (not the ``$\"`` form), e.g. ``$./prompt.md``, ``$@/shared/x.md``"
+
+#: flowing.parsable:36 flowing.parsable:41 flowing.parsable:45 of
+msgid "是"
+msgstr "Yes"
+
+#: flowing.parsable:37 of
+msgid "``EXPRESSION``"
+msgstr "``EXPRESSION``"
+
+#: flowing.parsable:38 of
+msgid "``strip(source)`` 恰好是一个完整的 ``{{ expr }}``，无任何其它 内容"
+msgstr "``strip(source)`` is exactly one complete ``{{ expr }}``, with no other content"
+
+#: flowing.parsable:40 of
+msgid "表达式原生类型（不转字符串）"
+msgstr "The expression's native type (not converted to string)"
+
+#: flowing.parsable:42 of
+msgid "``TEMPLATE``"
+msgstr "``TEMPLATE``"
+
+#: flowing.parsable:43 of
+#, python-brace-format, python-format
+msgid "含 ``{{ }}`` / ``{% %}`` 的混合文本"
+msgstr "Mixed text containing ``{{ }}`` / ``{% %}``"
+
+#: flowing.parsable:46 of
+msgid "``LITERAL``"
+msgstr "``LITERAL``"
+
+#: flowing.parsable:47 of
+msgid "以上皆非（含非字符串值 ``123`` / ``true``）"
+msgstr "None of the above (including non-string values ``123`` / ``true``)"
+
+#: flowing.parsable:48 of
+msgid "``source`` 原样"
+msgstr "``source`` as-is"
+
+#: flowing.parsable:49 of
+msgid "否（``resolve`` 直接返回 ``source``）"
+msgstr "No (``resolve`` returns ``source`` directly)"
+
+#: flowing.parsable:51 of
+msgid "``.fya`` 解析层的补充规则（详见 :mod:`flowing.parser`）："
+msgstr "Supplementary rules of the ``.fya`` parsing layer (see :mod:`flowing.parser` for details):"
+
+#: flowing.parsable:53 of
+msgid ""
+"非字符串 YAML 值默认不构造 Parsable（``max_turns: 10`` 直接按 YAML 类型解析为 "
+"``int``）；例外：字段被宿主显式声明为 Parsable 承载时， 非字符串 YAML 值也包装为 ``LITERAL`` "
+"Parsable——保证声明为 Parsable 的字段拿到的永远是 Parsable 实例而非裸值。除此之外，``LITERAL`` 的 "
+"非字符串 ``source`` 只会出现在 Python API 层手动 ``Parsable(123)`` 的场景。"
+msgstr ""
+"Non-string YAML values do not construct Parsable by default (``max_turns: 10`` parses directly to "
+"``int`` per YAML typing); exception: when a field is explicitly declared by its host as Parsable-carrying, non-string YAML values are also wrapped as ``LITERAL`` "
+"Parsable — ensuring a field declared as Parsable always receives a Parsable instance rather than a bare value. Apart from this, a non-string ``source`` of ``LITERAL`` "
+"only appears in Python API-layer manual ``Parsable(123)`` scenarios."
+
+#: flowing.parsable:59 of
+msgid ""
+"延迟定义不构造 Parsable：``.fya`` 中的 ``field: _`` 在解析阶段直接 映射为模块级哨兵 "
+":data:`PENDING` （见 :data:`PENDING`）；``$\"_\"`` 是 ``RAW`` 形式，结果为普通字符串 "
+"``\"_\"``，不触发 PENDING 语义。位置 分流（字段位 / 覆写位 / 资源列表项位）见 :data:`PENDING` 的 "
+"docstring。"
+msgstr ""
+"Deferred definitions do not construct Parsable: ``field: _`` in ``.fya`` maps directly to the module-level sentinel "
+":data:`PENDING` at parse time (see :data:`PENDING`); ``$\"_\"`` is the ``RAW`` form, yielding the plain string "
+"``\"_\"`` and not triggering PENDING semantics. Position triage (field position / override position / resource list item position) is in :data:`PENDING`'s "
+"docstring."
+
+#: flowing.parsable:63 of
+msgid ""
+"YAML 引号约束：双花括号表达式在 ``.fya`` 中必须写在引号内 （``max_turns: \"{{ "
+"config.limits.turns }}\"``）——``{`` 是 YAML flow mapping 起始符，不加引号会在 YAML "
+"层直接报错。多行内容可改用 YAML 块标量（``system_prompt: |`` 起）规避引号。"
+msgstr ""
+"YAML quoting constraint: double-brace expressions in ``.fya`` must be written inside quotes (``max_turns: \"{{ "
+"config.limits.turns }}\"``) — ``{`` is a YAML flow-mapping start character and unquoted use errors directly at the YAML "
+"layer. Multi-line content can instead use YAML block scalars (starting with ``system_prompt: |``) to avoid quotes."
+
+#: flowing.parsable:69 of
+msgid "两步渲染"
+msgstr "Two-step rendering"
+
+#: flowing.parsable:70 of
+msgid ""
+"``FILE_REF`` / ``EXPRESSION`` / ``TEMPLATE`` 三种形式走统一的两步渲染， "
+"顺序固定、不可配置、两步分开执行无交错："
+msgstr ""
+"The three forms ``FILE_REF`` / ``EXPRESSION`` / ``TEMPLATE`` go through a unified two-step rendering, "
+"with a fixed, non-configurable order, and the two steps execute separately without interleaving:"
+
+#: flowing.parsable:73 of
+msgid "``$`` 引用展开：``FILE_REF`` 在此步现场读取被引用文件内容（仅顶层、 不递归）。"
+msgstr "``$`` reference expansion: ``FILE_REF`` reads the referenced file's content on the spot in this step (top level only, no recursion)."
+
+#: flowing.parsable:75 of
+#, python-brace-format, python-format
+msgid ""
+"模板渲染（Jinja2）：``EXPRESSION`` 形式返回表达式原生值；其余形式 返回 ``str``；``{% include %}`` "
+"在此步解析。"
+msgstr ""
+"Template rendering (Jinja2): the ``EXPRESSION`` form returns the expression's native value; other forms "
+"return ``str``; ``{% include %}`` is resolved in this step."
+
+#: flowing.parsable:78 of
+msgid ""
+"``RAW`` 与 ``LITERAL`` 是两步渲染的例外：``RAW`` 跳过全部渲染直接取 引号内文本；``LITERAL`` 由 "
+"``resolve`` 直接返回 ``source`` 原样。"
+msgstr ""
+"``RAW`` and ``LITERAL`` are exceptions to two-step rendering: ``RAW`` skips all rendering and directly takes the text inside the quotes; ``LITERAL`` is "
+"returned as-is by ``resolve`` via ``source``."
+
+#: flowing.parsable:81 of
+#, python-brace-format, python-format
+msgid ""
+"模板继承（``{% extends %}`` / ``{% block %}``）暂不支持：不在上面枚举 内的 Jinja2 "
+"语法属契约外行为——引擎是完整 Jinja2、写了可能渲染出结果， 但框架不保证其语义，未来版本可能改变或收紧，不要在 ``.fya`` 中依赖。"
+" 跨文件组合只有 ``$`` 引用与 ``{% include %}`` 两个契约机制。"
+msgstr ""
+"Template inheritance (``{% extends %}`` / ``{% block %}``) is not supported for now: Jinja2 syntax not enumerated above is out-of-contract behavior — the "
+"engine is full Jinja2 and writing it may render results, but the framework does not guarantee its semantics and future versions may change or tighten it; "
+"do not rely on it in ``.fya``. The only two contracted cross-file composition mechanisms are ``$`` references and ``{% include %}``."
+
+#: flowing.parsable:86 of
+#, python-brace-format, python-format
+msgid "``$`` 引用与 ``{% include %}`` 是两种不同阶段的跨文件组合机制："
+msgstr "``$`` references and ``{% include %}`` are cross-file composition mechanisms at two different phases:"
+
+#: flowing.parsable:92 of
+msgid "``$`` 引用"
+msgstr "``$`` reference"
+
+#: flowing.parsable:93 of
+#, python-brace-format, python-format
+msgid "``{% include %}``"
+msgstr "``{% include %}``"
+
+#: flowing.parsable:94 of
+msgid "执行阶段"
+msgstr "Execution phase"
+
+#: flowing.parsable:95 of
+msgid "第一步：``$`` 展开"
+msgstr "Step one: ``$`` expansion"
+
+#: flowing.parsable:96 of
+msgid "第二步：Jinja2 渲染"
+msgstr "Step two: Jinja2 rendering"
+
+#: flowing.parsable:97 of
+msgid "使用位置"
+msgstr "Usage position"
+
+#: flowing.parsable:98 of
+msgid "仅 Parsable 顶层"
+msgstr "Parsable top level only"
+
+#: flowing.parsable:99 of
+msgid "模板内部任意位置"
+msgstr "Anywhere inside a template"
+
+#: flowing.parsable:100 of
+msgid "可搭配"
+msgstr "Combinable with"
+
+#: flowing.parsable:101 of
+msgid "不与其它 Jinja2 语法混用"
+msgstr "Not mixed with other Jinja2 syntax"
+
+#: flowing.parsable:102 of
+#, python-brace-format, python-format
+msgid "可与 ``{% if %}`` 等控制结构组合"
+msgstr "Can be combined with control structures such as ``{% if %}``"
+
+#: flowing.parsable:103 of
+msgid "路径前缀"
+msgstr "Path prefixes"
+
+#: flowing.parsable:104 of
+msgid "``./``、``../``、``@/``、多级 ``../../``"
+msgstr "``./``, ``../``, ``@/``, multi-level ``../../``"
+
+#: flowing.parsable:105 of
+msgid "与 ``$`` 相同的前缀规则"
+msgstr "Same prefix rules as ``$``"
+
+#: flowing.parsable:107 of
+msgid ""
+"路径解析是字符串前缀判断，不引入专门的路径类型：``./`` = 当前文件所在 目录，``../`` = 上级目录，``@/`` = 项目根，多级"
+" ``../../`` 按层级向上。 前缀集合的唯一权威表是 :data:`flowing.paths.PATH_PREFIXES`；实际解析 "
+"委托 ``Runtime.resolve_path(path, *, source_dir)``，``source_dir`` 基准 由 "
+"``Agent.source_dir`` 统一供给。裸名（如 ``payment``）不是路径形态， "
+"但在资源查找口径下可以命中当前目录。判定规则： ``ToolRegistry.get`` 在 ``source_dir`` "
+"可用时先走文件链，当前目录下的 同名文件覆盖 ``default::`` / ``builtin::`` 注册项；``source_dir`` "
+"缺省时只查注册表。形态判别见 :func:`flowing.paths.classify_ref`。"
+msgstr ""
+"Path resolution is string-prefix judgment and introduces no dedicated path type: ``./`` = the current file's directory, ``../`` = the parent directory, ``@/`` = the project root, multi-level "
+"``../../`` walks up level by level. The sole authoritative table of the prefix set is :data:`flowing.paths.PATH_PREFIXES`; actual resolution "
+"is delegated to ``Runtime.resolve_path(path, *, source_dir)``, with the ``source_dir`` base uniformly supplied by "
+"``Agent.source_dir``. A bare name (e.g. ``payment``) is not a path shape, "
+"but can hit the current directory under resource-lookup semantics. The judgment rule: when ``source_dir`` is available, ``ToolRegistry.get`` "
+"tries the file chain first, and a same-named file in the current directory overrides ``default::`` / ``builtin::`` registry entries; when ``source_dir`` "
+"is absent, only the registry is consulted. Shape discrimination is in :func:`flowing.paths.classify_ref`."
+
+#: flowing.parsable:117 of
+msgid "两条边界约定："
+msgstr "Two boundary conventions:"
+
+#: flowing.parsable:119 of
+#, python-brace-format, python-format
+msgid ""
+"``{% include %}`` 的路径基准与 ``$`` 引用同源：经同一个 ``resolve_path``、同一个 "
+"``source_dir`` （绑定实例的 ``Agent.source_dir``）。内联模板（无文件身份的 ``source`` 字符串）中 "
+"的 include 亦然——不存在「相对于包含者文件」的解析，基准永远来自 绑定实例。"
+msgstr ""
+"``{% include %}`` shares the same path base as ``$`` references: the same ``resolve_path``, the same "
+"``source_dir`` (the bound instance's ``Agent.source_dir``). The same holds for includes in inline templates (``source`` strings with no file identity) "
+"— there is no \"relative to the including file\" resolution; the base always comes from the bound instance."
+
+#: flowing.parsable:124 of
+msgid ""
+"``FILE_REF`` 先剥 ``$`` 再进 ``resolve_path``：``source`` 的首字符 ``$`` "
+"只是形式标记、不是路径成分；``resolve_path`` 永远看不到 ``$`` 前缀（否则 ``$./x.md`` 会被拼成 "
+"``base/\"$./x.md\"``）。"
+msgstr ""
+"``FILE_REF`` strips the ``$`` before entering ``resolve_path``: the leading ``$`` of ``source`` "
+"is only a form marker, not a path component; ``resolve_path`` never sees the ``$`` prefix (otherwise ``$./x.md`` would be concatenated into "
+"``base/\"$./x.md\"``)."
+
+#: flowing.parsable:129 of
+msgid "渲染上下文"
+msgstr "Render context"
+
+#: flowing.parsable:130 of
+msgid "第二步渲染的上下文变量："
+msgstr "Context variables for the second rendering step:"
+
+#: flowing.parsable:135 of
+msgid "变量"
+msgstr "Variable"
+
+#: flowing.parsable:137 of
+msgid "可用范围"
+msgstr "Availability"
+
+#: flowing.parsable:138 of
+msgid "``env``"
+msgstr "``env``"
+
+#: flowing.parsable:139 of
+msgid "``os.environ`` 的只读映射视图"
+msgstr "Read-only mapping view of ``os.environ``"
+
+#: flowing.parsable:140 flowing.parsable:143 of
+msgid "所有 ``.fya``"
+msgstr "All ``.fya``"
+
+#: flowing.parsable:141 of
+msgid "``config``"
+msgstr "``config``"
+
+#: flowing.parsable:142 of
+msgid "项目配置合并视图（优先级链合并结果）"
+msgstr "Merged view of project config (result of priority-chain merging)"
+
+#: flowing.parsable:144 of
+msgid "``agent`` / ``self``"
+msgstr "``agent`` / ``self``"
+
+#: flowing.parsable:145 of
+msgid ""
+"Agent 实例自身（经 ``getattr`` 可达类属性、描述符、方法—— ``{{ agent.system_prompt "
+"}}``、``{{ self.my_method() }}`` 均合法； 两名字同值，按书写习惯自选）"
+msgstr ""
+"The Agent instance itself (class attributes, descriptors, and methods reachable via ``getattr`` — ``{{ agent.system_prompt "
+"}}`` and ``{{ self.my_method() }}`` are both legal; the two names have the same value, choose per writing habit)"
+
+#: flowing.parsable:148 flowing.parsable:152 flowing.parsable:155 of
+msgid "Agent ``.fya``"
+msgstr "Agent ``.fya``"
+
+#: flowing.parsable:149 of
+msgid "摊平属性"
+msgstr "Flattened attributes"
+
+#: flowing.parsable:150 of
+msgid ""
+"Agent 实例属性逐一提升为顶层变量（不写 ``self.`` 前缀；不含 类属性与方法——它们经 ``agent.`` / ``self.``"
+" 前缀访问）"
+msgstr ""
+"Agent instance attributes promoted one by one to top-level variables (no ``self.`` prefix needed; class attributes and methods not included — they are "
+"accessed via the ``agent.`` / ``self.`` prefixes)"
+
+#: flowing.parsable:153 of
+msgid "``_extra``"
+msgstr "``_extra``"
+
+#: flowing.parsable:154 of
+msgid "``_extra`` 原值"
+msgstr "``_extra`` original value"
+
+#: flowing.parsable:157 of
+msgid ""
+"``env`` / ``config`` / ``agent`` / ``self`` 是保留名：Agent 实例属性 禁止同名，框架检测到抛 "
+"``ReservedAttributeError``——否则摊平会覆盖 框架注入的对应值。"
+msgstr ""
+"``env`` / ``config`` / ``agent`` / ``self`` are reserved names: Agent instance attributes must not share them; the framework raises "
+"``ReservedAttributeError`` when detected — otherwise flattening would overwrite the framework-injected corresponding values."
+
+#: flowing.parsable:160 of
+msgid ""
+"非 Agent 的 ``.fya`` （Tool / Skill 定义的 content）渲染上下文中可能 没有 Agent "
+"实例；可用字段由使用方（扩展或核心模块）在调用求值时 决定。"
+msgstr ""
+"Non-Agent ``.fya`` (Tool / Skill definition content) may have no Agent "
+"instance in the render context; available fields are decided by the consumer (extension or core module) when invoking evaluation."
+
+#: flowing.parsable:163 of
+msgid ""
+"框架不注册任何模板全局函数 / 包（无 ``now()``、无 ``datetime``）。 模板中调用函数的唯一通道是本对象的方法（``{{ "
+"self.my_method() }}`` / ``{{ agent.my_method() }}``，经上表 ``agent`` / "
+"``self`` 入口）。"
+msgstr ""
+"The framework registers no template global functions / packages (no ``now()``, no ``datetime``). The only channel for calling functions in templates is "
+"methods of this object (``{{ self.my_method() }}`` / ``{{ agent.my_method() }}``, via the ``agent`` / "
+"``self`` entries in the table above)."
+
+#: flowing.parsable:166 of
+msgid "求值时取最新值：``env`` 与 ``config`` 在每次求值时现场读取，不在 解析阶段固化。"
+msgstr "Latest values at evaluation time: ``env`` and ``config`` are read on the spot at each evaluation, not frozen at parse time."
+
+#: flowing.parsable:170 of
+msgid "惰性求值"
+msgstr "Lazy evaluation"
+
+#: flowing.parsable:171 of
+msgid ""
+"``Parsable`` 存储的是「如何解析」的指令，不是解析结果。真正求值发生在 "
+"实际使用时——这是功能正确性前提而非性能优化：若在文件解析阶段即求值， 会出现三类正确性问题："
+msgstr ""
+"``Parsable`` stores instructions on \"how to resolve\", not the resolution result. Actual evaluation happens at "
+"real use — this is a functional correctness prerequisite, not a performance optimization: evaluating at file-parse time would cause three classes of correctness problems:"
+
+#: flowing.parsable:175 of
+msgid "环境变量：``{{ env.API_KEY }}`` 在文件解析时可能尚未加载。"
+msgstr "Environment variables: ``{{ env.API_KEY }}`` may not be loaded yet at file-parse time."
+
+#: flowing.parsable:176 of
+msgid "动态属性：``{{ current_mode }}`` 在 Agent 构造前没有实例可取值；模式 切换后已求值的结果也不会反映新模式。"
+msgstr "Dynamic attributes: ``{{ current_mode }}`` has no instance to read from before the Agent is constructed; results evaluated earlier would not reflect a mode switch either."
+
+#: flowing.parsable:178 of
+msgid "模板引用：``$./system-prompt.md`` 在解析阶段展开时，被引用文件可能 尚未就绪；且文件修改后应自动反映新内容。"
+msgstr "Template references: when ``$./system-prompt.md`` is expanded at parse time, the referenced file may not be ready yet; and file modifications should be reflected automatically."
+
+#: flowing.parsable:181 of
+msgid ""
+"因此 ``FILE_REF`` 的文件读取、``EXPRESSION`` / ``TEMPLATE`` 的 Jinja2 "
+"执行都发生在求值时；框架不做任何本地缓存，每次求值现场执行。"
+msgstr ""
+"Therefore ``FILE_REF`` file reads and ``EXPRESSION`` / ``TEMPLATE`` Jinja2 "
+"execution both happen at evaluation time; the framework does no local caching and executes on the spot at every evaluation."
+
+#: flowing.parsable:186 of
+msgid "手写 Agent 子类声明 + ``setup()`` 中创建："
+msgstr "Hand-written Agent subclass declaration + creation in ``setup()``:"
+
+#: flowing.parsable:202 of
+msgid ""
+"``.fya`` 声明式入口（五种形式）与模板内 ``{{ x.resolved }}`` 引用见 :class:`Parsable` 类 "
+"docstring。"
+msgstr ""
+"The ``.fya`` declarative entry (five forms) and in-template ``{{ x.resolved }}`` references are in the :class:`Parsable` class "
+"docstring."
+
+#: flowing.parsable:206 of
+msgid "各使用方求值时机"
+msgstr "Per-consumer evaluation timing"
+
+#: flowing.parsable:210 of
+msgid "使用方"
+msgstr "Consumer"
+
+#: flowing.parsable:211 of
+msgid "求值时机"
+msgstr "Evaluation timing"
+
+#: flowing.parsable:212 of
+msgid "``PromptBlock.content`` （含 ``system_prompt`` 惰性引用块）"
+msgstr "``PromptBlock.content`` (including ``system_prompt`` lazy reference blocks)"
+
+#: flowing.parsable:213 of
+msgid ""
+"上下文组装（``Agent._assemble_context()``）每次调用时现场渲染， 每轮 ``provider_gen`` "
+"重新求值，天然反映最新实例属性"
+msgstr ""
+"Rendered on the spot at every context assembly (``Agent._assemble_context()``) call; re-evaluated every ``provider_gen`` "
+"round, naturally reflecting the latest instance attributes"
+
+#: flowing.parsable:215 of
+msgid "``model_tag`` （若为模板）"
+msgstr "``model_tag`` (if a template)"
+
+#: flowing.parsable:216 of
+msgid "每轮 ``provider_gen`` 前求值"
+msgstr "Evaluated before every ``provider_gen`` round"
+
+#: flowing.parsable:217 of
+msgid "``ToolEntry.specified`` 与子 Agent 的 ``specified`` 参数"
+msgstr "``ToolEntry.specified`` and sub-agent ``specified`` parameters"
+
+#: flowing.parsable:218 of
+msgid "``tool_call()`` / ``invoke_subagent()`` 内，调用方 Agent 实例 上下文，每次调用现场求值"
+msgstr "Inside ``tool_call()`` / ``invoke_subagent()``, in the calling Agent instance's context, evaluated on the spot at each call"
+
+#: flowing.parsable:220 of
+msgid "``SubagentEntry.override_system_prompt``"
+msgstr "``SubagentEntry.override_system_prompt``"
+
+#: flowing.parsable:221 of
+msgid "子 Agent 创建时"
+msgstr "At sub-agent creation time"
+
+#: flowing.parsable:222 of
+msgid "Tool / Skill / Subagent 的 description 覆盖"
+msgstr "Description overrides of Tool / Skill / Subagent"
+
+#: flowing.parsable:223 of
+msgid "``ToolEntry.llm_definition()`` / catalog 渲染 / 亲代 Agent 路由 决策时"
+msgstr "At ``ToolEntry.llm_definition()`` / catalog rendering / parent Agent routing decision time"
+
+#: flowing.parsable:225 of
+msgid "``_extra`` 中的任意字段"
+msgstr "Arbitrary fields in ``_extra``"
+
+#: flowing.parsable:226 of
+msgid "框架不自动 resolve——由声明该字段的插件在 ``use_xxx()`` 中接管"
+msgstr "Not auto-resolved by the framework — taken over by the plugin that declared the field in ``use_xxx()``"
+
+#: flowing.parsable:229 of
+msgid "插件自定义可解析字段"
+msgstr "Plugin-defined custom parsable fields"
+
+#: flowing.parsable:230 of
+msgid ""
+"``.fya`` 解析时默认构造为 ``Parsable`` 的字段集合由框架核心固定（即上表 「求值面内」字段，外加宿主显式声明 "
+"Parsable 承载的字段）。除此之外的 可解析对象由插件 / 组件自行定义："
+msgstr ""
+"The set of fields constructed as ``Parsable`` by default during ``.fya`` parsing is fixed by the framework core (the \"in evaluation surface\" fields "
+"in the table above, plus fields whose host explicitly declares Parsable carrying). Parsable objects beyond that are defined by plugins / components themselves:"
+
+#: flowing.parsable:234 of
+msgid ""
+"插件自行决定自己的哪些字段是可解析的，并以对开发者的约定形式写进 插件文档（「本插件的 X 字段是 Parsable」是插件契约的一部分，框架不 "
+"提供通用注册表）。"
+msgstr ""
+"The plugin itself decides which of its fields are parsable, and writes that into the plugin documentation as a convention for developers (\"this "
+"plugin's X field is Parsable\" is part of the plugin contract; the framework provides no general registry)."
+
+#: flowing.parsable:237 of
+msgid ""
+"机制：在 ``use_xxx()`` 启用钩子里，插件把对应变量重赋值为「由该变量 的 ``.fya`` 解析结果创建的 "
+":class:`Parsable` 对象」——框架解析层不为 插件字段自动包装，包装动作显式发生在启用时。"
+msgstr ""
+"Mechanism: in the ``use_xxx()`` install hook, the plugin reassigns the corresponding variable to \"a :class:`Parsable` object created from that "
+"variable's ``.fya`` parse result\" — the framework parsing layer does not auto-wrap plugin fields; the wrapping action happens explicitly at install time."
+
+#: flowing.parsable:240 of
+msgid ""
+"求值同样由插件负责：重赋值后的 Parsable 由插件在需要时手动 ``resolve(context)`` （见下「求值面内 vs "
+"求值面外」）。"
+msgstr ""
+"Evaluation is likewise the plugin's responsibility: the reassigned Parsable is manually ``resolve(context)``ed by the plugin when needed (see "
+"\"In vs Out of the Evaluation Surface\" below)."
+
+#: flowing.parsable:244 of
+msgid "求值面内 vs 求值面外"
+msgstr "In vs out of the evaluation surface"
+
+#: flowing.parsable:245 of
+msgid "示意图（无行列语义）："
+msgstr "Schematic (no row/column semantics):"
+
+#: flowing.parsable:261 of
+msgid ""
+"框架不为 Parsable 做隐式解包（类比 Vue 的 ref 但刻意不自动拆箱）： 隐式解包会掩盖求值开销，且求值上下文未必总是 "
+"``self``。判断标准：字段 是否在上表「求值面内」；面外字段拿到的永远是 :class:`Parsable` 对象。"
+msgstr ""
+"The framework does no implicit unwrapping for Parsable (analogous to Vue's ref but deliberately without auto-unboxing): implicit unwrapping would hide "
+"evaluation cost, and the evaluation context is not necessarily always ``self``. Judgment criterion: whether the field is \"in the evaluation surface\" in the table above; out-of-surface fields always receive a :class:`Parsable` object."
+
+#: flowing.parsable:267 of
+msgid "不缓存求值结果、不缓存文件内容、不缓存渲染输出；每次 resolve 现场 执行。"
+msgstr "No caching of evaluation results, file contents, or render output; every resolve executes on the spot."
+
+#: flowing.parsable:269 of
+msgid "不递归展开被引用文件中的 ``$path``。"
+msgstr "No recursive expansion of ``$path`` inside referenced files."
+
+#: flowing.parsable:270 of
+msgid ""
+"不提供响应式重算：``watch(name, handler)`` 只监听属性赋值事件，不 监听解析值的逻辑变化（``self.c = "
+"Parsable(\"{{ a == b }}\")`` 之后修改 ``self.a``，``watch(\"c\")`` 不触发——因为 "
+"``self.c`` 从未被重新赋值）。 要「a 变导致 c 重算」，把 ``c`` 放进某个求值面让框架每次自动 resolve， 或自己 "
+"``watch(\"a\")`` / ``watch(\"b\")`` 在 handler 中给 ``self.c`` 直接赋值。"
+msgstr ""
+"No reactive recomputation: ``watch(name, handler)`` only listens to attribute assignment events, not logical changes of resolved values (after "
+"``self.c = Parsable(\"{{ a == b }}\")``, modifying ``self.a`` does not trigger ``watch(\"c\")`` — because "
+"``self.c`` was never reassigned). To get \"a changing causes c to recompute\", put ``c`` into some evaluation surface so the framework auto-resolves it each time, or "
+"``watch(\"a\")`` / ``watch(\"b\")`` yourself and assign ``self.c`` directly in the handler."
+
+#: flowing.parsable:276 of
+msgid "不监听运行期文件变更（无文件系统 watcher）：``FILE_REF`` 的「文件 修改后下次求值反映新内容」仅指进程内再次求值。"
+msgstr "No runtime file-change watching (no filesystem watcher): ``FILE_REF``'s \"file modifications reflected at next evaluation\" only means re-evaluation within the process."
+
+#: flowing.parsable:278 of
+msgid ""
+"双哨兵不混用：:data:`PENDING` （延迟定义承诺，``.fya`` 中 ``field: _`` 的解析结果）与 ``_UNSET``"
+" （未设置，现仅用于 ``Agent.source_file`` 的自动推算触发条件）语义不同、不可混用。 ``PENDING`` "
+"等待的是用户代码赋值；``_UNSET`` 表示「该位置从无默认 / 显式值」。创建管线 ``setup()`` "
+"返回后、``after_create`` 前检查仍为 ``PENDING`` 的字段，抛 ``MissingFieldError``。"
+msgstr ""
+"The dual sentinels must not be mixed: :data:`PENDING` (deferred-definition promise, the parse result of ``field: _`` in ``.fya``) and ``_UNSET`` "
+"(not set, currently used only as the trigger condition for ``Agent.source_file`` auto-inference) have different semantics and must not be mixed. ``PENDING`` "
+"waits for user-code assignment; ``_UNSET`` means \"this position never had a default / explicit value\". Fields still ``PENDING`` after the "
+"creation pipeline's ``setup()`` returns and before ``after_create`` raise ``MissingFieldError``."
+
+#: flowing.parsable:284 of
+msgid ""
+"稳定性分级：本模块全部公开签名（:class:`Parsable` 及其公开方法、 "
+"五个形式常量、:data:`PENDING`）属于跨版本稳定契约；``_`` 前缀符号为 内部 API，不属稳定契约。"
+msgstr ""
+"Stability grading: all public signatures of this module (:class:`Parsable` and its public methods, "
+"the five form constants, :data:`PENDING`) belong to the cross-version stable contract; ``_``-prefixed symbols are internal API, not part of the stable contract."
+
+#: flowing.parsable:291 of
+msgid "Parsable 的主要宿主；``Agent.parsable()`` 工厂方法与 ``Agent.watch()`` 响应式边界。"
+msgstr "Parsable's main host; the ``Agent.parsable()`` factory method and the ``Agent.watch()`` reactivity boundary."
+
+#: flowing.parsable:293 of
+msgid ":mod:`flowing.errors`"
+msgstr ":mod:`flowing.errors`"
+
+#: flowing.parsable:294 of
+msgid ""
+"``MissingContextError`` / ``MissingFieldError`` / "
+"``ReservedAttributeError`` 的定义。"
+msgstr ""
+"Definitions of ``MissingContextError`` / ``MissingFieldError`` / "
+"``ReservedAttributeError``."
+
+#: flowing.parsable.LITERAL:1 of
+msgid "字面量形式标记。"
+msgstr "Literal form marker."
+
+#: flowing.parsable.LITERAL:3 of
+msgid ""
+"``source`` 为普通字面量（``\"hello\"``、``123``、``true`` 等，且不命中 ``RAW`` / "
+"``FILE_REF`` / ``EXPRESSION`` / ``TEMPLATE`` 判定）时的 ``Parsable.type`` "
+"取值；``resolve()`` 直接返回 ``source`` 原样，不进入 两步渲染。"
+msgstr ""
+"The ``Parsable.type`` value when ``source`` is an ordinary literal (``\"hello\"``, ``123``, ``true`` etc., and does not hit the ``RAW`` / "
+"``FILE_REF`` / ``EXPRESSION`` / ``TEMPLATE`` determinations); "
+"``resolve()`` returns ``source`` as-is, without entering two-step rendering."
+
+#: flowing.parsable.LITERAL:10 of
+msgid "值为模块级常量，比较必须用 ``is`` 或与 ``Parsable.type`` 相等性比较， 不依赖具体字面值。"
+msgstr "The value is a module-level constant; comparison must use ``is`` or equality against ``Parsable.type``, without relying on the concrete literal value."
+
+#: flowing.parsable.LITERAL:12 of
+msgid ""
+"``.fya`` 解析层不会为非字符串 YAML 值构造 Parsable（例外：字段被宿主 声明为 Parsable 承载时，非字符串值也包装为"
+" ``LITERAL``，见模块 docstring）；``LITERAL`` 的非字符串 ``source`` 其余只会出现在 Python "
+"API 层手动构造的场景（如 ``Parsable(123)``）。"
+msgstr ""
+"The ``.fya`` parsing layer does not construct Parsable for non-string YAML values (exception: when a field is declared by its host as Parsable-carrying, "
+"non-string values are also wrapped as ``LITERAL``; see the module docstring); otherwise, non-string ``source`` of ``LITERAL`` only appears in Python "
+"API-layer manual construction scenarios (e.g. ``Parsable(123)``)."
+
+#: flowing.parsable.LITERAL:16 of
+msgid ""
+"不做任何 Jinja2 解析：若字面量文本恰好含 ``{{ }}``，判定会先命中 ``TEMPLATE``；要保留原始文本须使用 "
+"``$\"...\"`` （``RAW``）。"
+msgstr ""
+"No Jinja2 parsing at all: if the literal text happens to contain ``{{ }}``, determination hits ``TEMPLATE`` first; to preserve raw text you must use "
+"``$\"...\"`` (``RAW``)."
+
+#: flowing.parsable.LITERAL:19 of
+msgid ":class:`Parsable`、:data:`RAW`、:data:`TEMPLATE`"
+msgstr ":class:`Parsable`, :data:`RAW`, :data:`TEMPLATE`"
+
+#: flowing.parsable.FILE_REF:1 of
+msgid "``$`` 文件引用形式标记。"
+msgstr "``$`` file-reference form marker."
+
+#: flowing.parsable.FILE_REF:3 of
+msgid ""
+"``source`` 以 ``$`` 开头（且非 ``$\"...\"`` 形式）时的 ``Parsable.type`` 取值，如 "
+"``$./system-prompt.md``、``$@/shared/base.md``；``resolve()`` "
+"时现场读取被引用文件内容并进入第二步 Jinja2 渲染。"
+msgstr ""
+"The ``Parsable.type`` value when ``source`` starts with ``$`` (and is not the ``$\"...\"`` form), e.g. "
+"``$./system-prompt.md``, ``$@/shared/base.md``; at ``resolve()`` "
+"time the referenced file's content is read on the spot and enters the second Jinja2 rendering step."
+
+#: flowing.parsable.FILE_REF:9 of
+msgid "``$`` 展开只发生在 Parsable 顶层，不递归：被引用文件中的 ``$path`` 作为普通文本进入第二步。"
+msgstr "``$`` expansion only happens at the Parsable top level, non-recursively: a ``$path`` inside the referenced file enters the second step as ordinary text."

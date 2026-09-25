@@ -1,0 +1,4 @@
+# Tag -> model entry name mapping (single value: one tag maps to exactly one entry).
+tags:
+  default: deepseek-flash
+  luna: openrouter-gpt-6-luna

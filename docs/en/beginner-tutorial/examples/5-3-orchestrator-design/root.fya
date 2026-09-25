@@ -1,0 +1,16 @@
+description: "Orchestrator: dispatches coding tasks to coder and review tasks to reviewer."
+model_tag: default
+tools:
+  - subagent-invoke
+subagents:
+  - ./agents/coder
+  - ./agents/reviewer
+  - ./agents/auditor:
+      visible: false    # not in the catalog (invisible to the LLM), but still programmatically invocable
+---
+$system_prompt:
+You are the task orchestrator.
+For development requests: first call subagent-invoke to dispatch the task to coder
+for code writing, then dispatch the delivered code to reviewer for review, and
+finally summarize the review findings to the user.
+Do not write or review code yourself.

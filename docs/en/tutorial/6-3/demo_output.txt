@@ -1,0 +1,16 @@
+== ① Configuration chain: three layers ==
+   project-level @/config.yaml overrides the framework default: agent.timeout = 45 (framework default 60)
+   the set_config overlay wins: agent.timeout = 90
+   FLOWING_CONFIG_HOME user-level: ~/.flowing (not set on this machine)
+== ② Model integration source override ==
+   default provider candidates: ['deepseek']
+   precedence: FLOWING_PROVIDERS_PATH environment variable > default path; set_providers overrides programmatically before mount
+   (this project's main() already calls set_providers('@/providers.yaml'); switching to alt-providers.yaml yields the deepseek-alt entry — see the example code in the chapter)
+== ③ Pool / archive (two of the three tiers of forgetting) ==
+   pool registry (including child agents): ['agent-0719bf', 'agent-main']
+   get_agent after archive_agent → None (forgotten by the runtime, files kept on disk)
+   destroy tier (drop instance, keep records) → archive tier (remove from registry); physical deletion is not provided by the framework, do it in the application layer
+== ④ Snapshot audit ==
+   nodes=['agent-main', 'runtime-0']
+   config_overrides={'agent.timeout': 90}
+   crash drill (kill -9 → restart recovery) is covered in 4-1; the log-persistence plugin lives in flowing._unstable.logging (format not frozen, do not depend on it)

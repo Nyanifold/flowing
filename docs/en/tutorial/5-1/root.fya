@@ -1,0 +1,39 @@
+name: root                    # consistency assertion: mismatch with the inferred name → NameMismatchError
+description: "Complex assembly demo assistant: glob tools + aliased subagent + deep block + $script hook."
+model_tag: default
+args:
+  user_id: str                 # sugar: bare type string → required
+  locale:                      # full expansion: JSON Schema keywords
+    type: string
+    default: en
+    description: Reply language
+tools:
+  - subagent-invoke            # invocation tool: usable only when explicitly declared (registration ≠ visibility)
+  - ./tools/*.py               # glob expansion: all .py tools under tools/ (explicit entries take precedence over glob)
+subagents:
+  - ./agents/greeter as greet:     # as alias: shown as greet in the LLM catalog
+      description: Greeting subagent (alias greet)
+      args:
+        tone: casual              # specified: fixed value invisible to the LLM
+        style: {}                 # empty patch ({} equivalent to _; sidesteps the entry-_ compilation gap — docstring-分歧登记.md #2)
+# Deep named blocks below: address the subagents entry by alias and write fields into the empty patch.
+---
+$system_prompt:
+You are the assembly demo assistant ({{ locale }} mode), current user {{ user_id }}.
+---
+$subagents.greet.args.style.description:
+  Wording style of the greeting (formal / playful / classical) — written by a deep block
+---
+$script:
+from flowing import on
+
+
+@on("before_tool_call")          # class-level declarative hooks are allowed in $script (registered during __init__)
+def _(self, tool_call):
+    print(f"[hook] before_tool_call: {tool_call.name}")
+    return tool_call
+
+
+async def setup(self, user_id: str, locale: str = "en"):
+    self.user_id = user_id
+    self.locale = locale

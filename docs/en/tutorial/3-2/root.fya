@@ -1,0 +1,29 @@
+description: "Mode-switching answer assistant: layered prompt blocks + mode switching."
+model_tag: default
+tools:
+  - ./tools/switch_mode.py
+---
+$system_prompt:
+You are a mode-switching answer assistant. Current mode: {{ current_mode }}.
+When the user asks to switch modes, use the switch-mode tool to complete the
+switch, then answer the question again in the new mode.
+---
+$script:
+from flowing import Parsable
+
+
+async def setup(self):
+    self.current_mode = "explain"
+    # Prompt layering: two mode blocks toggled by tag (register two sets,
+    # enable/disable by tag = the idiomatic way to switch modes)
+    self.prompt_blocks.append(
+        "mode-explain",
+        Parsable("[Explain mode] Answer with clear bullet points, at most three."),
+        cache="static", by="mode-switcher", tags=["mode", "explain"],
+    )
+    self.prompt_blocks.append(
+        "mode-poem",
+        Parsable("[Poem mode] Answer in the form of a modern poem, at most four lines."),
+        cache="static", by="mode-switcher", tags=["mode", "poem"],
+    )
+    self.prompt_blocks.disable_by_tag("poem")   # start with explain mode enabled only

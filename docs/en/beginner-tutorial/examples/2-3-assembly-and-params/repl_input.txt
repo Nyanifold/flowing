@@ -1,0 +1,2 @@
+Please report in one sentence: who is the current user, what is the locale, and what is the timezone?
+/exit

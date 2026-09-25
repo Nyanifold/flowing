@@ -1,0 +1,1712 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C)
+# This file is distributed under the same license as the flowing-agent
+# package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: flowing-agent \n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-09-11 07:02+0800\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: en\n"
+"Language-Team: en <LL@li.org>\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: ../../api/flowing.plugins.comm.rst:2
+msgid "flowing.plugins.comm package"
+msgstr "flowing.plugins.comm package"
+
+#: flowing.plugins.comm:1 of
+msgid "``flowing.plugins.comm`` —— 通信扩展子包。"
+msgstr "``flowing.plugins.comm`` — communication extension subpackage."
+
+#: flowing.plugins.comm:3 of
+msgid ""
+"本包承载进程内通信扩展的全部公开符号：:class:`CommPlugin` （阶段一 插件）、:func:`use_comm` "
+"（阶段二启用）、:class:`Communication` （通信 总线）、:class:`CommHandle` "
+"（端点句柄）、:class:`SignalEnvelope` / :class:`EventEnvelope` （两种信封模型）以及 "
+"provide 注入键 :data:`communication_key`；对外 API 经本 ``__init__`` 统一再导出。"
+msgstr ""
+"This package hosts all public symbols of the in-process communication extension: :class:`CommPlugin` (phase-one plugin), :func:`use_comm` "
+"(phase-two enablement), :class:`Communication` (the communication bus), :class:`CommHandle` "
+"(endpoint handle), :class:`SignalEnvelope` / :class:`EventEnvelope` (the two envelope models), and "
+"the provide injection key :data:`communication_key`; the public API is re-exported through this ``__init__``."
+
+#: flowing.plugins.comm:9 of
+msgid ""
+":mod:`flowing.plugins.comm.comm` （插件主模块：启用方式与 "
+"注册面清单）、:mod:`flowing.plugins.comm.models` （信封模型）"
+msgstr ""
+":mod:`flowing.plugins.comm.comm` (the plugin's main module: how to enable it and "
+"the registration surface), :mod:`flowing.plugins.comm.models` (envelope models)"
+
+#: flowing.plugins.comm.comm.CommPlugin:1 of
+msgid "通信扩展插件——阶段一入口：创建总线并 provide。"
+msgstr "Communication extension plugin — phase-one entry point: creates the bus and provides it."
+
+#: flowing.plugins.comm.comm:4 flowing.plugins.comm.comm.CommHandle:4
+#: flowing.plugins.comm.comm.CommHandle.destroy:4
+#: flowing.plugins.comm.comm.CommHandle.publish:4
+#: flowing.plugins.comm.comm.CommHandle.reply:4
+#: flowing.plugins.comm.comm.CommHandle.request:4
+#: flowing.plugins.comm.comm.CommHandle.send:4
+#: flowing.plugins.comm.comm.CommPlugin:4
+#: flowing.plugins.comm.comm.Communication:4
+#: flowing.plugins.comm.comm.Communication.create_handle:4
+#: flowing.plugins.comm.comm.Communication.publish:4
+#: flowing.plugins.comm.comm.Communication.register_endpoint:4
+#: flowing.plugins.comm.comm.Communication.reply:4
+#: flowing.plugins.comm.comm.Communication.request:4
+#: flowing.plugins.comm.comm.Communication.send:4
+#: flowing.plugins.comm.comm.use_comm:4
+#: flowing.plugins.comm.models.EventEnvelope:4
+#: flowing.plugins.comm.models.SignalEnvelope:4 of
+msgid "功能介绍"
+msgstr "Overview"
+
+#: flowing.plugins.comm.comm.CommPlugin:5 of
+msgid ""
+"``runtime.install(CommPlugin())`` 时框架调用 ``install(runtime)``，创建 全局 "
+"``Communication`` 实例并以 ``communication_key`` provide 到 Runtime provide "
+"链根。此后任何 Agent 可经 ``use_comm(self)`` 启用 实例级通信能力。框架核心发布时不预装本插件——未启用的通信扩展 "
+"「从没存在过」。"
+msgstr ""
+"When ``runtime.install(CommPlugin())`` runs, the framework calls ``install(runtime)``, creating the global "
+"``Communication`` instance and providing it under ``communication_key`` at the root of the Runtime provide "
+"chain. From then on, any Agent can enable instance-level communication via ``use_comm(self)``. The framework core does not ship with this plugin preinstalled — a communication extension that was never enabled "
+"\"never existed\"."
+
+#: flowing.plugins.comm.comm.CommHandle:32
+#: flowing.plugins.comm.comm.CommHandle.destroy:10
+#: flowing.plugins.comm.comm.CommHandle.publish:11
+#: flowing.plugins.comm.comm.CommHandle.reply:22
+#: flowing.plugins.comm.comm.CommHandle.request:37
+#: flowing.plugins.comm.comm.CommHandle.subscribe:4
+#: flowing.plugins.comm.comm.CommPlugin:12
+#: flowing.plugins.comm.comm.CommPlugin.install:4
+#: flowing.plugins.comm.comm.Communication:28
+#: flowing.plugins.comm.comm.Communication.create_handle:12
+#: flowing.plugins.comm.comm.Communication.publish:10
+#: flowing.plugins.comm.comm.Communication.register_endpoint:10
+#: flowing.plugins.comm.comm.Communication.reply:14
+#: flowing.plugins.comm.comm.Communication.request:19
+#: flowing.plugins.comm.comm.Communication.send:11
+#: flowing.plugins.comm.comm.Communication.subscribe:4
+#: flowing.plugins.comm.comm.Communication.unregister_endpoint:4
+#: flowing.plugins.comm.comm.Communication.unsubscribe:4
+#: flowing.plugins.comm.comm.Communication.unsubscribe_all:4
+#: flowing.plugins.comm.comm.use_comm:43
+#: flowing.plugins.comm.models.EventEnvelope:29
+#: flowing.plugins.comm.models.SignalEnvelope:21 of
+msgid "行为要点"
+msgstr "Key Behaviors"
+
+#: flowing.plugins.comm.comm.CommPlugin:13 of
+msgid ""
+"``install()`` 只做 provide 注册（插件约定：``install`` 只注册， 约定定义见 "
+":mod:`flowing.plugins`；本插件无工具、无配置命名 空间、无钩子声明）。"
+msgstr ""
+"``install()`` only performs the provide registration (plugin contract: ``install`` only registers; the contract is defined in "
+":mod:`flowing.plugins`; this plugin has no tools, no config namespace, and no hook declarations)."
+
+#: flowing.plugins.comm.comm.CommPlugin:16 of
+msgid ""
+"重复安装同名插件（再次 ``runtime.install(CommPlugin())``）→ ``ValueError`` （一个 "
+"Runtime 同时只装一个同名插件，见 :meth:`flowing.runtime.Runtime.install`）。"
+msgstr ""
+"Installing a plugin with the same name twice (calling ``runtime.install(CommPlugin())`` again) → ``ValueError`` (a "
+"Runtime holds at most one plugin of a given name at a time; see :meth:`flowing.runtime.Runtime.install`)."
+
+#: flowing.plugins.comm.comm.CommPlugin:19 of
+msgid ""
+"生命周期：``runtime.shutdown()`` 插件收尾阶段调用总线 ``_close()`` 清空端点表与订阅表（挂起请求的取消归各句柄"
+" ``destroy()``，总线不兜底）。"
+msgstr ""
+"Lifecycle: during the plugin finalization phase of ``runtime.shutdown()``, the bus ``_close()`` is called to clear the endpoint table and subscription table (cancellation of pending requests is left to each handle's"
+" ``destroy()``; the bus does not backstop it)."
+
+#: flowing.plugins.comm.comm.CommPlugin:23 of
+msgid ""
+":class:`Communication`、:func:`use_comm`、 "
+":class:`flowing.plugins.Plugin`、:meth:`flowing.runtime.Runtime.install`"
+msgstr ""
+":class:`Communication`, :func:`use_comm`, "
+":class:`flowing.plugins.Plugin`, :meth:`flowing.runtime.Runtime.install`"
+
+#: flowing.plugins.comm.CommPlugin.name:1
+#: flowing.plugins.comm.comm.CommPlugin.name:1 of
+msgid "注册名（显式声明，无框架默认；推荐格式见 ``flowing.plugins`` 命名约定）。"
+msgstr "Registration name (declared explicitly, no framework default; see the ``flowing.plugins`` naming convention for the recommended format)."
+
+#: flowing.plugins.comm.CommPlugin.dependencies:1
+#: flowing.plugins.comm.comm.CommPlugin.dependencies:1 of
+msgid "依赖声明（类属性元数据）。本插件无依赖，为空列表；框架在 ``install()`` 时做存在性与无环 DAG 校验。"
+msgstr "Dependency declaration (class-attribute metadata). This plugin has no dependencies, so it is an empty list; the framework validates existence and DAG acyclicity at ``install()`` time."
+
+#: flowing.plugins.comm.CommPlugin.dependencies:4
+#: flowing.plugins.comm.comm.CommPlugin.dependencies:4 of
+msgid ":meth:`flowing.runtime.Runtime._check_dependencies`"
+msgstr ":meth:`flowing.runtime.Runtime._check_dependencies`"
+
+#: flowing.plugins.comm.comm.CommPlugin.install:1 of
+msgid "创建 ``Communication`` 总线并 ``provide(communication_key, bus)``。"
+msgstr "Creates the ``Communication`` bus and calls ``provide(communication_key, bus)``."
+
+#: flowing.plugins.comm.comm.CommPlugin.install:5 of
+msgid "仅做 provide 注册（插件约定：``install`` 只注册），同步返回。"
+msgstr "Only performs the provide registration (plugin contract: ``install`` only registers), and returns synchronously."
+
+#: flowing.plugins.comm.comm.CommPlugin.install:6 of
+msgid "后置条件：总线 ready，可被任何 Agent 经 ``inject`` 消费； 总线的回收由插件收尾阶段负责。"
+msgstr "Postcondition: the bus is ready and can be consumed by any Agent via ``inject``; bus teardown is the responsibility of the plugin finalization phase."
+
+#: ../../api/flowing.plugins.comm.rst
+msgid "参数"
+msgstr "Parameters"
+
+#: flowing.plugins.comm.comm.CommPlugin.install:9 of
+msgid "当前安装的 Runtime 实例。"
+msgstr "The Runtime instance currently being installed."
+
+#: ../../api/flowing.plugins.comm.rst
+msgid "返回类型"
+msgstr "Return type"
+
+#: flowing.plugins.comm.comm.CommPlugin.install:11 of
+msgid ":data:`communication_key`、:class:`Communication`"
+msgstr ":data:`communication_key`, :class:`Communication`"
+
+#: flowing.plugins.comm.comm.CommPlugin.shutdown:1 of
+msgid "插件收尾：关闭通信总线。"
+msgstr "Plugin finalization: shuts down the communication bus."
+
+#: flowing.plugins.comm.comm.CommPlugin.shutdown:3 of
+msgid ""
+"先于本方法，Agent 树已递归 destroy（各句柄已各自清理），此处经 ``Communication._close()`` "
+"做兜底回收（清空端点表与订阅表）。"
+msgstr ""
+"Before this method runs, the Agent tree has already been destroyed recursively (each handle has cleaned itself up); this method performs a backstop teardown via ``Communication._close()`` "
+"(clearing the endpoint table and subscription table)."
+
+#: flowing.plugins.comm.comm.CommPlugin.shutdown:6 of
+msgid ":meth:`flowing.runtime.Runtime.shutdown`"
+msgstr ":meth:`flowing.runtime.Runtime.shutdown`"
+
+#: flowing.plugins.comm.comm.Communication:1 of
+msgid "单进程通信总线——端点注册表、信号路由与发布-订阅派发。"
+msgstr "Single-process communication bus — endpoint registry, signal routing, and publish-subscribe dispatch."
+
+#: flowing.plugins.comm.comm.Communication:5 of
+msgid ""
+"通信扩展的全局服务面：维护「端点 ID → 接收回调」的端点表与 「topic → 订阅者 ID → 回调」的订阅表，提供 ``send`` / "
+"``request`` / ``publish`` / ``reply`` 四操作与 ``subscribe`` / "
+"``unsubscribe`` / ``unsubscribe_all`` 订阅管理。由 ``CommPlugin.install()`` "
+"创建并以 ``communication_key`` provide 到 Runtime provide 链根，生命周期与 Runtime 相同。"
+msgstr ""
+"The global service surface of the communication extension: it maintains an endpoint table mapping \"endpoint ID → receive callback\" and a subscription table mapping \"topic → subscriber ID → callback\", and provides the four operations ``send`` / "
+"``request`` / ``publish`` / ``reply`` plus the ``subscribe`` / "
+"``unsubscribe`` / ``unsubscribe_all`` subscription management. Created by ``CommPlugin.install()`` "
+"and provided under ``communication_key`` at the root of the Runtime provide chain, its lifecycle matches the Runtime's."
+
+#: flowing.plugins.comm.comm.Communication:12 of
+msgid ""
+"总线是「机制」：它只做寻址、路由、关联与派发，不理解任何业务语义 （不校验 payload、不感知端点种类）。订阅表与广播派发归总线，收到 "
+"后的二次派发归端点（``CommHandle``）——两层分工使非 Agent 端点 （UI、系统组件）与 Agent 端点共享同一基础设施。"
+msgstr ""
+"The bus is pure \"mechanism\": it only does addressing, routing, correlation, and dispatch, and understands no business semantics (it does not validate payloads and is unaware of endpoint kinds). The subscription table and broadcast dispatch belong to the bus; "
+"secondary dispatch after receipt belongs to the endpoint (``CommHandle``) — this two-layer split lets non-Agent endpoints (UI, system components) share the same infrastructure as Agent endpoints."
+
+#: flowing.plugins.comm.comm:130 flowing.plugins.comm.comm.CommHandle:19
+#: flowing.plugins.comm.comm.CommHandle.reply:11
+#: flowing.plugins.comm.comm.CommHandle.send:10
+#: flowing.plugins.comm.comm.Communication:18
+#: flowing.plugins.comm.comm.use_comm:25
+#: flowing.plugins.comm.models.EventEnvelope:15
+#: flowing.plugins.comm.models.SignalEnvelope:10 of
+msgid "使用示例"
+msgstr "Examples"
+
+#: flowing.plugins.comm.comm.Communication:29 of
+msgid ""
+"四操作语义：``send`` 立即返回（目标端点不存在抛 ``SignalDeliveryError``）；``request`` "
+"阻塞等待回复（超时抛 ``SignalTimeoutError``）；``publish`` 容错广播（单个订阅者异常 "
+"静默忽略）；``reply`` 以保留类型 ``'_reply'`` 定向投递、不 dispatch 到钩子。"
+msgstr ""
+"Semantics of the four operations: ``send`` returns immediately (raises ``SignalDeliveryError`` if the target endpoint does not exist); ``request`` "
+"blocks waiting for a reply (raises ``SignalTimeoutError`` on timeout); ``publish`` is a fault-tolerant broadcast (exceptions from individual subscribers are "
+"silently ignored); ``reply`` delivers directly using the reserved type ``'_reply'`` and is never dispatched to hooks."
+
+#: flowing.plugins.comm.comm.Communication:34 of
+msgid ""
+"端点 ID 唯一：重复 ``register_endpoint`` 抛 ``DuplicateEndpointError`` "
+"且原映射不变；注销不存在的端点抛自然 ``KeyError`` （与订阅清理的幂等语义有意不同）。"
+msgstr ""
+"Endpoint IDs are unique: re-registering with ``register_endpoint`` raises ``DuplicateEndpointError`` "
+"and the original mapping stays unchanged; unregistering a nonexistent endpoint raises a natural ``KeyError`` (deliberately different from the idempotent semantics of subscription cleanup)."
+
+#: flowing.plugins.comm.comm.Communication:37 of
+msgid ""
+"订阅：同一订阅者对同一 topic 至多一条订阅（重复订阅覆盖旧 回调）；``unsubscribe`` / "
+"``unsubscribe_all`` 对不存在的订阅是 幂等空操作。"
+msgstr ""
+"Subscriptions: a subscriber may have at most one subscription per topic (re-subscribing overwrites the old callback); ``unsubscribe`` / "
+"``unsubscribe_all`` are idempotent no-ops for subscriptions that do not exist."
+
+#: flowing.plugins.comm.comm.Communication:40 of
+msgid ""
+"正常创建路径是 ``CommPlugin.install()`` （创建后经 ``communication_key`` 进入注入链）；直接 "
+"``Communication()`` 构造得到的是空总线，但它不在 provide 链上，其他 Agent 无法经 ``inject`` "
+"获得它。"
+msgstr ""
+"The normal creation path is ``CommPlugin.install()`` (after creation it enters the injection chain via ``communication_key``); constructing "
+"``Communication()`` directly yields an empty bus that is not on the provide chain, so other Agents cannot obtain it via ``inject``."
+
+#: flowing.plugins.comm.comm.Communication:44 of
+msgid ""
+"关闭：``runtime.shutdown()`` 插件收尾阶段清空端点表与订阅表； 挂起请求的取消归各句柄 ``destroy()`` "
+"（总线不持有句柄名单，不 兜底）。"
+msgstr ""
+"Shutdown: the plugin finalization phase of ``runtime.shutdown()`` clears the endpoint table and subscription table; cancellation of pending requests is left to each handle's ``destroy()`` "
+"(the bus holds no list of handles and does not backstop)."
+
+#: flowing.plugins.comm.comm.Communication:48 of
+msgid ""
+":class:`CommPlugin`、:class:`CommHandle`、 "
+":data:`communication_key`、:func:`use_comm`"
+msgstr ""
+":class:`CommPlugin`, :class:`CommHandle`, "
+":data:`communication_key`, :func:`use_comm`"
+
+#: flowing.plugins.comm.comm.Communication.register_endpoint:1 of
+msgid "把端点 ID 与接收回调绑定进总线路由表。"
+msgstr "Binds an endpoint ID to a receive callback in the bus routing table."
+
+#: flowing.plugins.comm.comm.Communication.register_endpoint:5 of
+msgid ""
+"注册成功后该端点立即可被 ``send`` / ``request`` 寻址。handler 在每次有信号投递到该端点时被调用（同步直接调用；返回"
+" awaitable 时转为后台任务）。"
+msgstr ""
+"After registration the endpoint is immediately addressable by ``send`` / ``request``. The handler is invoked each time a signal is delivered to this endpoint (called synchronously and directly; if it returns an"
+" awaitable, it is turned into a background task)."
+
+#: flowing.plugins.comm.comm.Communication.register_endpoint:11 of
+msgid ""
+"注册不幂等：同一端点 ID 重复注册抛 :class:`flowing.errors.DuplicateEndpointError`，且原映射 "
+"不变（已有回调不被覆盖）。语义化名称的可路由性依赖唯一性， 静默覆盖会使信号被路由到错误的实体。"
+msgstr ""
+"Registration is not idempotent: registering the same endpoint ID twice raises :class:`flowing.errors.DuplicateEndpointError`, and the original mapping "
+"stays unchanged (the existing callback is not overwritten). The routability of semantic names depends on uniqueness; silently overwriting would route signals to the wrong entity."
+
+#: flowing.plugins.comm.comm.Communication.register_endpoint:15 of
+msgid "通常不直接调用——``create_handle()`` / ``use_comm()`` 内部 经本方法注册。"
+msgstr "Usually not called directly — ``create_handle()`` / ``use_comm()`` register through this method internally."
+
+#: flowing.plugins.comm.comm.Communication.create_handle:19
+#: flowing.plugins.comm.comm.Communication.register_endpoint:18 of
+msgid "端点 ID（语义化名称）。"
+msgstr "Endpoint ID (semantic name)."
+
+#: flowing.plugins.comm.comm.Communication.register_endpoint:19 of
+msgid "接收回调，签名 ``(envelope: SignalEnvelope)``。"
+msgstr "Receive callback with signature ``(envelope: SignalEnvelope)``."
+
+#: ../../api/flowing.plugins.comm.rst
+msgid "抛出"
+msgstr "Raises"
+
+#: flowing.plugins.comm.comm.Communication.create_handle:23
+#: flowing.plugins.comm.comm.Communication.register_endpoint:21 of
+msgid "``endpoint_id`` 已存在时。"
+msgstr "When ``endpoint_id`` already exists."
+
+#: flowing.plugins.comm.comm.Communication.register_endpoint:24 of
+msgid ":meth:`unregister_endpoint`、:meth:`create_handle`"
+msgstr ":meth:`unregister_endpoint`, :meth:`create_handle`"
+
+#: flowing.plugins.comm.comm.Communication.unregister_endpoint:1 of
+msgid "从路由表移除端点。"
+msgstr "Removes an endpoint from the routing table."
+
+#: flowing.plugins.comm.comm.Communication.unregister_endpoint:5 of
+msgid ""
+"注销后向该端点 ``send`` / ``request`` 抛 "
+":class:`flowing.errors.SignalDeliveryError`。"
+msgstr ""
+"After unregistration, ``send`` / ``request`` to this endpoint raises "
+":class:`flowing.errors.SignalDeliveryError`."
+
+#: flowing.plugins.comm.comm.Communication.unregister_endpoint:7 of
+msgid ""
+"注销不存在的端点抛自然 ``KeyError``——注销路径几乎总是 ``CommHandle.destroy()`` "
+"清理链的一部分，重复注销属编程 错误，应当暴露而非吞掉（``CommHandle.destroy()`` 的幂等由 "
+"句柄层自行保证，不依赖本方法的容错）。"
+msgstr ""
+"Unregistering a nonexistent endpoint raises a natural ``KeyError`` — the unregister path is almost always part of the ``CommHandle.destroy()`` "
+"cleanup chain, and double unregistration is a programming error that should be surfaced rather than swallowed (the idempotence of ``CommHandle.destroy()`` is guaranteed by the "
+"handle layer itself and does not rely on this method's tolerance)."
+
+#: flowing.plugins.comm.comm.Communication.unregister_endpoint:11 of
+msgid "注销后该端点在途 ``request`` 的回复不受影响：回复按 ``correlation_id`` 匹配挂起的请求，不查端点表。"
+msgstr "In-flight ``request`` replies to this endpoint are unaffected after unregistration: replies match pending requests by ``correlation_id`` without consulting the endpoint table."
+
+#: flowing.plugins.comm.comm.Communication.unregister_endpoint:14 of
+msgid "要注销的端点 ID。"
+msgstr "The endpoint ID to unregister."
+
+#: flowing.plugins.comm.comm.Communication.unregister_endpoint:16 of
+msgid "端点不存在时（不包装）。"
+msgstr "When the endpoint does not exist (raised unwrapped)."
+
+#: flowing.plugins.comm.comm.Communication.unregister_endpoint:18 of
+msgid ":meth:`register_endpoint`、:meth:`CommHandle.destroy`"
+msgstr ":meth:`register_endpoint`, :meth:`CommHandle.destroy`"
+
+#: flowing.plugins.comm.comm.Communication.create_handle:1 of
+msgid "创建通信句柄并注册端点——所有端点的统一创建入口。"
+msgstr "Creates a communication handle and registers the endpoint — the unified creation entry point for all endpoints."
+
+#: flowing.plugins.comm.comm.Communication.create_handle:5 of
+msgid ""
+"一次完成「注册端点、构造 ``CommHandle``」两件事：返回的句柄 自动携带身份（发送时填 ``sender`` / "
+"``publisher``）。``on_signal`` / ``on_event`` 是端点接收信号 / 事件的回调，缺省为 noop（收到的 "
+"信号 / 事件被忽略）。``use_comm()`` 与 UI 等应用层端点都经 本方法创建。"
+msgstr ""
+"Does two things at once — registering the endpoint and constructing the ``CommHandle``: the returned handle automatically carries its identity (filling ``sender`` / "
+"``publisher`` when sending). ``on_signal`` / ``on_event`` are the endpoint's callbacks for received signals / events and default to noop (received "
+"signals / events are ignored). Both ``use_comm()`` and application-layer endpoints such as the UI are created through this method."
+
+#: flowing.plugins.comm.comm.Communication.create_handle:13 of
+msgid ""
+"端点 ID 已被占用时抛 :class:`flowing.errors.DuplicateEndpointError`，句柄对象 "
+"直接废弃，无副作用（端点表保持原映射）。"
+msgstr ""
+"When the endpoint ID is already taken, raises :class:`flowing.errors.DuplicateEndpointError`; the handle object "
+"is discarded outright with no side effects (the endpoint table keeps its original mapping)."
+
+#: flowing.plugins.comm.comm.Communication.create_handle:16 of
+msgid "注册进路由表的是句柄的接收入口（保留类型 ``'_reply'`` 在此 分流，见 :meth:`CommHandle._receive`）。"
+msgstr "What gets registered into the routing table is the handle's receive entry point (the reserved type ``'_reply'`` is split off here; see :meth:`CommHandle._receive`)."
+
+#: flowing.plugins.comm.comm.Communication.create_handle:20 of
+msgid "信号接收回调；``None`` 时收到的信号被忽略。"
+msgstr "Signal receive callback; when ``None``, received signals are ignored."
+
+#: flowing.plugins.comm.comm.Communication.create_handle:21 of
+msgid "事件接收回调；``None`` 时收到的事件被忽略。"
+msgstr "Event receive callback; when ``None``, received events are ignored."
+
+#: flowing.plugins.comm.comm.Communication.create_handle:26 of
+msgid ":class:`CommHandle`、:func:`use_comm`"
+msgstr ":class:`CommHandle`, :func:`use_comm`"
+
+#: flowing.plugins.comm.comm.Communication.send:1 of
+msgid "点对点发送信号，立即返回（即发即忘：不等待接收方处理完成）。"
+msgstr "Sends a point-to-point signal and returns immediately (fire-and-forget: does not wait for the receiver to finish processing)."
+
+#: flowing.plugins.comm.comm.Communication.send:5 of
+msgid ""
+"构造 ``SignalEnvelope`` （自动填充 ``sender`` 与 ``created_at``； "
+"``correlation_id`` / ``reply_to`` 为 ``None``），按端点表路由到 ``target`` "
+"的接收回调，然后立即返回——不等待接收方处理完成， 不支持回复。需要回复的场景用 ``request()``。"
+msgstr ""
+"Constructs a ``SignalEnvelope`` (auto-filling ``sender`` and ``created_at``; "
+"``correlation_id`` / ``reply_to`` are ``None``), routes it by the endpoint table to ``target``'s "
+"receive callback, then returns immediately — it does not wait for the receiver to finish processing and does not support replies. Use ``request()`` when a reply is needed."
+
+#: flowing.plugins.comm.comm.Communication.send:12 of
+msgid "同步完成路由：接收回调的同步部分直接执行，返回 awaitable 的 回调转为后台任务；本方法返回 ``None``。"
+msgstr "Routing completes synchronously: the synchronous part of the receive callback executes directly, a callback returning an awaitable is turned into a background task; this method returns ``None``."
+
+#: flowing.plugins.comm.comm.Communication.send:14 of
+msgid ""
+"``target`` 端点不存在 → 发送方同步感知 :class:`flowing.errors.SignalDeliveryError` "
+"（这是发送方唯一 能感知的失败）。"
+msgstr ""
+"``target`` endpoint does not exist → the sender synchronously observes :class:`flowing.errors.SignalDeliveryError` "
+"(this is the only failure the sender can observe)."
+
+#: flowing.plugins.comm.comm.Communication.send:17 of
+msgid "接收回调异常 → 捕获并记日志，不传播给发送方（与 ``publish`` 的容错一致）。"
+msgstr "Receive callback raises → caught and logged, not propagated to the sender (consistent with ``publish``'s fault tolerance)."
+
+#: flowing.plugins.comm.comm.Communication.send:19 of
+msgid "不重试、不排队：接收方处理失败不补偿。"
+msgstr "No retries, no queueing: receiver-side processing failures are not compensated."
+
+#: flowing.plugins.comm.comm.Communication.send:20 of
+msgid "``sender`` 应为已注册端点 ID；框架不强制（直接操作总线可 冒充，属已知高级用法风险）。"
+msgstr "``sender`` should be a registered endpoint ID; the framework does not enforce this (operating the bus directly allows impersonation — a known advanced-usage risk)."
+
+#: flowing.plugins.comm.comm.Communication.request:30
+#: flowing.plugins.comm.comm.Communication.send:23 of
+msgid "发送方端点 ID。"
+msgstr "Sender endpoint ID."
+
+#: flowing.plugins.comm.comm.CommHandle.request:43
+#: flowing.plugins.comm.comm.CommHandle.send:16
+#: flowing.plugins.comm.comm.Communication.request:31
+#: flowing.plugins.comm.comm.Communication.send:24 of
+msgid "目标端点 ID。"
+msgstr "Target endpoint ID."
+
+#: flowing.plugins.comm.comm.CommHandle.request:44
+#: flowing.plugins.comm.comm.CommHandle.send:17
+#: flowing.plugins.comm.comm.Communication.request:32
+#: flowing.plugins.comm.comm.Communication.send:25 of
+msgid "信号类型。"
+msgstr "Signal type."
+
+#: flowing.plugins.comm.comm.Communication.send:26 of
+msgid "业务负载（总线透明）。"
+msgstr "Business payload (opaque to the bus)."
+
+#: flowing.plugins.comm.comm.CommHandle.request:48
+#: flowing.plugins.comm.comm.CommHandle.send:20
+#: flowing.plugins.comm.comm.Communication.request:37
+#: flowing.plugins.comm.comm.Communication.send:28 of
+msgid "``target`` 端点 不存在时。"
+msgstr "When the ``target`` endpoint does not exist."
+
+#: flowing.plugins.comm.comm.Communication.send:31 of
+msgid ":meth:`request`、:meth:`CommHandle.send`"
+msgstr ":meth:`request`, :meth:`CommHandle.send`"
+
+#: flowing.plugins.comm.comm.Communication.request:1 of
+msgid "点对点发送并阻塞等待回复（request-reply）。"
+msgstr "Sends point-to-point and blocks waiting for a reply (request-reply)."
+
+#: flowing.plugins.comm.comm.Communication.request:5 of
+msgid ""
+"生成 ``correlation_id`` （8 位随机 hex），在 ``reply_handler`` 的挂起表 "
+"（等待对端回复的请求的登记处）中登记本次请求，发送带 ``correlation_id`` 与 ``reply_to=sender`` "
+"的信号信封，然后阻塞等待对端经 ``reply()`` 回传的 payload。 回复信封以保留类型 ``'_reply'`` 投递回 "
+"``reply_handler``，接收 侧按 ``correlation_id`` 匹配并完成本次等待——回复信封不 dispatch "
+"到任何钩子。关联经显式 ``correlation_id`` 而非调用栈， 使回复可以跨越任意异步边界（对端可以在另一个任务、另一个回合 "
+"里回复）。"
+msgstr ""
+"Generates a ``correlation_id`` (8 random hex characters), registers this request in ``reply_handler``'s pending table "
+"(the registry of requests awaiting a reply from the peer), sends a signal envelope carrying ``correlation_id`` and ``reply_to=sender``, "
+"then blocks waiting for the payload the peer sends back via ``reply()``. The reply envelope is delivered back to "
+"``reply_handler`` with the reserved type ``'_reply'``; the receiving side matches it by ``correlation_id`` and completes the wait — reply envelopes are never dispatched "
+"to any hook. Correlation uses an explicit ``correlation_id`` rather than the call stack, so replies can cross arbitrary asynchronous boundaries (the peer may reply from another task or another "
+"turn)."
+
+#: flowing.plugins.comm.comm.Communication.request:15 of
+msgid ""
+"通常经 ``CommHandle.request()`` 调用（自动填 ``sender`` 与 "
+"``reply_handler``）；直接调用本方法属高级用法。"
+msgstr ""
+"Usually called via ``CommHandle.request()`` (which auto-fills ``sender`` and "
+"``reply_handler``); calling this method directly is an advanced usage."
+
+#: flowing.plugins.comm.comm.Communication.request:20 of
+msgid ""
+"``timeout`` 到期 → :class:`flowing.errors.SignalTimeoutError`， "
+"挂起登记随即摘除，迟到的回复被静默丢弃。"
+msgstr ""
+"``timeout`` expires → :class:`flowing.errors.SignalTimeoutError`; "
+"the pending registration is removed immediately, and late replies are silently discarded."
+
+#: flowing.plugins.comm.comm.Communication.request:22 of
+msgid ""
+"``target`` 不存在 → 发送阶段即抛 :class:`flowing.errors.SignalDeliveryError` "
+"（不会进入等待）。"
+msgstr ""
+"``target`` does not exist → :class:`flowing.errors.SignalDeliveryError` is raised at the sending stage "
+"(the wait is never entered)."
+
+#: flowing.plugins.comm.comm.Communication.request:24 of
+msgid ""
+"等待期间 ``reply_handler.destroy()`` → 本次 ``await`` 收到 "
+"``asyncio.CancelledError``。"
+msgstr ""
+"``reply_handler.destroy()`` during the wait → this ``await`` receives "
+"``asyncio.CancelledError``."
+
+#: flowing.plugins.comm.comm.Communication.request:26 of
+msgid "``timeout=None`` 表示不限时（仅句柄销毁可解除等待）。"
+msgstr "``timeout=None`` means no time limit (only handle destruction can release the wait)."
+
+#: flowing.plugins.comm.comm.Communication.request:27 of
+msgid "一个 ``correlation_id`` 至多完成一次；同时并发的多个 ``request`` 互不干扰。"
+msgstr "A ``correlation_id`` completes at most once; multiple concurrent ``request`` calls do not interfere with each other."
+
+#: flowing.plugins.comm.comm.CommHandle.request:45
+#: flowing.plugins.comm.comm.CommHandle.send:18
+#: flowing.plugins.comm.comm.Communication.request:33 of
+msgid "业务负载。"
+msgstr "Business payload."
+
+#: flowing.plugins.comm.comm.Communication.request:34 of
+msgid "承载挂起请求的句柄（回复投递回它）。"
+msgstr "The handle carrying the pending request (the reply is delivered back to it)."
+
+#: flowing.plugins.comm.comm.CommHandle.request:46
+#: flowing.plugins.comm.comm.Communication.request:35 of
+msgid "等待秒数；``None`` 表示不限时。"
+msgstr "Seconds to wait; ``None`` means no time limit."
+
+#: flowing.plugins.comm.comm.Communication.request:39 of
+msgid "等待超过 ``timeout`` 秒时。"
+msgstr "When the wait exceeds ``timeout`` seconds."
+
+#: flowing.plugins.comm.comm.Communication.request:41 of
+msgid "等待期间 ``reply_handler`` 被 销毁时。"
+msgstr "When ``reply_handler`` is destroyed during the wait."
+
+#: flowing.plugins.comm.comm.Communication.request:44 of
+msgid ":meth:`CommHandle.request`、:meth:`CommHandle.reply`"
+msgstr ":meth:`CommHandle.request`, :meth:`CommHandle.reply`"
+
+#: flowing.plugins.comm.comm.Communication.reply:1 of
+msgid "以保留类型 ``'_reply'`` 定向投递回复信封（低层入口）。"
+msgstr "Delivers a reply envelope directly using the reserved type ``'_reply'`` (low-level entry point)."
+
+#: flowing.plugins.comm.comm.Communication.reply:5 of
+msgid ""
+"构造 ``type='_reply'`` 的 ``SignalEnvelope`` 并投递给 ``target``。接收侧句柄检测保留类型后按 "
+"``correlation_id`` 匹配 挂起的请求并完成等待——不 dispatch 到 ``on_signal`` 钩子，应用 "
+"层永远观察不到回复信封。回复是 request-reply 机制的内部完成 事件，不是业务信号。"
+msgstr ""
+"Constructs a ``SignalEnvelope`` with ``type='_reply'`` and delivers it to ``target``. The receiving handle detects the reserved type, matches the pending request by "
+"``correlation_id``, and completes the wait — it is not dispatched to the ``on_signal`` hook, so the application "
+"layer never observes reply envelopes. A reply is the internal completion event of the request-reply mechanism, not a business signal."
+
+#: flowing.plugins.comm.comm.Communication.reply:11 of
+msgid "通常经 ``CommHandle.reply()`` 调用；直接调用本方法属高级用法。"
+msgstr "Usually called via ``CommHandle.reply()``; calling this method directly is an advanced usage."
+
+#: flowing.plugins.comm.comm.Communication.reply:15 of
+msgid ""
+"``correlation_id`` 无匹配的挂起请求（已超时或已销毁）→ 静默丢弃并发 ``warnings.warn`` "
+"警告（回复丢失通常意味着请求 方异常退出或超时配置不当，应可观测而非无声）。"
+msgstr ""
+"``correlation_id`` matches no pending request (already timed out or destroyed) → silently discarded with a ``warnings.warn`` "
+"warning (a lost reply usually means the requester exited abnormally or the timeout is misconfigured, so it should be observable rather than silent)."
+
+#: flowing.plugins.comm.comm.Communication.reply:18 of
+msgid ""
+"``target`` 端点已注销 → 静默丢弃并发 ``warnings.warn`` 警告 （回复路径不抛 "
+"``SignalDeliveryError``——发送方可能已不在， 报错无人接收）。"
+msgstr ""
+"``target`` endpoint already unregistered → silently discarded with a ``warnings.warn`` warning (the reply path does not raise "
+"``SignalDeliveryError`` — the sender may already be gone, so an error would have no recipient)."
+
+#: flowing.plugins.comm.comm.Communication.reply:21 of
+msgid "不 dispatch、不入队、不产生任何钩子事件。"
+msgstr "No dispatch, no queueing, no hook events of any kind."
+
+#: flowing.plugins.comm.comm.Communication.reply:23 of
+msgid "回复方端点 ID。"
+msgstr "Replier endpoint ID."
+
+#: flowing.plugins.comm.comm.Communication.reply:24 of
+msgid "请求方端点 ID。"
+msgstr "Requester endpoint ID."
+
+#: flowing.plugins.comm.comm.Communication.reply:25 of
+msgid "原 ``request`` 信封的关联 ID。"
+msgstr "The correlation ID from the original ``request`` envelope."
+
+#: flowing.plugins.comm.comm.CommHandle.reply:31
+#: flowing.plugins.comm.comm.Communication.reply:26 of
+msgid "回复负载。"
+msgstr "Reply payload."
+
+#: flowing.plugins.comm.comm.Communication.reply:28 of
+msgid ":meth:`request`、:meth:`CommHandle.reply`"
+msgstr ":meth:`request`, :meth:`CommHandle.reply`"
+
+#: flowing.plugins.comm.comm.Communication.publish:1 of
+msgid "向 topic 的全部订阅者广播事件（容错且 fire-and-forget）。"
+msgstr "Broadcasts an event to all subscribers of a topic (fault-tolerant and fire-and-forget)."
+
+#: flowing.plugins.comm.comm.Communication.publish:5 of
+msgid ""
+"构造 ``EventEnvelope`` （自动填充 ``created_at``；``publisher`` 取 ``event`` "
+"中已有的值——``CommHandle.publish()`` 会在调用前 注入句柄身份），遍历订阅表把信封派发给每个订阅回调。"
+msgstr ""
+"Constructs an ``EventEnvelope`` (auto-filling ``created_at``; ``publisher`` takes the value already present in ``event`` "
+"— ``CommHandle.publish()`` injects the handle identity before calling), then iterates the subscription table and dispatches the envelope to every subscription callback."
+
+#: flowing.plugins.comm.comm.Communication.publish:11 of
+msgid ""
+"订阅回调按订阅表遍历顺序逐个调用：同步回调直接执行完毕， 返回 awaitable 的回调转为后台任务后立即继续下一个；本方法 "
+"在全部回调「已启动」后返回，不等待任何回调完成。"
+msgstr ""
+"Subscription callbacks are invoked one by one in subscription-table iteration order: synchronous callbacks run to completion directly, and callbacks returning an awaitable are turned into background tasks before moving on to the next; this method "
+"returns once all callbacks have been \"started\", without waiting for any callback to finish."
+
+#: flowing.plugins.comm.comm.CommHandle.publish:14
+#: flowing.plugins.comm.comm.Communication.publish:14 of
+msgid "无订阅者 → 空操作。"
+msgstr "No subscribers → no-op."
+
+#: flowing.plugins.comm.comm.Communication.publish:15 of
+msgid "单个订阅回调抛异常 → 捕获并记日志，其余订阅者与发布者不受 影响（容错）。"
+msgstr "A subscription callback raising → caught and logged; the remaining subscribers and the publisher are unaffected (fault tolerance)."
+
+#: flowing.plugins.comm.comm.Communication.publish:17 of
+msgid "不向发布者回传任何结果；不做重试与死信处理。"
+msgstr "No results are returned to the publisher; no retries and no dead-letter handling."
+
+#: flowing.plugins.comm.comm.CommHandle.publish:16
+#: flowing.plugins.comm.comm.CommHandle.subscribe:9
+#: flowing.plugins.comm.comm.CommHandle.unsubscribe:5
+#: flowing.plugins.comm.comm.Communication.publish:19
+#: flowing.plugins.comm.comm.Communication.subscribe:15
+#: flowing.plugins.comm.comm.Communication.unsubscribe:11 of
+msgid "事件主题。"
+msgstr "Event topic."
+
+#: flowing.plugins.comm.comm.Communication.publish:20 of
+msgid "事件内容（总线透明；``publisher`` 键被总线读取 为发布方身份）。"
+msgstr "Event content (opaque to the bus; the ``publisher`` key is read by the bus as the publisher's identity)."
+
+#: flowing.plugins.comm.comm.Communication.publish:23 of
+msgid ":meth:`subscribe`、:meth:`CommHandle.publish`"
+msgstr ":meth:`subscribe`, :meth:`CommHandle.publish`"
+
+#: flowing.plugins.comm.comm.Communication.subscribe:1 of
+msgid "把 ``callback`` 登记为 ``subscriber_id`` 对 ``topic`` 的订阅回调。"
+msgstr "Registers ``callback`` as ``subscriber_id``'s subscription callback for ``topic``."
+
+#: flowing.plugins.comm.comm.Communication.subscribe:5 of
+msgid "登记后立即生效：下一次 ``publish(topic, ...)`` 即派发到该 回调。"
+msgstr "Takes effect immediately after registration: the next ``publish(topic, ...)`` dispatches to this callback."
+
+#: flowing.plugins.comm.comm.Communication.subscribe:7 of
+msgid "同一 ``subscriber_id`` 对同一 ``topic`` 重复订阅 → 覆盖旧 回调（一个订阅者一个 topic 至多一条订阅）。"
+msgstr "Re-subscribing the same ``subscriber_id`` to the same ``topic`` → overwrites the old callback (a subscriber has at most one subscription per topic)."
+
+#: flowing.plugins.comm.comm.Communication.subscribe:9 of
+msgid ""
+"订阅不要求 ``subscriber_id`` 是已注册端点（但 ``CommHandle`` 路径下它总是句柄的 "
+"``endpoint_id``）。"
+msgstr ""
+"A subscription does not require ``subscriber_id`` to be a registered endpoint (but on the ``CommHandle`` path it is always the handle's "
+"``endpoint_id``)."
+
+#: flowing.plugins.comm.comm.Communication.subscribe:11 of
+msgid "订阅表与广播派发归总线；回调内部的二次派发（到 ``agent.hooks`` 或自定义逻辑）归端点层。"
+msgstr "The subscription table and broadcast dispatch belong to the bus; secondary dispatch inside callbacks (to ``agent.hooks`` or custom logic) belongs to the endpoint layer."
+
+#: flowing.plugins.comm.comm.Communication.subscribe:14
+#: flowing.plugins.comm.comm.Communication.unsubscribe:10
+#: flowing.plugins.comm.comm.Communication.unsubscribe_all:7 of
+msgid "订阅者 ID。"
+msgstr "Subscriber ID."
+
+#: flowing.plugins.comm.comm.Communication.subscribe:16 of
+msgid "订阅回调，签名 ``(envelope: EventEnvelope)``。"
+msgstr "Subscription callback with signature ``(envelope: EventEnvelope)``."
+
+#: flowing.plugins.comm.comm.Communication.subscribe:18 of
+msgid ":meth:`unsubscribe`、:meth:`publish`"
+msgstr ":meth:`unsubscribe`, :meth:`publish`"
+
+#: flowing.plugins.comm.comm.Communication.unsubscribe:1 of
+msgid "取消单个订阅。"
+msgstr "Cancels a single subscription."
+
+#: flowing.plugins.comm.comm.Communication.unsubscribe:5 of
+msgid ""
+"订阅不存在时为幂等空操作（不抛异常）——与 ``unregister_endpoint`` 的 ``KeyError`` 语义有意不同：取消 "
+"订阅常见于清理路径，重复清理不应报错 （``CommHandle.destroy()`` 的幂等依赖这一点）。"
+msgstr ""
+"An idempotent no-op when the subscription does not exist (no exception) — deliberately different from ``unregister_endpoint``'s ``KeyError`` semantics: unsubscribing "
+"commonly happens on cleanup paths, where repeated cleanup must not error (the idempotence of ``CommHandle.destroy()`` relies on this)."
+
+#: flowing.plugins.comm.comm.Communication.unsubscribe:13 of
+msgid ":meth:`subscribe`、:meth:`unsubscribe_all`"
+msgstr ":meth:`subscribe`, :meth:`unsubscribe_all`"
+
+#: flowing.plugins.comm.comm.Communication.unsubscribe_all:1 of
+msgid "取消某订阅者的全部订阅（清理路径用）。"
+msgstr "Cancels all of a subscriber's subscriptions (for cleanup paths)."
+
+#: flowing.plugins.comm.comm.Communication.unsubscribe_all:5 of
+msgid "该订阅者没有任何订阅时是幂等空操作。"
+msgstr "An idempotent no-op when the subscriber has no subscriptions."
+
+#: flowing.plugins.comm.comm.Communication.unsubscribe_all:9 of
+msgid ":meth:`unsubscribe`、:meth:`CommHandle.destroy`"
+msgstr ":meth:`unsubscribe`, :meth:`CommHandle.destroy`"
+
+#: flowing.plugins.comm.comm.CommHandle:1 of
+msgid "通用通信句柄——任何端点（Agent / UI / 系统组件）的统一句柄，无子类。"
+msgstr "Universal communication handle — the single unified handle for any endpoint (Agent / UI / system component), with no subclasses."
+
+#: flowing.plugins.comm.comm.CommHandle:5 of
+msgid ""
+"端点持有者的操作面：发送类方法（``send`` / ``request`` / ``publish``）自动携带自己的身份（``sender``"
+" / ``publisher``）， 订阅类方法（``subscribe`` / ``unsubscribe``）自动填订阅者 ID， "
+"``destroy()`` 一次性清理该端点在总线上的全部痕迹。"
+msgstr ""
+"The operation surface for the endpoint holder: sending methods (``send`` / ``request`` / ``publish``) automatically carry its own identity (``sender``"
+" / ``publisher``), subscription methods (``subscribe`` / ``unsubscribe``) automatically fill in the subscriber ID, and "
+"``destroy()`` cleans up all traces of this endpoint on the bus in one call."
+
+#: flowing.plugins.comm.comm.CommHandle:10 of
+msgid ""
+"统一无子类：Agent 端点与非 Agent 端点（UI / 系统组件）共用同一个 类。Agent "
+"端点的接收回调经闭包注入——``use_comm()`` 的函数域内 捕获 agent，把收到的信号 / 事件 dispatch 到 "
+"``agent.hooks``；非 Agent 端点由应用层在 ``create_handle`` 时注入自定义回调。"
+msgstr ""
+"Unified, no subclasses: Agent endpoints and non-Agent endpoints (UI / system components) share the same class. An Agent "
+"endpoint's receive callbacks are injected via closures — ``use_comm()`` captures the agent in its function scope and dispatches received signals / events to "
+"``agent.hooks``; non-Agent endpoints have custom callbacks injected by the application layer at ``create_handle`` time."
+
+#: flowing.plugins.comm.comm.CommHandle:15 of
+msgid ""
+"句柄由 :meth:`Communication.create_handle` 创建（``use_comm()`` 与 "
+"应用层端点创建均经此），创建时即完成端点注册。"
+msgstr ""
+"Handles are created by :meth:`Communication.create_handle` (both ``use_comm()`` and "
+"application-layer endpoint creation go through it), with endpoint registration completed at creation time."
+
+#: flowing.plugins.comm.comm.CommHandle:33 of
+msgid "``endpoint_id`` 构造后不可变；一个句柄对应总线上恰好一个端点 注册项（``destroy()`` 后对应零个）。"
+msgstr "``endpoint_id`` is immutable after construction; a handle corresponds to exactly one endpoint registration on the bus (zero after ``destroy()``)."
+
+#: flowing.plugins.comm.comm.CommHandle:35 of
+msgid "未注入接收回调的句柄收到信号 / 事件时被静默忽略（noop）。"
+msgstr "A handle with no receive callbacks injected silently ignores received signals / events (noop)."
+
+#: flowing.plugins.comm.comm.CommHandle:36 of
+msgid ""
+"``destroy()`` 可重复调用（幂等），首次调用完成全部清理，后续 调用为空操作；清理后该句柄不再代表任何端点——向已注销的端点 ID "
+"发送信号会抛 ``SignalDeliveryError``；向其它存活端点发送仍可 工作（发送只查目标端点表，不校验发送方），但继续使用销毁后的"
+" 句柄不被推荐。"
+msgstr ""
+"``destroy()`` may be called repeatedly (idempotent): the first call performs all cleanup and later calls are no-ops; after cleanup the handle no longer represents any endpoint — sending a signal to the unregistered endpoint ID "
+"raises ``SignalDeliveryError``; sending to other live endpoints still works (sending only looks up the target endpoint table and does not validate the sender), but continuing to use a destroyed"
+" handle is not recommended."
+
+#: flowing.plugins.comm.comm.CommHandle:41 of
+msgid "``destroy()`` 不触发任何钩子（销毁事件的观察走 Agent 侧的 ``before_destroy`` 钩子，与本方法正交）。"
+msgstr "``destroy()`` triggers no hooks (observing destruction events goes through the Agent-side ``before_destroy`` hook, orthogonal to this method)."
+
+#: flowing.plugins.comm.comm.CommHandle:44 of
+msgid ""
+":class:`Communication`、:func:`use_comm`、 "
+":class:`SignalEnvelope`、:class:`EventEnvelope`"
+msgstr ""
+":class:`Communication`, :func:`use_comm`, "
+":class:`SignalEnvelope`, :class:`EventEnvelope`"
+
+#: flowing.plugins.comm.CommHandle.endpoint_id:1
+#: flowing.plugins.comm.comm.CommHandle.endpoint_id:1 of
+msgid "端点 ID（语义化名称），构造时确定、不可变。发送 / 订阅路径上的 身份字段全部由它自动填充。"
+msgstr "Endpoint ID (semantic name), fixed at construction and immutable. All identity fields on the sending / subscription paths are auto-filled from it."
+
+#: flowing.plugins.comm.CommHandle.endpoint_id:4
+#: flowing.plugins.comm.comm.CommHandle.endpoint_id:4 of
+msgid ":meth:`Communication.create_handle`"
+msgstr ":meth:`Communication.create_handle`"
+
+#: flowing.plugins.comm.comm.CommHandle.send:1 of
+msgid "发送点对点信号（自动填 ``sender=self.endpoint_id``）。"
+msgstr "Sends a point-to-point signal (auto-fills ``sender=self.endpoint_id``)."
+
+#: flowing.plugins.comm.comm.CommHandle.send:5 of
+msgid ""
+":meth:`Communication.send` 的身份携带包装；语义（立即返回、 即发即忘、目标不存在抛 "
+"``SignalDeliveryError``）与总线方法 完全一致。"
+msgstr ""
+"An identity-carrying wrapper around :meth:`Communication.send`; its semantics (immediate return, fire-and-forget, "
+"``SignalDeliveryError`` when the target does not exist) are identical to the bus method."
+
+#: flowing.plugins.comm.comm.CommHandle.send:23 of
+msgid ":meth:`Communication.send`、:meth:`request`"
+msgstr ":meth:`Communication.send`, :meth:`request`"
+
+#: flowing.plugins.comm.comm.CommHandle.request:1 of
+msgid "发送并阻塞等待回复（自动填 ``sender`` 与 ``reply_handler=self``）。"
+msgstr "Sends and blocks waiting for a reply (auto-fills ``sender`` and ``reply_handler=self``)."
+
+#: flowing.plugins.comm.comm.CommHandle.request:5 of
+msgid ""
+":meth:`Communication.request` 的身份携带包装；correlation_id "
+"关联、超时、销毁取消等语义与总线方法完全一致。"
+msgstr ""
+"An identity-carrying wrapper around :meth:`Communication.request`; its semantics — correlation_id "
+"matching, timeout, destruction cancellation, etc. — are identical to the bus method."
+
+#: flowing.plugins.comm.comm.CommHandle.request:9 of
+msgid "使用示例（工具审批）"
+msgstr "Example (tool approval)"
+
+#: flowing.plugins.comm.comm.CommHandle.request:38 of
+msgid "等待期间本句柄被 ``destroy()`` → ``await`` 收到 ``asyncio.CancelledError``。"
+msgstr "If this handle is ``destroy()``ed during the wait → the ``await`` receives ``asyncio.CancelledError``."
+
+#: flowing.plugins.comm.comm.CommHandle.request:40 of
+msgid "对端经 ``reply()`` 回传的 payload 原样作为返回值（回复走 保留类型，不回传信封本身，也不触发任何钩子）。"
+msgstr "The payload sent back by the peer via ``reply()`` is returned as-is (replies travel under the reserved type; the envelope itself is not returned, and no hooks are triggered)."
+
+#: flowing.plugins.comm.comm.CommHandle.request:50 of
+msgid "超过 ``timeout`` 秒 未收到回复时。"
+msgstr "When no reply arrives within ``timeout`` seconds."
+
+#: flowing.plugins.comm.comm.CommHandle.request:52 of
+msgid "等待期间句柄被销毁时。"
+msgstr "When the handle is destroyed during the wait."
+
+#: flowing.plugins.comm.comm.CommHandle.request:54 of
+msgid ":meth:`Communication.request`、:meth:`reply`"
+msgstr ":meth:`Communication.request`, :meth:`reply`"
+
+#: flowing.plugins.comm.comm.CommHandle.reply:1 of
+msgid "回复一个 ``request`` 信号。"
+msgstr "Replies to a ``request`` signal."
+
+#: flowing.plugins.comm.comm.CommHandle.reply:5 of
+msgid ""
+"以 ``in_reply_to.reply_to`` （缺省回退 ``in_reply_to.sender``） 为目标、原样携带 "
+"``in_reply_to.correlation_id`` 投递保留类型 ``'_reply'`` 信封。回复不 dispatch "
+"到任何钩子——它只完成请求方 挂起的请求。"
+msgstr ""
+"Delivers a reserved-type ``'_reply'`` envelope targeting ``in_reply_to.reply_to`` (falling back to ``in_reply_to.sender`` by default), carrying "
+"``in_reply_to.correlation_id`` verbatim. The reply is not dispatched "
+"to any hook — it only completes the requester's pending request."
+
+#: flowing.plugins.comm.comm.CommHandle.reply:23 of
+msgid ""
+"``in_reply_to`` 应是 ``request()`` 产生的信封 （``correlation_id`` 非 ``None``）；对 "
+"``send()`` 产生的信封 调用本方法属编程错误（无挂起的请求可匹配，回复被静默丢弃）。"
+msgstr ""
+"``in_reply_to`` should be an envelope produced by ``request()`` (with ``correlation_id`` not ``None``); calling this method on an envelope produced by "
+"``send()`` is a programming error (no pending request can match, and the reply is silently discarded)."
+
+#: flowing.plugins.comm.comm.CommHandle.reply:26 of
+msgid "目标端点已注销时按总线侧规则：静默丢弃并发 ``warnings.warn`` 警告。"
+msgstr "When the target endpoint has been unregistered, the bus-side rule applies: silently discarded with a ``warnings.warn`` warning."
+
+#: flowing.plugins.comm.comm.CommHandle.reply:28 of
+msgid "不校验 ``payload`` 结构（问答双方自行约定）。"
+msgstr "Does not validate the ``payload`` structure (the two sides of the exchange agree on it themselves)."
+
+#: flowing.plugins.comm.comm.CommHandle.reply:30 of
+msgid "待回复的 ``request`` 信号信封。"
+msgstr "The ``request`` signal envelope to reply to."
+
+#: flowing.plugins.comm.comm.CommHandle.reply:33 of
+msgid ":meth:`request`、:meth:`Communication.reply`"
+msgstr ":meth:`request`, :meth:`Communication.reply`"
+
+#: flowing.plugins.comm.comm.CommHandle.publish:1 of
+msgid "发布事件（自动注入 ``publisher=self.endpoint_id``）。"
+msgstr "Publishes an event (auto-injects ``publisher=self.endpoint_id``)."
+
+#: flowing.plugins.comm.comm.CommHandle.publish:5 of
+#, python-brace-format
+msgid ""
+"以 ``{**event, \"publisher\": self.endpoint_id}`` 合并后的字典 调用 "
+":meth:`Communication.publish`——调用方传入的 ``event`` 中 已有的 ``publisher`` "
+"键会被句柄身份覆盖（句柄路径不允许伪造 发布者）。容错与 fire-and-forget 语义与总线方法一致。"
+msgstr ""
+"Calls :meth:`Communication.publish` with the dictionary merged as ``{**event, \"publisher\": self.endpoint_id}`` "
+"— any ``publisher`` key already present in the caller's ``event`` is overwritten by the handle identity (the handle path does not allow forging "
+"the publisher). Its fault-tolerant and fire-and-forget semantics match the bus method."
+
+#: flowing.plugins.comm.comm.CommHandle.publish:12 of
+msgid ""
+"``event`` 含 ``\"publisher\"`` 键 → 被覆盖为 ``self.endpoint_id`` （``event`` "
+"字典内的键同被覆盖）。"
+msgstr ""
+"``event`` contains a ``\"publisher\"`` key → overwritten with ``self.endpoint_id`` (the key inside the ``event`` "
+"dictionary is overwritten as well)."
+
+#: flowing.plugins.comm.comm.CommHandle.publish:17 of
+msgid "事件内容。"
+msgstr "Event content."
+
+#: flowing.plugins.comm.comm.CommHandle.publish:19 of
+msgid ":meth:`Communication.publish`、:meth:`subscribe`"
+msgstr ":meth:`Communication.publish`, :meth:`subscribe`"
+
+#: flowing.plugins.comm.comm.CommHandle.subscribe:1 of
+msgid "订阅 topic（自动填 ``subscriber_id=self.endpoint_id``）。"
+msgstr "Subscribes to a topic (auto-fills ``subscriber_id=self.endpoint_id``)."
+
+#: flowing.plugins.comm.comm.CommHandle.subscribe:5 of
+msgid ""
+"``callback`` 缺省时使用构造时注入的 ``on_event`` （Agent 端点 经 ``use_comm()`` 即 "
+"dispatch 到 ``agent.hooks.on_event``）。"
+msgstr ""
+"When ``callback`` is omitted, the ``on_event`` injected at construction is used (for Agent endpoints via ``use_comm()``, this "
+"dispatches to ``agent.hooks.on_event``)."
+
+#: flowing.plugins.comm.comm.CommHandle.subscribe:7 of
+msgid "同一 topic 重复订阅 → 覆盖旧回调。"
+msgstr "Re-subscribing to the same topic → overwrites the old callback."
+
+#: flowing.plugins.comm.comm.CommHandle.subscribe:10 of
+msgid "订阅回调；``None`` 时用构造时注入的 ``on_event``。"
+msgstr "Subscription callback; when ``None``, the ``on_event`` injected at construction is used."
+
+#: flowing.plugins.comm.comm.CommHandle.subscribe:13 of
+msgid ":meth:`Communication.subscribe`、:meth:`unsubscribe`"
+msgstr ":meth:`Communication.subscribe`, :meth:`unsubscribe`"
+
+#: flowing.plugins.comm.comm.CommHandle.unsubscribe:1 of
+msgid "取消对单个 topic 的订阅（自动填 ``subscriber_id=self.endpoint_id``）。"
+msgstr "Cancels the subscription to a single topic (auto-fills ``subscriber_id=self.endpoint_id``)."
+
+#: flowing.plugins.comm.comm.CommHandle.unsubscribe:3 of
+msgid "订阅不存在时是幂等空操作（不抛异常）。"
+msgstr "An idempotent no-op when the subscription does not exist (no exception)."
+
+#: flowing.plugins.comm.comm.CommHandle.unsubscribe:7 of
+msgid ":meth:`Communication.unsubscribe`"
+msgstr ":meth:`Communication.unsubscribe`"
+
+#: flowing.plugins.comm.comm.CommHandle.destroy:1 of
+msgid "清理该端点在总线上的全部痕迹（可重复调用）。"
+msgstr "Cleans up all traces of this endpoint on the bus (may be called repeatedly)."
+
+#: flowing.plugins.comm.comm.CommHandle.destroy:5 of
+msgid ""
+"依次执行：取消该端点全部订阅 → 注销端点 → 取消挂起的请求 （对应的 ``await`` 收到 "
+"``asyncio.CancelledError``）并清空挂起 表。"
+msgstr ""
+"Executes in order: cancel all of this endpoint's subscriptions → unregister the endpoint → cancel pending requests (the corresponding ``await`` receives "
+"``asyncio.CancelledError``) and clear the pending table."
+
+#: flowing.plugins.comm.comm.CommHandle.destroy:11 of
+msgid "首次调用完成上述全部清理；后续调用为空操作（幂等）。"
+msgstr "The first call performs all of the cleanup above; later calls are no-ops (idempotent)."
+
+#: flowing.plugins.comm.comm.CommHandle.destroy:12 of
+msgid "清理路径可重入：Agent 销毁链、插件收尾、应用层手动清理可能 重复触发同一句柄的销毁，幂等性由句柄自身保证。"
+msgstr "Cleanup paths are re-entrant: the Agent destruction chain, plugin finalization, and application-layer manual cleanup may all trigger the same handle's destruction more than once; idempotence is guaranteed by the handle itself."
+
+#: flowing.plugins.comm.comm.CommHandle.destroy:14 of
+msgid "不影响总线其他端点与订阅；不触发任何钩子（销毁事件的观察走 Agent 侧的 ``before_destroy`` 钩子，与本方法正交）。"
+msgstr "Does not affect other endpoints or subscriptions on the bus; triggers no hooks (observing destruction events goes through the Agent-side ``before_destroy`` hook, orthogonal to this method)."
+
+#: flowing.plugins.comm.comm.CommHandle.destroy:17 of
+msgid ""
+":meth:`Communication.unregister_endpoint`、 "
+":meth:`Communication.unsubscribe_all`、:func:`use_comm`"
+msgstr ""
+":meth:`Communication.unregister_endpoint`, "
+":meth:`Communication.unsubscribe_all`, :func:`use_comm`"
+
+#: flowing.plugins.comm.models.SignalEnvelope:1 of
+msgid "点对点信号信封——Signal 通道的唯一载体。"
+msgstr "Point-to-point signal envelope — the sole carrier of the Signal channel."
+
+#: flowing.plugins.comm.models.SignalEnvelope:5 of
+msgid ""
+"承载一次点对点通信的全部信息：发送方身份、信号类型、业务负载、 request-reply 关联字段与创建时间。是 ``on_signal`` "
+"钩子 handler 的 value 类型，也是端点接收回调的唯一参数。"
+msgstr ""
+"Carries all information of one point-to-point communication: sender identity, signal type, business payload, request-reply correlation fields, and creation time. It is the value type of ``on_signal`` "
+"hook handlers and the sole parameter of endpoint receive callbacks."
+
+#: flowing.plugins.comm.models.SignalEnvelope:22 of
+msgid ""
+"``sender`` / ``correlation_id`` / ``reply_to`` / ``created_at`` "
+"由总线在构造时自动填充：应用层只提供 ``type`` 与 ``payload``。 自行构造信封（如测试中直接 "
+"``SignalEnvelope(...)``）时元信息由 构造方负责，总线不校验、不修正。"
+msgstr ""
+"``sender`` / ``correlation_id`` / ``reply_to`` / ``created_at`` "
+"are auto-filled by the bus at construction time: the application layer only provides ``type`` and ``payload``. When constructing an envelope yourself (e.g. ``SignalEnvelope(...)`` directly in tests), "
+"the metadata is the constructor's responsibility; the bus neither validates nor corrects it."
+
+#: flowing.plugins.comm.models.SignalEnvelope:26 of
+msgid ""
+"``send()`` 产生的信封 ``correlation_id`` 与 ``reply_to`` 均为 "
+"``None``；``request()`` 产生的信封二者均非 ``None``； ``reply()`` 产生的信封 ``type`` 固定为"
+" ``'_reply'``，且不会出现 在任何 ``on_signal`` dispatch 中。"
+msgstr ""
+"Envelopes produced by ``send()`` have both ``correlation_id`` and ``reply_to`` as "
+"``None``; envelopes produced by ``request()`` have both non-``None``; envelopes produced by ``reply()`` always have ``type`` set to "
+"``'_reply'`` and never appear in any ``on_signal`` dispatch."
+
+#: flowing.plugins.comm.models.SignalEnvelope:30 of
+msgid "``type`` 以 ``'_reply'`` 为唯一保留值，应用层不得使用。"
+msgstr "``'_reply'`` is the sole reserved value of ``type``; the application layer must not use it."
+
+#: flowing.plugins.comm.models.SignalEnvelope:31 of
+msgid "总线对 ``payload`` 内容完全透明（不校验、不修改、不序列化）。"
+msgstr "The bus is fully transparent to ``payload`` content (no validation, no modification, no serialization)."
+
+#: flowing.plugins.comm.models.SignalEnvelope:32 of
+msgid ""
+"``created_at`` 是时区无关（naive）UTC ``datetime``，构造时填充， "
+"用于审计、排序与延迟测量；显示层负责转本地时区。"
+msgstr ""
+"``created_at`` is a timezone-naive UTC ``datetime`` filled at construction time, "
+"used for auditing, ordering, and latency measurement; converting to the local timezone is the display layer's job."
+
+#: flowing.plugins.comm.models.SignalEnvelope:35 of
+msgid ""
+":class:`EventEnvelope`、:class:`CommHandle`、 "
+":meth:`Communication.request`、:func:`use_comm`"
+msgstr ""
+":class:`EventEnvelope`, :class:`CommHandle`, "
+":meth:`Communication.request`, :func:`use_comm`"
+
+#: flowing.plugins.comm.SignalEnvelope.sender:1
+#: flowing.plugins.comm.models.SignalEnvelope.sender:1 of
+msgid ""
+"发送方端点 ID。总线构造信封时填充；经 ``CommHandle`` 发送时 自动等于 "
+"``handle.endpoint_id``。直接操作总线时可传任意值（可冒充， 属已知高级用法风险）。"
+msgstr ""
+"Sender endpoint ID. Filled when the bus constructs the envelope; when sending via ``CommHandle`` it automatically equals "
+"``handle.endpoint_id``. When operating the bus directly, any value may be passed (impersonation is possible — a known advanced-usage risk)."
+
+#: flowing.plugins.comm.SignalEnvelope.type:1
+#: flowing.plugins.comm.models.SignalEnvelope.type:1 of
+msgid ""
+"信号类型——``on_signal`` 钩子的 ``match_on`` 字段（按 ``fnmatch`` "
+"规则过滤注册）。``'_reply'`` 为框架保留值，标识 request 的回复 信封；保留类型信封只用于匹配挂起的请求，不 dispatch"
+" 到钩子。"
+msgstr ""
+"Signal type — the ``match_on`` field of the ``on_signal`` hook (registrations are filtered by ``fnmatch`` "
+"rules). ``'_reply'`` is a framework-reserved value marking a request's reply envelope; reserved-type envelopes are only used to match pending requests and are never dispatched "
+"to hooks."
+
+#: flowing.plugins.comm.SignalEnvelope.payload:1
+#: flowing.plugins.comm.models.SignalEnvelope.payload:1 of
+msgid "业务负载。总线对其内容完全透明（不校验、不修改、不序列化）。"
+msgstr "Business payload. The bus is fully transparent to its content (no validation, no modification, no serialization)."
+
+#: flowing.plugins.comm.SignalEnvelope.correlation_id:1
+#: flowing.plugins.comm.models.SignalEnvelope.correlation_id:1 of
+msgid ""
+"request-reply 关联 ID（8 位随机 hex 字符串）。仅 ``request()`` 路径填充； "
+"回复信封原样携带，接收侧据此匹配挂起的请求。"
+msgstr ""
+"Request-reply correlation ID (an 8-character random hex string). Only filled on the ``request()`` path; "
+"reply envelopes carry it verbatim, and the receiving side uses it to match pending requests."
+
+#: flowing.plugins.comm.SignalEnvelope.reply_to:1
+#: flowing.plugins.comm.models.SignalEnvelope.reply_to:1 of
+msgid ""
+"回复目标端点 ID（通常等于 ``sender``）。仅 ``request()`` 路径 填充；``CommHandle.reply()`` "
+"据此路由回复。"
+msgstr ""
+"Reply-target endpoint ID (usually equal to ``sender``). Only filled on the ``request()`` path; ``CommHandle.reply()`` "
+"routes replies by it."
+
+#: flowing.plugins.comm.SignalEnvelope.created_at:1
+#: flowing.plugins.comm.models.SignalEnvelope.created_at:1 of
+msgid "创建时间，构造时填充，时区无关 UTC（naive ``datetime``）。 用途：审计 / 日志、排序、延迟测量（接收时间减去创建时间）。"
+msgstr "Creation time, filled at construction, timezone-naive UTC (naive ``datetime``). Uses: auditing / logging, ordering, latency measurement (receive time minus creation time)."
+
+#: flowing.plugins.comm.models.EventEnvelope:1 of
+msgid "发布-订阅事件信封——Event 通道的唯一载体。"
+msgstr "Publish-subscribe event envelope — the sole carrier of the Event channel."
+
+#: flowing.plugins.comm.models.EventEnvelope:5 of
+msgid ""
+"承载一次 topic 广播的全部信息：事件主题、事件内容、发布方身份与 创建时间。是 ``on_event`` 钩子 handler 的 "
+"value 类型，也是订阅 回调的唯一参数。"
+msgstr ""
+"Carries all information of one topic broadcast: event topic, event content, publisher identity, and creation time. It is the value type of ``on_event`` hook handlers and the sole parameter of subscription "
+"callbacks."
+
+#: flowing.plugins.comm.models.EventEnvelope:9 of
+msgid ""
+"与 ``SignalEnvelope`` 的差别在于语义：Event 是一对多、无回复的 广播，没有 ``correlation_id`` / "
+"``reply_to``；多出的 ``publisher`` 字段由 ``CommHandle.publish()`` "
+"自动注入，使订阅者能溯源发布方， 不必信任负载内容。"
+msgstr ""
+"The difference from ``SignalEnvelope`` is semantic: an Event is a one-to-many broadcast with no reply, having no ``correlation_id`` / "
+"``reply_to``; the extra ``publisher`` field is auto-injected by ``CommHandle.publish()``, "
+"letting subscribers trace the publisher without trusting the payload content."
+
+#: flowing.plugins.comm.models.EventEnvelope:30 of
+msgid ""
+"``publisher`` 与 ``created_at`` 由总线 / 句柄在发布路径上自动 填充：经 "
+"``CommHandle.publish()`` 发布时 ``publisher`` 恒为该 句柄的 ``endpoint_id`` （调用方在 "
+"``event`` 里自填的 ``publisher`` 键被覆盖）；直接操作总线 ``publish()`` 时可为 ``None`` （高级 "
+"用法，自行负责身份正确性）。"
+msgstr ""
+"``publisher`` and ``created_at`` are auto-filled by the bus / handle on the publish path: when publishing via "
+"``CommHandle.publish()``, ``publisher`` is always that handle's ``endpoint_id`` (a ``publisher`` key the caller filled into "
+"``event`` is overwritten); when operating the bus ``publish()`` directly, it may be ``None`` (advanced usage — "
+"you are responsible for identity correctness)."
+
+#: flowing.plugins.comm.models.EventEnvelope:35 of
+msgid ""
+"同一 ``publish()`` 调用产生的信封按引用派发给全部订阅者：订阅者 不应修改 "
+"``event``，修改会影响后续订阅者（单进程按引用传递的 直接推论）。"
+msgstr ""
+"The envelope produced by a single ``publish()`` call is dispatched to all subscribers by reference: subscribers must not modify "
+"``event``, as modifications affect later subscribers (a direct consequence of pass-by-reference within a single process)."
+
+#: flowing.plugins.comm.models.EventEnvelope:38 of
+msgid "无订阅者的 topic 上 ``publish()`` 是合法空操作。"
+msgstr "``publish()`` on a topic with no subscribers is a legitimate no-op."
+
+#: flowing.plugins.comm.models.EventEnvelope:39 of
+msgid "不保证任何时序承诺：按订阅表遍历顺序同步派发，返回 awaitable 的 回调转为后台任务，发布者不等待。"
+msgstr "No timing guarantees: dispatch is synchronous in subscription-table iteration order, callbacks returning an awaitable are turned into background tasks, and the publisher does not wait."
+
+#: flowing.plugins.comm.models.EventEnvelope:41 of
+msgid "``created_at`` 是时区无关（naive）UTC ``datetime``。"
+msgstr "``created_at`` is a timezone-naive UTC ``datetime``."
+
+#: flowing.plugins.comm.models.EventEnvelope:43 of
+msgid ""
+":class:`SignalEnvelope`、:meth:`CommHandle.publish`、 "
+":meth:`Communication.subscribe`"
+msgstr ""
+":class:`SignalEnvelope`, :meth:`CommHandle.publish`, "
+":meth:`Communication.subscribe`"
+
+#: flowing.plugins.comm.EventEnvelope.topic:1
+#: flowing.plugins.comm.models.EventEnvelope.topic:1 of
+msgid "事件主题——``on_event`` 钩子的 ``match_on`` 字段（按 ``fnmatch`` 规则过滤注册）。"
+msgstr "Event topic — the ``match_on`` field of the ``on_event`` hook (registrations are filtered by ``fnmatch`` rules)."
+
+#: flowing.plugins.comm.EventEnvelope.event:1
+#: flowing.plugins.comm.models.EventEnvelope.event:1 of
+#, python-brace-format
+msgid ""
+"事件内容。总线对其透明；``CommHandle.publish()`` 在调用总线前 把 ``{**event, \"publisher\": "
+"self.endpoint_id}`` 合并进该字典（句柄 身份恒覆盖调用方自填的 ``publisher`` 键）。"
+msgstr ""
+"Event content. Opaque to the bus; before calling the bus, ``CommHandle.publish()`` merges ``{**event, \"publisher\": "
+"self.endpoint_id}`` into this dictionary (the handle identity always overwrites a caller-supplied ``publisher`` key)."
+
+#: flowing.plugins.comm.EventEnvelope.publisher:1
+#: flowing.plugins.comm.models.EventEnvelope.publisher:1 of
+msgid ""
+"发布方端点 ID。经 ``CommHandle.publish()`` 发布时自动填充； 直接操作总线时可为 ``None`` "
+"（高级用法，自行负责身份正确性）。"
+msgstr ""
+"Publisher endpoint ID. Auto-filled when publishing via ``CommHandle.publish()``; may be ``None`` when operating the bus directly "
+"(advanced usage — you are responsible for identity correctness)."
+
+#: flowing.plugins.comm.EventEnvelope.created_at:1
+#: flowing.plugins.comm.models.EventEnvelope.created_at:1 of
+msgid "创建时间，构造时填充，时区无关 UTC（naive ``datetime``）。"
+msgstr "Creation time, filled at construction, timezone-naive UTC (naive ``datetime``)."
+
+#: flowing.plugins.comm.comm.use_comm:1 of
+msgid "为 Agent 实例启用通信能力——阶段二入口（``setup()`` 中调用）。"
+msgstr "Enables communication capability for an Agent instance — the phase-two entry point (called in ``setup()``)."
+
+#: flowing.plugins.comm.comm.use_comm:5 of
+msgid "完成四件事："
+msgstr "Does four things:"
+
+#: flowing.plugins.comm.comm.use_comm:7 of
+msgid ""
+"``agent.inject(communication_key)`` 获取全局总线（未安装 ``CommPlugin`` → "
+":class:`flowing.errors.MissingProvideError`）；"
+msgstr ""
+"Obtains the global bus via ``agent.inject(communication_key)`` (``CommPlugin`` not installed → "
+":class:`flowing.errors.MissingProvideError`);"
+
+#: flowing.plugins.comm.comm.use_comm:9 of
+msgid ""
+"确定端点 ID（``name`` 参数指定的语义名，缺省回退 ``agent.node_id``），经 "
+"``comm.create_handle()`` 注册端点并创建 句柄；句柄的接收回调把收到的信号 / 事件 dispatch 到 "
+"``agent.hooks.on_signal`` / ``agent.hooks.on_event``；"
+msgstr ""
+"Determines the endpoint ID (the semantic name given by the ``name`` parameter, falling back to ``agent.node_id`` by default), then "
+"registers the endpoint and creates a handle via ``comm.create_handle()``; the handle's receive callbacks dispatch received signals / events to "
+"``agent.hooks.on_signal`` / ``agent.hooks.on_event``;"
+
+#: flowing.plugins.comm.comm.use_comm:13 of
+msgid ""
+"``agent.hooks.declare(\"on_signal\", by=\"comm\", match_on=\"type\")`` 与 "
+"``agent.hooks.declare(\"on_event\", by=\"comm\", match_on=\"topic\")`` "
+"声明两个实例级钩子点；"
+msgstr ""
+"Declares two instance-level hook points via ``agent.hooks.declare(\"on_signal\", by=\"comm\", match_on=\"type\")`` and "
+"``agent.hooks.declare(\"on_event\", by=\"comm\", match_on=\"topic\")``;"
+
+#: flowing.plugins.comm.comm.use_comm:16 of
+msgid ""
+"在 ``before_destroy`` 上注册清理 handler（``by=\"comm\"``）： Agent ``destroy()`` "
+"时调用 ``handle.destroy()`` 注销端点、取消 订阅、取消挂起的请求。"
+msgstr ""
+"Registers a cleanup handler on ``before_destroy`` (``by=\"comm\"``): when the Agent's ``destroy()`` "
+"runs, it calls ``handle.destroy()`` to unregister the endpoint, cancel subscriptions, and cancel pending requests."
+
+#: flowing.plugins.comm.comm.use_comm:20 of
+msgid ""
+"句柄固定挂载为 ``agent.comm_handler``——命名遵循「插件绑定成员以 注册名 underscore 版为前缀」的共同约定（见 "
+"``flowing.plugins`` 模块 docstring），无改名参数。"
+msgstr ""
+"The handle is always mounted as ``agent.comm_handler`` — the naming follows the shared convention \"plugin-bound members are prefixed with the underscore version of the registration name\" (see the "
+"``flowing.plugins`` module docstring); there is no rename parameter."
+
+#: flowing.plugins.comm.comm.use_comm:44 of
+msgid ""
+"钩子点声明（同名且同 ``by``）幂等：恢复时 ``setup()`` 在新实例 上执行、重复声明不报错（进程重启或同进程先 "
+"``destroy()`` 再 恢复，均无残留声明）；声明后任何代码都可向 ``on_signal`` / ``on_event`` 挂 "
+"handler，无需再声明（注册开放）。"
+msgstr ""
+"Hook point declarations (same name and same ``by``) are idempotent: on recovery, ``setup()`` executes on the new instance and re-declaring does not error (whether the process restarted or the same process recovered after "
+"``destroy()``, no stale declarations remain); after declaration, any code may attach handlers to ``on_signal`` / ``on_event`` "
+"without declaring again (registration is open)."
+
+#: flowing.plugins.comm.comm.use_comm:48 of
+msgid ""
+"handler 按 ``envelope.type`` / ``envelope.topic`` 经 ``fnmatch`` "
+"规则过滤注册（``@agent.hooks.on_signal[\"<pattern>\"]`` 装饰器 形态）；handler 签名统一为 "
+"``(agent, envelope) -> envelope``； 可 ``raise Intercepted`` 阻止后续 "
+"handler（硬阻断，通信侧无后续 动作）。"
+msgstr ""
+"Handlers are registered filtered by ``envelope.type`` / ``envelope.topic`` under ``fnmatch`` "
+"rules (the ``@agent.hooks.on_signal[\"<pattern>\"]`` decorator form); handler signatures are uniformly "
+"``(agent, envelope) -> envelope``; a handler may ``raise Intercepted`` to block subsequent "
+"handlers (a hard interception — the communication side takes no further action)."
+
+#: flowing.plugins.comm.comm.use_comm:53 of
+msgid ""
+"同一实例重复调用：端点 ID 与已有句柄相同 → 复用该句柄（不重复 注册端点、不重复挂清理 handler）；端点 ID 不同 → 以新 ID "
+"另建 句柄并覆盖 ``agent.comm_handler`` （旧句柄仍留在总线上，销毁 Agent "
+"时两个句柄都会清理）。正常管线中该情形不发生，此为兜底 同一活实例上的意外二次启用。"
+msgstr ""
+"Repeated calls on the same instance: if the endpoint ID matches the existing handle → reuse that handle (no re-registration of the endpoint, no duplicate cleanup handler); if the endpoint ID differs → create a new handle under the new ID "
+"and overwrite ``agent.comm_handler`` (the old handle stays on the bus, and both handles are cleaned up when the Agent "
+"is destroyed). This does not occur in normal pipelines; it is a backstop for accidental double enablement on the same live instance."
+
+#: flowing.plugins.comm.comm.use_comm:58 of
+msgid ""
+"端点 ID 被其他端点占用 → ``setup()`` 期即抛 "
+":class:`flowing.errors.DuplicateEndpointError` （显式 ``name`` 与其他端点冲突同理）。"
+msgstr ""
+"Endpoint ID taken by another endpoint → :class:`flowing.errors.DuplicateEndpointError` is raised during ``setup()`` "
+"(likewise when an explicit ``name`` conflicts with another endpoint)."
+
+#: flowing.plugins.comm.comm.use_comm:61 of
+msgid ""
+"通信信封永不自动进入对话通道——桥接（如 ``enqueue_message``） 由 handler 显式完成；本函数不注册任何工具、不修改 "
+"prompt。"
+msgstr ""
+"Communication envelopes never enter the conversation channel automatically — bridging (e.g. ``enqueue_message``) is done explicitly by handlers; this function registers no tools and does not modify the "
+"prompt."
+
+#: flowing.plugins.comm.comm.use_comm:63 of
+msgid ""
+"前置条件：``CommPlugin`` 已经 ``runtime.install()`` 安装（否则 "
+"``MissingProvideError``）；本函数应在 ``setup()`` 中调用（钩子点 声明属 setup 阶段契约，见 "
+":meth:`flowing.hooks.HookRegistry.declare`）。"
+msgstr ""
+"Precondition: ``CommPlugin`` has been installed via ``runtime.install()`` (otherwise "
+"``MissingProvideError``); this function should be called in ``setup()`` (hook point declaration is a setup-phase contract; see "
+":meth:`flowing.hooks.HookRegistry.declare`)."
+
+#: flowing.plugins.comm.comm.use_comm:67 of
+msgid "后置条件：Agent 可被总线寻址；``destroy()`` 时端点、订阅、挂起 请求全部清理。"
+msgstr "Postcondition: the Agent is addressable on the bus; on ``destroy()``, its endpoint, subscriptions, and pending requests are all cleaned up."
+
+#: flowing.plugins.comm.comm.use_comm:70 of
+msgid "要启用的 Agent 实例。"
+msgstr "The Agent instance to enable."
+
+#: flowing.plugins.comm.comm.use_comm:71 of
+msgid "端点 ID 的显式语义名；``None`` 时回退 ``agent.node_id``。"
+msgstr "An explicit semantic name for the endpoint ID; falls back to ``agent.node_id`` when ``None``."
+
+#: flowing.plugins.comm.comm.use_comm:74 of
+msgid ""
+":class:`CommPlugin`、:class:`CommHandle`、 "
+":meth:`flowing.hooks.HookRegistry.declare`、 "
+":meth:`flowing.agent.Agent.enqueue_message`"
+msgstr ""
+":class:`CommPlugin`, :class:`CommHandle`, "
+":meth:`flowing.hooks.HookRegistry.declare`, "
+":meth:`flowing.agent.Agent.enqueue_message`"
+
+#: ../../api/flowing.plugins.comm.rst:10
+msgid "Submodules"
+msgstr "Submodules"
+
+#: ../../api/flowing.plugins.comm.rst:13
+msgid "flowing.plugins.comm.comm module"
+msgstr "flowing.plugins.comm.comm module"
+
+#: flowing.plugins.comm.comm:1 of
+msgid ""
+"flowing.plugins.comm —— 进程内通信扩展（CommPlugin / Communication / CommHandle /"
+" use_comm）。"
+msgstr ""
+"flowing.plugins.comm — in-process communication extension (CommPlugin / Communication / CommHandle /"
+" use_comm)."
+
+#: flowing.plugins.comm.comm:5 of
+msgid ""
+"通信扩展是 Flowing 的内置扩展（随 ``flowing`` 包发布但不自动启用）， 为进程内各实体（Agent、UI "
+"组件、应用层代码）提供两条互不交叉的消息 通道：点对点信号（``send`` / ``request`` / ``reply``）与发布-订阅事件"
+" （``publish`` / ``subscribe``）。框架核心不感知本扩展——它完全由 ``runtime.install()`` / "
+"``use_comm()`` 按需启用。"
+msgstr ""
+"The communication extension is a builtin extension of Flowing (shipped with the ``flowing`` package but not auto-enabled), providing two non-overlapping message "
+"channels for in-process entities (Agents, UI components, application-layer code): point-to-point signals (``send`` / ``request`` / ``reply``) and publish-subscribe events "
+"(``publish`` / ``subscribe``). The framework core is unaware of this extension — it is enabled entirely on demand via ``runtime.install()`` / "
+"``use_comm()``."
+
+#: flowing.plugins.comm.comm:11 of
+msgid "启用遵循全局统一的双层启用模型："
+msgstr "Enablement follows the globally unified two-phase model:"
+
+#: flowing.plugins.comm.comm:13 of
+msgid ""
+"阶段一（Runtime 安装）：``runtime.install(CommPlugin())`` —— "
+"``CommPlugin.install(runtime)`` 创建全局 ``Communication`` 总线实例 并经 "
+"``runtime.provide(communication_key, bus)`` 注入 provide 链根；"
+msgstr ""
+"Phase one (Runtime installation): ``runtime.install(CommPlugin())`` — "
+"``CommPlugin.install(runtime)`` creates the global ``Communication`` bus instance and injects it at the root of the provide chain via "
+"``runtime.provide(communication_key, bus)``;"
+
+#: flowing.plugins.comm.comm:16 of
+msgid ""
+"阶段二（Agent 启用）：Agent 的 ``setup()`` 中调用 ``use_comm(self)``， 为该实例创建 "
+"``CommHandle``、注册端点、声明 ``on_signal`` / ``on_event`` 钩子点并挂载 "
+"``before_destroy`` 清理 handler。"
+msgstr ""
+"Phase two (Agent enablement): call ``use_comm(self)`` in the Agent's ``setup()`` to create a "
+"``CommHandle`` for the instance, register the endpoint, declare the ``on_signal`` / ``on_event`` hook points, and mount the "
+"``before_destroy`` cleanup handler."
+
+#: flowing.plugins.comm.comm:21 of
+msgid "注册面清单"
+msgstr "Registration Surface"
+
+#: flowing.plugins.comm.comm:22 of
+msgid "启用方式："
+msgstr "How to enable:"
+
+#: flowing.plugins.comm.comm:24 of
+msgid ""
+"阶段一：``runtime.install(CommPlugin())`` —— ``install()`` 同步创建 总线并 "
+"provide；重复安装同名插件（再次 ``install(CommPlugin())``）抛 ``ValueError`` （一个 "
+"Runtime 同时只装一个同名插件，见 :meth:`flowing.runtime.Runtime.install`）；"
+msgstr ""
+"Phase one: ``runtime.install(CommPlugin())`` — ``install()`` synchronously creates the bus and "
+"provides it; installing a plugin with the same name twice (calling ``install(CommPlugin())`` again) raises ``ValueError`` (a "
+"Runtime holds at most one plugin of a given name at a time; see :meth:`flowing.runtime.Runtime.install`);"
+
+#: flowing.plugins.comm.comm:28 of
+msgid ""
+"阶段二：``setup()`` 中 ``use_comm(self)`` —— 为该实例注册端点、 声明钩子点、挂载清理 handler；恢复时 "
+"``setup()`` 在新实例上执行 安全（进程重启则总线随插件重新安装而新建；同进程内先 ``destroy()`` "
+"再恢复则旧端点已注销，不会重名报错）；同一实例 重复调用（端点 ID 相同）复用已有句柄，见 :func:`use_comm` 行为要点。"
+msgstr ""
+"Phase two: ``use_comm(self)`` in ``setup()`` — registers the endpoint for the instance, declares hook points, and mounts the cleanup handler; on recovery, "
+"``setup()`` executes on the new instance safely (after a process restart the bus is newly created when the plugin is reinstalled; when recovering after ``destroy()`` "
+"within the same process, the old endpoint has already been unregistered, so no name-conflict error occurs); repeated calls on the same instance (same endpoint ID) reuse the existing handle — see :func:`use_comm` Key Behaviors."
+
+#: flowing.plugins.comm.comm:35 of
+msgid ""
+"注册的资源：provide key ``communication_key``，其类型参数为 "
+"``InjectionKey[\"Communication\"]``，键名 ``\"communication\"``；provide 到 "
+"Runtime 根，消费方式为 ``agent.inject(communication_key)``，沿 亲代链上溯查找；未安装 "
+"``CommPlugin`` 时 inject 抛 :class:`flowing.errors.MissingProvideError`。"
+msgstr ""
+"Registered resources: the provide key ``communication_key`` with type parameter "
+"``InjectionKey[\"Communication\"]`` and key name ``\"communication\"``; provided at the "
+"Runtime root, consumed via ``agent.inject(communication_key)`` by walking up the parent chain; injecting without "
+"``CommPlugin`` installed raises :class:`flowing.errors.MissingProvideError`."
+
+#: flowing.plugins.comm.comm:41 of
+msgid ""
+"声明的钩子点：``on_signal`` （``by=\"comm\"``，``match_on=\"type\"``）/ "
+"``on_event`` （``by=\"comm\"``，``match_on=\"topic\"``），由 ``use_comm()`` "
+"声明、由句柄的接收闭包在收到信号 / 事件时 dispatch（谁声明谁 dispatch）。注册开放：声明后任何扩展都可挂 "
+"handler，无需再声明。"
+msgstr ""
+"Declared hook points: ``on_signal`` (``by=\"comm\"``, ``match_on=\"type\"``) / "
+"``on_event`` (``by=\"comm\"``, ``match_on=\"topic\"``), declared by ``use_comm()`` "
+"and dispatched by the handle's receive closures when a signal / event arrives (whoever declares, dispatches). Registration is open: after declaration, any extension may attach "
+"handlers without declaring again."
+
+#: flowing.plugins.comm.comm:46 of
+msgid ""
+"挂载的钩子：``before_destroy`` 上的清理 handler（``by=\"comm\"``）—— Agent "
+"``destroy()`` 时调用 ``handle.destroy()`` 取消订阅、注销端点、 取消挂起的请求；整组可经 "
+"``remove_by_owner(\"comm\")`` 移除。"
+msgstr ""
+"Mounted hooks: the cleanup handler on ``before_destroy`` (``by=\"comm\"``) — when the Agent's "
+"``destroy()`` runs, it calls ``handle.destroy()`` to cancel subscriptions, unregister the endpoint, and cancel pending requests; the whole group can be removed via "
+"``remove_by_owner(\"comm\")``."
+
+#: flowing.plugins.comm.comm:50 of
+msgid ""
+"未启用时的行为（未安装 ``CommPlugin`` 的 Runtime、未调用 ``use_comm()`` 的 Agent）：零开销——没有 "
+"``agent.comm_handler`` 属性、没有 ``on_signal`` / ``on_event`` 钩子点（访问抛 "
+":class:`flowing.errors.UnknownHookPointError`）、不在总线端点表中、 "
+"其他端点无法经总线寻址到它；此时调用 ``use_comm(self)`` 抛 "
+":class:`flowing.errors.MissingProvideError`。"
+msgstr ""
+"Behavior when not enabled (a Runtime without ``CommPlugin`` installed, an Agent that never called ``use_comm()``): zero overhead — no "
+"``agent.comm_handler`` attribute, no ``on_signal`` / ``on_event`` hook points (access raises "
+":class:`flowing.errors.UnknownHookPointError`), not in the bus endpoint table, and "
+"other endpoints cannot address it via the bus; calling ``use_comm(self)`` in this state raises "
+":class:`flowing.errors.MissingProvideError`."
+
+#: flowing.plugins.comm.comm:58 of
+msgid "两条通道完全隔离"
+msgstr "The Two Channels Are Fully Isolated"
+
+#: flowing.plugins.comm.comm:59 of
+msgid "框架内存在两条互不交叉的消息通道："
+msgstr "The framework contains two non-overlapping message channels:"
+
+#: flowing.plugins.comm.comm:61 of
+msgid "对话通道：``Message`` → Agent 消息队列 → 逻辑 Turn 循环 → LLM 上下文；"
+msgstr "Conversation channel: ``Message`` → Agent message queue → logical Turn loop → LLM context;"
+
+#: flowing.plugins.comm.comm:62 of
+msgid ""
+"通信通道（本模块）：``SignalEnvelope`` / ``EventEnvelope`` → 端点 回调 / 钩子 "
+"dispatch——永不进入 LLM 上下文、永不落盘为消息树节点、 与 ``Message.id`` / ``parent_id`` "
+"链无任何关系。"
+msgstr ""
+"Communication channel (this module): ``SignalEnvelope`` / ``EventEnvelope`` → endpoint callbacks / hook "
+"dispatch — it never enters the LLM context, is never persisted as a message-tree node, and has no relation to the ``Message.id`` / ``parent_id`` "
+"chain."
+
+#: flowing.plugins.comm.comm:66 of
+msgid ""
+"需要桥接时由 handler 显式完成（例如在 ``on_signal`` handler 中调用 ``await "
+"self.enqueue_message(...)`` 把信号内容转入对话通道）。框架不做 任何自动桥接。"
+msgstr ""
+"Bridging, when needed, is done explicitly by handlers (e.g. calling ``await "
+"self.enqueue_message(...)`` in an ``on_signal`` handler to move signal content into the conversation channel). The framework does no automatic bridging."
+
+#: flowing.plugins.comm.comm:71 of
+msgid "端点与命名规则"
+msgstr "Endpoints and Naming Rules"
+
+#: flowing.plugins.comm.comm:72 of
+msgid ""
+"端点是可通信实体在总线上的地址（端点 ID 即寻址）。端点 ID 统一为 语义化名称（不使用 UUID）：可读、可路由、可发现；唯一性由总线全局 "
+"注册表保证，重名注册抛 :class:`flowing.errors.DuplicateEndpointError`。 总线本身不提供端点枚举 /"
+" 发现 API——发现机制由应用层目录服务承担。"
+msgstr ""
+"An endpoint is a communicable entity's address on the bus (the endpoint ID is the address). Endpoint IDs are uniformly semantic names (no UUIDs): readable, routable, discoverable; uniqueness is guaranteed by the bus's global "
+"registry, and duplicate registration raises :class:`flowing.errors.DuplicateEndpointError`. The bus itself provides no endpoint enumeration / "
+"discovery API — discovery is the job of an application-layer directory service."
+
+#: flowing.plugins.comm.comm:77 of
+msgid ""
+"Agent 端点：``use_comm()`` 时自动注册，ID 取 ``use_comm(name=...)`` 显式指定的语义名，缺省回退 "
+"``agent.node_id`` （语义名只存在于唤起方 / 应用层，Agent 实例不自持）；"
+msgstr ""
+"Agent endpoints: registered automatically at ``use_comm()`` time; the ID takes the semantic name explicitly given via ``use_comm(name=...)``, falling back to "
+"``agent.node_id`` by default (the semantic name only exists on the caller / application-layer side; the Agent instance does not hold it itself);"
+
+#: flowing.plugins.comm.comm:80 of
+msgid ""
+"应用层端点：应用代码经 ``comm.create_handle(endpoint_id=...)`` 注册 （如 UI 端点 ``\"ui-"
+"main\"``）。"
+msgstr ""
+"Application-layer endpoints: application code registers them via ``comm.create_handle(endpoint_id=...)`` (e.g. a UI endpoint ``\"ui-"
+"main\"``)."
+
+#: flowing.plugins.comm.comm:83 of
+msgid ""
+"端点种类在总线层面无结构差异——全部是「端点 ID → 接收回调」的路由表 条目。Cron 扩展不经通信总线（见 "
+":mod:`flowing.plugins.cron`）。"
+msgstr ""
+"Endpoint kinds have no structural difference at the bus level — all are \"endpoint ID → receive callback\" routing-table entries. The cron extension does not go through the communication bus (see "
+":mod:`flowing.plugins.cron`)."
+
+#: flowing.plugins.comm.comm:87 of
+msgid "总线四操作语义（契约要点）"
+msgstr "Semantics of the Four Bus Operations (Contract Essentials)"
+
+#: flowing.plugins.comm.comm:88 of
+msgid ""
+"``send``：点对点发送信号，立即返回，不等待接收方处理完成、不支持 回复；目标端点不存在抛 "
+":class:`flowing.errors.SignalDeliveryError`。"
+msgstr ""
+"``send``: sends a point-to-point signal, returns immediately, does not wait for the receiver to finish processing, and does not support replies; raises "
+":class:`flowing.errors.SignalDeliveryError` when the target endpoint does not exist."
+
+#: flowing.plugins.comm.comm:91 of
+msgid ""
+"``request``：点对点发送并阻塞等待回复，经 ``correlation_id`` 匹配 挂起的请求；超时抛 "
+":class:`flowing.errors.SignalTimeoutError`。"
+msgstr ""
+"``request``: sends point-to-point and blocks waiting for a reply, matching pending requests by ``correlation_id``; raises "
+":class:`flowing.errors.SignalTimeoutError` on timeout."
+
+#: flowing.plugins.comm.comm:93 of
+msgid ""
+"``publish``：对 topic 的全部订阅者广播事件，容错（单个订阅者异常 静默忽略，不影响其他订阅者）且 fire-and-"
+"forget（返回 awaitable 的 回调转为后台任务，发布者不阻塞）。"
+msgstr ""
+"``publish``: broadcasts an event to all subscribers of a topic, fault-tolerant (exceptions from individual subscribers are silently ignored without affecting other subscribers) and fire-and-"
+"forget (callbacks returning an awaitable are turned into background tasks; the publisher does not block)."
+
+#: flowing.plugins.comm.comm:96 of
+msgid ""
+"``reply``：回复一个 ``request``，使用保留信号类型 ``'_reply'``； 接收侧句柄检测该类型并匹配挂起的请求，不 "
+"dispatch 到钩子。"
+msgstr ""
+"``reply``: replies to a ``request`` using the reserved signal type ``'_reply'``; the receiving handle detects the type and matches the pending request without "
+"dispatching to hooks."
+
+#: flowing.plugins.comm.comm:100 of
+msgid "信封自动填充"
+msgstr "Envelope Auto-Filling"
+
+#: flowing.plugins.comm.comm:101 of
+msgid ""
+"``SignalEnvelope`` 的 ``sender`` / ``correlation_id`` / ``reply_to`` / "
+"``created_at`` 与 ``EventEnvelope`` 的 ``publisher`` / ``created_at`` "
+"均由总线在构造信封时自动填充，发送方只提供 ``type`` / ``topic`` 与 负载。``created_at`` "
+"为时区无关（naive）UTC ``datetime``，用于审计、 排序与延迟测量；显示层负责转本地时区。"
+msgstr ""
+"``SignalEnvelope``'s ``sender`` / ``correlation_id`` / ``reply_to`` / "
+"``created_at`` and ``EventEnvelope``'s ``publisher`` / ``created_at`` "
+"are all auto-filled by the bus when constructing the envelope; the sender only provides ``type`` / ``topic`` and the payload. ``created_at`` "
+"is a timezone-naive UTC ``datetime`` used for auditing, ordering, and latency measurement; converting to the local timezone is the display layer's job."
+
+#: flowing.plugins.comm.comm:108 of
+msgid "单进程边界"
+msgstr "Single-Process Boundary"
+
+#: flowing.plugins.comm.comm:109 of
+msgid ""
+"通信总线是单进程内基础设施：无跨进程通信、无信封序列化格式承诺、 无网络拓扑。信封对象按引用传递，订阅者回调与发布者运行在同一事件 "
+"循环。大规模（上万端点）场景不为此设计。"
+msgstr ""
+"The communication bus is single-process infrastructure: no cross-process communication, no promised envelope serialization format, no network topology. Envelope objects are passed by reference, and subscriber callbacks run in the same event "
+"loop as the publisher. Large-scale scenarios (tens of thousands of endpoints) are not a design goal."
+
+#: flowing.plugins.comm.comm:114 of
+msgid "生命周期"
+msgstr "Lifecycle"
+
+#: flowing.plugins.comm.comm:115 of
+msgid ""
+"总线生命周期与 Runtime 相同：``install`` 时创建 → Agent 经 ``inject`` 消费 → "
+"``runtime.shutdown()`` 插件收尾阶段清空端点表与 订阅表。挂起请求的取消归各句柄 ``destroy()`` "
+"负责——每个句柄清理 自己的端点、订阅与挂起请求；总线不持有句柄名单，不兜底取消。正常 关闭顺序下 Agent 树先递归 "
+"destroy（各句柄已清理），总线后关闭。"
+msgstr ""
+"The bus lifecycle matches the Runtime's: created at ``install`` time → consumed by Agents via ``inject`` → "
+"the plugin finalization phase of ``runtime.shutdown()`` clears the endpoint table and subscription table. Cancellation of pending requests is the responsibility of each handle's ``destroy()`` "
+"— every handle cleans up its own endpoint, subscriptions, and pending requests; the bus holds no list of handles and does not backstop cancellation. In the normal shutdown order, the Agent tree is destroyed recursively "
+"first (each handle already cleaned up), then the bus is closed."
+
+#: flowing.plugins.comm.comm:122 of
+msgid "直接操作总线的立场"
+msgstr "Stance on Operating the Bus Directly"
+
+#: flowing.plugins.comm.comm:123 of
+msgid ""
+"``agent.comm_handler`` （``CommHandle``）是推荐路径——句柄自动携带 身份（sender / "
+"publisher），是「身份正确」的保证。技术上任何代码都 能经 ``runtime.inject(communication_key)`` "
+"取到总线并直接调用 ``send(sender=...)`` 冒充其他端点；框架接受这一约定，不做结构禁止。 "
+"直接操作总线属高级用法，调用方须自行保证身份字段正确。"
+msgstr ""
+"``agent.comm_handler`` (a ``CommHandle``) is the recommended path — the handle automatically carries its identity (sender / "
+"publisher), which guarantees \"identity correctness\". Technically, any code can obtain the bus via ``runtime.inject(communication_key)`` "
+"and call ``send(sender=...)`` directly to impersonate other endpoints; the framework accepts this convention and does not structurally forbid it. "
+"Operating the bus directly is an advanced usage; the caller must ensure the identity fields are correct."
+
+#: flowing.plugins.comm.comm:147 of
+msgid ":mod:`flowing.hooks` —— ``HookRegistry.declare`` / dispatch 语义。"
+msgstr ":mod:`flowing.hooks` — ``HookRegistry.declare`` / dispatch semantics."
+
+#: flowing.plugins.comm.comm:148 of
+msgid ":mod:`flowing.message` —— 对话通道的 ``Message`` 模型（与本模块 正交）。"
+msgstr ":mod:`flowing.message` — the ``Message`` model of the conversation channel (orthogonal to this module)."
+
+#: flowing.plugins.comm.comm:150 of
+msgid ""
+":mod:`flowing.errors` —— ``DuplicateEndpointError`` / "
+"``SignalDeliveryError`` / ``SignalTimeoutError`` / ``Intercepted``。"
+msgstr ""
+":mod:`flowing.errors` — ``DuplicateEndpointError`` / "
+"``SignalDeliveryError`` / ``SignalTimeoutError`` / ``Intercepted``."
+
+#: flowing.plugins.comm.comm:152 of
+msgid ":mod:`flowing.plugins.cron` —— 定时扩展（不经通信总线）。"
+msgstr ":mod:`flowing.plugins.cron` — the cron extension (does not go through the communication bus)."
+
+#: flowing.plugins.comm.comm.communication_key:1 of
+msgid "全局 ``Communication`` 总线实例在 provide 链上的注入键。"
+msgstr "The injection key of the global ``Communication`` bus instance on the provide chain."
+
+#: flowing.plugins.comm.comm.communication_key:3 of
+msgid ""
+"``CommPlugin.install()`` 以本键 provide 总线实例；``use_comm()`` 与 应用层经 "
+"``agent.inject(communication_key)`` 消费（沿亲代链上溯到 Runtime 根）。"
+msgstr ""
+"``CommPlugin.install()`` provides the bus instance under this key; ``use_comm()`` and the application layer consume it via "
+"``agent.inject(communication_key)`` (walking up the parent chain to the Runtime root)."
+
+#: flowing.plugins.comm.comm.communication_key:7 of
+msgid "行为要点："
+msgstr "Key Behaviors:"
+
+#: flowing.plugins.comm.comm.communication_key:9 of
+msgid "键名为 ``\"communication\"``。"
+msgstr "The key name is ``\"communication\"``."
+
+#: flowing.plugins.comm.comm.communication_key:10 of
+msgid ""
+"同 key 重复 ``provide`` 是覆盖更新（后者生效，``inject`` 实时可见） ——这是 provide 机制的统一语义（见 "
+":meth:`flowing.runtime.Runtime.provide`），插件间避免键冲突靠键名 前缀约定，机制本身不拦截。"
+msgstr ""
+"Re-``provide`` of the same key is an overwriting update (the later one takes effect and is visible to ``inject`` in real time) — this is the unified semantics of the provide mechanism (see "
+":meth:`flowing.runtime.Runtime.provide`); avoiding key conflicts between plugins relies on the key-name prefix convention, and the mechanism itself does not intercept."
+
+#: flowing.plugins.comm.comm.communication_key:14 of
+msgid ""
+"未安装 ``CommPlugin`` 时 ``inject`` 本键抛 "
+":class:`flowing.errors.MissingProvideError`。"
+msgstr ""
+"Injecting this key without ``CommPlugin`` installed raises "
+":class:`flowing.errors.MissingProvideError`."
+
+#: flowing.plugins.comm.comm.communication_key:17 of
+msgid ""
+":class:`flowing.params.InjectionKey`、:func:`use_comm`、 "
+":meth:`flowing.agent.Agent.inject`"
+msgstr ""
+":class:`flowing.params.InjectionKey`, :func:`use_comm`, "
+":meth:`flowing.agent.Agent.inject`"
+
+#: ../../api/flowing.plugins.comm.rst:21
+msgid "flowing.plugins.comm.models module"
+msgstr "flowing.plugins.comm.models module"
+
+#: flowing.plugins.comm.models:1 of
+msgid "``flowing.plugins.comm.models`` —— 通信扩展的数据对象。"
+msgstr "``flowing.plugins.comm.models`` — data objects of the communication extension."
+
+#: flowing.plugins.comm.models:3 of
+msgid ""
+"本模块定义通信扩展的两种信封模型：:class:`SignalEnvelope` （点对点 信号通道的载体）与 "
+":class:`EventEnvelope` （发布-订阅事件通道的载体）。 信封由总线在发送 / 发布路径上构造并自动填充元信息（见各字段 "
+"docstring），是 ``on_signal`` / ``on_event`` 钩子 handler 的 value "
+"类型，也是端点接收回调的唯一参数。信封只存在于通信通道，不是 ``Message``——不进消息级树、不落盘、不进 LLM 上下文。"
+msgstr ""
+"This module defines the two envelope models of the communication extension: :class:`SignalEnvelope` (carrier of the point-to-point signal channel) and "
+":class:`EventEnvelope` (carrier of the publish-subscribe event channel). Envelopes are constructed by the bus on the send / publish paths with metadata auto-filled (see each field's "
+"docstring); they are the value type of ``on_signal`` / ``on_event`` hook handlers and the sole parameter of endpoint receive callbacks. Envelopes exist only in the communication channel and are not ``Message``s — they do not enter the message-level tree, are not persisted, and do not enter the LLM context."
+
+#: flowing.plugins.comm.models:10 of
+msgid ""
+":mod:`flowing.plugins.comm` （扩展的启用方式与整体契约）、 "
+":mod:`flowing.plugins.comm.comm` （总线与句柄）"
+msgstr ""
+":mod:`flowing.plugins.comm` (how to enable the extension and its overall contract), "
+":mod:`flowing.plugins.comm.comm` (the bus and the handle)"

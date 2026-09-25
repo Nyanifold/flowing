@@ -1,0 +1,12 @@
+(agent-main)>>>OK
+[thinking] The user says "Reply with exactly 'OK' and nothing else." This is not a greeting-type request. So I should not load the skill. Just reply "OK".
+
+Wait — the system prompt says for greeting-type requests, load the "polite" skill. This isn't a greeting. So reply exactly "OK".
+[steer] Acceptance condition not met: your final reply must contain DONE on a line of its own. Please answer the previous question again and append DONE at the end.
+OK
+(agent-main)>>>1  user      Reply with exactly "OK" and nothing else.
+2  event     [Reminder] Current working directory: <repo-root>/dev-docs/tutorial-en/1-9
+3  provider  OK
+4  event     Acceptance condition not met: your final reply must contain DONE on a line of it…
+5  event     [Reminder] Current working directory: <repo-root>/dev-docs/tutorial-en/1-9
+(agent-main)>>>

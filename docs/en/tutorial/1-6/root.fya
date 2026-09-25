@@ -1,0 +1,9 @@
+description: "MCP demo assistant: look up PRs / create issues via the demo tool group."
+model_tag: default
+tools:
+  - ./tools/demo     # MCP group declaration: expanded into per-tool entries at binding time (synthesized names)
+---
+$system_prompt:
+You are a demo assistant. Use demo--list-prs when the user asks for the PR
+list; use demo--create-issue when the user asks to create an issue. Keep the
+answer to one sentence.

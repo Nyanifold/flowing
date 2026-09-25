@@ -1,0 +1,129 @@
+(agent-main)>>>I'll start by dispatching the explore-agent to inspect the target directory structure.
+[tool_call] subagent-invoke {"agent_type": "explore-agent", "name": "explore-target", "prompt": "Inspect the target directory at absolute path:\n<repo-root>/dev-docs/beginner-tutorial-en/examples/5-5-final-assembly/target\n\nPlease report back:\n1. The complete directory tree (files and folders, including hidden files), with file sizes where available.\n2. For each significant file (source code, config, manifests such as package.json/pyproject.toml/Cargo.toml/requirements.txt/go.mod, build scripts, docs, Dockerfiles, CI configs), read it and summarize its purpose and key contents.\n3. Identify the programming language(s), frameworks, entry points, how the project is built and run, dependencies, and any existing documentation (README, docs/, comments).\n4. Note any TODO markers, incomplete parts, or conventions used in the codebase.\n\nDo not modify any files. Report findings with absolute paths clearly written out."}
+[tool:completed] subagent-invoke -> 
+The exploration is complete. Notably, the target directory **already contains a README.md** (a generated artifact), so the task list accounts for reviewing/rewriting it. Here's the breakdown:
+[thinking] Now use todo tool to break "write a README.md for this project" into a task list.
+
+Note the target already has a README.md. Should mention that. Let me build a task list.
+[tool_call] todo {"tasks_text": "1. Review existing target/README.md and decide scope: this directory is the injected cwd of the parent example 5-5-final-assembly, not a standalone project — confirm whether to rewrite, extend, or replace it.\n2. Verify factual claims in the README against the actual files (pkg/calc.py API and source, directory listing) and record any discrepancies.\n3. Draft the README structure: project title/overview, directory tree, how it relates to the parent 5-5-final-assembly example, and the cwd-injection flow (runtime.provide(\"cwd\", ...) → {{ cwd }} → child agents).\n4. Document the pkg.calc API precisely: add(a, b) -> float; div(a, b) -> float raising ValueError(\"divisor must not be 0\") on zero divisor; include the namespace-package import example (from pkg.calc import add, div).\n5. Document environment and prerequisites: Python 3.13, uv 0.8.x, required DEEPSEEK_API_KEY, and that no local dependencies/manifest exist (deps come from the parent uv environment).\n6. Document how to run it from the parent directory: `uv run flowing repl . --cwd target` and `uv run python demo_fanout.py`.\n7. Add explicit \"what this directory is NOT\" section: no pyproject.toml/requirements.txt/Makefile/package.json, no __init__.py (namespace package), no tests, no build system, not independently installable or runnable.\n8. Write the final README.md at <repo-root>/dev-docs/beginner-tutorial-en/examples/5-5-final-assembly/target/README.md (absolute path, markdown, matching existing tone).\n9. Re-verify the written README against the directory contents for accuracy and confirm no files outside target/ were touched."}
+[tool:completed] todo -> 
+## Exploration Summary
+
+**Target dir:** `<repo-root>/dev-docs/beginner-tutorial-en/examples/5-5-final-assembly/target`
+
+```
+target/
+├── README.md     (~6.4 KB, 123 lines — already exists)
+└── pkg/
+    └── calc.py   (11 lines)
+```
+
+Key findings:
+
+- **`pkg/calc.py`** — sole source file. Module docstring `"""Example project: calculator."""` plus two type-hinted functions: `add(a, b) -> float` and `div(a, b) -> float`, where `div` raises `ValueError("divisor must not be 0")` on a zero divisor. No third-party imports.
+- **`README.md` already exists** — it describes this directory as the *runtime cwd injected by the parent multi-agent example* `5-5-final-assembly/` (flowing framework), not a standalone project. It documents the `runtime.provide("cwd", cwd)` → `{{ cwd }}` flow, env (Python 3.13.6, uv 0.8.11, `DEEPSEEK_API_KEY`), run commands, and the `pkg.calc` API.
+- **No build system at all:** no `pyproject.toml`, `requirements.txt`, `Makefile`, `package.json`, Dockerfile, or CI config. No `__init__.py` (deliberate namespace package), no tests, no hidden files, no TODOs.
+- **Not independently runnable** — exercised only via the parent: `uv run flowing repl . --cwd target` or `uv run python demo_fanout.py`.
+
+⚠️ **Scope question:** since a README already exists, this is a *rewrite/refresh* rather than a from-scratch write. Task 1 in the list flags this for your decision.
+
+## Todo List (9 tasks, 0 done)
+
+| # | Task |
+|---|------|
+| 1 | Review existing README.md; decide rewrite vs. extend vs. replace |
+| 2 | Verify README claims against actual files; note discrepancies |
+| 3 | Draft structure: overview, tree, relation to parent example, cwd-injection flow |
+| 4 | Document `pkg.calc` API + namespace-package import example |
+| 5 | Document environment: Python 3.13, uv 0.8.x, `DEEPSEEK_API_KEY`, no local deps |
+| 6 | Document run commands from the parent dir |
+| 7 | Add explicit "what this directory is NOT" section |
+| 8 | Write final `README.md` at the absolute target path |
+| 9 | Re-verify written README against directory contents; confirm nothing outside `target/` touched |
+
+**Shall I dispatch the coder to execute these tasks?** Please confirm the scope for task 1 — I'd recommend **rewriting** the README from scratch (keeping the accurate facts, dropping the "generated artifact" self-referential framing) so the result reads as a proper project README.
+[thinking] Report to user. Wait for confirmation before dispatching coder? The flow says dispatch implementation tasks to coder. I should present the task list and ask whether to proceed, since there's a scope question (README already exists). Probably good to confirm before overwriting. But the instruction says "Use the todo tool to break implementation-type requirements into a task list and show it to the user". So show it and wait.
+
+I'll present findings and the task list, then ask for confirmation.
+## Exploration Summary
+
+**Target dir:** `<repo-root>/dev-docs/beginner-tutorial-en/examples/5-5-final-assembly/target`
+
+```
+target/
+├── README.md     (~6.4 KB, 123 lines — already exists)
+└── pkg/
+    └── calc.py   (11 lines)
+```
+
+Key findings:
+
+- **`pkg/calc.py`** — sole source file. Module docstring `"""Example project: calculator."""` plus two type-hinted functions: `add(a, b) -> float` and `div(a, b) -> float`, where `div` raises `ValueError("divisor must not be 0")` on a zero divisor. No third-party imports.
+- **`README.md` already exists** — it describes this directory as the *runtime cwd injected by the parent multi-agent example* `5-5-final-assembly/` (flowing framework), not a standalone project. It documents the `runtime.provide("cwd", cwd)` → `{{ cwd }}` flow, env (Python 3.13.6, uv 0.8.11, `DEEPSEEK_API_KEY`), run commands, and the `pkg.calc` API.
+- **No build system at all:** no `pyproject.toml`, `requirements.txt`, `Makefile`, `package.json`, Dockerfile, or CI config. No `__init__.py` (deliberate namespace package), no tests, no hidden files, no TODOs.
+- **Not independently runnable** — exercised only via the parent: `uv run flowing repl . --cwd target` or `uv run python demo_fanout.py`.
+
+⚠️ **Scope question:** since a README already exists, this is a *rewrite/refresh* rather than a from-scratch write. Task 1 in the list flags this for your decision.
+
+## Todo List (9 tasks, 0 done)
+
+| # | Task |
+|---|------|
+| 1 | Review existing README.md; decide rewrite vs. extend vs. replace |
+| 2 | Verify README claims against actual files; note discrepancies |
+| 3 | Draft structure: overview, tree, relation to parent example, cwd-injection flow |
+| 4 | Document `pkg.calc` API + namespace-package import example |
+| 5 | Document environment: Python 3.13, uv 0.8.x, `DEEPSEEK_API_KEY`, no local deps |
+| 6 | Document run commands from the parent dir |
+| 7 | Add explicit "what this directory is NOT" section |
+| 8 | Write final `README.md` at the absolute target path |
+| 9 | Re-verify written README against directory contents; confirm nothing outside `target/` touched |
+
+**Shall I dispatch the coder to execute these tasks?** Please confirm the scope for task 1 — I'd recommend **rewriting** the README from scratch (keeping the accurate facts, dropping the "generated artifact" self-referential framing) so the result reads as a proper project README.
+(agent-main)>>>Dispatching the coder now with the task list and self-check requirement.
+[thinking] Dispatch coder to write README.md, with self-check.
+
+I'll dispatch the coder with a detailed prompt including the task list, then summarize results.
+[tool_call] subagent-invoke {"agent_type": "coder", "name": "readme-writer", "prompt": "Task: Write (rewrite) the README.md for the example project at the absolute target directory:\n\n<repo-root>/dev-docs/beginner-tutorial-en/examples/5-5-final-assembly/target\n\nWrite ONLY this file (absolute path):\n<repo-root>/dev-docs/beginner-tutorial-en/examples/5-5-final-assembly/target/README.md\n\nDo NOT modify anything outside that target directory. Do NOT touch pkg/calc.py or anything in the parent 5-5-final-assembly/ directory.\n\nContext already established by a prior exploration (verify anything you rely on by reading the files yourself):\n\nDirectory tree of target/:\n```\ntarget/\n├── README.md     (already exists, ~6.4 KB, 123 lines — you are rewriting it)\n└── pkg/\n    └── calc.py   (11 lines, sole source file)\n```\n- `pkg/calc.py` content: module docstring \"\"\"Example project: calculator.\"\"\" plus two type-hinted functions: `add(a: float, b: float) -> float` and `div(a: float, b: float) -> float`; `div` raises `ValueError(\"divisor must not be 0\")` when the divisor is 0. Standard library only, no third-party imports.\n- There is deliberately NO `__init__.py` in `pkg/` (treated as a namespace package; imported as `from pkg.calc import add, div` with the target dir on sys.path).\n- There is NO build system: no pyproject.toml, requirements.txt, Makefile, package.json, Dockerfile, or CI config. No tests. No hidden files.\n- This directory is the runtime working directory (cwd) injected by the PARENT multi-agent example at `5-5-final-assembly/` (built on the \"flowing\" framework). It is NOT a standalone, independently buildable/runnable project. The parent's main.py calls `runtime.provide(\"cwd\", cwd)`, which is consumed in the root agent prompt via `{{ cwd }}`; child agents (explore / coder) then operate inside this directory.\n- Environment: Python 3.13 (3.13.6), uv 0.8.x (0.8.11), required env var `DEEPSEEK_API_KEY`. Runtime dependencies come from the parent project's uv environment.\n- How it is run, from the PARENT directory (not from target/): `uv run flowing repl . --cwd target` and `uv run python demo_fanout.py`.\n\nExecute the following task list:\n\n1. Read the existing target/README.md and pkg/calc.py. SCOPE DECISION: rewrite the README from scratch, keeping all accurate facts, but drop the self-referential \"this README is a generated artifact / when content disagrees the actual files prevail\" framing. The result should read as a proper project README.\n2. Verify every factual claim against the actual files (calc API signatures, exact ValueError message, directory listing). Record any discrepancies you find and resolve them in favor of the actual files.\n3. Structure the README with: project title/overview; directory tree; how this directory relates to the parent 5-5-final-assembly example; the cwd-injection flow (runtime.provide(\"cwd\", cwd) → {{ cwd }} → child agents operate here).\n4. Document the pkg.calc API precisely, with a signature table: `add(a, b) -> float`; `div(a, b) -> float` raising `ValueError(\"divisor must not be 0\")` on a zero divisor. Include the namespace-package import example: `from pkg.calc import add, div`.\n5. Document environment/prerequisites: Python 3.13, uv 0.8.x, required `DEEPSEEK_API_KEY`, and that no local dependencies or manifest exist (deps come from the parent uv environment).\n6. Document how to run it, clearly stating the commands are executed from the PARENT directory: `uv run flowing repl . --cwd target` and `uv run python demo_fanout.py`.\n7. Add an explicit \"What this directory is NOT\" section: no pyproject.toml / requirements.txt / Makefile / package.json, no `__init__.py` (namespace package by design), no tests, no build system, not independently installable or runnable.\n8. Write the final README.md to the absolute path above. Use clean Markdown (headings, a table for the API, fenced code blocks with language tags). Keep line lengths readable.\n9. SELF-CHECK: after writing, re-read the README.md you wrote AND re-read pkg/calc.py, and verify: (a) every function signature and the exact ValueError message match the source; (b) the directory tree matches reality; (c) no claim is made that the directory is standalone-buildable; (d) the run commands are attributed to the parent directory; (e) the \"What this directory is NOT\" section is present and correct. Confirm you did not create or modify any file outside target/README.md.\n\nReport back with: the absolute path written, the final README content (or a faithful summary of its sections), the results of each self-check item (a–e) with pass/fail, and any discrepancies found and how you resolved them."}
+[tool:completed] subagent-invoke -> 
+[thinking] Summarize to user. Also update todo? I can mark tasks done. Let me call todo with completed marks to reflect. That's a nice touch — the todo tool parses [x] as completed.
+
+Let me update the todo list marking all as done.
+
+Actually I should be careful: task 8 and 9 done. All done. Let me submit.
+[tool_call] todo {"tasks_text": "[x] 1. Review existing target/README.md and decide scope — decided: full rewrite, dropping the self-referential \"generated artifact\" framing.\n[x] 2. Verify factual claims in the README against the actual files; discrepancies recorded and resolved in favor of actual files.\n[x] 3. Draft the README structure: title/overview, directory tree, relation to parent example, cwd-injection flow.\n[x] 4. Document the pkg.calc API precisely (add / div + ValueError message) with the namespace-package import example.\n[x] 5. Document environment and prerequisites: Python 3.13.6, uv 0.8.11, DEEPSEEK_API_KEY, no local deps.\n[x] 6. Document how to run it from the parent directory (flowing repl --cwd target; demo_fanout.py).\n[x] 7. Add explicit \"What this directory is NOT\" section.\n[x] 8. Write the final README.md at the target absolute path (6,943 bytes).\n[x] 9. Self-check via re-read of README.md and pkg/calc.py — all items (a)–(e) PASS; no files outside target/ touched."}
+[tool:completed] todo -> 
+## ✅ README.md Written and Self-Checked — All 9 Tasks Complete
+
+**File written:** `<repo-root>/dev-docs/beginner-tutorial-en/examples/5-5-final-assembly/target/README.md` (6,943 bytes)
+
+It was a **full rewrite** — same accurate facts, but the self-referential "this README is a generated artifact" framing is gone, so it now reads as a proper project README.
+
+### Final structure (8 sections)
+1. **Title + Overview** — `target/` is the runtime cwd of the parent `5-5-final-assembly/` flowing example; only source file is `pkg/calc.py`; no standalone build/deps/tests.
+2. **Directory structure** — complete tree; `pkg/` noted as a namespace package.
+3. **Relation to the parent example** — parent tree for context, with an explicit note that none of those files live in `target/`.
+4. **How the cwd gets injected** — numbered flow + diagram: `main.py: runtime.provide("cwd", cwd)` → `root.fya: {{ cwd }}` → child agents (explore/coder) operate in `target/`.
+5. **Requirements** — table (Python 3.13.6, uv 0.8.11, required `DEEPSEEK_API_KEY`), plus the `providers.yaml` `"{{env.DEEPSEEK_API_KEY}}"` substitution and an `export` example.
+6. **How to run** — fenced bash blocks attributed to the **parent** directory: `uv run flowing repl . --cwd target` and `uv run python demo_fanout.py`.
+7. **`pkg.calc` API** — signature table (`add(a, b) -> float`; `div(a, b) -> float` raising `ValueError("divisor must not be 0")`) plus a Python example using `from pkg.calc import add, div`.
+8. **What this directory is NOT** — no `pyproject.toml`/`requirements.txt`/`setup.py`/`Makefile`/`package.json`/`Dockerfile`, not independently buildable or runnable, no `__init__.py` by design, no tests/CI, declares no dependencies.
+
+### Self-check results (re-read README + `pkg/calc.py`)
+| Check | Result |
+|---|---|
+| (a) Signatures & exact `ValueError` message match source | **PASS** |
+| (b) Directory tree matches reality (`find` → 4 entries, no `__init__.py`/hidden files) | **PASS** |
+| (c) No "standalone-buildable" claim | **PASS** |
+| (d) Run commands attributed to parent dir | **PASS** |
+| (e) "What this directory is NOT" present & correct | **PASS** |
+
+### Discrepancies found & resolved
+- **Old README's parent tree** omitted the parent's own `README.md`/`__pycache__` → kept only meaningful entries and added a clarifying note; no factual conflict.
+- **`demo_fanout.py` description** — old text was vague; verified against the script (`create_subagent("@/agents/coder")`, tasks write `notes/{topic}.md`) and rephrased accurately. Note `target/notes/` correctly is **not** listed in the tree since it only appears at demo runtime.
+- **cwd-injection claims** — verified directly in `main.py` and `root.fya` source; no changes needed.
+- Python/uv versions verified live, matching prior measured values.
+
+### Scope safety
+Only `target/README.md` was written. `pkg/calc.py` and everything in the parent `5-5-final-assembly/` are unmodified (confirmed via mtimes — only `target/README.md` is fresh).
+(agent-main)>>>

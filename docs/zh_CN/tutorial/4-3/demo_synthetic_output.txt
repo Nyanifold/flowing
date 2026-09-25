@@ -1,0 +1,5 @@
+已构造撕裂 session：provider(id=2) 带孤儿 tool_call(call_7)，无结果消息。
+恢复后的全部消息（id 升序）：
+  synthetic-call_7 tool      synthetic=True tool_status=error tool call call_7 result 
+                 1 user      synthetic=False tool_status=None 查一下目录
+                 2 provider  synthetic=False tool_status=None 

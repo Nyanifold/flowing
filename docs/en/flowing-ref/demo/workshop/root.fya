@@ -1,0 +1,38 @@
+description: "Mechanics demo agent: prompt layering, hooks, state bag."
+model_tag: default
+tools:
+  - bash
+  - finish
+---
+$system_prompt:
+You are the demo assistant. When you need the current date and time or a
+calculation, use bash to run python to obtain and compute it; do not answer
+from memory. Hand in the result with finish.
+---
+$script:
+from flowing import Parsable
+
+
+async def setup(self):
+    self.mode = "presentation mode"
+    # prompt layering: register a dynamic block, evaluated live at each context assembly
+    self.prompt_blocks.append(
+        "session-info",
+        Parsable("This session is hosted by {{ node_id }}; mode: {{ mode }}."),
+        cache="dynamic", by="demo", tags=["demo"],
+    )
+    # state bag: register writes through to disk by default; on recovery the persisted value wins
+    self.state.register("visit_count", 0)
+
+    # hook 1: before_tool_call observes every tool call (minimal form of an interception hook: let it through)
+    async def _log_tool_call(agent, tool_call):
+        print(f"[hook] before_tool_call: {tool_call.name} args={tool_call.args}")
+        return tool_call
+    self.hooks.before_tool_call(_log_tool_call)
+
+    # hook 2: after_turn accumulates the turn count into the state bag (write-through persistence; survives recovery)
+    async def _count_turn(agent, turn):
+        agent.state["visit_count"] = agent.state["visit_count"] + 1
+        print(f"[state] visit_count={agent.state['visit_count']}")
+        return turn
+    self.hooks.after_turn(_count_turn)

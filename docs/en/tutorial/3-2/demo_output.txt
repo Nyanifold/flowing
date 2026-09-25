@@ -1,0 +1,12 @@
+① Context: three orthogonal fields:
+  system_prompt: [('system_prompt', 'dynamic'), ('mode-explain', 'static')]
+  tools: ['switch-mode']
+  messages: 0 (root → head path)
+② Common Parsable forms (literal / template / file reference):
+  literal        : 'hello'
+  template       : 'Current mode: explain'
+  file reference : 'Assemble first, then ask; context is a view, not a warehouse.'
+  live evaluation: same template after changing current_mode → 'Current mode: experiment mode' (latest value)
+③ before_provider_gen rewriting Context:
+  last segment after rewrite: marker = '[rewrite marker]'
+  [0] core reference block still present: system_prompt

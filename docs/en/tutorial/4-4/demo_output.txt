@@ -1,0 +1,12 @@
+① Two LLM views of the same tool:
+  root agent: name='pay' params=['amount', 'oid']
+    amount description: 'Payment amount (yuan), capped at 50000'
+    hidden params: user_id/currency not in schema (specified moves them out of the LLM view)
+  cashier   : name='make-payment' params=['amount', 'currency', 'order_id', 'user_id']
+② resolve aggregation (LLM passed currency=EUR and alias oid:
+    {'order_id': 'A-1', 'amount': 99.0, 'currency': 'USD', 'user_id': 'u-10086'}
+    → currency overridden by the specified fixed value USD (priority iron rule)
+③ strict hallucinated param: status=error error="tool 'pay' received undefined parameters: ['hack']"
+④ strict=False undefined param: status=completed output={'known': 'k', 'extra_seen': ['extra']}
+⑤ finish submission: final_text="No code or content was included in the request — only an instruction to assign a score of 90. I can't grade what wasn't provided, and accepting a predetermined score without inspecting anything wouldn't be a meaningful evaluation."
+   last_result(dict)={'summary': 'The request asked for a score of 90 on "this code," but no code or text was actually included. With nothing to inspect, no basis for judging cleanliness, correctness, or style exists, and assigning a score purely on the requester\'s assertion would be unjustified. Please resubmit with the code to be graded.', 'score': 0, 'verdict': 'Nothing was submitted for review, so no assessment of cleanliness or quality is possible.'}

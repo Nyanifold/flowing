@@ -1,0 +1,7 @@
+== ① use_rate_limit(max_calls=3) 注入 ==
+   5 次调用结果: ['completed', 'completed', 'completed', 'blocked', 'blocked']
+   on_rate_limited 观测到 2 次超限（第 4、5 发）
+== ② remove_by_owner 整组移除 ==
+   移除 1 条 handler；再调一次: status=completed
+== ③ 调用内置 Composable ==
+   use_system_reminder 注入后 before_turn 命中 1 条 handler（这是该内置 Composable 的一种挂载方式）

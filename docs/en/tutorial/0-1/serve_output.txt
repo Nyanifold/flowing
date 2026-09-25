@@ -1,0 +1,4 @@
+$ curl -s http://127.0.0.1:8412/healthz
+{"status": "ok"}
+$ curl -s -X POST http://127.0.0.1:8412/agents/agent-main/message -H "Content-Type: application/json" -d "{\"text\": \"Introduce yourself in one sentence.\"}"
+{"message_id": "9", "final_text": "I am a concise AI assistant designed to give clear, helpful answers within three sentences."}

@@ -1,0 +1,8 @@
+# MCP 工具声明（stdio 本地子进程形态）：一个声明 = 一组服务端工具的组代理。
+name: demo
+type: mcp
+description: 演示用的 GitHub 风格操作工具组。
+command: uv
+# stdio 子进程以 Agent 进程的工作目录为 cwd（即本工程根），相对路径即可
+args: ["run", "python", "tools/demo_server.py"]
+tools: [list-prs, create-issue]   # 服务端工具子集（demo_server 恰好暴露这两个）

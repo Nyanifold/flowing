@@ -1,0 +1,11 @@
+== ① compiled product equals handwritten subclass (item by item) ==
+   description equal: True
+   system_prompt template equal: True (block content carries a trailing newline; equal after strip)
+   args schema equal (properties key set): True
+== ② glob expansion and alias entry ==
+   tools (glob expansion): ['audit', 'payment', 'subagent-invoke']
+   subagent alias greet: name_ori='@/agents/greeter::greeter' specified={'tone': 'casual'}
+   catalog view: name='greet' (tone removed from the parameter table by specified: no tone in '<params>')
+== ③ failure assertions (negative cases) ==
+   name consistency assertion: NameMismatchError
+   @on undeclared hook point: UnknownHookPointError: Unknown hook point: '@on markers found no owning hook point: no_such_hook (method _) — hook point name misspelled, or the corresponding plugin/Composable is not enabled in setup()' (not declared)

@@ -1,0 +1,5 @@
+(agent-main)>>>[thinking] The user wants a greeting. I should invoke the greeter subagent with no parameters.
+[tool_call] subagent-invoke {"prompt": "Greet the user.", "agent_type": "greeter"}
+[tool:completed] subagent-invoke -> 
+Hello! Welcome — how can I help you today?
+(agent-main)>>>

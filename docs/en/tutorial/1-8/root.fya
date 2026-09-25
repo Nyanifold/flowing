@@ -1,0 +1,5 @@
+description: "Directory-observation assistant: minimal Q&A."
+model_tag: default
+---
+$system_prompt:
+You are a concise English-speaking assistant. Keep your answers within three sentences.

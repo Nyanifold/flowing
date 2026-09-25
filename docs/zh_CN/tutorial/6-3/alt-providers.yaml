@@ -1,0 +1,5 @@
+# 编程覆盖的模型接入来源（set_providers 演示用：条目名与默认文件不同）
+deepseek-alt:
+  adapter: deepseek
+  base_url: https://api.deepseek.com
+  api_key: "{{env.DEEPSEEK_API_KEY}}"

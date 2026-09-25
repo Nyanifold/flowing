@@ -1,0 +1,11 @@
+# Model entries: one entry = one concrete model (bound to one provider entry).
+# context_window is model metadata (a declared value) consumed by budget
+# observation -- if undeclared, usage_ratio is None (demo in 3-4).
+deepseek-flash:
+  provider: deepseek
+  model: deepseek-v4-flash
+  context_window: 32000
+deepseek-chat:
+  provider: deepseek
+  model: deepseek-chat
+  context_window: 32000

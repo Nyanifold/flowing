@@ -1,0 +1,45 @@
+description: "Demo assistant for plugins and Composables."
+model_tag: default
+tools:
+  - skill-load   # install registers the tool body; declaring it makes the tool visible to the LLM (registration != visibility)
+skills:
+  - ./skills/polite.md   # declare the available skill (requires SkillPlugin installed and use_skill in setup)
+---
+$system_prompt:
+You are a concise demo assistant. For greeting-type requests: first call the
+skill-load tool to load the "polite" skill and end the turn without replying.
+The skill body will arrive as a separate message; once it arrives, answer
+strictly following the fixed sentence pattern defined in that body.
+---
+$script:
+from flowing import MessageKind, TextBlock
+from flowing.composables import use_prompt_until, use_system_reminder
+from flowing.plugins.skills import use_skill
+
+
+async def setup(self):
+    use_skill(self)   # instance-level enablement of the plugin (phase two; mechanics covered in 5-2)
+
+    # Composable 1: inject a system reminder at the start of every turn (here we only observe the phenomenon)
+    use_system_reminder(
+        self,
+        contents=["[Reminder] Current working directory: {{ env.PWD }} (from use_system_reminder)"],
+    )
+
+    # Composable 2: end-of-turn assertion — the final reply must contain DONE, otherwise steer reruns the turn
+    def _done(agent, turn) -> bool:
+        for mid in reversed(turn.message_ids):
+            msg = agent.chain.get(mid)
+            if msg.kind is MessageKind.PROVIDER:
+                text = "".join(b.text for b in msg.content
+                               if isinstance(b, TextBlock))
+                return "DONE" in text
+        return True   # do not nag on an empty turn
+
+    use_prompt_until(
+        self,
+        predicate=_done,
+        message=("Acceptance condition not met: your final reply must contain "
+                 "DONE on a line of its own. Please answer the previous "
+                 "question again and append DONE at the end."),
+    )

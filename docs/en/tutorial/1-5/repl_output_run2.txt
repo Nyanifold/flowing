@@ -1,0 +1,9 @@
+(agent-main)>>>[thinking] The user wants me to dispatch the greeter. Per instructions: call subagent-invoke to dispatch it to the greeter (no extra parameters).
+[tool_call] subagent-invoke {"agent_type": "greeter", "prompt": "Greet the user."}
+[tool:completed] subagent-invoke -> 
+你好！
+[thinking] The greeter returned "你好！". Relay verbatim.
+
+Wait — the instructions say greet in the language matching the locale provided on the chain. The result is "你好！". Relay verbatim.
+你好！
+(agent-main)>>>

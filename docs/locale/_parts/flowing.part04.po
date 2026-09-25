@@ -1,0 +1,583 @@
+#: flowing.builtins.tools.SubagentInvokeTool:42 of
+msgid ""
+"校验：``agent_type`` 与 ``resume`` 互斥且至少其一；违反 → ``status=\"error\"`` 结果（LLM "
+"可见的自我修正反馈）。"
+msgstr ""
+"Validation: ``agent_type`` and ``resume`` are mutually exclusive and at least one is required; violations yield a ``status=\"error\"`` "
+"result (self-correction feedback visible to the LLM)."
+
+#: flowing.builtins.tools.SubagentInvokeTool:44 of
+msgid "本工具不直接创建 / 销毁 Agent（那是 ``invoke_subagent`` 管线的 职责）；不感知 catalog 渲染。"
+msgstr "This tool does not directly create or destroy Agents (that is the responsibility of the ``invoke_subagent`` pipeline); it is unaware of catalog rendering."
+
+#: flowing.builtins.tools.SubagentInvokeTool:46 of
+msgid ""
+"可见性：本工具由 Runtime 核心注册，但不自动出现在任何 Agent 的 "
+"``Context.tools``——需用户显式声明（``.fya`` ``tools:`` 或 ``add_tool(\"subagent-"
+"invoke\")``）。"
+msgstr ""
+"Visibility: this tool is registered by the Runtime core, but does not automatically appear in any Agent's "
+"``Context.tools`` — it must be explicitly declared by the user (``.fya`` ``tools:`` or ``add_tool(\"subagent-"
+"invoke\")``)."
+
+#: flowing.builtins.tools.SubagentInvokeTool:52 of
+msgid ":meth:`flowing.agent.Agent.invoke_subagent` —— 真正的唤起管线。"
+msgstr ":meth:`flowing.agent.Agent.invoke_subagent` —— the actual invocation pipeline."
+
+#: flowing.builtins.tools.SubagentInvokeTool:53 of
+msgid ":class:`flowing.subagents.SubagentEntry` —— catalog 与参数聚合。"
+msgstr ":class:`flowing.subagents.SubagentEntry` —— catalog and parameter aggregation."
+
+#: flowing.builtins.tools.SubagentInvokeTool:54 of
+msgid ":class:`flowing.builtins.FinishTool` —— 子 Agent 侧的可选交卷工具。"
+msgstr ":class:`flowing.builtins.FinishTool` —— the optional submission tool on the sub-Agent side."
+
+#: flowing.builtins.tools.SubagentInvokeTool.execute:1 of
+msgid "转发 ``caller.invoke_subagent()`` 并返回确认收据。"
+msgstr "Forwards to ``caller.invoke_subagent()`` and returns an acknowledgment receipt."
+
+#: flowing.builtins.tools.SubagentInvokeTool.execute:5 of
+msgid ""
+"``agent_type`` 与 ``resume`` 互斥且至少其一（空串视为未给）； 违反时抛 ``ValueError``——经 "
+"``Tool.__call__`` 包装为 ``status=\"error\"`` （LLM 可见，可自纠正）。"
+msgstr ""
+"``agent_type`` and ``resume`` are mutually exclusive and at least one is required (an empty string counts as not given); violations raise "
+"``ValueError`` — wrapped by ``Tool.__call__`` into ``status=\"error\"`` (visible to the LLM, self-correctable)."
+
+#: flowing.builtins.tools.SubagentInvokeTool.execute:8 of
+msgid ""
+"``kwargs`` 为该子 Agent 类型声明的其余 args（catalog 中 LLM 可见），原样透传给 "
+"``invoke_subagent`` 经 ``SubagentEntry. resolve()`` 聚合。"
+msgstr ""
+"``kwargs`` are the remaining args declared for that sub-Agent type (visible to the LLM in the catalog), passed through verbatim to "
+"``invoke_subagent`` and aggregated via ``SubagentEntry.resolve()``. "
+
+#: flowing.builtins.tools.SubagentInvokeTool.execute:11 of
+#, python-brace-format
+msgid ""
+"``asynchronized=True``：不等待子 Agent 完成——创建段同步 await （失败即上抛，经 "
+"``Tool.__call__`` 的 except 顺序分派为 ``status=\"error\"`` / ``blocked``，LLM "
+"可见），随后立即返回 ``{\"invoked\": ..., \"status\": \"started\"}`` 收据；运行段在后台 "
+"执行，结局以 ``Message(kind=SUBAGENT)`` 推入亲代队列。"
+msgstr ""
+"``asynchronized=True``: does not wait for the sub-Agent to finish — the creation phase is awaited synchronously (failures propagate, "
+"dispatched by ``Tool.__call__``'s except ordering into ``status=\"error\"`` / ``blocked``, visible to the LLM), then immediately returns "
+"the receipt ``{\"invoked\": ..., \"status\": \"started\"}``; the run phase executes in the background, and its outcome is pushed into "
+"the parent queue as ``Message(kind=SUBAGENT)``."
+
+#: flowing.builtins.tools.SubagentInvokeTool.execute:16 of
+msgid ""
+"缺省 ``False``：同步等待子 Agent 完成——``invoke_subagent`` 同步交付结果、不 enqueue "
+"SUBAGENT 消息；随后把返回的 ``SubagentResult`` 全字段平铺进本工具返回 dict，不再另发 SUBAGENT 消息。"
+msgstr ""
+"Default ``False``: synchronously waits for the sub-Agent to finish — ``invoke_subagent`` delivers the result synchronously and does not enqueue "
+"a SUBAGENT message; the returned ``SubagentResult`` is then flattened field-by-field into this tool's return dict, with no separate SUBAGENT message sent."
+
+#: flowing.subagents.SubagentResult:1 of
+msgid "子 Agent 一次唤起的返回结果（:meth:`flowing.agent.Agent.invoke_subagent` 的返回类型）。"
+msgstr "The return result of a single sub-Agent invocation (the return type of :meth:`flowing.agent.Agent.invoke_subagent`)."
+
+#: flowing.subagents.SubagentResult:5 of
+msgid ""
+"也是 ``after_subagent_invoke`` 钩子可改写的交付对象（经 ``SubagentInvocation.result`` "
+"回填，先于交付 dispatch——改写对 return 值与 SUBAGENT 消息同时生效）。纯数据载体：只携带可 JSON "
+"序列化字段，不持有活实例引用。"
+msgstr ""
+"It is also the deliverable object that the ``after_subagent_invoke`` hook may rewrite (written back via ``SubagentInvocation.result``, "
+"before delivery dispatch — the rewrite takes effect on both the return value and the SUBAGENT message). A pure data carrier: it only carries "
+"JSON-serializable fields and holds no live instance references."
+
+#: flowing.subagents.SubagentResult:12 of
+msgid ""
+"``subagent_id``：子 Agent 的 ``node_id``。调用方需要活实例时， 经 "
+"``runtime.get_agent(subagent_id)`` 按「有记录无实例 → 现场 恢复」语义获取；不要在本对象上保留实例引用。"
+msgstr ""
+"``subagent_id``: the sub-Agent's ``node_id``. When the caller needs a live instance, obtain it via "
+"``runtime.get_agent(subagent_id)`` under the \"record exists but no instance → recover on the spot\" semantics; do not keep instance references on this object."
+
+#: flowing.subagents.SubagentResult:15 of
+msgid ""
+"``result``：子 Agent 的最终产出——默认是其最后回复文本（字符串）； 子 Agent 调用 ``FinishTool`` "
+"结构化返回时为结构化字段 dict； 无任何产出（如取消且无完整响应）为 ``None``。取自 ``Agent.last_result``。"
+msgstr ""
+"``result``: the sub-Agent's final output — by default its last reply text (a string); a structured field dict when the sub-Agent returned structured output via ``FinishTool``; "
+"``None`` when there is no output at all (e.g. cancelled with no complete response). Taken from ``Agent.last_result``."
+
+#: flowing.subagents.SubagentResult:19 of
+msgid ""
+"``subagent_status``：子 Agent 该回合的结局，透传 ``TurnResult.status``。取消 / "
+"异常信息与内容分离：被 cancel 时 已置位的 finish 载荷或已产出文本照常出现在 ``result``，结局标记 只看本字段。"
+msgstr ""
+"``subagent_status``: the outcome of the sub-Agent's turn, passed through from ``TurnResult.status``. Cancellation / error information "
+"is separated from content: when cancelled, any finish payload already set or text already produced still appears in ``result`` as usual; the outcome marker lives only in this field."
+
+#: flowing.subagents.SubagentResult:23 of
+msgid "不携带子 Agent 的完整消息历史（历史在子 Agent 自己的 session 中，可经 ``agent.chain`` / 快照访问）。"
+msgstr "Does not carry the sub-Agent's full message history (the history lives in the sub-Agent's own session, accessible via ``agent.chain`` / snapshots)."
+
+#: flowing.subagents.SubagentResult:28 of
+msgid ":meth:`flowing.agent.Agent.invoke_subagent` —— 产出入口。"
+msgstr ":meth:`flowing.agent.Agent.invoke_subagent` —— the producing entry point."
+
+#: flowing.subagents.SubagentResult:29 of
+msgid ":class:`SubagentInvocation` —— 唤起钩子 value。"
+msgstr ":class:`SubagentInvocation` —— the invocation hook value."
+
+#: flowing.subagents.SubagentResult:30 of
+msgid ":class:`flowing.message.MessageKind` —— ``SUBAGENT`` 消息种类。"
+msgstr ":class:`flowing.message.MessageKind` —— the ``SUBAGENT`` message kind."
+
+#: flowing.SubagentResult.name_alias:1
+#: flowing.subagents.SubagentResult.name_alias:1 of
+msgid ""
+"调用方可读标识：续接名（``resume``）/ 语义名（``name``）/ 唤起别名 （``alias``），按此优先序取。语义名只存在亲代 "
+"Agent 的 ``child_ids`` 表中，子实例不自持名字。"
+msgstr ""
+"The caller-readable identifier: the resume name (``resume``) / semantic name (``name``) / invocation alias (``alias``), taken in that priority order. The semantic name exists only in the parent "
+"Agent's ``child_ids`` table; the child instance does not hold its own name."
+
+#: flowing.SubagentResult.subagent_id:1
+#: flowing.subagents.SubagentResult.subagent_id:1 of
+msgid ""
+"子 Agent 的 ``node_id``。纯数据字段，可 JSON 序列化；需要活实例 时经 "
+"``runtime.get_agent(subagent_id)`` 获取（默认存续，显式 ``destroy()`` "
+"才销毁实例；记录保留，可现场恢复）。"
+msgstr ""
+"The sub-Agent's ``node_id``. A pure data field, JSON-serializable; when a live instance is needed, obtain it via "
+"``runtime.get_agent(subagent_id)`` (instances persist by default and are only destroyed by an explicit ``destroy()``; "
+"the record is kept and can be recovered on the spot)."
+
+#: flowing.SubagentResult.result:1 flowing.subagents.SubagentResult.result:1 of
+msgid ""
+"子 Agent 最终产出：默认 ``str``；finish 结构化返回时为字段 dict； 无产出（如取消且无任何完整响应）为 "
+"``None``。取自 ``Agent.last_result``——收尾段统一写入（``finish_output`` 置位 → 该 "
+"dict；否则本轮最后一条 PROVIDER 消息文本；空 → ``None``）， 填充规则见 "
+":attr:`flowing.agent.Agent.last_result`。"
+msgstr ""
+"The sub-Agent's final output: ``str`` by default; a field dict when finish returned structured output; ``None`` when there is no output "
+"(e.g. cancelled with no complete response at all). Taken from ``Agent.last_result`` — written uniformly in the finalization phase (``finish_output`` set → that "
+"dict; otherwise the text of the last PROVIDER message of the turn; empty → ``None``); for the fill rules see "
+":attr:`flowing.agent.Agent.last_result`."
+
+#: flowing.SubagentResult.subagent_status:1
+#: flowing.subagents.SubagentResult.subagent_status:1 of
+msgid ""
+"子 Agent 该回合的结局，透传 ``TurnResult.status`` （``\"completed\"`` / "
+"``\"blocked\"`` / ``\"error\"`` / ``\"cancelled\"``）。 取消 / 异常信息的载体：被 "
+"cancel 时已置位的 finish 载荷或已产出 文本仍经 ``result`` 照返，「子 Agent 取消」这一事实由本字段承载， 不污染"
+" ``result`` 的内容契约（结构化 dict 不塞标注、文本不拼后缀）。"
+msgstr ""
+"The outcome of the sub-Agent's turn, passed through from ``TurnResult.status`` (``\"completed\"`` / "
+"``\"blocked\"`` / ``\"error\"`` / ``\"cancelled\"``). The carrier of cancellation / error information: when "
+"cancelled, any finish payload already set or text already produced is still returned via ``result``; the fact that \"the sub-Agent was cancelled\" is carried by this field, "
+"without polluting ``result``'s content contract (no annotations stuffed into structured dicts, no suffixes appended to text)."
+
+#: flowing.message.TextBlock:1 of
+msgid "纯文本内容块。"
+msgstr "Plain-text content block."
+
+#: flowing.message.TextBlock:5 of
+msgid ""
+"直接可读的字符串片段；``Agent.message(\"...\")`` 的 ``str`` 入参自动 打包为 "
+"``[TextBlock(text=content)]``。最典型的 block type，可能 出现在任何 kind 中。文本单独成块（而非 "
+"Message 上的字段）使其可与 其它类型 block 交错混排（如 ``[thinking, text, tool_call, "
+"text]``）。"
+msgstr ""
+"A directly readable string fragment; a ``str`` argument to ``Agent.message(\"...\")`` is automatically packed as "
+"``[TextBlock(text=content)]``. The most typical block type, and may appear in any kind. Making text its own block (rather than a field on "
+"Message) allows it to interleave with blocks of other types (e.g. ``[thinking, text, tool_call, "
+"text]``)."
+
+#: flowing.message.TextBlock:18 of
+msgid "``text`` 为空字符串是合法的（语义由上层决定，框架不拒绝）。"
+msgstr "An empty string for ``text`` is legal (the semantics are decided by the upper layer; the framework does not reject it)."
+
+#: flowing.message.TextBlock:19 of
+msgid "不做长度限制、不做内容审核（审核走 ``before_enqueue`` 钩子）。"
+msgstr "No length limits and no content moderation (moderation goes through the ``before_enqueue`` hook)."
+
+#: flowing.message.TextBlock:22 of
+msgid ""
+":class:`flowing.message.ContentBlock`、 "
+":meth:`flowing.agent.Agent.message`。"
+msgstr ""
+":class:`flowing.message.ContentBlock`, "
+":meth:`flowing.agent.Agent.message`."
+
+#: flowing.TextBlock.type:1 flowing.message.TextBlock.type:1 of
+msgid "固定为 ``\"text\"``。"
+msgstr "Fixed to ``\"text\"``."
+
+#: flowing.TextBlock.text:1 flowing.message.TextBlock.text:1 of
+msgid "文本内容。直接可读；序列化时原样进入 ``tree.jsonl`` 行。"
+msgstr "The text content. Directly readable; serialized verbatim into ``tree.jsonl`` lines."
+
+#: flowing.message.ThinkingBlock:1 of
+msgid "LLM 思考 / 推理过程内容块。"
+msgstr "Content block for the LLM's thinking / reasoning process."
+
+#: flowing.message.ThinkingBlock:5 of
+msgid ""
+"承载 Provider 返回的推理过程（Anthropic ``thinking`` block、OpenAI "
+"``reasoning_content`` 等）；典型出现在 ``PROVIDER`` 消息中，UI 通常 折叠或淡化显示。思考过程是 "
+"Provider 响应的一等部分：持久化后可审计、 可在后续上下文中回传（Anthropic 要求 thinking 块原样回传并校验 签名）。"
+msgstr ""
+"Carries the reasoning process returned by the Provider (Anthropic ``thinking`` block, OpenAI "
+"``reasoning_content``, etc.); typically appears in ``PROVIDER`` messages, and UIs usually display it collapsed or dimmed. The thinking process is a first-class part of the "
+"Provider response: auditable once persisted, and can be sent back in subsequent contexts (Anthropic requires thinking blocks to be sent back verbatim with signature verification)."
+
+#: flowing.message.ThinkingBlock:13 of
+msgid ""
+"``signature``：Provider 签发的完整性签名（校验思考内容未被篡改， 如 Anthropic）；不适用此机制的 Provider"
+" 为 ``None``。"
+msgstr ""
+"``signature``: the integrity signature issued by the Provider (verifying that the thinking content has not been tampered with, e.g. Anthropic); ``None`` for Providers "
+"without this mechanism."
+
+#: flowing.message.ThinkingBlock:15 of
+msgid "UI 的折叠 / 淡化是应用层策略，框架不预设渲染方式。"
+msgstr "Collapsing / dimming in the UI is an application-layer policy; the framework prescribes no rendering."
+
+#: flowing.message.ThinkingBlock:18 of
+msgid ""
+":class:`flowing.message.ContentBlock`、 "
+":class:`flowing.providers.ProviderDelta`。"
+msgstr ""
+":class:`flowing.message.ContentBlock`, "
+":class:`flowing.providers.ProviderDelta`."
+
+#: flowing.ThinkingBlock.type:1 flowing.message.ThinkingBlock.type:1 of
+msgid "固定为 ``\"thinking\"``。"
+msgstr "Fixed to ``\"thinking\"``."
+
+#: flowing.ThinkingBlock.thinking:1 flowing.message.ThinkingBlock.thinking:1 of
+msgid "思考过程文本。"
+msgstr "The thinking-process text."
+
+#: flowing.ThinkingBlock.signature:1 flowing.message.ThinkingBlock.signature:1
+#: of
+msgid "Provider 签发的完整性签名（如 Anthropic）；无签名机制时为 ``None``。"
+msgstr "The integrity signature issued by the Provider (e.g. Anthropic); ``None`` when there is no signature mechanism."
+
+#: flowing.tool.Tool:1 of
+msgid "可执行对象基类——三正交中的「执行」层。"
+msgstr "Base class for executable objects — the \"execution\" leg of the three orthogonal capabilities."
+
+#: flowing.tool.Tool:5 of
+msgid ""
+"`Tool` 只对执行负责：持有一份默认 `ToolDefinition`，暴露 ``execute()``；框架调度层经 "
+"``__call__`` 统一调用。四种工具类型 （script / mcp / cli / request）均以本类（或其子类）为最终产物。 "
+"调度职责（awaitable / async generator 检测、Task 包装、caller 注入、 返回值包装）集中在 "
+"``__call__``，让 ``execute()`` 保持「零散参数进、 普通值出」的最简单签名——工具作者不需要知道 "
+"`ToolResult` 的存在。"
+msgstr ""
+"`Tool` is responsible only for execution: it holds a default `ToolDefinition` and exposes ``execute()``; the framework's dispatch layer invokes it uniformly via "
+"``__call__``. All four tool types (script / mcp / cli / request) end up as instances of this class (or a subclass). "
+"Dispatch responsibilities (awaitable / async generator detection, Task wrapping, caller injection, return-value wrapping) are concentrated in "
+"``__call__``, keeping ``execute()`` at the simplest \"loose arguments in, plain value out\" signature — tool authors never need to know "
+"`ToolResult` exists."
+
+#: flowing.tool.Tool:14 of
+msgid "直接子类化通常只用于内置工具；应用代码应使用 `ScriptTool`："
+msgstr "Direct subclassing is normally reserved for builtin tools; application code should use `ScriptTool`:"
+
+#: flowing.tool.Tool:26 of
+msgid ""
+"`Tool` 不认识钩子、不查注册表、不做参数聚合——这些都在 ``Agent.tool_call()`` / ``_normalize()`` "
+"一侧。"
+msgstr ""
+"`Tool` knows no hooks, never queries the registry, and does no argument aggregation — all of that lives on the ``Agent.tool_call()`` / ``_normalize()`` "
+"side."
+
+#: flowing.tool.Tool:28 of
+msgid ""
+"实例属性开放：``.fya`` 中的非保留字段（如 ``requires_approval``） 直接成为 tool "
+"对象的普通属性，框架不解析、不据此做任何自动行为。"
+msgstr ""
+"Open instance attributes: non-reserved fields in ``.fya`` (such as ``requires_approval``) become plain attributes of the tool "
+"object directly; the framework neither parses them nor derives any automatic behavior from them."
+
+#: flowing.tool.Tool:30 of
+msgid ""
+"不变量：``self._execution`` 仅在 ``__call__`` 调度期间非 ``None``； 工具内部可检查 "
+"``self._execution.cancel.is_set()`` 以响应 cancel （协作式取消，见 "
+":mod:`flowing.agent` 的 `Execution` 契约）。"
+msgstr ""
+"Invariant: ``self._execution`` is non-``None`` only during ``__call__`` dispatch; tool internals may check "
+"``self._execution.cancel.is_set()`` to respond to cancel (cooperative cancellation; see the `Execution` contract in "
+":mod:`flowing.agent`)."
+
+#: flowing.tool.Tool:36 of
+msgid ":class:`flowing.tool.ScriptTool` —— script 工具的作者基类。"
+msgstr ":class:`flowing.tool.ScriptTool` —— the author-facing base class for script tools."
+
+#: flowing.tool.Tool:37 of
+msgid ":class:`flowing.tool.ToolRegistry` —— 注册与查找。"
+msgstr ":class:`flowing.tool.ToolRegistry` —— registration and lookup."
+
+#: flowing.Tool.definition:1 flowing.tool.Tool.definition:1 of
+msgid ""
+"默认 LLM 声明。类属性或实例属性（`ScriptTool.__init__` 自动生成）。 Agent 级覆写不修改本对象（见 "
+"`ToolEntry`）。"
+msgstr ""
+"The default LLM declaration. A class attribute or instance attribute (auto-generated by `ScriptTool.__init__`). Agent-level overrides do not modify this object (see "
+"`ToolEntry`)."
+
+#: flowing.Tool.registry_key:1 flowing.tool.Tool.registry_key:1 of
+msgid ""
+"注册表全键（``ns::name``），``ToolRegistry.register`` 时回写；未注册 实例为 ``None``。Entry "
+"装配对文件派生工具落账本字段为 ``name_ori`` （含目录派生命名空间的限定键，热路径精确命中）；注册表命中 （``default::``"
+" / ``builtin::``）的条目仍记裸名。内部 API。"
+msgstr ""
+"The full registry key (``ns::name``), written back at ``ToolRegistry.register`` time; ``None`` for unregistered instances. Entry "
+"assembly records this field as ``name_ori`` for file-derived tools (a qualified key including the directory-derived namespace, exact-hit on the hot path); entries resolved from the registry (``default::``"
+" / ``builtin::``) still record the bare name. Internal API."
+
+#: flowing.tool.Tool.execute:1 of
+msgid "工具业务逻辑入口——零散参数 + 可选 ``caller``，不接收 `ToolCall`。"
+msgstr "Entry point for tool business logic — loose arguments plus an optional ``caller``; does not receive a `ToolCall`."
+
+#: flowing.tool.Tool.execute:5 of
+msgid ""
+"子类覆写本方法。参数来自 `ToolEntry.resolve()` 聚合后的完整字典， 由 ``__call__`` 按签名匹配分发；声明 "
+"``caller: Agent`` 参数时框架 自动传入调用方 Agent（用于注入表达式求值 / ``get_resource`` / "
+"访问调用方状态）。同步函数同样合法（``__call__`` 做 awaitable 检测）。"
+msgstr ""
+"Subclasses override this method. Arguments come from the complete dict aggregated by `ToolEntry.resolve()` and are dispatched by ``__call__`` via signature matching; when a "
+"``caller: Agent`` parameter is declared, the framework automatically passes the calling Agent (for injection-expression evaluation / ``get_resource`` / "
+"accessing caller state). Synchronous functions are equally legal (``__call__`` performs awaitable detection)."
+
+#: flowing.tool.Tool.execute:22 of
+msgid ""
+"返回值由 ``__call__`` 自动包装：普通值 → ``completed``；抛异常 → ``error``；返回 "
+"``asyncio.Task`` → ``pending`` （收据，框架 不等待）。"
+msgstr ""
+"Return values are wrapped automatically by ``__call__``: a plain value → ``completed``; a raised exception → ``error``; returning "
+"an ``asyncio.Task`` → ``pending`` (a receipt; the framework does not wait)."
+
+#: flowing.tool.Tool.execute:25 of
+msgid ""
+"不自行构造 `ToolResult`；不处理 specified（固定值 / 注入表达式 "
+"已由调度层聚合进参数）；复杂对象（连接池、客户端）不进参数 ——以标识符字符串传入，经 ``caller`` 获取真实对象。"
+msgstr ""
+"Does not construct `ToolResult` itself; does not handle specified values (fixed values / injection expressions "
+"are already aggregated into the arguments by the dispatch layer); complex objects (connection pools, clients) do not enter the arguments — pass identifier strings and fetch the real object via ``caller``."
+
+#: flowing.tool.Tool.execute:28 of
+msgid "长时间运行的工具应周期性检查 ``self._execution.cancel.is_set()`` 以支持协作式取消。"
+msgstr "Long-running tools should periodically check ``self._execution.cancel.is_set()`` to support cooperative cancellation."
+
+#: flowing.tool.Tool.execute:33 of
+msgid ":meth:`flowing.tool.Tool.__call__` —— 调度层职责。"
+msgstr ":meth:`flowing.tool.Tool.__call__` —— dispatch-layer responsibilities."
+
+#: flowing.tool.Tool.execute:34 of
+msgid ":class:`flowing.tool.ToolResult` —— 自动包装产物。"
+msgstr ":class:`flowing.tool.ToolResult` —— the product of automatic wrapping."
+
+#: flowing.tool.ToolCall:1 of
+msgid "LLM 发出的单次工具调用——``before_tool_call`` 钩子的 value 类型。"
+msgstr "A single tool call issued by the LLM — the value type of the ``before_tool_call`` hook."
+
+#: flowing.tool.ToolCall:5 of
+msgid ""
+"`ToolCall` 是「LLM 想调什么」的纯数据载体：从 PROVIDER 消息的工具调用 "
+"块（``ToolCallBlock``）解析而来，经 ``before_tool_call`` 钩子链传递， 最终被解包为零散参数喂给 "
+"``Tool.execute()``。`ToolCall` 只是调用意图， 不是可执行对象；``execute()`` 不接收 "
+"`ToolCall` 整体入参。"
+msgstr ""
+"`ToolCall` is a pure data carrier of \"what the LLM wants to call\": parsed from the tool-call "
+"block (``ToolCallBlock``) of a PROVIDER message, passed along the ``before_tool_call`` hook chain, and finally unpacked into loose arguments fed to "
+"``Tool.execute()``. `ToolCall` is only a call intent, not an executable object; ``execute()`` does not accept a whole "
+"`ToolCall` as an argument."
+
+#: flowing.tool.ToolCall:12 of
+msgid ""
+"``before_tool_call`` handler 统一签名 ``(agent, value)``——方法形态 ``(self, "
+"tool_call)`` 的 ``self`` 即承载 Agent："
+msgstr ""
+"``before_tool_call`` handlers share the unified signature ``(agent, value)`` — in method form ``(self, "
+"tool_call)``, ``self`` is the hosting Agent:"
+
+#: flowing.tool.ToolCall:31 of
+msgid ""
+"handler 三种合法出口：返回（可能改写的）`ToolCall` / 把 `ToolResult` 放进 ``shortcut`` 字段短路 "
+"/ ``raise Intercepted`` 硬阻断；普通异常直接上抛，没有会捕获它的兜底钩子。"
+msgstr ""
+"A handler has three legal exits: return a (possibly rewritten) `ToolCall` / short-circuit by placing a `ToolResult` in the ``shortcut`` field "
+"/ hard-block with ``raise Intercepted``; ordinary exceptions propagate directly — no catch-all hook will trap them."
+
+#: flowing.tool.ToolCall:34 of
+msgid ""
+"`ToolCall` 不做参数校验、不认识 specified——参数聚合全部发生在 其后的 ``_normalize()`` （见 "
+":mod:`flowing.agent`）。"
+msgstr ""
+"`ToolCall` does no argument validation and knows nothing of specified values — all argument aggregation happens later in ``_normalize()`` (see "
+":mod:`flowing.agent`)."
+
+#: flowing.tool.ToolCall:36 of
+msgid ""
+"``args`` 只包含 LLM 原始传入值（键可能是别名）；hook 改写后出现的 同名键会在 ``resolve()`` 中被 "
+"specified 覆盖（优先级见模块 docstring 的参数优先级约定）。"
+msgstr ""
+"``args`` contains only the raw values passed by the LLM (keys may be aliases); same-named keys introduced by hook rewrites will be overridden by "
+"specified values in ``resolve()`` (for precedence, see the argument-priority convention in the module docstring)."
+
+#: flowing.tool.ToolCall:42 of
+msgid ":class:`flowing.tool.ToolResult` —— 调用的结果载体。"
+msgstr ":class:`flowing.tool.ToolResult` —— the result carrier of a call."
+
+#: flowing.tool.ToolCall:43 of
+msgid ":class:`flowing.tool.ToolEntry` —— ``resolve()`` 的参数聚合。"
+msgstr ":class:`flowing.tool.ToolEntry` —— argument aggregation in ``resolve()``."
+
+#: flowing.tool.ToolCall:44 of
+msgid ":mod:`flowing.hooks` —— dispatch 算法与 ``shortcut`` 契约。"
+msgstr ":mod:`flowing.hooks` —— the dispatch algorithm and the ``shortcut`` contract."
+
+#: flowing.ToolCall.id:1 flowing.tool.ToolCall.id:1 of
+msgid ""
+"Provider 侧的调用 ID（如 OpenAI ``tool_call_id``）。它是与结果侧 ``kind=TOOL`` 消息 "
+"``tool_call_id`` 字段严格配对的依据，也是恢复时 扫描孤立 tool_call 的匹配键。编程路径（cron / workflow"
+" / 手动构造） 由调用方生成合成字符串——推荐形如 ``<来源类型名>-<随机 hex>`` （workflow → "
+"``workflow-…``、cron → ``cron-…``）的有语义前缀； 仅作追踪，不参与配对。"
+msgstr ""
+"The call ID on the Provider side (e.g. OpenAI ``tool_call_id``). It is the basis for strict pairing with the ``tool_call_id`` field of the result-side ``kind=TOOL`` message, "
+"and the match key for scanning orphaned tool_calls during recovery. On programmatic paths (cron / workflow / manual construction), "
+"the caller generates a synthetic string — a semantic prefix of the form ``<source-type-name>-<random hex>`` is recommended (workflow → "
+"``workflow-…``, cron → ``cron-…``); it is for tracing only and does not participate in pairing."
+
+#: flowing.ToolCall.name:1 flowing.tool.ToolCall.name:1 of
+msgid ""
+"LLM 看到的工具名——即 `ToolEntry.name_alias` （别名），不是规范名。 ``Agent.tool_call()`` "
+"仅按此名查找工具绑定表，不回退规范名。"
+msgstr ""
+"The tool name as seen by the LLM — i.e. `ToolEntry.name_alias` (the alias), not the canonical name. ``Agent.tool_call()`` "
+"looks up the tool binding table by this name only, with no fallback to the canonical name."
+
+#: flowing.ToolCall.args:1 flowing.tool.ToolCall.args:1 of
+msgid ""
+"LLM 原始传入的参数字典（键为 LLM 可见名，可能是 ``param_aliases`` 中的别名）。``before_tool_call``"
+" handler 可直接改写本字典；别名 → 规范名 的映射、specified 聚合在 ``_normalize()`` 中发生，不在本对象上。"
+msgstr ""
+"The raw argument dict passed by the LLM (keys are LLM-visible names, possibly aliases from ``param_aliases``). ``before_tool_call`` "
+"handlers may rewrite this dict directly; alias → canonical-name mapping and specified aggregation happen in ``_normalize()``, not on this object."
+
+#: flowing.ToolCall.shortcut:1 flowing.tool.ToolCall.shortcut:1 of
+msgid ""
+"钩子短路字段：初值 ``None``，钩子链以「非 ``None`` 即短路」门控。 handler 把一个 `ToolResult` "
+"放进本字段后返回——钩子链停止、工具默认 执行被替代（该 `ToolResult` 直接作为本次调用的结果，典型场景：缓存 "
+"命中跳过工具执行），``after_tool_call`` 照常触发。与 ``raise Intercepted`` 的区别：shortcut "
+"是正常收场、结果由 handler 提供， Intercepted 是硬阻断、结果为 "
+"``blocked``、``after_tool_call`` 不触发。 shortcut 产物不经 ``Tool.__call__``，其 "
+"``output`` 可为原料形态—— 由 ``Agent.tool_call`` 收尾的 `normalize_output` 幂等归一。"
+msgstr ""
+"The hook short-circuit field: initially ``None``; the hook chain is gated on \"non-``None`` means short-circuit\". A handler places a `ToolResult` "
+"into this field and returns — the hook chain stops and the tool's default execution is replaced (that `ToolResult` directly becomes the result of this call; typical scenario: a cache "
+"hit skipping tool execution), while ``after_tool_call`` fires as usual. Difference from ``raise Intercepted``: shortcut "
+"is a normal wrap-up with the result supplied by the handler, whereas Intercepted is a hard block whose result is "
+"``blocked`` and ``after_tool_call`` does not fire. Shortcut products do not go through ``Tool.__call__``, so their "
+"``output`` may be in raw form — it is idempotently normalized by the `normalize_output` finishing step of ``Agent.tool_call``."
+
+#: flowing.tool.ToolCall.from_block:1 of
+msgid "从消息层 `ToolCallBlock` 解析为 `ToolCall` （唯一官方转换点）。"
+msgstr "Parses a message-layer `ToolCallBlock` into a `ToolCall` (the only official conversion point)."
+
+#: flowing.tool.ToolCall.from_block:5 of
+msgid ""
+"剥离 ContentBlock 的通用字段（``type``），产出 ``ToolCall(id, name, args, "
+"shortcut=None)``。逻辑 Turn 循环遍历响应 content 的 tool_call block 时，经本方法提取后传给 "
+"``Agent.tool_call()``。"
+msgstr ""
+"Strips the generic ContentBlock field (``type``) and produces ``ToolCall(id, name, args, "
+"shortcut=None)``. When the logical Turn loop iterates over the tool_call blocks of a response's content, it extracts them via this method and passes them to "
+"``Agent.tool_call()``."
+
+#: flowing.tool.ToolCall.from_block:11 of
+msgid "纯函数：不修改入参 block，不产生副作用。"
+msgstr "Pure function: does not modify the input block and has no side effects."
+
+#: flowing.tool.ToolCall.from_block:12 of
+msgid "返回值的 ``shortcut`` 恒为 ``None`` （短路是钩子链运行期状态， 不来自消息）。"
+msgstr "The returned ``shortcut`` is always ``None`` (short-circuiting is runtime state of the hook chain; it does not come from the message)."
+
+#: flowing.tool.ToolCall.from_block:17 of
+msgid ":class:`flowing.message.ToolCallBlock` —— 上游（消息层）。"
+msgstr ":class:`flowing.message.ToolCallBlock` —— upstream (the message layer)."
+
+#: flowing.tool.ToolCall.from_block:18 of
+msgid ":meth:`flowing.tool.ToolResult.as_message` —— 反向转换： 结果 → 消息。"
+msgstr ":meth:`flowing.tool.ToolResult.as_message` —— the reverse conversion: result → message."
+
+#: flowing.message.ToolCallBlock:1 of
+msgid "工具调用请求内容块（LLM 侧）。"
+msgstr "Tool-call request content block (LLM side)."
+
+#: flowing.message.ToolCallBlock:5 of
+msgid ""
+"``PROVIDER`` 消息中的一个工具调用请求。``id`` 由 Provider 分配（如 Anthropic "
+"``tool_use.id``、OpenAI ``tool_calls[].id``），作为配对 锚点：与同分支后续 TOOL 消息的 "
+":attr:`Message.tool_call_id` 严格 配对（1:1）。"
+msgstr ""
+"A tool-call request within a ``PROVIDER`` message. ``id`` is assigned by the Provider (e.g. Anthropic "
+"``tool_use.id``, OpenAI ``tool_calls[].id``) and serves as the pairing anchor: it pairs strictly (1:1) with "
+":attr:`Message.tool_call_id` of the subsequent TOOL message on the same branch."
+
+#: flowing.message.ToolCallBlock:10 of
+msgid ""
+"block 形式是消息层的权威表示（持久化、上下文组装都用它）； :class:`flowing.tool.ToolCall` "
+"是它的「解析后」形式——剥离通用字段， 只保留 ``id`` / ``name`` / ``args`` （+ 通用短路字段 "
+"``shortcut``）， 供 ``Agent.tool_call()`` 与工具钩子使用。两者经 "
+":meth:`flowing.tool.ToolCall.from_block` 单向转换（模块依赖保持 单向：``flowing.tool`` "
+"认识 ``flowing.message``，反之不认识）。"
+msgstr ""
+"The block form is the authoritative representation at the message layer (used by persistence and context assembly); :class:`flowing.tool.ToolCall` "
+"is its \"parsed\" form — generic fields stripped, keeping only ``id`` / ``name`` / ``args`` (plus the generic short-circuit field "
+"``shortcut``), for use by ``Agent.tool_call()`` and tool hooks. The two convert one-way via "
+":meth:`flowing.tool.ToolCall.from_block` (module dependency stays one-way: ``flowing.tool`` "
+"knows ``flowing.message``, not vice versa)."
+
+#: flowing.message.ToolCallBlock:27 of
+msgid ""
+"恢复不变量：tool_call block 必须有对应的 TOOL 结果消息（同分支、 严格成对，锚点为本 block 的 ``id`` "
+"与结果消息的 ``Message.tool_call_id``）；缺失时恢复流程合成 ``synthetic=True`` 的占位 TOOL "
+"消息（见 :attr:`Message.synthetic`）。"
+msgstr ""
+"Recovery invariant: a tool_call block must have a corresponding TOOL result message (same branch, strictly paired; the anchors are this block's ``id`` "
+"and the result message's ``Message.tool_call_id``); when missing, the recovery flow synthesizes a placeholder TOOL message with ``synthetic=True`` "
+"(see :attr:`Message.synthetic`)."
+
+#: flowing.message.ToolCallBlock:31 of
+msgid ""
+"``args`` 是 LLM 填写的原始参数字典，未合并；参数合并（specified （含注入表达式）> LLM args > schema "
+"默认值，specified 最高）与 防篡改通道在 ``flowing.tool.ToolEntry`` 层处理，block 本身只是 载体。"
+msgstr ""
+"``args`` is the raw argument dict filled in by the LLM, unmerged; argument merging (specified (including injection expressions) > LLM args > schema "
+"defaults, with specified highest) and the anti-tamper channel are handled at the ``flowing.tool.ToolEntry`` layer — the block itself is just a carrier."
+
+#: flowing.message.ToolCallBlock:37 of
+msgid ""
+":class:`flowing.tool.ToolCall`、 "
+":attr:`flowing.message.Message.tool_call_id`、 "
+":meth:`flowing.agent.Agent.tool_call`。"
+msgstr ""
+":class:`flowing.tool.ToolCall`, "
+":attr:`flowing.message.Message.tool_call_id`, "
+":meth:`flowing.agent.Agent.tool_call`."
+
+#: flowing.ToolCallBlock.type:1 flowing.message.ToolCallBlock.type:1 of
+msgid "固定为 ``\"tool_call\"``。"
+msgstr "Fixed to ``\"tool_call\"``."
+
+#: flowing.ToolCallBlock.id:1 flowing.message.ToolCallBlock.id:1 of
+msgid "工具调用 ID（Provider 分配）；与后续 TOOL 消息的 :attr:`Message.tool_call_id` 配对（1:1）。"
+msgstr "The tool-call ID (assigned by the Provider); pairs (1:1) with :attr:`Message.tool_call_id` of the subsequent TOOL message."
+
+#: flowing.ToolCallBlock.name:1 flowing.message.ToolCallBlock.name:1 of
+msgid "工具名（LLM 可见的声明名，即 ``ToolEntry`` 的别名）。"
+msgstr "The tool name (the LLM-visible declared name, i.e. the ``ToolEntry`` alias)."
+
+#: flowing.ToolCallBlock.args:1 flowing.message.ToolCallBlock.args:1 of
+msgid "LLM 填写的参数字典（原始、未合并）。"
+msgstr "The argument dict filled in by the LLM (raw, unmerged)."
+

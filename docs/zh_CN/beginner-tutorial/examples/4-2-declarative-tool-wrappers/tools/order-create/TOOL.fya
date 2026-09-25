@@ -1,0 +1,10 @@
+# request 型工具：POST → 参数进 JSON body；output 按 schema 提取字段。
+name: order-create
+type: request
+description: 创建新订单。
+url: http://127.0.0.1:8641/api/orders
+method: POST
+args:
+  item: {type: string, description: 商品名}
+  count: {type: integer, default: 1, description: 数量}
+output: {type: object, properties: {order_id: {type: string}, total: {type: number}}}

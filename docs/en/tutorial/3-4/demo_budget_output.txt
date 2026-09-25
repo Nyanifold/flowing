@@ -1,0 +1,7 @@
+Initial (empty tree): tokens=18 measured=None estimated=18 ratio=0.0005625
+After round 1: tokens=198 measured=198 estimated=0 ratio=0.0062
+After round 2: tokens=344 measured=344 estimated=0 ratio=0.0107
+After round 3: tokens=382 measured=382 estimated=0 ratio=0.0119
+After round 4: tokens=428 measured=428 estimated=0 ratio=0.0134
+After round 5: tokens=788 measured=788 estimated=0 ratio=0.0246
+After round 6: tokens=799 measured=799 estimated=0 ratio=0.0250

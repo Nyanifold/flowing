@@ -1,0 +1,4 @@
+(agent-main)>>>I'll remember that the number is 731.
+[thinking] We need answer one sentence. Need confirm with one-sentence restatement. User asks remember number 731. We should say "I'll remember that the number is 731." One sentence. Ensure no extra.
+I'll remember that the number is 731.
+(agent-main)>>>

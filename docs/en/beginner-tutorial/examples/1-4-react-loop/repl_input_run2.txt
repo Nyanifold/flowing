@@ -1,0 +1,2 @@
+Reply with only the word "OK" and do not add anything else.
+/exit

@@ -1,0 +1,19 @@
+description: "Parameter demo assistant: args declaration + typical setup() pattern."
+model_tag: default
+args:
+  user_name: str        # sugar: bare type string → required parameter
+  locale:               # full form: JSON Schema keywords expanded over lines
+    type: string
+    default: zh
+    description: "Reply language (zh / en)"
+---
+$system_prompt:
+You are a concise Q&A assistant. Current user: {{ user_name }}; reply language: {{ locale }}; timezone: {{ timezone }}. Keep your answer within one sentence.
+---
+$script:
+async def setup(self, user_name: str, locale: str = "zh"):
+    self.user_name = user_name               # ① store the param on self (source for the {{ user_name }} template)
+    self.locale = locale                     # ② store the param on self (source for the {{ locale }} template)
+    self.ask_count = 0                       # ③ initialize the counter (instance state in place at creation)
+    self.provide("locale", locale)           # ④ attach the value to the provide chain (child components can fetch along the chain)
+    self.timezone = self.inject("timezone")  # ⑤ fetch the upper-level provided value (main() provides it before mounting)

@@ -1,0 +1,39 @@
+name: root                    # 一致性断言：与推断名不符 → NameMismatchError
+description: 复杂装配示例助手：glob 工具 + 别名下属 + 深层块 + $script 钩子。
+model_tag: default
+args:
+  user_id: str                 # 糖：裸类型字符串 → 必填
+  locale:                      # 完整展开：JSON Schema 关键字
+    type: string
+    default: zh
+    description: 回复语言
+tools:
+  - subagent-invoke            # 唤起工具：显式声明才可用（注册 ≠ 可见）
+  - ./tools/*.py               # glob 展开：tools/ 下全部 .py 工具（显式条目优先于 glob）
+subagents:
+  - ./agents/greeter as greet:     # as 别名：LLM 目录里显示 greet
+      description: 问候用子智能体（别名 greet）
+      args:
+        tone: casual              # specified：LLM 不可见的固定值
+        style: {}                 # 空补丁（{} 等价 _；规避条目 _ 编译缺口——分歧登记 #2）
+# 下方深层具名块：按别名寻址 subagents 条目，向空补丁逐字段写入
+---
+$system_prompt:
+你是装配示例助手（{{ locale }} 模式），当前用户 {{ user_id }}。
+---
+$subagents.greet.args.style.description:
+  问候的措辞风格（正式 / 俏皮 / 古风）——深层块写入
+---
+$script:
+from flowing import on
+
+
+@on("before_tool_call")          # $script 里可写类上声明式钩子（__init__ 阶段注册）
+def _(self, tool_call):
+    print(f"[hook] before_tool_call: {tool_call.name}")
+    return tool_call
+
+
+async def setup(self, user_id: str, locale: str = "zh"):
+    self.user_id = user_id
+    self.locale = locale

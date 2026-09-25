@@ -1,0 +1,12 @@
+description: "Scorer: submit a structured result with finish (the output override expands dynamic fields)."
+model_tag: default
+tools:
+  - finish:
+      output:               # binding-layer output override: field name → JSON Schema definition (no wrapper)
+        score: {type: integer, description: score 0-100}
+        verdict: {type: string, description: one-sentence comment}
+---
+$system_prompt:
+You are the scorer. After receiving content, grade it and submit with finish:
+summary holds the comment, score holds the numeric grade, and verdict holds a
+one-sentence conclusion.

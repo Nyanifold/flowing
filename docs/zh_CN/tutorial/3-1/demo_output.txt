@@ -1,0 +1,22 @@
+== 实验 1：steer（STEER 当轮可见、不打断）==
+回合 status=completed（completed=未被打破）
+== 实验 2：INTERRUPT（工具执行期打断当前回合）==
+被打断回合 status=cancelled aborted=True（cancelled=被打断）
+== 实验 3：pause / resume（挂起与恢复工作循环）==
+pause 期间 current_turn 非 None: True（回合已创建、停在检查点，无 LLM 调用）
+resume 后 status=completed
+== 实验 4：cancel（中止执行；流式中断已产出保留落盘）==
+cancel 后 status=cancelled；本回合已落树节点数=2（user + partial provider：中断不丢已产出）
+── 消息树（head → 根，逆时间序）──
+ 12 provider  pri=NORMAL  turn_end=True 
+ 11 user      pri=NORMAL  turn_end=False 讲一个很长很长的故事。
+ 10 provider  pri=NORMAL  turn_end=True 2+2 等于 4。我是一个简洁的中文助手，用尽量少的句子回答
+  9 user      pri=NORMAL  turn_end=False 用一句话介绍你自己。
+  7 user      pri=INTERRUPT turn_end=False 停下！先回答：2+2 等于几？
+  8 tool      pri=NORMAL  turn_end=False exit_code: 0 --- stdout --- --
+  6 provider  pri=NORMAL  turn_end=False 
+  5 user      pri=NORMAL  turn_end=False 先用 bash 运行 sleep 20，然后再回答：天空为什
+  4 provider  pri=NORMAL  turn_end=True 1 2 3 4 5 （收到导向）
+  3 user      pri=STEER   turn_end=False 补充：数完请附一句「（收到导向）」。
+  2 provider  pri=NORMAL  turn_end=True 1 2 3 4 5
+  1 user      pri=NORMAL  turn_end=False 请数一数 1 到 5，每个数字一行。

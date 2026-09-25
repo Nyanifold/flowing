@@ -1,0 +1,10 @@
+== ① Custom _dequeue: drain merge ==
+   [_dequeue] drain merge: batch of 3 messages into one turn
+== ② Turn finalization: TurnResult construction ==
+   [_dequeue] drain merge: batch of 1 messages into one turn
+   status=completed turn.message_ids=['5', '6']
+   token_usage aggregate=224 (sum over TurnContext.usages field by field)
+== ③ watch attribute linkage ==
+   watch(locale) received assignment events: [(None, 'zh'), ('zh', 'en')]
+== ④ side_query side channel ==
+   side_query returned='ok'; tree nodes 6 → 6 (unchanged = zero trace from the side channel)

@@ -1,0 +1,37 @@
+description: 机制演示 Agent：prompt 分层、钩子、状态袋。
+model_tag: default
+tools:
+  - bash
+  - finish
+---
+$system_prompt:
+你是演示助手。需要当前日期时间或计算时，用 bash 运行 python 获取与计算，
+不要凭记忆回答；得到结果后用 finish 交卷。
+---
+$script:
+from flowing import Parsable
+
+
+async def setup(self):
+    self.mode = "讲解模式"
+    # prompt 分层：注册一个动态块，每次组装上下文时现场求值
+    self.prompt_blocks.append(
+        "session-info",
+        Parsable("本次会话由 {{ node_id }} 承载，模式为 {{ mode }}。"),
+        cache="dynamic", by="demo", tags=["demo"],
+    )
+    # 状态袋：register 缺省即写、写透落盘；恢复时持久值优先
+    self.state.register("visit_count", 0)
+
+    # 钩子一：before_tool_call 观察每次工具调用（拦截钩子的最小形态：放行）
+    async def _log_tool_call(agent, tool_call):
+        print(f"[hook] before_tool_call: {tool_call.name} args={tool_call.args}")
+        return tool_call
+    self.hooks.before_tool_call(_log_tool_call)
+
+    # 钩子二：after_turn 累计回合数进状态袋（写透落盘，恢复后仍在）
+    async def _count_turn(agent, turn):
+        agent.state["visit_count"] = agent.state["visit_count"] + 1
+        print(f"[state] visit_count={agent.state['visit_count']}")
+        return turn
+    self.hooks.after_turn(_count_turn)

@@ -1,0 +1,4 @@
+(1) Root agent: model_tag='default' -> model='deepseek-v4-flash'
+    provider entry binding: 'deepseek'
+(2) Runtime root.model_tag = 'chat' -> model='deepseek-chat'
+(3) Subagent greeter: declared model_tag='chat' -> model='deepseek-chat'

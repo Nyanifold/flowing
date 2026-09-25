@@ -1,0 +1,7 @@
+① 限流重试: status=completed
+   on_retry 观测: [{'attempt': 1, 'error': 'RateLimitedError'}, {'attempt': 2, 'error': 'RateLimitedError'}]
+   FlakyProvider 实际调用次数: 3（2 次失败 + 1 次成功）
+② cancel 被 before_cancel 拦截: Intercepted(支付已提交：该回合不可取消)
+   信号未置位——取消从未发生（不可中断场景的标准用法）
+③ abort_turn: status=cancelled（回合终止，Agent 存活）
+   下一回合照常: status=completed final='在，sleep 10 已'

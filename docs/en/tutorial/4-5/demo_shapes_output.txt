@@ -1,0 +1,13 @@
+① The five normalized shapes (ordinary execute return values → one unified exit):
+   None       → blocks=[]
+   str        → blocks=['text']
+   scalar     → blocks=['text']
+   dict       → blocks=['struct']
+   plain list → blocks=['struct']
+   mixed list → blocks=['text', 'image']
+② Forbidden blocks (ToolCallBlock / ThinkingBlock on any path → ValueError):
+   forbidden block type in tool result: ToolCallBlock
+③ Media carriers (Image → ImageBlock, base64 inline):
+   Image → ['image'] (mime=image/png)
+④ error appended (output_to_blocks appends an error text block at the end):
+   ['struct', 'text'] (last block='build failed: missing dependencies')

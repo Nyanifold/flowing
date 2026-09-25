@@ -1,0 +1,3 @@
+# 等价通道演示：callable 指针指向另一个文件里的 ScriptTool 子类。
+type: script
+callable: ../todo_impl.py::TodoToolFn

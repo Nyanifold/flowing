@@ -1,0 +1,7 @@
+初始（空树）：tokens=21 measured=None estimated=21 ratio=0.00065625
+第 1 轮后：tokens=204 measured=204 estimated=0 ratio=0.0064
+第 2 轮后：tokens=507 measured=507 estimated=0 ratio=0.0158
+第 3 轮后：tokens=565 measured=565 estimated=0 ratio=0.0177
+第 4 轮后：tokens=612 measured=612 estimated=0 ratio=0.0191
+第 5 轮后：tokens=706 measured=706 estimated=0 ratio=0.0221
+第 6 轮后：tokens=835 measured=835 estimated=0 ratio=0.0261

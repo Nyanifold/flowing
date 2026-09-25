@@ -1,0 +1,11 @@
+# 模型条目：一个条目 = 一个具体模型（绑定一个 provider 条目）。
+# context_window 是模型元信息（声明值），预算观测的消费方——
+# 不声明则 usage_ratio 为 None（3-4 演示）。
+deepseek-flash:
+  provider: deepseek
+  model: deepseek-v4-flash
+  context_window: 32000
+deepseek-chat:
+  provider: deepseek
+  model: deepseek-chat
+  context_window: 32000

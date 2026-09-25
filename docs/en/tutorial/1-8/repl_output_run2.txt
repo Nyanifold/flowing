@@ -1,0 +1,6 @@
+(agent-main)>>>I'm a concise English-speaking AI assistant here to help you with questions and tasks.
+[thinking] We need answer. User asks: "Introduce yourself in one sentence." Need concise. We are assistant. Must keep within three sentences. One sentence. Introduce self. We can say: "I'm a concise English-speaking AI assistant here to help you with questions and tasks." That's one sentence. Ensure no extra.
+I'm a concise English-speaking AI assistant here to help you with questions and tasks.
+(agent-main)>>>1  user      Introduce yourself in one sentence.
+2  provider  I'm a concise English-speaking AI assistant here to help you with questions and …
+(agent-main)>>>

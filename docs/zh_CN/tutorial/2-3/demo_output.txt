@@ -1,0 +1,8 @@
+通道A 手写子类     : TodoTool name='todo'
+通道C callable 指针: TodoToolFn name='todo-fn'
+通道B 打标函数     : Shout name='shout'
+A 与 C 独立实现、同构声明: True
+  同参 schema: True
+  A: params=['tasks_text']
+  B: params=['text']
+  C: params=['tasks_text']

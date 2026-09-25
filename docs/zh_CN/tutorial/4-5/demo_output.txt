@@ -1,0 +1,13 @@
+① 首 yield → 收据: status=pending background_task_id=1
+   回合不被阻塞：tool_call 已返回，后台继续跑
+② on_tool_yields 逐份产物（production 元信息）：
+   receipt   name=build  output=dict
+   segment   name=build  output=str
+   segment   name=build  output=str
+   segment   name=build  output=str
+   segment   name=build  output=dict
+③ 后台结果投递: EVENT 消息 4 条进树
+   source='tool_result' async tool build: 
+   source='tool_result' async tool build: 
+   source='tool_result' async tool build: 
+   source='tool_result' async tool build: 

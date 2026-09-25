@@ -1,0 +1,3 @@
+让 assistant 记住数字 42。
+问 memo：我之前让你记的数字是几？
+/exit

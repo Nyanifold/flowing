@@ -1,0 +1,16 @@
+message() enqueued, message id=1 (the caller does not wait for the turn result)
+Turn has started (current_turn is not None)
+steer() delivered (STEER priority: visible to the current turn, no interruption)
+Turn has ended
+query() waited for TurnResult: status=completed
+first 80 chars of final_text: Glob confirms there are 2 files in the notes directory: `使用说明.md` and `路线图.md`.
+── message tree (head → root, reverse chronological; pri=STEER marks a steer message) ──
+  9 provider  pri=NORMAL turn_end=True Glob confirms there are 2 files in t…使用说明.md` and `路线图.md`.
+  8 tool      pri=NORMAL turn_end=False <repo-root>/…/2-1-loop-and-concurrency/notes/路线图.md
+  7 provider  pri=NORMAL turn_end=False 
+  6 user      pri=NORMAL turn_end=False Use glob again to confirm how many f…nswer in one sentence.
+  5 provider  pri=NORMAL turn_end=True The notes directory contains 2 files…ries. (steer received)
+  3 user      pri=STEER  turn_end=False Additional requirement: end your ans…th '(steer received)'.
+  4 tool      pri=NORMAL turn_end=False <repo-root>/…/2-1-loop-and-concurrency/notes/路线图.md
+  2 provider  pri=NORMAL turn_end=False 
+  1 user      pri=NORMAL turn_end=False Use glob to look at the notes direct… many files are in it.

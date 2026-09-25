@@ -1,0 +1,7 @@
+description: Composable 演示助手：echo 工具 + 自写策略注入。
+model_tag: default
+tools:
+  - ./tools/echo.py
+---
+$system_prompt:
+你是演示助手，回答控制在一句话以内。

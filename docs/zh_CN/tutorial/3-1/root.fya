@@ -1,0 +1,7 @@
+description: 机制实验助手：配合观察队列与树上的控制痕迹。
+model_tag: default
+tools:
+  - bash   # 实验 2 需要一段可打断的工具执行
+---
+$system_prompt:
+你是简洁的中文助手，回答控制在五句话以内。

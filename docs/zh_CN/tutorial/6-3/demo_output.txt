@@ -1,0 +1,16 @@
+== ① 配置链三层 ==
+   项目级 @/config.yaml 覆盖框架默认: agent.timeout = 45（框架默认 60）
+   set_config 覆盖层最优先: agent.timeout = 90
+   FLOWING_CONFIG_HOME 用户级: ~/.flowing（本机未设置）
+== ② 模型接入来源覆盖 ==
+   默认 provider 候选: ['deepseek']
+   优先级：FLOWING_PROVIDERS_PATH 环境变量 > 默认路径；set_providers 在 mount 前编程覆盖
+   （本工程 main() 已 set_providers('@/providers.yaml')；改用 alt-providers.yaml 即得 deepseek-alt 条目——见篇内示例代码）
+== ③ 池 / 归档（遗忘三档之二）==
+   池名录（含子 Agent）: ['agent-e14907', 'agent-main']
+   archive_agent 后 get_agent → None（运行时遗忘，文件留档）
+   destroy 档（丢实例留记录）→ archive 档（名录移除）；物理删除框架不提供，应用层自做
+== ④ snapshot 审计 ==
+   nodes=['agent-main', 'runtime-0']
+   config_overrides={'agent.timeout': 90}
+   崩溃演练（kill -9 → 重启恢复）见 4-1；日志落盘插件在 flowing._unstable.logging（格式不冻结，勿依赖）

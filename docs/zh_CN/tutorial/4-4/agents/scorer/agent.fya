@@ -1,0 +1,11 @@
+description: 评分员：用 finish 结构化交卷（output 覆写展开动态字段）。
+model_tag: default
+tools:
+  - finish:
+      output:               # 绑定层 output 覆写：字段名 → JSON Schema 定义（无 wrapper）
+        score: {type: integer, description: 分数 0-100}
+        verdict: {type: string, description: 一句话评语}
+---
+$system_prompt:
+你是评分员。收到内容后打分并用 finish 交卷：summary 写评语，
+score 写分数，verdict 写一句话结论。

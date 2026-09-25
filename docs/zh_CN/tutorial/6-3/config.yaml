@@ -1,0 +1,3 @@
+# 项目级配置（@/config.yaml）：优先级高于框架默认值、低于用户级与 set_config
+agent:
+  timeout: 45

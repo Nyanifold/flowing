@@ -1,0 +1,4 @@
+What is a message tree? Explain with bullet points.
+Switch to poem mode and answer the same question.
+Switch back to explain mode and answer the same question.
+/exit

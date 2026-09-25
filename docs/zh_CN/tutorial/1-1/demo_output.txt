@@ -1,0 +1,18 @@
+message() 已入队，消息 id=1（调用方不等回合结果）
+回合已开始（current_turn 非 None）
+steer() 已投递（STEER 优先级：当轮可见、不打断）
+回合已收尾
+query() 等到 TurnResult：status=completed
+final_text 前 80 字：notes 目录下依然只有 2 个文件：`使用说明.md` 和 `路线图.md`。
+
+（收到导向）
+── 消息树（head → 根，逆时间序；pri=STEER 即导向消息）──
+  9 provider  pri=NORMAL turn_end=True notes 目录下依然只有 2 个文件：`使用说明.md` 和 `路线图.md`。  （收到导向）
+  8 tool      pri=NORMAL turn_end=False <仓库根>/…/1-1/notes/路线图.md
+  7 provider  pri=NORMAL turn_end=False 
+  6 user      pri=NORMAL turn_end=False 再次用 glob 确认 notes 目录的文件数量，一句话回答。
+  5 provider  pri=NORMAL turn_end=True notes 目录下共有 2 个文件：`使用说明.md` 和 `路线图.md`。  （收到导向）
+  3 user      pri=STEER  turn_end=False 补充要求：回答末尾请附上『（收到导向）』。
+  4 tool      pri=NORMAL turn_end=False <仓库根>/…/1-1/notes/路线图.md
+  2 provider  pri=NORMAL turn_end=False I'll look at the notes directory structure first.
+  1 user      pri=NORMAL turn_end=False 请用 glob 查看 notes 目录（用系统提示里的绝对路径），然后说明里面有几个文件。

@@ -1,0 +1,20 @@
+description: "Orchestrator: provides locale and dispatches greeting tasks to the greeter."
+model_tag: default
+args:
+  locale:                # root agent parameter → provided onto the chain
+    type: string
+    default: zh
+tools:
+  - subagent-invoke
+subagents:
+  - ./agents/greeter
+---
+$system_prompt:
+You are the orchestrator. When a greeting request arrives, call subagent-invoke
+to dispatch it to the greeter (no extra parameters), and relay the greeter's
+greeting to the user verbatim.
+---
+$script:
+async def setup(self, locale: str = "zh"):
+    self.locale = locale
+    self.provide("locale", locale)   # attach to the provide chain: descendants get it via inject

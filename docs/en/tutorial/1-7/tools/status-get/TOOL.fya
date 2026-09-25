@@ -1,0 +1,10 @@
+# request-type tool: GET + path parameters (rendered at execution time);
+# parameters go to query/body automatically.
+name: status-get
+type: request
+description: Query the demo server's health status.
+url: http://127.0.0.1:8641/api/status
+method: GET
+args:
+  verbose: {type: boolean, default: false, description: Whether to return detailed fields}
+output: {type: object, properties: {status: {type: string}, uptime: {type: number}}}

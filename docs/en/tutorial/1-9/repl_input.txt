@@ -1,0 +1,4 @@
+Greet me politely: good morning, and append DONE at the end of your answer.
+Continue: use the fixed sentence pattern you just learned to wish me a smooth afternoon, and append DONE at the end.
+/messages
+/exit

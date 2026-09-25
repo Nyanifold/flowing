@@ -1,0 +1,2 @@
+Check the server status first (verbose), then place an order for 2 "demo product"; report both tool results faithfully.
+/exit

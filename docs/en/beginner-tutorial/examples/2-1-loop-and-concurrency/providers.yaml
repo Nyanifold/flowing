@@ -1,0 +1,7 @@
+# provider entries: one entry = one API key identity.
+# {{env.VAR}} is substituted at load time; a missing variable becomes an empty
+# string plus a warning (warnings.warn), and loading continues.
+deepseek:
+  adapter: deepseek
+  base_url: https://api.deepseek.com
+  api_key: "{{env.DEEPSEEK_API_KEY}}"

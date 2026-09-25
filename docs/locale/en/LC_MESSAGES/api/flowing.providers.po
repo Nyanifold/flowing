@@ -1,0 +1,2020 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C)
+# This file is distributed under the same license as the flowing-agent
+# package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: flowing-agent \n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-09-11 07:02+0800\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: en\n"
+"Language-Team: en <LL@li.org>\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: ../../api/flowing.providers.rst:2
+msgid "flowing.providers package"
+msgstr ""
+
+#: flowing.providers:1 of
+msgid "``flowing.providers`` —— 「怎么和大模型 API 说话」的契约包。"
+msgstr ""
+
+#: flowing.providers:4 flowing.providers.anthropic:4
+#: flowing.providers.anthropic.AnthropicMessagesProvider:4
+#: flowing.providers.anthropic.AnthropicProvider:4
+#: flowing.providers.anthropic.BedrockProvider:4
+#: flowing.providers.anthropic.DeepSeekAnthropicProvider:4
+#: flowing.providers.openai:4 flowing.providers.openai.DeepSeekProvider:4
+#: flowing.providers.openai.GroqProvider:4
+#: flowing.providers.openai.KimiProvider:4
+#: flowing.providers.openai.OpenAICompletionsProvider:4
+#: flowing.providers.openai.OpenRouterProvider:4 flowing.providers.provider:4
+#: flowing.providers.provider.FakeProvider:4
+#: flowing.providers.provider.Provider:4
+#: flowing.providers.provider.Provider.generate:4
+#: flowing.providers.provider.Provider.generate_stream:4
+#: flowing.providers.provider.Provider.get_credential:4
+#: flowing.providers.provider.ProviderConfig:4
+#: flowing.providers.provider.ProviderDelta:4
+#: flowing.providers.provider.ProviderRegistry:4
+#: flowing.providers.provider.ProviderResponse:4
+#: flowing.providers.provider.Usage:4
+#: flowing.providers.provider.load_provider_candidates:4
+#: flowing.providers.provider.register_provider:4 of
+msgid "功能介绍"
+msgstr ""
+
+#: flowing.providers:5 of
+msgid ""
+"本包承载 Provider 侧的全部契约：抽象基类 :class:`Provider` 及内置 adapter "
+"继承树（:mod:`flowing.providers.openai` / :mod:`flowing.providers.anthropic` "
+"两个格式家族）、调用产物 :class:`ProviderResponse` / :class:`ProviderDelta` / 一次调用的 "
+"token 用量记录 :class:`Usage`、条目配置 :class:`ProviderConfig`、adapter 注册装饰器 "
+":func:`register_provider`、Runtime 级懒实例化表 :class:`ProviderRegistry`、内置测试替身"
+" :class:`FakeProvider`。模型侧 契约（``ModelConfig`` / models.yaml / 标签映射）在 "
+":mod:`flowing.model`。"
+msgstr ""
+
+#: flowing.providers:14 of
+msgid ""
+"Agent 对模型只做「持有 + 机械传递」：持有 ``self.model: ModelConfig``， 每次 "
+"``provider_gen()`` 前现场 ``resolve()`` 求值，再连同 "
+":class:`flowing.context.Context` 一起传给 ``Provider.generate()``。 "
+"字段含义（``thinking_budget`` 等）只有 Provider adapter 解释，框架 核心不解释任何模型字段。"
+msgstr ""
+
+#: flowing.providers:21 flowing.providers.provider.Provider:12
+#: flowing.providers.provider.ProviderRegistry:12
+#: flowing.providers.provider.register_provider:10 of
+msgid "设计要点"
+msgstr ""
+
+#: flowing.providers:22 of
+msgid ""
+"显式 adapter 继承树，非配置驱动：Provider 之间的差异是 API 格式 "
+"级别的，不是参数级别的。每种格式一个框架基类（``api_format`` 由 基类决定），每个具体服务商一个子类，差异写在子类覆写中。禁止 "
+"compat flags（如 ``is_deepseek_compatible=True``）与运行时格式检测 （如 ``if "
+"api_format == \"openai\"``）——它们把格式差异降级为参数 差异，破坏类型安全。"
+msgstr ""
+
+#: flowing.providers:28 of
+msgid ""
+"懒创建（一条目一实例）：Runtime 初始化时仅扫描配置文件构建候选 清单（条目名 → ``(adapter 类, "
+"config)``），首次按条目名获取才 实例化并缓存。动机是零启动成本：配置 20 个条目只用 1 个时，其余 19 个的连接池 / HTTP "
+"会话成本完全不发生。每个 provider 条目绑定 唯一身份（API key）；同一 adapter 的多个 key 写成多个条目（如 "
+"``deepseek-personal`` / ``deepseek-team``），条目名即身份标识。"
+msgstr ""
+
+#: flowing.providers:34 of
+msgid ""
+"流式挡在 Turn 循环外：``provider_gen()`` 以显式 ``stream`` 参数 （默认 ``True``）把流式封装在 "
+"``generate()`` / ``generate_stream()`` 两个方法之内；Turn 循环只见完整的 "
+":class:`ProviderResponse`。流式 只影响三处：``provider_gen()`` "
+"内部、``on_provider_delta`` 钩子 （value 为 "
+":class:`ProviderDelta`，易失不落盘）、``Message.partial`` "
+"字段。非流式路径（``stream=False``）同样合成一条全量 delta 触发 钩子——订阅者永远可以依赖「每次 "
+"``provider_gen()`` 至少一条 delta」，且两种路径的 delta 数据格式完全一致。副线查询 "
+"（``side_query``）固定 ``stream=False``，以 ``by=\"_side\"`` 标记 来源（delta 与响应均透写"
+" ``by``，钩子可按来源过滤）。"
+msgstr ""
+
+#: flowing.providers:44 of
+msgid ""
+"不在 ``main()`` 中声明 provider：``main.py`` 是可发布复用的智能体 逻辑，provider "
+"是用户侧选择，两者分离；同一份 main 可在不同环境 绑定不同 provider。"
+msgstr ""
+
+#: flowing.providers:49 of
+msgid "术语：adapter 类 vs provider 条目"
+msgstr ""
+
+#: flowing.providers:50 of
+msgid "本包有两层「provider」概念，务必区分："
+msgstr ""
+
+#: flowing.providers:52 of
+msgid ""
+"adapter 类（类型层）：:class:`Provider` 的具体子类，如 ``DeepSeekProvider``。它回答「怎么和这种 "
+"API 说话」——请求/响应 格式、字段解释、错误归类。以类属性 ``name`` （如 ``\"deepseek\"``） 经 "
+":func:`register_provider` 注册进进程级全局注册表；adapter 名是 类型标识，全局唯一。"
+msgstr ""
+
+#: flowing.providers:57 of
+msgid ""
+"provider 条目（实例层）：``providers.yaml`` 里的一个 key，如 ``deepseek-"
+"team``。它回答「用哪个身份说话」——绑定唯一 API key / base_url。Runtime 按条目的 ``adapter`` "
+"字段查注册表选类，首次按 条目名获取才懒创建实例并缓存（一条目一实例）；条目名是身份标识， 同一 adapter 类的多个 key 写成多个条目。"
+msgstr ""
+
+#: flowing.providers:63 of
+msgid ""
+"映射关系：条目名 →（adapter 名 → adapter 类）→ 实例。因此 ``ModelConfig.provider`` "
+"引用的是条目名（身份），``providers.yaml`` 条目的 ``adapter`` 字段引用的是 adapter "
+"名（类型），``Provider.name`` 是后者——两个「name」分属两层，不混用。"
+msgstr ""
+
+#: flowing.providers:69 of
+msgid "两阶段解析（加载时 vs 运行时）"
+msgstr ""
+
+#: flowing.providers:74 of
+msgid "位置"
+msgstr ""
+
+#: flowing.providers:75 of
+msgid "解析时机"
+msgstr ""
+
+#: flowing.providers:76 of
+msgid "机制"
+msgstr ""
+
+#: flowing.providers:77 of
+msgid "Provider 条目（providers.yaml）"
+msgstr ""
+
+#: flowing.providers:78 of
+msgid "加载时一次性"
+msgstr ""
+
+#: flowing.providers:79 of
+msgid "``{{env.VAR}}`` 纯字符串替换（非 Jinja2 / Parsable）"
+msgstr ""
+
+#: flowing.providers:80 of
+msgid "模型配置（``ModelConfig`` 字段）"
+msgstr ""
+
+#: flowing.providers:81 of
+msgid "运行时，每次 ``provider_gen()`` 前"
+msgstr ""
+
+#: flowing.providers:82 of
+msgid "Parsable（Jinja2，可引用 env / config / 实例属性）"
+msgstr ""
+
+#: flowing.providers:84 of
+msgid ""
+"环境变量引用规则（provider / 模型条目所有字段值）：``{{env.VAR}}`` → "
+"``os.environ[\"VAR\"]``；不以 ``{{env.`` 开头的 ``{{`` 保持原样（不报错、 "
+"不替换）。环境变量不存在时：provider 条目加载时抛 "
+":class:`flowing.errors.MissingEnvironmentVariableError` （fail-fast： "
+"出错即刻抛异常、不静默降级——避免运行到第一次调用才 401）；模型配置 字段运行时求值时经 Parsable "
+"求值错误路径报错。该字符串替换机制完全 独立于 Parsable 的 Jinja2 渲染——凭证引用是纯静态操作，总在加载时 一次完成。"
+msgstr ""
+
+#: flowing.providers:94 of
+msgid "配置文件 schema：providers.yaml"
+msgstr ""
+
+#: flowing.providers:95 of
+msgid ""
+"默认 ``$FLOWING_CONFIG_HOME/providers.yaml``，用户私有、含密钥，文件 权限必须 ``chmod 600``"
+" （模型侧文件 schema 见 :mod:`flowing.model`）::"
+msgstr ""
+
+#: flowing.providers:105 of
+msgid "环境变量（本包相关）"
+msgstr ""
+
+#: flowing.providers:106 of
+msgid "``FLOWING_CONFIG_HOME`` —— 用户级配置目录（默认 ``~/.flowing``， 与模型侧共享）。"
+msgstr ""
+
+#: flowing.providers:108 of
+msgid "``FLOWING_PROVIDERS_PATH`` —— 重定向 ``providers.yaml``。"
+msgstr ""
+
+#: flowing.providers:111 of
+msgid "Provider 异常分类（机制在核心，策略在扩展）"
+msgstr ""
+
+#: flowing.providers:112 of
+msgid ""
+"adapter 必须把底层错误归类为 :mod:`flowing.errors` 中的明确类型上抛， ``generate()`` "
+"自身不做兜底捕获："
+msgstr ""
+
+#: flowing.providers:115 of
+msgid ""
+"可重试类：``RateLimitedError`` / ``ServerError`` / ``NetworkError`` / "
+"``ProviderTimeoutError``——是否退避重试由策略层（如 ``use_retry()``） 决定。"
+msgstr ""
+
+#: flowing.providers:118 of
+msgid ""
+"不可重试类：``AuthenticationError`` / ``InvalidRequestError`` / "
+"``ContentPolicyError`` / ``RequestTooLargeError`` （413 字节超限； 媒体剥离后重发属 "
+"handler 职责）/ ``QuotaExhaustedError`` （429 配额 耗尽，与瞬时限流的 "
+"``RateLimitedError`` 对偶——内置两个格式家族对 429 一律归类为 "
+"``RateLimitedError``，不区分配额耗尽）。"
+msgstr ""
+
+#: flowing.providers:123 of
+msgid ""
+"``ContextLengthError``：token 超限；同样经 ``on_provider_error`` "
+"分发——原样重发必然重现，默认策略（``use_retry``）不重试；压缩历史 / 换大窗模型属 handler 职责。"
+msgstr ""
+
+#: flowing.providers:126 of
+msgid "``MissingEnvironmentVariableError``：provider 条目加载时抛出。"
+msgstr ""
+
+#: flowing.providers:127 of
+msgid ""
+"Provider 调用期异常在逻辑 Turn 层被接住（回合以 error 结局终止， 不向 ``query()`` 调用方抛异常）——细节见 "
+":mod:`flowing.errors`。"
+msgstr ""
+
+#: flowing.providers:131 of
+msgid "工具结果映射（TOOL/EVENT 消息 → API）"
+msgstr ""
+
+#: flowing.providers:132 of
+msgid ""
+"TOOL/EVENT 消息的 ``content`` 是纯内容块（工具结果摊平设计，无协议 块——配对元数据在消息级 "
+"``tool_call_id`` / ``tool_status``，见 :mod:`flowing.message`），adapter "
+"按以下规则映射为各家 API 的工具 结果形态："
+msgstr ""
+
+#: flowing.providers:137 of
+msgid ""
+"content 块直接映射：``TextBlock`` → 各家文本位；``MediaBlock`` 子类 → "
+"各家媒体位；``StructBlock`` 恒投影为 ``json.dumps(ensure_ascii=False)`` 文本（所有 "
+"adapter 统一，不做 任何原生结构化映射）。"
+msgstr ""
+
+#: flowing.providers:141 of
+msgid ""
+"配对锚：消息级 ``tool_call_id`` → 各家 tool_result 的 id 位 （Anthropic "
+"``tool_use_id``、OpenAI ``tool_call_id``）； ``tool_status=\"error\"`` → "
+"各家错误标记（Anthropic ``is_error``）。"
+msgstr ""
+
+#: flowing.providers:144 of
+msgid ""
+"各家媒体形态：Anthropic ``tool_result`` 原生内嵌媒体块；OpenAI Chat Completions 的 tool "
+"消息为文本-only → 媒体转移：媒体块攒入紧随 tool 消息的合成 user 消息（固定措辞提示）。"
+msgstr ""
+
+#: flowing.providers:147 of
+msgid ""
+"空 content 兜底：返回 Task 路径的 pending 收据（``output=None`` → ``content=[]``）等空 "
+"TOOL 消息，其 API 层兜底形态（各家对空 tool_result 的接受度不同）属各 adapter 职责；async gen 路径的 "
+"pending 收据带内容（首 yield + 「后台任务 ID」块），按正常 tool_result 映射。"
+msgstr ""
+
+#: flowing.providers:152 of
+msgid ""
+"白名单组装：adapter 从 ``llm_definition()`` 产物只取已知字段 （name / description / "
+"parameters 等）构造 API schema；产物可含非 直发字段（``output_schema`` 随声明携带），白名单取用下天然不被"
+" 映射。"
+msgstr ""
+
+#: flowing.providers:158 of
+msgid "安全边界"
+msgstr ""
+
+#: flowing.providers:159 of
+msgid ""
+"API key 等凭证只存在于 :class:`ProviderConfig` 与 Provider 实例内部： 不进消息、不进 "
+"``_provided``、不落盘（``tree.jsonl`` / ``state.jsonl`` "
+"均不含凭证），也不得写入日志或错误消息文本。含密钥的 配置文件必须 ``chmod 600``。"
+msgstr ""
+
+#: flowing.providers:165
+#: flowing.providers.anthropic.AnthropicMessagesProvider:13
+#: flowing.providers.anthropic.AnthropicProvider:10
+#: flowing.providers.anthropic.BedrockProvider:11
+#: flowing.providers.anthropic.DeepSeekAnthropicProvider:13
+#: flowing.providers.openai.DeepSeekProvider:10
+#: flowing.providers.openai.GroqProvider:10
+#: flowing.providers.openai.KimiProvider:10
+#: flowing.providers.openai.OpenAICompletionsProvider:18
+#: flowing.providers.openai.OpenRouterProvider:10
+#: flowing.providers.provider.FakeProvider:17
+#: flowing.providers.provider.Provider:21
+#: flowing.providers.provider.Provider.generate:14
+#: flowing.providers.provider.Provider.generate_stream:16
+#: flowing.providers.provider.Provider.get_credential:11
+#: flowing.providers.provider.ProviderConfig:17
+#: flowing.providers.provider.ProviderDelta:19
+#: flowing.providers.provider.ProviderRegistry:22
+#: flowing.providers.provider.ProviderResponse:11
+#: flowing.providers.provider.Usage:10
+#: flowing.providers.provider.register_provider:20 of
+msgid "使用示例"
+msgstr ""
+
+#: flowing.providers:179 of
+msgid ":mod:`flowing.model`"
+msgstr ""
+
+#: flowing.providers:180 of
+msgid "模型侧契约：``ModelConfig`` / models.yaml / 标签映射。"
+msgstr ""
+
+#: flowing.providers:181 of
+msgid ":class:`flowing.agent.Agent`"
+msgstr ""
+
+#: flowing.providers:182 of
+msgid "``provider_gen()`` 双模式与当场解析的调用方。"
+msgstr ""
+
+#: flowing.providers:183 of
+msgid ":mod:`flowing.errors`"
+msgstr ""
+
+#: flowing.providers:184 of
+msgid "Provider 异常分类的统一异常层次。"
+msgstr ""
+
+#: flowing.providers:185 of
+msgid ":class:`flowing.runtime.Runtime`"
+msgstr ""
+
+#: flowing.providers:186 of
+msgid "``provider_registry`` （懒创建候选清单）的宿主。"
+msgstr ""
+
+#: flowing.providers.anthropic.AnthropicMessagesProvider:1 of
+msgid "Anthropic Messages 格式的框架基类（``api_format=\"anthropic_messages\"``）。"
+msgstr ""
+
+#: flowing.providers.anthropic.AnthropicMessagesProvider:5 of
+msgid ""
+"Anthropic Messages API 家族 adapter 的基类：实现 system 数组、 content "
+"blocks、tool_use / tool_result 的格式映射与 Usage 映射。 子类只覆写差异：默认端点、凭证来源、厂商特有字段。"
+msgstr ""
+
+#: flowing.providers.anthropic.AnthropicMessagesProvider:9
+#: flowing.providers.openai.OpenAICompletionsProvider:14 of
+msgid ""
+"本类不直接实例化使用——实例化发生在具体厂商子类的懒创建链上 （一个 providers.yaml 条目一个实例，见 "
+":class:`Provider`）。"
+msgstr ""
+
+#: flowing.providers.anthropic.AnthropicMessagesProvider:24
+#: flowing.providers.anthropic.AnthropicMessagesProvider.generate:4
+#: flowing.providers.anthropic.AnthropicProvider:19
+#: flowing.providers.anthropic.BedrockProvider:21
+#: flowing.providers.anthropic.BedrockProvider.get_credential:4
+#: flowing.providers.anthropic.DeepSeekAnthropicProvider:23
+#: flowing.providers.openai.DeepSeekProvider:26
+#: flowing.providers.openai.GroqProvider:19
+#: flowing.providers.openai.KimiProvider:19
+#: flowing.providers.openai.OpenAICompletionsProvider:29
+#: flowing.providers.openai.OpenAICompletionsProvider.generate:4
+#: flowing.providers.openai.OpenRouterProvider:19
+#: flowing.providers.provider.FakeProvider:40
+#: flowing.providers.provider.FakeProvider.generate:4
+#: flowing.providers.provider.FakeProvider.generate_stream:4
+#: flowing.providers.provider.Provider:49
+#: flowing.providers.provider.Provider.generate:22
+#: flowing.providers.provider.Provider.generate_stream:23
+#: flowing.providers.provider.Provider.get_credential:20
+#: flowing.providers.provider.ProviderConfig:29
+#: flowing.providers.provider.ProviderDelta:31
+#: flowing.providers.provider.ProviderRegistry:28
+#: flowing.providers.provider.ProviderRegistry.get:7
+#: flowing.providers.provider.ProviderResponse:34
+#: flowing.providers.provider.Usage:23
+#: flowing.providers.provider.load_provider_candidates:24
+#: flowing.providers.provider.register_provider:34 of
+msgid "行为要点"
+msgstr ""
+
+#: flowing.providers.anthropic.AnthropicMessagesProvider:25 of
+#, python-brace-format
+msgid ""
+"手动前缀缓存：仅 ``cache=\"static\"`` 的 PromptSegment 设置 ``cache_control: "
+"{\"type\": \"ephemeral\"}``；``cache=\"dynamic\"`` 与 ``cache=\"session\"``"
+" 均不标记（不标记 = 不缓存）。"
+msgstr ""
+
+#: flowing.providers.anthropic.AnthropicMessagesProvider:28 of
+msgid ""
+"响应映射：``stop_reason == \"tool_use\"`` → ``finish=False``，其余 → "
+"``finish=True``；原始 ``stop_reason`` 保留在 "
+"``provider_data[\"stop_reason\"]``。"
+msgstr ""
+
+#: flowing.providers.anthropic.AnthropicMessagesProvider:31 of
+msgid ""
+"Usage 映射：``fresh_input`` / ``output`` 直取原生 ``input_tokens`` / "
+"``output_tokens`` （Anthropic 原生 input 不含 cache）； ``input = fresh_input + "
+"cache_read + cache_write`` 按恒等式组装； ``cache_creation_input_tokens`` / "
+"``cache_read_input_tokens`` 升入 一等字段，同时原样保留在 ``Usage.raw``。"
+msgstr ""
+
+#: flowing.providers.anthropic.AnthropicMessagesProvider:36 of
+msgid ""
+"并行工具结果的归并：同一连续段的多条 TOOL 消息聚合为一条 user 消息的多 ``tool_result`` 块（Anthropic "
+"要求同一 assistant 回合的 并行 tool_use 的全部结果收进紧随的一条 user 消息，逐条各出会被 API "
+"拒绝）；配对锚按消息顺序保持；遇到非 TOOL 消息即断段，孤立 单条 TOOL 消息独立映射。"
+msgstr ""
+
+#: flowing.providers.anthropic.AnthropicMessagesProvider:44 of
+msgid ":class:`flowing.providers.openai.OpenAICompletionsProvider`"
+msgstr ""
+
+#: flowing.providers.anthropic.AnthropicMessagesProvider:45 of
+msgid "对照的格式家族。"
+msgstr ""
+
+#: flowing.providers.anthropic.AnthropicMessagesProvider:46 of
+msgid ":class:`flowing.context.PromptSegment` ``cache`` 三值语义。"
+msgstr ""
+
+#: ../../api/flowing.providers.rst
+#: flowing.providers.openai.OpenAICompletionsProvider.generate_stream of
+msgid "参数"
+msgstr ""
+
+#: flowing.providers.AnthropicMessagesProvider.api_format:1
+#: flowing.providers.OpenAICompletionsProvider.api_format:1
+#: flowing.providers.Provider.api_format:1
+#: flowing.providers.anthropic.AnthropicMessagesProvider.api_format:1
+#: flowing.providers.openai.OpenAICompletionsProvider.api_format:1
+#: flowing.providers.provider.Provider.api_format:1 of
+msgid ""
+"API 格式标识（如 ``\"openai_completions\"`` / ``\"anthropic_messages\"``）， "
+"由框架基类决定。行为边界：禁止在业务代码中对它做 ``if`` 分支 （格式差异应经子类覆写表达）。"
+msgstr ""
+
+#: flowing.providers.AnthropicMessagesProvider.known_model_fields:1
+#: flowing.providers.DeepSeekProvider.known_model_fields:1
+#: flowing.providers.OpenAICompletionsProvider.known_model_fields:1
+#: flowing.providers.Provider.known_model_fields:1
+#: flowing.providers.anthropic.AnthropicMessagesProvider.known_model_fields:1
+#: flowing.providers.openai.DeepSeekProvider.known_model_fields:1
+#: flowing.providers.openai.OpenAICompletionsProvider.known_model_fields:1
+#: flowing.providers.provider.Provider.known_model_fields:1 of
+msgid "本 adapter 声明的模型元数据字段名集合（如 ``thinking_budget``）。"
+msgstr ""
+
+#: flowing.providers.AnthropicMessagesProvider.known_model_fields:3
+#: flowing.providers.DeepSeekProvider.known_model_fields:3
+#: flowing.providers.OpenAICompletionsProvider.known_model_fields:3
+#: flowing.providers.Provider.known_model_fields:3
+#: flowing.providers.anthropic.AnthropicMessagesProvider.known_model_fields:3
+#: flowing.providers.openai.DeepSeekProvider.known_model_fields:3
+#: flowing.providers.openai.OpenAICompletionsProvider.known_model_fields:3
+#: flowing.providers.provider.Provider.known_model_fields:3 of
+msgid ""
+"框架当前不读取本属性：模型条目字段的分流由 :mod:`flowing.model` 的固定内建字段集决定，其余字段进 "
+"``ModelConfig._extra``。保留为 声明性扩展点，供未来消费方或第三方工具参考；基类缺省为空 frozenset。"
+msgstr ""
+
+#: flowing.providers.AnthropicMessagesProvider.default_base_url:1
+#: flowing.providers.AnthropicProvider.default_base_url:1
+#: flowing.providers.anthropic.AnthropicMessagesProvider.default_base_url:1
+#: flowing.providers.anthropic.AnthropicProvider.default_base_url:1
+#: flowing.providers.anthropic.DeepSeekAnthropicProvider.default_base_url:1 of
+msgid "子类覆写：厂商官方端点；条目配 ``base_url`` 时以条目为准。"
+msgstr ""
+
+#: flowing.providers.AnthropicMessagesProvider.anthropic_version:1
+#: flowing.providers.anthropic.AnthropicMessagesProvider.anthropic_version:1 of
+msgid "``anthropic-version`` 请求头值。"
+msgstr ""
+
+#: flowing.providers.anthropic.AnthropicMessagesProvider.generate:1
+#: flowing.providers.openai.OpenAICompletionsProvider.generate:1 of
+msgid "非流式单次生成（映射 / 错误归类见各 ``_*`` 方法）。"
+msgstr ""
+
+#: flowing.providers.anthropic.AnthropicMessagesProvider.generate:5 of
+msgid ""
+"把组装好的上下文映射为 Anthropic Messages 请求体并 POST 到 ``/v1/messages``；非 2xx "
+"响应经错误归类映射为 :mod:`flowing.errors` 中的明确类型后上抛（不重试、不兜底）。"
+msgstr ""
+
+#: flowing.providers.anthropic.AnthropicMessagesProvider.generate:8
+#: flowing.providers.openai.OpenAICompletionsProvider.generate:8 of
+msgid "2xx 响应映射为 :class:`ProviderResponse`，用量附着到 ``message.usage``。"
+msgstr ""
+
+#: flowing.providers.anthropic.AnthropicMessagesProvider.generate:11
+#: flowing.providers.openai.OpenAICompletionsProvider.generate:11 of
+msgid "同 :meth:`flowing.providers.Provider.generate` 契约。"
+msgstr ""
+
+#: ../../api/flowing.providers.rst
+#: flowing.providers.openai.OpenAICompletionsProvider.generate_stream of
+msgid "返回类型"
+msgstr ""
+
+#: flowing.providers.anthropic.AnthropicMessagesProvider.generate_stream:1
+#: flowing.providers.openai.OpenAICompletionsProvider.generate_stream:1 of
+msgid "真 SSE 流式覆写：逐 delta 产出正文 / 思考 / 工具调用。"
+msgstr ""
+
+#: flowing.providers.anthropic.AnthropicMessagesProvider.generate_stream:3 of
+msgid ""
+"Anthropic Messages ``stream=true`` 响应逐帧解析。帧为 ``data: <json>``（类型在 JSON 的 "
+"``type`` 字段），事件序列： ``message_start`` → "
+"``content_block_start/delta/stop``（可多条）→ ``message_delta`` → "
+"``message_stop``。"
+msgstr ""
+
+#: flowing.providers.anthropic.AnthropicMessagesProvider.generate_stream:8 of
+msgid "正文：``content_block_delta`` 的 ``text_delta`` → ``kind=\"text\"``。"
+msgstr ""
+
+#: flowing.providers.anthropic.AnthropicMessagesProvider.generate_stream:9 of
+msgid ""
+"思考：``thinking_delta`` → ``kind=\"thinking\"``；签名来自 "
+"``content_block_start`` 的 ``signature``（附在首条 thinking delta 上，agent "
+"累积时保留到 ``ThinkingBlock.signature``——Anthropic 多轮回放必需）。"
+msgstr ""
+
+#: flowing.providers.anthropic.AnthropicMessagesProvider.generate_stream:13 of
+msgid ""
+"工具：``tool_use`` 块的 ``input_json_delta`` 逐段拼 JSON， ``content_block_stop`` "
+"时以完整 :class:`ToolCallBlock` 的 ``block`` delta 产出。"
+msgstr ""
+
+#: flowing.providers.anthropic.AnthropicMessagesProvider.generate_stream:16 of
+msgid ""
+"用量 / stop：``message_start.usage`` 的 input / cache 与 "
+"``message_delta.usage`` 的 output 合并为末帧 usage； "
+"``message_delta.delta.stop_reason`` 经 ``provider_data[\"stop_reason\"]`` "
+"透出。"
+msgstr ""
+
+#: flowing.providers.anthropic.AnthropicMessagesProvider.generate_stream:20 of
+msgid "帧内 ``error``（含 overloaded 等在流中途触发）按 :meth:`_classify_error` 归类上抛。"
+msgstr ""
+
+#: flowing.providers.anthropic.AnthropicProvider:1 of
+msgid "Anthropic 官方端点内置 adapter（``name=\"anthropic\"``）。"
+msgstr ""
+
+#: flowing.providers.anthropic.AnthropicProvider:5 of
+msgid ""
+"Anthropic 官方 API 的实现；随框架发布、import 期经 :func:`register_provider` "
+"进程级注册。providers.yaml 条目把 ``adapter`` 字段设为 ``\"anthropic\"`` 即可选用。"
+msgstr ""
+
+#: flowing.providers.anthropic.AnthropicProvider:20 of
+msgid "默认端点 ``https://api.anthropic.com``；条目配 ``base_url`` 时以 条目为准（代理场景）。"
+msgstr ""
+
+#: flowing.providers.anthropic.AnthropicProvider:22 of
+msgid ""
+"凭证取条目 ``api_key``；手动前缀缓存按基类规约设置 （``cache=\"static\"`` 段标记 "
+"``cache_control``）。"
+msgstr ""
+
+#: flowing.providers.anthropic.AnthropicProvider:27 of
+msgid ":class:`AnthropicMessagesProvider` 格式实现来源。"
+msgstr ""
+
+#: flowing.providers.AnthropicProvider.name:1
+#: flowing.providers.BedrockProvider.name:1
+#: flowing.providers.DeepSeekProvider.name:1
+#: flowing.providers.FakeProvider.name:1 flowing.providers.GroqProvider.name:1
+#: flowing.providers.KimiProvider.name:1
+#: flowing.providers.OpenRouterProvider.name:1
+#: flowing.providers.Provider.name:1
+#: flowing.providers.anthropic.AnthropicProvider.name:1
+#: flowing.providers.anthropic.BedrockProvider.name:1
+#: flowing.providers.anthropic.DeepSeekAnthropicProvider.name:1
+#: flowing.providers.openai.DeepSeekProvider.name:1
+#: flowing.providers.openai.GroqProvider.name:1
+#: flowing.providers.openai.KimiProvider.name:1
+#: flowing.providers.openai.OpenRouterProvider.name:1
+#: flowing.providers.provider.FakeProvider.name:1
+#: flowing.providers.provider.Provider.name:1 of
+msgid ""
+"adapter 名，:func:`register_provider` 的注册键（如 ``\"deepseek\"``）， "
+"全局唯一。providers.yaml 条目的 ``adapter`` 字段按它选类。同名冲突 须 ``override=True`` 见 "
+":func:`register_provider`；与 provider 条目 名是不同概念（条目名是身份标识，adapter 名是类型标识）。"
+msgstr ""
+
+#: flowing.providers.anthropic.BedrockProvider:1 of
+msgid "AWS Bedrock 上的 Anthropic 模型 adapter（``name=\"bedrock\"``）。"
+msgstr ""
+
+#: flowing.providers.anthropic.BedrockProvider:5 of
+msgid ""
+"经 AWS Bedrock 调用 Anthropic Messages 格式的实现；消息格式复用 "
+"基类，差异集中在凭证来源。随框架发布、import 期经 :func:`register_provider` "
+"进程级注册。providers.yaml 条目把 ``adapter`` 字段设为 ``\"bedrock\"`` 即可选用。"
+msgstr ""
+
+#: flowing.providers.anthropic.BedrockProvider:22 of
+msgid "本 adapter 无官方默认端点：条目必须提供 ``base_url``。"
+msgstr ""
+
+#: flowing.providers.anthropic.BedrockProvider:23 of
+msgid "凭证优先级：config 显式 ``aws_session_token`` > 基类 ``api_key``。"
+msgstr ""
+
+#: flowing.providers.anthropic.BedrockProvider:24 of
+msgid "凭证同样遵守「不进消息 / ``_provided`` / 落盘」的安全边界。"
+msgstr ""
+
+#: flowing.providers.anthropic.BedrockProvider:25 of
+msgid "当前传输层复用基类的普通 HTTP 形态（未实现 AWS SigV4 签名）。"
+msgstr ""
+
+#: flowing.providers.anthropic.BedrockProvider:29 of
+msgid ""
+":meth:`flowing.providers.Provider.get_credential` 凭证覆写点。 "
+":class:`AnthropicMessagesProvider` 格式实现来源。"
+msgstr ""
+
+#: flowing.providers.anthropic.BedrockProvider.get_credential:1 of
+msgid "凭证覆写点：config 显式 ``aws_session_token`` 优先，否则回退基类 ``api_key``。"
+msgstr ""
+
+#: flowing.providers.anthropic.BedrockProvider.get_credential:5 of
+msgid "优先级：``aws_session_token`` > 基类 ``api_key``。"
+msgstr ""
+
+#: flowing.providers.anthropic.BedrockProvider.get_credential:6 of
+msgid ""
+"当前不实现完整 AWS credential chain（环境变量 / 实例元数据） 与 SigV4 签名传输——``_post`` 复用基类普通"
+" HTTP 形态。"
+msgstr ""
+
+#: flowing.providers.anthropic.BedrockProvider.get_credential:8
+#: flowing.providers.provider.Provider.get_credential:24 of
+msgid "安全边界：返回值禁止写入消息、``_provided``、日志与任何落盘 文件。"
+msgstr ""
+
+#: flowing.providers.openai.DeepSeekProvider:1 of
+msgid "DeepSeek 内置 adapter（``name=\"deepseek\"``）。"
+msgstr ""
+
+#: flowing.providers.openai.DeepSeekProvider:5 of
+msgid ""
+"DeepSeek 官方端点的 OpenAI 兼容实现；随框架发布、import 期经 :func:`register_provider` "
+"进程级注册。providers.yaml 条目把 ``adapter`` 字段设为 ``\"deepseek\"`` 即可选用。"
+msgstr ""
+
+#: flowing.providers.openai.DeepSeekProvider:27 of
+msgid "默认端点 ``https://api.deepseek.com``；条目配 ``base_url`` 时以 条目为准（代理场景）。"
+msgstr ""
+
+#: flowing.providers.openai.DeepSeekProvider:29 of
+msgid ""
+"凭证取条目 ``api_key``；DeepSeek 的前缀缓存由服务端自动处理 （要求前缀字节稳定），adapter "
+"不发送缓存标记；缓存命中统计 （如 ``prompt_cache_hit_tokens``）保留在 ``Usage.raw``。"
+msgstr ""
+
+#: flowing.providers.openai.DeepSeekProvider:32 of
+#, python-brace-format
+msgid ""
+"思考开关：models.yaml 条目中的 ``thinking`` 字段（进 "
+"``ModelConfig._extra``）按官方形态映射——字符串 （``\"enabled\"`` / "
+"``\"disabled\"``）包装为 ``{\"type\": ...}``， dict 原样透传；缺省不发送 ``thinking`` "
+"字段（取服务端缺省）。 adapter 不校验取值、由服务端校验。DeepSeek 端点没有数值预算 概念，本 adapter **不消费** "
+"``ModelConfig.thinking_budget`` （该内建字段的预算语义仅 Anthropic adapter 使用）。"
+msgstr ""
+
+#: flowing.providers.openai.DeepSeekProvider:39 of
+msgid ""
+"思考强度：models.yaml 条目中的 ``reasoning_effort`` 字段进 ``ModelConfig._extra``，本 "
+"adapter 原样透传为请求体顶层 ``reasoning_effort``；官方取值为 ``\"low\"`` / ``\"high\"`` "
+"/ ``\"max\"``，adapter 不校验枚举、由服务端校验；缺省不发送。"
+msgstr ""
+
+#: flowing.providers.openai.DeepSeekProvider:43 of
+msgid ""
+"其余厂商私有参数走基类 ``extra_body`` 通用透传（见 :class:`OpenAICompletionsProvider`）；本 "
+"adapter 的思考字段在 ``extra_body`` 合入之后写入，同名键以本 adapter 为准。"
+msgstr ""
+
+#: flowing.providers.openai.DeepSeekProvider:46 of
+msgid ""
+"本 adapter 只覆盖 DeepSeek 的 OpenAI 兼容端点；DeepSeek 另提供 Anthropic 格式端点（强度参数为 "
+"``output_config.effort``，与本 框架 Anthropic 原生 adapter 的 ``budget_tokens`` "
+"形态不同）， 接入时需另写子类，本 adapter 不涉及。"
+msgstr ""
+
+#: flowing.providers.openai.DeepSeekProvider:53
+#: flowing.providers.openai.GroqProvider:25
+#: flowing.providers.openai.KimiProvider:26 of
+msgid ":class:`OpenAICompletionsProvider` 格式实现来源。"
+msgstr ""
+
+#: flowing.providers.DeepSeekProvider.default_base_url:1
+#: flowing.providers.GroqProvider.default_base_url:1
+#: flowing.providers.KimiProvider.default_base_url:1
+#: flowing.providers.OpenAICompletionsProvider.default_base_url:1
+#: flowing.providers.OpenRouterProvider.default_base_url:1
+#: flowing.providers.openai.DeepSeekProvider.default_base_url:1
+#: flowing.providers.openai.GroqProvider.default_base_url:1
+#: flowing.providers.openai.KimiProvider.default_base_url:1
+#: flowing.providers.openai.OpenAICompletionsProvider.default_base_url:1
+#: flowing.providers.openai.OpenRouterProvider.default_base_url:1 of
+msgid "子类覆写：厂商官方端点；条目配 ``base_url`` 时以条目为准（代理场景）。"
+msgstr ""
+
+#: flowing.providers.provider.FakeProvider:1 of
+msgid "内置测试替身：实例化后手动注入 ``generate_fn`` / ``stream_fn``。"
+msgstr ""
+
+#: flowing.providers.provider.FakeProvider:5 of
+msgid ""
+"框架内置的最小测试替身（Fake = 带简单逻辑的测试替身，区别于纯队列 回放的 Stub / Scripted）。构造后给实例属性 "
+"``generate_fn`` （必需） 与 ``stream_fn`` （可选）赋值，``generate()`` / "
+"``generate_stream()`` 委托给注入函数执行；同时内置 Spy 成分：每次调用把收到的 :class:`Context` 追加进"
+" ``received`` 供断言。"
+msgstr ""
+
+#: flowing.providers.provider.FakeProvider:11 of
+msgid ""
+"注入点做成实例属性而非构造参数：测试的 arrange 阶段可以先创建替身 挂进 "
+"Runtime，再按用例逐步换绑函数（同一实例服务多个断言阶段）。 带领域逻辑的测试替身推荐子类化 :class:`Provider` 并注册（见"
+" :class:`Provider`「测试替身建议」）。"
+msgstr ""
+
+#: flowing.providers.provider.FakeProvider:41 of
+msgid ""
+"``generate()`` 先把 ``context`` 追加进 ``received``，再 ``await "
+"self.generate_fn(context, model)`` 并原样返回其结果； ``generate_stream()`` 在 "
+"``stream_fn`` 已注入时同样先记录再委托， 未注入时走基类默认回退（经 ``generate()`` 包单条 delta——此时由 "
+"``generate()`` 完成记录，不重复追加）。"
+msgstr ""
+
+#: flowing.providers.provider.FakeProvider:46 of
+msgid ""
+"契约责任转移：注入函数即 adapter 本体——异常归类为 :mod:`flowing.errors` 类型、usage 附着到 "
+"``message.usage``、 ``finish`` 判定等 :class:`Provider` 契约由测试作者自负，框架不 "
+"校验注入函数的输出合法性。"
+msgstr ""
+
+#: flowing.providers.provider.FakeProvider:50 of
+msgid ""
+"``config`` 缺省为空 :class:`ProviderConfig` （测试无凭证概念）； 不自建网络连接；``received`` "
+"只追加不清理（清理由测试自行 ``provider.received.clear()``）。"
+msgstr ""
+
+#: flowing.providers.provider.FakeProvider:53 of
+msgid ""
+"``generate_fn`` 未注入时调用 ``generate()`` 抛 "
+":class:`flowing.errors.FlowingError` （显式失败防漏配，消息指明 缺失的属性名）；``stream_fn`` "
+"未注入不报错（基类回退即合理默认）。 运行中途换绑 ``generate_fn`` 合法，下一次调用生效。"
+msgstr ""
+
+#: flowing.providers.provider.FakeProvider:60 of
+msgid ":class:`Provider` 契约本体与测试替身分类约定。 :class:`ProviderRegistry` 注入路径 b) 的宿主。"
+msgstr ""
+
+#: flowing.providers.FakeProvider.generate_fn:1
+#: flowing.providers.provider.FakeProvider.generate_fn:1 of
+msgid ""
+"注入的非流式生成函数：替身行为的唯一注入点，实例化后随时赋值 / 换绑。``None`` 时调用 ``generate()`` 抛 "
+":class:`flowing.errors.FlowingError`；注入函数承担全部 Provider 契约 责任（异常归类、usage "
+"附着）。"
+msgstr ""
+
+#: flowing.providers.FakeProvider.stream_fn:1
+#: flowing.providers.provider.FakeProvider.stream_fn:1 of
+msgid ""
+"注入的流式生成函数（可选）。``None`` 时 ``generate_stream()`` 走 基类默认回退（包 ``generate()`` "
+"结果为单条 delta），不算漏配。"
+msgstr ""
+
+#: flowing.providers.FakeProvider.received:1
+#: flowing.providers.provider.FakeProvider.received:1 of
+msgid ""
+"Spy 记录：每次 ``generate()`` / ``generate_stream()`` 收到的 "
+"``context``，按调用次序追加。只追加不清理（断言后由测试自行 ``clear()``）；断言内容（不丢块、系统提示正确等）由测试自负。"
+msgstr ""
+
+#: flowing.providers.provider.FakeProvider.generate:1 of
+msgid "委托注入的 ``generate_fn``；未注入抛 ``FlowingError``。"
+msgstr ""
+
+#: flowing.providers.provider.FakeProvider.generate:5 of
+msgid ""
+"先 ``self.received.append(context)`` （记录先于委托，注入函数 抛异常时记录仍在），再 ``await "
+"self.generate_fn(...)`` 原样 返回。"
+msgstr ""
+
+#: flowing.providers.provider.FakeProvider.generate:8 of
+msgid ""
+"``generate_fn is None`` → :class:`flowing.errors.FlowingError` "
+"（消息含属性名）；注入函数抛出的异常不包装、直接上抛。"
+msgstr ""
+
+#: flowing.providers.provider.FakeProvider.generate_stream:1 of
+msgid "``stream_fn`` 已注入则委托；否则走基类默认回退。"
+msgstr ""
+
+#: flowing.providers.provider.FakeProvider.generate_stream:5 of
+msgid ""
+"``stream_fn is not None`` → 先记录 ``received`` 再返回 "
+"``self.stream_fn(context, model)``；``None`` → 直接 "
+"``super().generate_stream(...)`` （记录由回退路径上的 ``generate()`` 完成，不重复追加）。"
+msgstr ""
+
+#: flowing.providers.openai.GroqProvider:1 of
+msgid "Groq 内置 adapter（``name=\"groq\"``）。"
+msgstr ""
+
+#: flowing.providers.openai.GroqProvider:5 of
+msgid ""
+"Groq 端点的 OpenAI 兼容实现；随框架发布、import 期经 :func:`register_provider` "
+"进程级注册。providers.yaml 条目把 ``adapter`` 字段设为 ``\"groq\"`` 即可选用。"
+msgstr ""
+
+#: flowing.providers.openai.GroqProvider:20 of
+msgid "默认端点 ``https://api.groq.com/openai/v1``。"
+msgstr ""
+
+#: flowing.providers.openai.GroqProvider:21 of
+msgid "不做能力校验：模型是否存在于 Groq 由 API 调用时报错。"
+msgstr ""
+
+#: flowing.providers.openai.KimiProvider:1 of
+msgid "Kimi（Moonshot）内置 adapter（``name=\"kimi\"``）。"
+msgstr ""
+
+#: flowing.providers.openai.KimiProvider:5 of
+msgid ""
+"Kimi 官方端点的 OpenAI 兼容实现；随框架发布、import 期经 :func:`register_provider` "
+"进程级注册。providers.yaml 条目把 ``adapter`` 字段设为 ``\"kimi\"`` 即可选用。"
+msgstr ""
+
+#: flowing.providers.openai.KimiProvider:20 of
+msgid "默认端点 ``https://api.moonshot.cn/v1``；条目配 ``base_url`` 时 以条目为准（代理场景）。"
+msgstr ""
+
+#: flowing.providers.openai.KimiProvider:22 of
+msgid "格式映射与 Usage 归一继承自 :class:`OpenAICompletionsProvider`。"
+msgstr ""
+
+#: flowing.providers.openai.OpenAICompletionsProvider:1 of
+msgid "OpenAI Completions 格式的框架基类（``api_format=\"openai_completions\"``）。"
+msgstr ""
+
+#: flowing.providers.openai.OpenAICompletionsProvider:5 of
+msgid ""
+"所有 OpenAI 兼容端点 adapter 的基类：实现请求/响应格式映射——把 "
+":class:`flowing.context.Context` 的三个字段映射为 chat/completions 请求体（system "
+"消息、messages 数组、tools 声明），把响应映射为 :class:`ProviderResponse`，并把原始用量归一为 "
+":class:`Usage` （``prompt_tokens`` → ``input``， ``fresh_input = "
+"prompt_tokens - cached_tokens``）。子类只覆写差异： 默认端点（``default_base_url``）、 "
+"凭证来源、厂商特有字段。"
+msgstr ""
+
+#: flowing.providers.openai.OpenAICompletionsProvider:30 of
+msgid ""
+"请求映射：``Context.system_prompt`` 逐段成为 system 消息； ``Context.messages`` 逐条按 "
+"kind 映射 role；``Context.tools`` 经 白名单组装为 function "
+"声明；``model.max_output_tokens`` 非 ``None`` 时写入 ``max_tokens``。"
+msgstr ""
+
+#: flowing.providers.openai.OpenAICompletionsProvider:34 of
+msgid ""
+"通用透传：models.yaml 条目中的 ``extra_body`` 字段（进 ``ModelConfig._extra``，不参与 "
+"Parsable 求值）为 dict 时原样 合入请求体，承载厂商私有参数；非 dict 抛 "
+":class:`flowing.errors.InvalidRequestError`。合入顺序：基类 固定字段 → ``extra_body``"
+" → adapter 专有字段，同名键后者覆盖 前者。"
+msgstr ""
+
+#: flowing.providers.openai.OpenAICompletionsProvider:40 of
+msgid ""
+"响应映射：响应含 ``tool_calls`` → ``finish=False``，其余 → ``finish=True``；原始 "
+"``finish_reason`` 保留在 ``provider_data[\"stop_reason\"]``。"
+msgstr ""
+
+#: flowing.providers.openai.OpenAICompletionsProvider:43 of
+msgid ""
+"Usage 归一：``input = prompt_tokens``、 ``fresh_input = prompt_tokens - "
+"cached_tokens``、 ``cache_read = cached_tokens``、``cache_write = 0``、 "
+"``output = completion_tokens``、``total_tokens = input + output``； "
+"原始用量字段全量保留在 ``Usage.raw``。"
+msgstr ""
+
+#: flowing.providers.openai.OpenAICompletionsProvider:48 of
+msgid "不做厂商探测（如按 ``base_url`` 猜测能力）——厂商差异属于子类覆写。"
+msgstr ""
+
+#: flowing.providers.openai.OpenAICompletionsProvider:49 of
+msgid ""
+"前缀缓存由 OpenAI 服务端自动处理，adapter 不发送任何缓存标记； ``PromptBlock.cache`` "
+"对本格式只是字节稳定性提示，不产生请求级 效果。"
+msgstr ""
+
+#: flowing.providers.openai.OpenAICompletionsProvider:55 of
+msgid ""
+":class:`flowing.providers.Provider` 抽象契约。 "
+":class:`flowing.providers.anthropic.AnthropicMessagesProvider`"
+msgstr ""
+
+#: flowing.providers.openai.OpenAICompletionsProvider:57 of
+msgid "另一格式家族基类。"
+msgstr ""
+
+#: flowing.providers.openai.OpenAICompletionsProvider.generate:5 of
+msgid ""
+"把组装好的上下文映射为 chat/completions 请求体并 POST 到 ``/chat/completions``；非 2xx "
+"响应经错误归类映射为 :mod:`flowing.errors` 中的明确类型后上抛（不重试、不兜底）。"
+msgstr ""
+
+#: flowing.providers.openai.OpenAICompletionsProvider.generate_stream:3 of
+msgid ""
+"替代基类「一次 generate() 包成单条 text delta」的回退——OpenAI / DeepSeek 家族的 "
+"chat/completions ``stream=true`` 响应在此逐 chunk 解析。chunk 形态（``data: "
+"<json>``，``[DONE]`` 收尾）："
+msgstr ""
+
+#: flowing.providers.openai.OpenAICompletionsProvider.generate_stream:7 of
+msgid ""
+"思考：``choices[0].delta.<方言>``（DeepSeek ``reasoning_content``）， 按 "
+":attr:`_REASONING_KEYS` 顺序首个非空者胜出，逐段产出 ``kind=\"thinking\"`` "
+"delta；记住方言供出站同 key 回写。"
+msgstr ""
+
+#: flowing.providers.openai.OpenAICompletionsProvider.generate_stream:10 of
+msgid "正文：``delta.content`` 非空 → ``kind=\"text\"`` delta。"
+msgstr ""
+
+#: flowing.providers.openai.OpenAICompletionsProvider.generate_stream:11 of
+msgid ""
+"工具：``delta.tool_calls[]`` 按流式 ``index``（缺省回退 ``id``） 累积，首现的 "
+"``id``/``name`` 生效、``function.arguments`` 逐段 拼接；流结束后整段解析为参数对象，以携带完整 "
+":class:`ToolCallBlock` 的 ``block`` delta 产出。"
+msgstr ""
+
+#: flowing.providers.openai.OpenAICompletionsProvider.generate_stream:15 of
+msgid ""
+"用量 / finish：请求带 ``stream_options.include_usage``；任一 chunk 顶层 ``usage`` "
+"覆盖末帧用量（可能出现在空 ``choices`` 的独立 chunk 或 DeepSeek 的 finish "
+"chunk）；``finish_reason`` 经末帧 ``provider_data[\"stop_reason\"]`` "
+"透出（completed 结局的 finish_reason 来源，见 "
+":meth:`flowing.agent.Agent.provider_gen`）。"
+msgstr ""
+
+#: flowing.providers.openai.OpenAICompletionsProvider.generate_stream:21 of
+msgid ""
+"块 content_index 按「首现顺序」动态分配（pi 同款），与文本分块 单一化一致——同一逻辑块的所有 delta 共享同一 "
+"index，agent 累积时 依此归位。非 2xx / chunk 内 ``error`` 按 :meth:`_classify_error` "
+"归类上抛；超时 / 传输层失败同 :meth:`generate`。"
+msgstr ""
+
+#: flowing.providers.openai.OpenRouterProvider:1 of
+msgid "OpenRouter 内置 adapter（``name=\"openrouter\"``）。"
+msgstr ""
+
+#: flowing.providers.openai.OpenRouterProvider:5 of
+msgid ""
+"OpenRouter 聚合端点的 OpenAI 兼容实现；随框架发布、import 期经 :func:`register_provider` "
+"进程级注册。providers.yaml 条目把 ``adapter`` 字段设为 ``\"openrouter\"`` 即可选用。"
+msgstr ""
+
+#: flowing.providers.openai.OpenRouterProvider:20 of
+msgid "默认端点 ``https://openrouter.ai/api/v1``。"
+msgstr ""
+
+#: flowing.providers.openai.OpenRouterProvider:21 of
+msgid ""
+"请求侧模型 ID 与响应侧模型 ID 可以不同（如 ``model=\"auto\"`` 时 实际由 OpenRouter "
+"路由到具体模型）：``ProviderResponse.model`` 填实际响应的模型 ID；路由信息（如 provider 路由选择）保留在 "
+"``provider_data``。"
+msgstr ""
+
+#: flowing.providers.openai.OpenRouterProvider:25 of
+msgid "模型路由是 OpenRouter 服务端行为，本 adapter 不做本地路由 / fallback 链。"
+msgstr ""
+
+#: flowing.providers.openai.OpenRouterProvider:30 of
+msgid ""
+":class:`OpenAICompletionsProvider` 格式实现来源。 "
+":attr:`flowing.providers.ProviderResponse.model`"
+msgstr ""
+
+#: flowing.providers.openai.OpenRouterProvider:32 of
+msgid "响应侧模型 ID 语义。"
+msgstr ""
+
+#: flowing.providers.provider.Provider:1 of
+msgid "Provider 抽象基类：一种 API 格式 / 服务商一个 adapter 类。"
+msgstr ""
+
+#: flowing.providers.provider.Provider:5 of
+msgid ""
+"模型调用的执行端。每个 provider 条目（``providers.yaml`` 的一个 key，绑定唯一 API key "
+"身份）懒创建一个本类实例——一条目一实例， 首次 ``provider_registry.get(条目名)`` 时才实例化并缓存，对调用方 "
+"透明。adapter 类经 :func:`register_provider` 进程级注册，同一 adapter 类可实例化多个条目实例（不同 "
+"config）。"
+msgstr ""
+
+#: flowing.providers.provider.Provider:13 of
+msgid "显式继承树：格式差异写在子类覆写中，类型层可见，IDE 可推断； 禁止 compat flags 与运行时格式检测（见包 docstring）。"
+msgstr ""
+
+#: flowing.providers.provider.Provider:15 of
+msgid "config 是初始化属性：``generate()`` 无 config 参数——配置在进程 内静态，构造时绑定一次即可。"
+msgstr ""
+
+#: flowing.providers.provider.Provider:17 of
+msgid "懒创建：零启动成本——配 20 个条目只用 1 个时，其余 19 个的 连接池 / HTTP 会话成本完全不发生。"
+msgstr ""
+
+#: flowing.providers.provider.Provider:39 of
+msgid "测试替身建议"
+msgstr ""
+
+#: flowing.providers.provider.Provider:40 of
+msgid ""
+"内置最小测试替身 :class:`FakeProvider` （实例化后注入 ``generate_fn`` / ``stream_fn``，内置"
+" ``received`` 记录）覆盖最简单的同构形态；带 领域逻辑的替身推荐各测试文件自行子类化本类、经 "
+":func:`register_provider` 以测试专属 adapter 名注册（import 期 "
+"完成）。替身同样受本类契约约束：不读写消息树、不落盘、异常归类为 :mod:`flowing.errors` 类型；记录收到的 "
+"``context`` 供断言允许， 但不要断言框架内部调用次序。"
+msgstr ""
+
+#: flowing.providers.provider.Provider:50 of
+msgid "懒创建：实例化只发生在首次按条目名获取时；实例化后按条目名缓存， 同条目后续获取返回同一实例。"
+msgstr ""
+
+#: flowing.providers.provider.Provider:52 of
+msgid ""
+"子类约束：作为注册 adapter 的子类必须定义非空类属性 ``name`` （adapter 注册键，全局唯一）；``api_format``"
+" 由框架基类决定， 子类通常不再改。"
+msgstr ""
+
+#: flowing.providers.provider.Provider:55 of
+msgid ""
+"Provider 不读 ``model_tag``、不感知标签映射；不做重试与 fallback （策略属于 "
+"``use_retry()``）；不缓存响应。"
+msgstr ""
+
+#: flowing.providers.provider.Provider:57 of
+msgid "构造期不建立网络连接（连接成本推迟到首次 ``generate()``），保证 懒创建的零启动成本语义成立。"
+msgstr ""
+
+#: flowing.providers.provider.Provider:62 of
+msgid ":class:`OpenAICompletionsProvider` / :class:`AnthropicMessagesProvider`"
+msgstr ""
+
+#: flowing.providers.provider.Provider:63 of
+msgid "两个框架基类（决定 ``api_format``）。"
+msgstr ""
+
+#: flowing.providers.provider.Provider:64 of
+msgid ""
+":func:`register_provider` adapter 类注册入口。 :class:`flowing.runtime.Runtime`"
+" ``provider_registry`` 的宿主。"
+msgstr ""
+
+#: flowing.providers.Provider.config:1
+#: flowing.providers.provider.Provider.config:1 of
+msgid ""
+"构造时绑定的条目配置（含凭证）。行为边界：按只读对待；凭证禁止 外泄（不进消息 / ``_provided`` / 落盘）。参见 "
+":class:`ProviderConfig`。"
+msgstr ""
+
+#: flowing.providers.provider.Provider.generate:1 of
+msgid "非流式单次生成：一次请求，返回完整响应。"
+msgstr ""
+
+#: flowing.providers.provider.Provider.generate:5 of
+msgid ""
+"Provider 的核心契约方法。接收组装好的上下文与已解析的模型规格， 发起一次 API 调用，返回完整 "
+":class:`ProviderResponse`。每次调用 前由调用方（``Agent.provider_gen()``）负责解析模型字段与组装"
+" 上下文；本方法不解释 ``PromptBlock.cache`` 以外的任何框架字段 ——``cache`` 仅是给 adapter "
+"的意图标记（如 Anthropic 据 ``cache=\"static\"`` 设 ``cache_control``），缓存发生在 "
+"provider 侧。"
+msgstr ""
+
+#: flowing.providers.provider.Provider.generate:23 of
+msgid ""
+"前置条件：``model`` 已经过 ``ModelConfig.resolve()`` （全部字段 静态化）；``context`` "
+"由调用方现场组装。``context.messages`` 为空合法（纯系统提示调用）。"
+msgstr ""
+
+#: flowing.providers.provider.Provider.generate:26 of
+msgid ""
+"期待行为：把 ``context.system_prompt`` / ``context.tools`` / "
+"``context.messages`` 映射为 API 请求；把 ``model`` 的元信息 字段映射为请求参数（字段含义的唯一解释方）；按 "
+":class:`ProviderResponse` 的默认准则设置 ``finish``。"
+msgstr ""
+
+#: flowing.providers.provider.Provider.generate:30 of
+msgid ""
+"usage 附着：usage 不进入 ``ProviderResponse``——adapter 把 本次用量直接附着到 "
+"``message.usage`` （唯一权威落点，随消息 落盘）；provider 未返回用量时 ``message.usage`` 保持 "
+"``None``。``message`` 为 ``None`` （abort）时本次用量无载体、 不留痕。"
+msgstr ""
+
+#: flowing.providers.provider.Provider.generate:35 of
+msgid ""
+"abort 语义：调用期间检测到 abort（如 HTTP 会话被取消）时， 返回 "
+"``ProviderResponse(message=None, finish=False, cancelled=True)`` "
+"而非抛异常——cancel 是正常终止。"
+msgstr ""
+
+#: flowing.providers.provider.Provider.generate:38 of
+msgid ""
+"异常：底层错误必须归类为 :mod:`flowing.errors` 的明确类型 上抛（分类表见包 "
+"docstring）；本方法不做兜底捕获、不重试。"
+msgstr ""
+
+#: flowing.providers.provider.Provider.generate:40 of
+msgid "不读写消息树、不落盘、不触发钩子（钩子在 Agent 层）。"
+msgstr ""
+
+#: ../../api/flowing.providers.rst
+msgid "抛出"
+msgstr ""
+
+#: flowing.providers.provider.Provider.generate:42 of
+msgid "上下文溢出。与其它调用期异常一样经 ``on_provider_error`` 分发 （默认策略不重试；压缩 / 换模型属 handler 职责）。"
+msgstr ""
+
+#: flowing.providers.provider.Provider.generate:45 of
+msgid "429 限流。可重试类（是否重试由策略层如 ``use_retry()`` 决定）。"
+msgstr ""
+
+#: flowing.providers.provider.Provider.generate:47 of
+msgid "5xx 服务端故障。可重试类。"
+msgstr ""
+
+#: flowing.providers.provider.Provider.generate:49 of
+msgid "网络层失败。可重试类。"
+msgstr ""
+
+#: flowing.providers.provider.Provider.generate:51 of
+msgid "调用超时。可重试类。"
+msgstr ""
+
+#: flowing.providers.provider.Provider.generate:53 of
+msgid "401/403 凭证问题。不可重试（不自愈）。"
+msgstr ""
+
+#: flowing.providers.provider.Provider.generate:55 of
+msgid "请求本身非法。不可重试。"
+msgstr ""
+
+#: flowing.providers.provider.Provider.generate:57 of
+msgid "内容安全策略拒绝。不可重试。"
+msgstr ""
+
+#: flowing.providers.provider.Provider.generate:59 of
+msgid "请求体字节超限（HTTP 413）。不可重试。"
+msgstr ""
+
+#: flowing.providers.provider.Provider.generate:61 of
+msgid ""
+"配额 / 余额耗尽。不可重试（内置 adapter 对 429 一律归类为 "
+"``RateLimitedError``，不区分配额耗尽——本类属分类体系，供 能区分的 adapter 使用）。"
+msgstr ""
+
+#: flowing.providers.provider.Provider.generate:68 of
+msgid ""
+":meth:`generate_stream` 流式变体。 :meth:`flowing.agent.Agent.provider_gen` "
+"双模式判定与调用方。"
+msgstr ""
+
+#: flowing.providers.provider.Provider.generate_stream:1 of
+msgid "流式生成：逐 delta 产出，由 ``provider_gen()`` 累积并转发。"
+msgstr ""
+
+#: flowing.providers.provider.Provider.generate_stream:5 of
+msgid ""
+"流式变体。异步迭代器逐个产出 :class:`ProviderDelta`； ``Agent.provider_gen()`` 在 "
+"``stream=True`` （默认值）时选择本 方法，把 delta 累积进一条 ``partial=True`` 的消息并逐条分发 "
+"``on_provider_delta`` 钩子，结束后返回完整 :class:`ProviderResponse`。"
+msgstr ""
+
+#: flowing.providers.provider.Provider.generate_stream:11 of
+msgid ""
+"基类提供默认实现：回退为调用 :meth:`generate` 并把完整文本包成 单个 delta 产出——任何 adapter "
+"不覆写本方法也能在流式模式下 工作；支持真流式的 adapter 覆写本方法。"
+msgstr ""
+
+#: flowing.providers.provider.Provider.generate_stream:24 of
+msgid ""
+"覆写方职责：按到达顺序产出 delta；``content_index`` 单调不减； abort 由 ``provider_gen()`` "
+"在每个 delta 之间检查，adapter 无需自查（但能提前终止时应终止迭代）。"
+msgstr ""
+
+#: flowing.providers.provider.Provider.generate_stream:27 of
+msgid ""
+"默认实现行为：等价于 ``generate()`` 成功后把消息文本包成一条 ``ProviderDelta(kind=\"text\", "
+"...)`` 产出；结构化 block（无 ``text`` 属性者）逐块补发 ``block`` delta。"
+msgstr ""
+
+#: flowing.providers.provider.Provider.generate_stream:30 of
+msgid ""
+"本方法不返回 ``ProviderResponse`` （完整响应由 ``provider_gen()`` 组装——组装时同样履行 usage "
+"附着契约：adapter 末帧提取的 ``usage`` 只进入组装消息的 ``message.usage``，同 "
+":meth:`generate`）；delta 不落盘、不进消息树。"
+msgstr ""
+
+#: flowing.providers.provider.Provider.generate_stream:34 of
+msgid "副线查询（``side_query``）固定非流式，不调用本方法；迭代途中 底层错误按 :meth:`generate` 的同一异常分类上抛。"
+msgstr ""
+
+#: flowing.providers.provider.Provider.generate_stream:37 of
+msgid "与 :meth:`generate` 相同的异常分类。"
+msgstr ""
+
+#: flowing.providers.provider.Provider.generate_stream:42 of
+msgid ""
+":class:`ProviderDelta` delta 结构。 :meth:`flowing.agent.Agent.provider_gen`"
+" 流式双模式判定规则。"
+msgstr ""
+
+#: flowing.providers.provider.Provider.get_credential:1 of
+msgid "读取本条目凭证；默认实现返回 ``self.config.get(\"api_key\")``。"
+msgstr ""
+
+#: flowing.providers.provider.Provider.get_credential:5 of
+msgid ""
+"凭证读取的唯一入口，adapter 在每次发起请求前调用。凭证来源是 adapter 级差异（静态 key / OAuth / "
+"实例元数据服务），因此本 方法留为可覆写点；默认实现只读 ``api_key``，其他凭证来源由 具体 Provider 子类覆写本方法接入。"
+msgstr ""
+
+#: flowing.providers.provider.Provider.get_credential:21 of
+msgid ""
+"返回当前可用凭证字符串；无凭证返回 ``None`` （是否报错由请求 路径决定，通常映射为 "
+":class:`flowing.errors.AuthenticationError`）。"
+msgstr ""
+
+#: flowing.providers.provider.Provider.get_credential:26 of
+msgid ""
+"不支持凭证刷新——凭证静态绑定于构造期；过期 / 失效由请求路径 报错（通常映射为 "
+":class:`flowing.errors.AuthenticationError`），框架不自动 刷新，也不提供刷新钩子。"
+msgstr ""
+
+#: flowing.providers.provider.Provider.get_credential:33 of
+msgid ":class:`ProviderConfig` 凭证的来源容器。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderConfig:1 of
+msgid "单个 provider 条目解析后的配置容器（``dict`` 子类）。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderConfig:5 of
+msgid ""
+"一个 provider 条目（``providers.yaml`` 中的一个 key）解析后的全部 字段的容器。作为 "
+":class:`Provider` 的初始化属性在构造时绑定； :meth:`Provider.generate` 不再接收 config "
+"参数，adapter 在方法内经 ``self.config`` 读取。默认凭证读取 "
+":meth:`Provider.get_credential` 从 ``self.config.get(\"api_key\")`` 取值。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderConfig:12 of
+msgid ""
+"字段集合是开放的：``adapter`` / ``api_key`` / ``base_url`` 之外的 字段全部由 adapter "
+"自行读取（如 Bedrock 的 ``aws_region``），框架 核心不解释任何字段的含义。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderConfig:30 of
+msgid ""
+"前置条件：构造传入的 ``{{env.VAR}}`` 引用必须已在加载期替换完毕； 环境变量缺失在加载期抛 "
+":class:`flowing.errors.MissingEnvironmentVariableError`，本类不会 见到未替换的 "
+"``{{env.`` 前缀引用。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderConfig:34 of
+msgid "实例化 Provider 后按只读对待：运行期修改 config 不属于支持的行为。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderConfig:35 of
+msgid "不做 schema 校验；``adapter`` 键只由加载器用于选类。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderConfig:36 of
+msgid "安全边界：本配置含凭证，禁止写入消息、``_provided`` 与任何落盘 文件（详见包 docstring「安全边界」）。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderConfig:41 of
+msgid ":class:`Provider` 本配置的唯一消费方。 :func:`register_provider` adapter 名到类的注册表。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderDelta:1 of
+msgid "流式增量：``on_provider_delta`` 钩子收到的 value。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderDelta:5 of
+msgid ""
+"流式模式下，Provider 每产出一小段输出就产生一个本实例； ``Agent.provider_gen()`` 逐条把增量累积进 "
+"``Message.content``，并把 每条 delta 分发给 ``on_provider_delta`` 钩子——这是 delta "
+"的唯一 观察点。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderDelta:10 of
+msgid ""
+"非流式路径同样产生一条：``stream=False`` 时 ``provider_gen()`` 在 拿到完整响应后合成一条全量 delta "
+"分发（从空到全量即一个增量）， 两种路径的 delta 数据格式完全一致。订阅者因此永远可以依赖「每次 ``provider_gen()`` "
+"至少收到一条 delta」。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderDelta:15 of
+msgid "delta 本身是易失的：不落盘、不进消息树。落盘的是累积完成（或流式 中断时以 ``partial=True`` 保留）的消息。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderDelta:32 of
+msgid ""
+"同一响应内 ``content_index`` 单调不减；同一 content block 的 delta 按到达顺序排列，按序拼接 "
+"``text`` 即得该 block 的完整文本。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderDelta:34 of
+msgid ""
+"``by`` 是来源标记，由 ``provider_gen()`` 盖写（adapter 不填、无法 伪造）：主 Turn 内为 "
+"``\"_turn\"``，副线查询为 ``\"_side\"``，下划线 开头为框架保留值。``on_provider_delta`` 钩子点以"
+" ``match_on=\"by\"`` 声明，handler 可按来源模式过滤注册。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderDelta:38 of
+msgid ""
+"纯观察语义：钩子 handler 对 delta 的改写不影响已累积内容—— ``provider_gen()`` "
+"丢弃分发返回值、不回写累积。需要改写输出内容 时走 ``after_provider_gen`` 钩子改整条消息。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderDelta:41 of
+msgid "流式中断（abort）：已累积内容保留为 ``partial=True`` 的消息落盘； 取消点起不再分发 delta。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderDelta:43 of
+msgid ""
+"``usage`` / ``provider_data`` 仅末帧携带（其余帧为 ``None``）， "
+"是流式路径下把它们并入组装响应消息的传输通道。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderDelta:48 of
+msgid ""
+":meth:`Provider.generate_stream` delta 的生产方。 "
+":class:`flowing.message.Message` ``partial`` 字段的语义。"
+msgstr ""
+
+#: flowing.providers.ProviderDelta.kind:1
+#: flowing.providers.provider.ProviderDelta.kind:1 of
+msgid ""
+"delta 种类，开放字符串。内置约定 ``\"text\"`` / ``\"thinking\"``； adapter 可产出其他种类（如 "
+"``\"tool_use\"``），消费方按种类过滤。"
+msgstr ""
+
+#: flowing.providers.ProviderDelta.text:1
+#: flowing.providers.provider.ProviderDelta.text:1 of
+msgid "本 delta 携带的增量文本；非文本类 delta 允许为空字符串。"
+msgstr ""
+
+#: flowing.providers.ProviderDelta.content_index:1
+#: flowing.providers.provider.ProviderDelta.content_index:1 of
+msgid ""
+"所属 content block 在消息 ``content`` 列表中的下标；多 block 响应（文本 + 思考 + 工具调用）借此归位。从 "
+"0 起单调不减。"
+msgstr ""
+
+#: flowing.providers.ProviderDelta.by:1
+#: flowing.providers.provider.ProviderDelta.by:1 of
+msgid ""
+"来源标记（``provider_gen()`` 盖写，adapter 不填）：主 Turn ``\"_turn\"``、副线 "
+"``\"_side\"``；下划线开头为框架保留值。钩子过滤 依据（``on_provider_delta`` 以 "
+"``match_on=\"by\"`` 声明）。"
+msgstr ""
+
+#: flowing.providers.ProviderDelta.message_id:1
+#: flowing.providers.provider.ProviderDelta.message_id:1 of
+msgid "本 delta 所属 assistant 消息的 id（agent 在派发边界盖写， adapter 不填、无法伪造）。"
+msgstr ""
+
+#: flowing.providers.ProviderDelta.message_id:4
+#: flowing.providers.provider.ProviderDelta.message_id:4 of
+msgid ""
+"``provider_gen()`` 在流式开始前预铸该 id，逐条 delta 携带；流 结束后用同一 id 构造落盘消息——观察者从第一条 "
+"delta 起即可用它 归组，且该 id 就是最终挂树消息的 id。与 :attr:`by` 同属 agent 装饰字段，provider "
+"层不感知消息 id。"
+msgstr ""
+
+#: flowing.providers.ProviderDelta.signature:1
+#: flowing.providers.provider.ProviderDelta.signature:1 of
+msgid "思考块的签名（仅 Anthropic 家族思考 delta 携带，其余恒 ``None``）。"
+msgstr ""
+
+#: flowing.providers.ProviderDelta.signature:3
+#: flowing.providers.provider.ProviderDelta.signature:3 of
+msgid ""
+"Anthropic 多轮回放要求 assistant 消息里的 thinking 块连同 ``signature`` 原样带回，否则 API "
+"拒绝。流式时签名随 ``kind=\"thinking\"`` delta 携带（content_block_start 即给全量）； "
+"``provider_gen`` 累积思考块时把首见签名保留到最终 ``ThinkingBlock.signature``。"
+msgstr ""
+
+#: flowing.providers.ProviderDelta.usage:1
+#: flowing.providers.provider.ProviderDelta.usage:1 of
+msgid "本次调用的最终用量，仅末帧携带（其余帧为 ``None``）。"
+msgstr ""
+
+#: flowing.providers.ProviderDelta.usage:3
+#: flowing.providers.provider.ProviderDelta.usage:3 of
+msgid ""
+"流式路径的完整响应由 ``provider_gen()`` 组装——adapter 在末帧把 usage "
+"附在本字段上，``provider_gen()`` 将其并入组装消息的 ``message.usage``。非流式路径不经过本字段（usage "
+"直接附着在 :meth:`Provider.generate` 的响应消息上）。"
+msgstr ""
+
+#: flowing.providers.ProviderDelta.block:1
+#: flowing.providers.provider.ProviderDelta.block:1 of
+msgid "非文本类内容的完整块载体（如流式末端拼装完成的 ``ToolCallBlock``）。"
+msgstr ""
+
+#: flowing.providers.ProviderDelta.block:4
+#: flowing.providers.provider.ProviderDelta.block:4 of
+msgid ""
+"文本/思考类 delta 经 ``text`` 逐段累积；工具调用等结构化内容无法 从文本分片在 ``provider_gen()`` "
+"侧无损重建，adapter 在流式末端以 完整块形态交付（``provider_gen()`` 按 ``content_index`` 归位进组装"
+" 消息）。携带本字段的 delta 其 ``text`` 为空字符串。"
+msgstr ""
+
+#: flowing.providers.ProviderDelta.provider_data:1
+#: flowing.providers.provider.ProviderDelta.provider_data:1 of
+msgid "本次响应的 provider 特有元信息（至少含原始 ``stop_reason``）， 仅末帧携带（其余帧为 ``None``）。"
+msgstr ""
+
+#: flowing.providers.ProviderDelta.provider_data:4
+#: flowing.providers.provider.ProviderDelta.provider_data:4 of
+msgid ""
+"流式路径的完整响应由 ``provider_gen()`` 组装——adapter 在末帧把 provider_data "
+"附在本字段上，``provider_gen()`` 将其并入组装响应。 非流式路径不经过本字段（:meth:`Provider.generate`"
+" 的响应直接携带 ``provider_data``）。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderRegistry:1 of
+msgid "Runtime 持有的 Provider 懒实例化表（条目名 → Provider 实例）。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderRegistry:5 of
+msgid ""
+"``providers.yaml`` 的每个条目（绑定唯一 API key 身份）对应至多一个 Provider 实例：Runtime "
+"初始化（懒）时构建候选清单（条目名 → ``(adapter 类, ProviderConfig)``——adapter 类已在扫描期经 "
+"``_provider_adapters`` 解析），本类在首次 :meth:`get` 时才 ``adapter_cls(config)`` "
+"实例化并缓存——一条目一实例，对调用方透明。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderRegistry:13 of
+msgid ""
+"懒创建：providers.yaml 可配 20 个条目，运行时只用一两个——实例化 （含凭证读取）推迟到首次使用，Runtime "
+"初始化零网络、零环境变量 依赖。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderRegistry:16 of
+msgid ""
+"两张表分离：adapter 类是进程级资产（``_provider_adapters``， ``register_provider`` "
+"写入）；条目实例是 Runtime 级资产（本类， 挂在 ``Runtime.provider_registry``）。一个进程可有多个 "
+"Runtime， 各自持有本类实例。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderRegistry:29 of
+msgid ""
+"``get(name)``：已缓存 → 返回缓存实例；未缓存 → 现场实例化并缓存 后返回；条目名不在候选清单 → ``KeyError`` "
+"（dict 语义快速失败）。 注意本方法的 ``get`` 是「取或建」语义，不是 ``dict.get`` 的返回 ``None`` 语义。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderRegistry:33 of
+msgid ""
+"不做 adapter 自动发现（adapter 类由 :func:`register_provider` 在 import "
+"期登记，本类只查表）；不校验条目配置（配置在加载期解析 完成）。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderRegistry:36 of
+msgid "实例创建失败（缺凭证等）的异常原样上抛、不缓存失败结果（下次 ``get`` 重试）。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderRegistry:38 of
+msgid "同一条目重复 ``get`` 返回同一实例（``is`` 相等）。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderRegistry:42 of
+msgid ""
+":func:`register_provider` —— adapter 类的进程级注册入口。 :class:`Provider` —— "
+"实例的基类与 ``config`` 绑定约定。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderRegistry.get:1 of
+msgid "取条目实例（首次懒创建并缓存）；未知条目名抛 ``KeyError``。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderRegistry.get:3 of
+msgid "provider 条目名（``providers.yaml`` 的 key）。"
+msgstr ""
+
+#: ../../api/flowing.providers.rst
+msgid "返回"
+msgstr ""
+
+#: flowing.providers.provider.ProviderRegistry.get:4 of
+msgid "该条目的 Provider 实例（首次调用时创建并缓存）。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderRegistry.get:8 of
+msgid "已缓存 → 直接返回；未缓存 → ``adapter_cls(config)`` 实例化并 缓存后返回。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderRegistry.get:10 of
+msgid "条目名不在候选清单 → ``KeyError`` （不做 ``dict.get`` 式的 ``None`` 返回）。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderRegistry.get:12 of
+msgid "实例化失败 → 异常原样上抛，失败结果不缓存（下次调用重试）。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderRegistry.get:14 of
+msgid ":class:`ProviderRegistry` 类 docstring 的完整行为要点"
+msgstr ""
+
+#: flowing.providers.provider.ProviderResponse:1 of
+msgid "单次模型调用的完整产物：Turn 循环与 Provider 之间的唯一契约。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderResponse:5 of
+msgid ""
+"``Provider.generate()`` 的返回类型，也是 ``Agent.provider_gen()`` "
+"的返回类型。无论底层是否流式，Turn 循环只见完整的本结构—— 「``provider_gen()`` 返回完整响应」是把流式挡在逻辑 Turn"
+" 循环外的 契约。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderResponse:35 of
+msgid ""
+"``message``：模型产生的消息（``kind=MessageKind.PROVIDER``，永远 回合内产生、不进队列），Turn "
+"循环把它追加进消息级树；abort 路径 为 ``None``，调用方必须先判 ``response.message is not None`` "
+"再 append。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderResponse:39 of
+msgid ""
+"``usage``：本结构不携带 usage——usage 的唯一落点是 ``message.usage`` （adapter "
+"构造时附着，随消息落盘）。钩子 / Composable 经 ``response.message.usage`` 读取（先判 "
+"``message`` 非 ``None``）。回合聚合管线不变：消息上同一对象的引用会被追加进 "
+"``TurnContext.usages``，收尾时求和为 ``TurnResult.token_usage``。 边缘代价：abort "
+"于消息成形前（``message=None``）的已耗 token 框架内不留痕——逐次不漏的计费属插件策略，可在 adapter 层自行 拦截。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderResponse:47 of
+msgid ""
+"``model``：实际响应的模型 ID（响应侧记录），观测与计费用；不 要求与请求侧 ``ModelConfig.model`` "
+"相同，不回填任何结构体。流式 路径（``Agent.provider_gen`` 累积 delta 后组装最终响应）由 Agent 层填请求侧模型"
+" ID；非流式路径填服务端返回的模型 ID。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderResponse:51 of
+msgid ""
+"``finish``：provider 层概念——「provider 完成了本次响应（无待 执行 tool_call）」。turn 是否关闭由 "
+"agent 层判断 （``finish or cancelled`` → ``Message.turn_end``），本字段不直接 "
+"承担。得出方式框架不强制，adapter 可覆写；推荐默认准则：响应含 ``tool_call`` block → "
+"``False``，其它（stop / length / error） → ``True``。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderResponse:57 of
+msgid ""
+"``cancelled``：Turn 被取消标记。``True`` 时 ``finish`` 保持 ``False`` （中断的流式没有 "
+"finish——provider 从未完成），且 ``message`` 允许为 ``None``；其余路径 ``message`` 非 "
+"``None``。 ``after_turn`` handler 据此区分正常结束与取消。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderResponse:61 of
+msgid ""
+"``provider_data``：透明传递 provider 特有元信息（原始 ``stop_reason`` "
+"等）；框架核心不依赖其内容做任何决策；未文档化 字段不属于稳定契约。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderResponse:64 of
+msgid "本结构不携带异常：错误一律以 :mod:`flowing.errors` 中的分类异常 抛出，不包装进响应。"
+msgstr ""
+
+#: flowing.providers.provider.ProviderResponse:69 of
+msgid ""
+":meth:`Provider.generate` 生产方。 :meth:`flowing.agent.Agent.provider_gen` "
+"消费方与双模式判定处。 :class:`flowing.agent.TurnContext` 逻辑 Turn 的执行期载体。"
+msgstr ""
+
+#: flowing.providers.ProviderResponse.message:1
+#: flowing.providers.provider.ProviderResponse.message:1 of
+msgid ""
+"模型产生的消息（``kind=MessageKind.PROVIDER``，永远回合内产生、 不进队列）。行为边界：abort 路径为 "
+"``None``，调用方必须先判 ``if response.message is not None`` 再 append。参见 "
+":class:`flowing.message.Message`。"
+msgstr ""
+
+#: flowing.providers.ProviderResponse.finish:1
+#: flowing.providers.provider.ProviderResponse.finish:1 of
+msgid ""
+"provider 层概念：``True`` = provider 完成本次响应（无待执行工具 调用）；``False`` = "
+"有工具调用（进入工具循环后继续 provider_gen） 或本次响应被中断（中断的流式没有 finish）。turn 是否关闭由 agent "
+"层判断（``finish or cancelled`` → ``Message.turn_end``），本字段不 直接承担。得出方式由 "
+"adapter 决定（推荐准则见类 docstring）。"
+msgstr ""
+
+#: flowing.providers.ProviderResponse.model:1
+#: flowing.providers.provider.ProviderResponse.model:1 of
+msgid ""
+"实际响应的模型 ID（响应侧记录，保持 ``str``）。行为边界：不要求 与请求侧 ``ModelConfig.model`` "
+"相同；不回填任何结构体。"
+msgstr ""
+
+#: flowing.providers.ProviderResponse.cancelled:1
+#: flowing.providers.provider.ProviderResponse.cancelled:1 of
+msgid ""
+"Turn 被取消标记。``True`` 时 ``finish`` 保持 ``False`` （provider 未完成）、``message`` "
+"可为 ``None``；``after_turn`` 据此区分结局。 缺省 ``False``。"
+msgstr ""
+
+#: flowing.providers.ProviderResponse.by:1
+#: flowing.providers.provider.ProviderResponse.by:1 of
+msgid ""
+"来源标记（``provider_gen()`` 盖写，adapter 不填、无法伪造）：主 Turn ``\"_turn\"``、副线 "
+"``\"_side\"``；下划线开头为框架保留值。 ``after_provider_gen`` 钩子点以 "
+"``match_on=\"by\"`` 声明，handler 可 按来源模式过滤注册。缺省 ``None``。"
+msgstr ""
+
+#: flowing.providers.ProviderResponse.provider_data:1
+#: flowing.providers.provider.ProviderResponse.provider_data:1 of
+msgid ""
+"provider 特有元信息（原始 stop_reason 等），透明传递。行为边界： 框架核心不依赖其内容做决策；未文档化字段不稳定。缺省空 "
+"dict。"
+msgstr ""
+
+#: flowing.providers.provider.Usage:1 of
+msgid "一次模型调用的 token 用量：七个计数字段 + 原始字段。"
+msgstr ""
+
+#: flowing.providers.provider.Usage:5 of
+msgid ""
+":class:`ProviderResponse` 的组成部分，由各 adapter 从原始响应映射 "
+"产出并归一到统一口径。消费方（成本、预算、统计、UI）只依赖计数 字段，无需知道 provider。"
+msgstr ""
+
+#: flowing.providers.provider.Usage:24 of
+msgid ""
+"七个计数字段为非负 ``int``；provider 无某概念（如无 cache、不 报告推理 "
+"token）时对应字段零填充。「未上报」信号只存在于整体层 （``message.usage is None``），不做逐字段 ``None`` "
+"区分。"
+msgstr ""
+
+#: flowing.providers.provider.Usage:27 of
+msgid ""
+"恒等式由 adapter 归一保证（违反属 adapter 缺陷，框架不运行时 校验）：``input == fresh_input + "
+"cache_read + cache_write``； ``total_tokens == input + output``。"
+msgstr ""
+
+#: flowing.providers.provider.Usage:30 of
+msgid ""
+"``reasoning`` 是 ``output`` 的子集标注，不是正交桶——参与聚合 （「本 turn 累计推理 token」），但不重复计入"
+" ``total_tokens``。"
+msgstr ""
+
+#: flowing.providers.provider.Usage:32 of
+msgid ""
+"provider 未返回用量时 ``message.usage`` 为 ``None``，不产生 ``Usage`` 实例；``raw`` 为空 "
+"dict 合法。"
+msgstr ""
+
+#: flowing.providers.provider.Usage:34 of
+msgid ""
+"唯一权威：``Message.usage`` （仅 PROVIDER 消息携带，随消息落盘） "
+"是本结构的唯一权威落点；``ProviderResponse`` 不携带 usage。 回合层把每次成功调用响应消息上附着的 usage 追加进 "
+"``TurnContext.usages`` （持有同一对象的引用），收尾时逐字段求和 为 ``TurnResult.token_usage`` "
+"（累加器为空时为 ``None``）——聚合 总是发生，不因没有消费方而跳过。"
+msgstr ""
+
+#: flowing.providers.provider.Usage:40 of
+msgid "框架核心不读 ``raw`` 做任何决策；``raw`` 中未文档化字段不属于 稳定契约。"
+msgstr ""
+
+#: flowing.providers.provider.Usage:45 of
+msgid ":class:`flowing.message.Message` 本结构的宿主（``usage`` 字段， 唯一权威）。"
+msgstr ""
+
+#: flowing.providers.Usage.input:1 flowing.providers.provider.Usage.input:1 of
+msgid ""
+"全部输入 token。恒等式：``input == fresh_input + cache_read + cache_write`` （由 "
+"adapter 归一保证）。"
+msgstr ""
+
+#: flowing.providers.Usage.fresh_input:1
+#: flowing.providers.provider.Usage.fresh_input:1 of
+msgid "排除 cache 的新输入（实际新算的部分）；计费与缓存分析的主口径。"
+msgstr ""
+
+#: flowing.providers.Usage.output:1 flowing.providers.provider.Usage.output:1
+#: of
+msgid "输出 token（``reasoning`` 是其子集标注）。"
+msgstr ""
+
+#: flowing.providers.Usage.cache_read:1
+#: flowing.providers.provider.Usage.cache_read:1 of
+msgid "缓存命中的输入；provider 无 cache 概念时零填充。"
+msgstr ""
+
+#: flowing.providers.Usage.cache_write:1
+#: flowing.providers.provider.Usage.cache_write:1 of
+msgid "缓存写入的输入；零填充规则同上。"
+msgstr ""
+
+#: flowing.providers.Usage.reasoning:1
+#: flowing.providers.provider.Usage.reasoning:1 of
+msgid ""
+"推理 token——``output`` 的子集标注，不重复计入 ``total_tokens``； provider "
+"不报告时零填充。聚合语义为「本 turn 累计推理 token」。"
+msgstr ""
+
+#: flowing.providers.Usage.total_tokens:1
+#: flowing.providers.provider.Usage.total_tokens:1 of
+msgid "总 token 数。恒等式：``total_tokens == input + output``。"
+msgstr ""
+
+#: flowing.providers.Usage.raw:1 flowing.providers.provider.Usage.raw:1 of
+msgid ""
+"provider 返回的全部原始用量字段原样保留（未文档化字段不稳定）。 行为边界：框架核心不依赖其内容；turn 聚合时不求和（聚合体为空 "
+"dict——逐次原始字段的消费方走 ``after_provider_gen``）。参见 :class:`Usage`。"
+msgstr ""
+
+#: flowing.providers.provider.load_provider_candidates:1 of
+msgid "读 ``providers.yaml`` 构建 ``ProviderRegistry`` 候选清单。"
+msgstr ""
+
+#: flowing.providers.provider.load_provider_candidates:5 of
+msgid ""
+"providers.yaml 加载器。职责四件：读 yaml；做 ``{{env.VAR}}`` 纯字符串 替换（非 Jinja2 / "
+"Parsable——凭证不经模板引擎，见包 docstring）； 每条目构造 :class:`ProviderConfig`；把条目的 "
+"``adapter`` 名经进程级 注册表解析为 adapter 类（未知 adapter 名在扫描期报错，不是 "
+":class:`ProviderRegistry` 的职责）。"
+msgstr ""
+
+#: flowing.providers.provider.load_provider_candidates:11 of
+msgid ""
+"本函数不碰环境变量与默认路径（``FLOWING_PROVIDERS_PATH`` / ``$FLOWING_CONFIG_HOME`` "
+"的解析在调用方 Runtime 侧）——保持纯 「路径 → 候选清单」，测试与 CI 诊断可直接调用。"
+msgstr ""
+
+#: flowing.providers.provider.load_provider_candidates:15 of
+msgid "providers.yaml 的已解析路径。"
+msgstr ""
+
+#: flowing.providers.provider.load_provider_candidates:16 of
+msgid ""
+"条目名 → ``(adapter 类, ProviderConfig)``，即 ``ProviderRegistry(candidates)`` "
+"的构造实参。"
+msgstr ""
+
+#: flowing.providers.provider.load_provider_candidates:18 of
+msgid "条目的 ``adapter`` 名未注册（扫描期快速失败）。"
+msgstr ""
+
+#: flowing.providers.provider.load_provider_candidates:19 of
+msgid "条目字段值中 ``{{env.VAR}}`` 引用的环境变量不存在——加载期 fail-fast（出错即刻抛异常、不静默降级）。"
+msgstr ""
+
+#: flowing.providers.provider.load_provider_candidates:25 of
+msgid "文件不存在 → 空候选清单（Runtime 零配置启动容忍：没有 providers.yaml 不等于启动失败）；空文件同样返回空清单。"
+msgstr ""
+
+#: flowing.providers.provider.load_provider_candidates:27 of
+msgid "非 ``{{env.`` 前缀的 ``{{...}}`` 保持原样，不报错、不替换。"
+msgstr ""
+
+#: flowing.providers.provider.load_provider_candidates:28 of
+msgid "非字符串字段值（如数字）不参与替换，原样保留。"
+msgstr ""
+
+#: flowing.providers.provider.load_provider_candidates:30 of
+msgid ":class:`ProviderRegistry`、:func:`register_provider`"
+msgstr ""
+
+#: flowing.providers.provider.register_provider:1 of
+msgid "注册 Provider adapter 类的装饰器（进程级全局注册表）。"
+msgstr ""
+
+#: flowing.providers.provider.register_provider:5 of
+msgid ""
+"把 adapter 类登记进全局注册表，键为类的 ``name`` 类属性（如 ``\"deepseek\"``）。Runtime 构建 "
+"provider 候选清单时按 ``providers.yaml`` 条目的 ``adapter`` 字段查本注册表选类。"
+msgstr ""
+
+#: flowing.providers.provider.register_provider:11 of
+msgid "注册全局（进程级）：与「一个进程可有多个 Runtime」兼容——adapter 类是类型层资产，条目实例才属于 Runtime。"
+msgstr ""
+
+#: flowing.providers.provider.register_provider:13 of
+msgid ""
+"注册时机是 import 期：装饰器在被装饰模块被 import 时执行。要让 第三方 adapter 可用，嵌入方必须在 Runtime "
+"构建候选清单之前 import 相应模块——本框架不自动发现扩展 provider 包。"
+msgstr ""
+
+#: flowing.providers.provider.register_provider:16 of
+msgid "同名唯一，显式覆盖：「同名不同类」无需求；确需替换内置 adapter 时用 ``override=True``，语义明确且可告警。"
+msgstr ""
+
+#: flowing.providers.provider.register_provider:35 of
+msgid ""
+"装饰器原样返回被装饰类（不包装、不子类化）；支持 ``@register_provider`` 与 "
+"``@register_provider(override=True)`` 两种形态。"
+msgstr ""
+
+#: flowing.providers.provider.register_provider:38 of
+msgid "注册全部发生在 import 期（装饰器执行时）；此后注册表运行时不可变 ——运行期再调用本装饰器不改变任何已建 Runtime 的行为。"
+msgstr ""
+
+#: flowing.providers.provider.register_provider:40 of
+msgid ""
+"同名冲突：键已存在且被另一个类占用且 ``override=False`` → 抛 "
+":class:`flowing.errors.ProviderNameConflictError`； ``override=True`` → 后 "
+"import 者覆盖并产生警告；多个 override 按 import 顺序后者胜出（每次覆盖均警告）。同一个类对象重复注册不 视为冲突。"
+msgstr ""
+
+#: flowing.providers.provider.register_provider:45 of
+msgid "前置条件：被装饰类必须是 :class:`Provider` 的子类，且定义非空的 ``name`` 类属性。"
+msgstr ""
+
+#: flowing.providers.provider.register_provider:47 of
+msgid "不实例化任何 Provider（实例化只发生在懒创建路径）；不读取 ``providers.yaml``。"
+msgstr ""
+
+#: flowing.providers.provider.register_provider:50 of
+msgid "同名键已被另一个类占用且未指定 ``override=True``。"
+msgstr ""
+
+#: flowing.providers.provider.register_provider:52 of
+msgid ""
+"被装饰对象不是 ``Provider`` 子类 / 缺少非空 ``name``——import 期作者笔误刻意用内置异常（豁免声明见 "
+":mod:`flowing.errors` 模块 docstring）。"
+msgstr ""
+
+#: flowing.providers.provider.register_provider:59 of
+msgid ""
+":class:`Provider` 被注册类的基类与 ``name`` 约定。 :class:`flowing.runtime.Runtime` "
+"候选清单懒创建的宿主。"
+msgstr ""
+
+#: ../../api/flowing.providers.rst:10
+msgid "Submodules"
+msgstr ""
+
+#: ../../api/flowing.providers.rst:13
+msgid "flowing.providers.anthropic module"
+msgstr ""
+
+#: flowing.providers.anthropic:1 of
+msgid "``flowing.providers.anthropic`` —— Anthropic Messages 格式家族。"
+msgstr ""
+
+#: flowing.providers.anthropic:5 of
+msgid ""
+"框架基类 :class:`AnthropicMessagesProvider` 收拢 Anthropic Messages API "
+"的请求/响应映射（system 数组、content blocks、tool_use / tool_result、 手动前缀缓存 "
+"``cache_control``）；内置厂商 adapter（Anthropic 官方端点、 AWS Bedrock）各为一个子类。设计要点见 "
+":mod:`flowing.providers` 包 docstring。"
+msgstr ""
+
+#: flowing.providers.anthropic:11 of
+msgid ""
+"本格式家族的工具结果映射约定：TOOL/EVENT 消息的 ``content`` 块直接 映射进 user 消息内的 "
+"``tool_result`` 块——消息级 ``tool_call_id`` → "
+"``tool_use_id``，``tool_status=\"error\"`` → ``is_error: true``；媒体块 原生内嵌于 "
+"``tool_result.content`` （image / document），无需转移； ``StructBlock`` 恒投影为 "
+"``json.dumps(ensure_ascii=False)`` 文本。 同一连续段的多条 TOOL 消息归并为一条 user 消息的多 "
+"``tool_result`` 块（Anthropic 对并行 tool_use 的配对要求），遇到非 TOOL 消息即断段。"
+msgstr ""
+
+#: flowing.providers.anthropic:19 of
+msgid ""
+"响应侧事实：``thinking`` 块的 ``signature`` 为不透明签名字符串，多轮 回放必须原样带回；``tool_use`` 的 "
+"``input`` 为已解析 JSON 对象。"
+msgstr ""
+
+#: flowing.providers.anthropic:24 of
+msgid ""
+":mod:`flowing.providers.openai` 另一格式家族。 "
+":class:`flowing.providers.Provider` 抽象契约。"
+msgstr ""
+
+#: flowing.providers.anthropic.DeepSeekAnthropicProvider:1 of
+msgid ""
+"DeepSeek 的 Anthropic Messages 兼容端点 adapter（``name=\"deepseek-"
+"anthropic\"``）。"
+msgstr ""
+
+#: flowing.providers.anthropic.DeepSeekAnthropicProvider:5 of
+msgid ""
+"DeepSeek 提供 Anthropic Messages 兼容 API，可用 Anthropic 协议调用 DeepSeek 模型。本 "
+"adapter 复用 :class:`AnthropicMessagesProvider` 的 全部格式映射与真 SSE "
+"流式，仅改默认端点与凭证口径——同一 DeepSeek key 既可走 OpenAI 系（``name=\"deepseek\"``）也可走 "
+"Anthropic 系 （``name=\"deepseek-anthropic\"``）。流式正文 / 思考 / 工具调用与 usage "
+"均经本协议真机验证。"
+msgstr ""
+
+#: flowing.providers.anthropic.DeepSeekAnthropicProvider:24 of
+msgid "默认端点 ``https://api.deepseek.com/anthropic``；条目配 ``base_url`` 时以条目为准（代理场景）。"
+msgstr ""
+
+#: flowing.providers.anthropic.DeepSeekAnthropicProvider:26 of
+msgid ""
+"凭证取条目 ``api_key``（与 OpenAI 系 deepseek adapter 同 key）； DeepSeek 端点接受 "
+"Anthropic ``x-api-key`` + ``anthropic-version`` 头（由基类设置）。"
+msgstr ""
+
+#: flowing.providers.anthropic.DeepSeekAnthropicProvider:29 of
+msgid "Anthropic 端点在流式下思考块可能给空 ``signature``（非流式给全量）—— 多轮把思考写回时以实际返回为准。"
+msgstr ""
+
+#: flowing.providers.anthropic.DeepSeekAnthropicProvider:34 of
+msgid ""
+":class:`AnthropicMessagesProvider` 格式与流式实现来源。 "
+"``flowing.providers.openai.DeepSeekProvider`` OpenAI 系对照。"
+msgstr ""
+
+#: ../../api/flowing.providers.rst:21
+msgid "flowing.providers.openai module"
+msgstr ""
+
+#: flowing.providers.openai:1 of
+msgid "``flowing.providers.openai`` —— OpenAI Completions 格式家族。"
+msgstr ""
+
+#: flowing.providers.openai:5 of
+msgid ""
+"框架基类 :class:`OpenAICompletionsProvider` 收拢 OpenAI 兼容 wire "
+"format（chat/completions）的请求/响应映射；内置厂商 adapter（DeepSeek / Kimi / Groq / "
+"OpenRouter）各为一个子类，只覆写厂商差异（默认端点、 凭证来源、厂商特有字段）。设计要点（显式继承树、禁止 compat flags） "
+"见 :mod:`flowing.providers` 包 docstring。"
+msgstr ""
+
+#: flowing.providers.openai:11 of
+msgid ""
+"本格式家族的工具结果映射约定：TOOL 消息的 ``content`` 块直接映射—— 消息级 ``tool_call_id`` → tool "
+"消息的 ``tool_call_id`` 位； ``StructBlock`` 恒投影为 "
+"``json.dumps(ensure_ascii=False)`` 文本； Chat Completions 的 tool "
+"消息为文本-only——消息中的媒体块转移到紧随 tool 消息的合成 user 消息（固定措辞提示）。"
+msgstr ""
+
+#: flowing.providers.openai:17 of
+msgid ""
+"响应侧事实：思考内容无官方字段，线上存在四种方言 （``reasoning_content`` / ``reasoning_details`` /"
+" ``reasoning`` / ``reasoning_text``），本基类在响应中记住端点实际使用的方言，回放 "
+"（多轮历史中的思考块）时以同一 key 写回；``tool_calls`` 的 ``function.arguments`` 是 JSON "
+"字符串，解析失败抛 :class:`flowing.errors.InvalidRequestError`。"
+msgstr ""
+
+#: flowing.providers.openai:26 of
+msgid ""
+":mod:`flowing.providers.anthropic` 另一格式家族。 "
+":class:`flowing.providers.Provider` 抽象契约。"
+msgstr ""
+
+#: ../../api/flowing.providers.rst:29
+msgid "flowing.providers.provider module"
+msgstr ""
+
+#: flowing.providers.provider:1 of
+msgid "``flowing.providers.provider`` —— Provider 机制层：抽象基类、调用产物、注册与懒实例化。"
+msgstr ""
+
+#: flowing.providers.provider:5 of
+msgid ""
+"本模块承载 Provider 侧机制层的核心符号：抽象基类 :class:`Provider`、 一次调用的完整产物 "
+":class:`ProviderResponse` / 流式增量 :class:`ProviderDelta` / token 用量记录 "
+":class:`Usage`、条目配置 :class:`ProviderConfig`、内置测试替身 "
+":class:`FakeProvider`、adapter 注册装饰器 :func:`register_provider`、Runtime "
+"级懒实例化表 :class:`ProviderRegistry` 与 providers.yaml 加载器 "
+":func:`load_provider_candidates`。"
+msgstr ""
+
+#: flowing.providers.provider:13 of
+msgid ""
+"adapter 继承树的两个格式家族基类与内置厂商 adapter 分别在 :mod:`flowing.providers.openai` 与 "
+":mod:`flowing.providers.anthropic`； 包级契约（显式继承树、懒创建、adapter "
+"与条目两层术语、providers.yaml schema、异常分类、凭证安全边界）见 :mod:`flowing.providers` 包 "
+"docstring。"
+msgstr ""
+

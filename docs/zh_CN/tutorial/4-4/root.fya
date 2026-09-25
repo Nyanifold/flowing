@@ -1,0 +1,20 @@
+description: 收银台编排者：pay 是 make-payment 的定制视图。
+model_tag: default
+tools:
+  - ./tools/probe.py                 # strict=False 的探针（对照）
+  - ./tools/make_payment.py as pay:   # 路径形态 + as 别名（裸名链不递归子目录）
+      description: "发起支付（仅限已确认订单）"
+      args:
+        amount: {description: "支付金额（元），上限 50000"}  # 稀疏补丁 → override_params
+        currency: USD                     # 裸值 → specified（LLM 不可见的固定值）
+        user_id: "{{ self.inject('user_id') }}"   # 注入表达式 → specified（沿 provide 链）
+        order_id as oid: _                 # 参数改名（_ = 空补丁）
+subagents:
+  - ./agents/cashier
+---
+$system_prompt:
+你是收银台。用户确认支付时，用 pay 工具完成支付并如实汇报结果。
+---
+$script:
+async def setup(self):
+    self.provide("user_id", "u-10086")   # 宿主身份经 provide 链注入工具实参

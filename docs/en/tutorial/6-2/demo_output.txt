@@ -1,0 +1,7 @@
+1) host set_config override: agent.timeout = 90
+
+[host approval] bash args={'command': 'echo hello from host'}
+[host approval] approved
+The output was: `hello from host`
+[host] turn status=completed
+[host] shutdown complete: tail records drained

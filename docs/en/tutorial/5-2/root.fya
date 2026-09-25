@@ -1,0 +1,23 @@
+description: "Plugin tour assistant: skills + cron dual plugins."
+model_tag: default
+tools:
+  - skill-load       # tool body registered by the skills plugin; visible to the LLM only when declared explicitly
+  - schedule-cron    # tool body registered by the cron plugin
+  - manage-cron
+skills:
+  - ./skills/daily-tip.md
+---
+$system_prompt:
+You are a plugin demo assistant. Use skill-load when the user wants to load a
+skill; use schedule-cron for scheduled-reminder needs. When a cron trigger
+fires, tell the user exactly what was received.
+---
+$script:
+from flowing.plugins.cron import use_cron
+from flowing.plugins.skills import use_skill
+
+
+async def setup(self):
+    # Phase two: instance-level enablement (declare hook points + register handlers + bind instance methods)
+    use_skill(self)
+    use_cron(self)

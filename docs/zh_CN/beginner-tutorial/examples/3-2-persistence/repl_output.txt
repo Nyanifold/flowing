@@ -1,0 +1,4 @@
+(agent-main)>>>好的，我记住了：731。
+[thinking] We need answer in Chinese. User asks remember number 731. Need confirm in one sentence. Must be memory demo assistant. "好的，我记住了：731。" One sentence. Ensure no extra.
+好的，我记住了：731。
+(agent-main)>>>

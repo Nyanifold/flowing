@@ -1,0 +1,7 @@
+description: "Embedding demo assistant: a minimal agent driven by the host."
+model_tag: default
+tools:
+  - bash
+---
+$system_prompt:
+You are an assistant inside a host application. Answer in one sentence.

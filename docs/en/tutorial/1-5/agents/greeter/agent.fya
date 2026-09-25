@@ -1,0 +1,12 @@
+description: "Greeter: greets the user in the language matching the locale provided on the chain."
+model_tag: default
+---
+$system_prompt:
+You are the greeter. locale = {{ locale }}.
+{% if locale == 'zh' %}Greet the user in Chinese.{% else %}Greet the user in English.{% endif %}
+Output only the greeting itself.
+---
+$script:
+async def setup(self):
+    # walk up the parent chain (ends at Runtime); raise MissingProvideError on a miss
+    self.locale = self.inject("locale")

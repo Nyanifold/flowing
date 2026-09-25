@@ -1,0 +1,2 @@
+按刚才的结构和任务清单，派 coder 写出 README.md，写完让它用 read 自检一遍并向你汇总。
+/exit

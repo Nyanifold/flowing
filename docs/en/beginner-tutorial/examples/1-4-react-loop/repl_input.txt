@@ -1,0 +1,3 @@
+First use glob to see what files are in the notes directory, then use read to read 使用说明.md, and finally summarize what it says in two sentences.
+/messages
+/exit

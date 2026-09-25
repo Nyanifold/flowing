@@ -1,0 +1,2 @@
+Report in one Chinese sentence: who the current user is, what the locale is, and what the timezone is.
+/exit

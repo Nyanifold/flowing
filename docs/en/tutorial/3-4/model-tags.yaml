@@ -1,0 +1,5 @@
+# Tag -> model entry name mapping (single value: one tag maps to one entry).
+tags:
+  default: deepseek-flash
+  fast: deepseek-flash      # multiple tags may point to the same entry
+  chat: deepseek-chat       # material for different agents declaring different model_tags

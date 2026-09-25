@@ -1,0 +1,3 @@
+先用 glob 查看 notes 目录有哪些文件，再用 read 读取 使用说明.md，最后用两句话概括它讲了什么。
+/messages
+/exit

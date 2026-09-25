@@ -1,0 +1,9 @@
+# cli-type tool: Jinja2 command template; inserted values are shlex-escaped
+# automatically; a non-zero exit code is normal output.
+name: run-tests
+type: cli
+description: Run the project test suite; returns the exit code and output.
+command: cd {{ working_dir }} && python -m pytest {{ test_path }}
+args:
+  working_dir: {type: string, description: Absolute path of the project root}
+  test_path: {type: string, default: sample/, description: Test path (relative to the working directory)}

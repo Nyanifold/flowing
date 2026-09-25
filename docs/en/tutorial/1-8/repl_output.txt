@@ -1,0 +1,4 @@
+(agent-main)>>>I am a concise English-speaking assistant here to help answer your questions and assist with tasks.
+[thinking] We need answer. User asks: "Introduce yourself in one sentence." Need concise English assistant. Must be one sentence. We should comply. Need maybe "I am a concise English-speaking assistant here to help you with information and tasks." One sentence. Keep within three sentences. Just one sentence. Ensure no extra? final.
+I am a concise English-speaking assistant here to help answer your questions and assist with tasks.
+(agent-main)>>>

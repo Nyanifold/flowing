@@ -1,0 +1,7 @@
+description: 嵌入演示助手：供宿主驱动的最小 Agent。
+model_tag: default
+tools:
+  - bash
+---
+$system_prompt:
+你是宿主应用内的助手，回答控制在一句话以内。

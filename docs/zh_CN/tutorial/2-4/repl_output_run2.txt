@@ -1,0 +1,56 @@
+(agent-main)>>>[thinking] Dispatch coder to write README.md, then read to self-check.
+[tool_call] subagent-invoke {"agent_type": "coder", "name": "coder-readme", "prompt": "任务：为一个极简 Python 示例项目编写 README.md。\n\n**目标文件（绝对路径）**：`<仓库根>/dev-docs/tutorial/2-4/target/README.md`\n（这是新建文件，请创建它；不要修改 target 目录下的任何其他文件。）\n\n**项目现状（已由 explore-agent 探查确认，请以实际读取的文件内容为准）**：\n```\ntarget/\n├── notes/\n│   ├── adder.md\n│   └── divider.md\n└── pkg/\n    └── calc.py\n```\n- `pkg/calc.py`：模块 docstring 为「示例项目：计算器。」，定义 `add(a, b)` 返回 `a + b`，`div(a, b)` 返回 `a / b`，当除数为 0 时 `raise ValueError(\"除数不能为 0\")`。\n- `notes/adder.md`、`notes/divider.md`：术语澄清笔记，说明项目中不存在名为 adder / divider 的组件，它们只是对 `add` / `div` 的叫法。\n- 无包管理文件、无 `__init__.py`、无测试、无入口文件。\n\n**写作要求（中文）**：\n1. 先自己读取 `pkg/calc.py`、`notes/adder.md`、`notes/divider.md` 的真实内容，README 必须与代码事实一致，不要凭空编造不存在的功能、依赖或命令。\n2. README 章节结构，按此顺序：\n   - 标题 + 一句话简介（示例计算器项目）\n   - 「项目结构」：目录树 + 各文件一句话说明\n   - 「功能说明 / API」：用表格或列表列出 `add(a, b)`、`div(a, b)`，说明参数、返回值、异常（`b == 0` 抛 `ValueError(\"除数不能为 0\")`）\n   - 「快速开始」：给出导入与调用示例代码（如 `from pkg.calc import add, div`，以及运行示例，注意 `pkg/` 无 `__init__.py`，说明需在 target 目录下运行或使用 `python -m`），示例代码要真实可运行\n   - 「环境要求」：Python 3（使用了类型注解），无第三方依赖\n   - 「术语澄清」：说明 `adder` / `divider` 不是实际组件，只是 `add` / `div` 的叫法\n   - 「当前限制 / 待办」：无包管理文件、无 `__init__.py`、无测试、无 CLI 入口\n3. 使用标准 Markdown，代码块标注语言（python / text）。简洁准确，不要冗长注水。\n\n**完成后自检（必须做）**：\n- 用 read 工具读取你刚写出的 `<仓库根>/dev-docs/tutorial/2-4/target/README.md`，逐条核对：\n  a) 所有章节是否齐全；\n  b) 是否与 `pkg/calc.py` 的实际函数签名和异常行为一致（含 `docstring` 与错误信息原文）；\n  c) Markdown 代码块是否闭合、层级是否正确；\n  d) 是否误写了不存在的文件/依赖/命令。\n- 如发现不一致，修正后重新读取确认。\n\n**汇报格式**：最终回复请包含 ① 目标文件绝对路径与行数；② README 章节清单；③ 自检结果（发现的问题与修正情况）；④ 自检时读取到的 README 内容摘录或全文关键片段，以便我核对。"}
+[tool:completed] subagent-invoke -> 
+[thinking] Report to user. Also update todo? The todo tool just parses text; I can mark completed. Let me update.
+
+The instructions say don't read/write files myself — fine. Todo update is fine, not a file operation in the working dir sense. I'll do it to reflect progress.
+[tool_call] todo {"tasks_text": "[x] 探查 target 目录结构、技术栈与关键文件（explore-agent 已完成）\n[x] 确认 README.md 目标路径与语言风格（target/README.md，中文）\n[x] 起草 README 骨架：项目名 + 一句话简介\n[x] 编写「项目结构」章节（pkg/calc.py、notes/adder.md、notes/divider.md）\n[x] 编写「功能/API 说明」章节：add / div 及 b==0 抛 ValueError(\"除数不能为 0\")\n[x] 编写「快速开始/使用方式」章节：import 方式 + 示例代码\n[x] 编写「环境要求」章节：Python 3，无第三方依赖\n[x] 编写「术语澄清」章节：adder / divider 并非实际组件\n[x] 编写「当前限制/待办」章节：无包管理文件、无 __init__.py、无测试\n[x] 由 coder 写入 target/README.md 并回报结果\n[x] 向用户汇总交付内容"}
+[tool:completed] todo -> 
+README.md 已由 coder 写出并完成 read 自检，任务清单 11 项全部关闭。
+
+## 交付物
+
+**文件**：`<仓库根>/dev-docs/tutorial/2-4/target/README.md`（新建，81 行，中文）
+**副作用**：未改动 target 下任何其他文件；测试产生的 `pkg/__pycache__/` 已清理，目录已还原为「原状 + README.md」。
+
+## 章节清单（7 节，按序）
+
+1. 标题 + 一句话简介 — `# 示例项目：计算器`
+2. `## 项目结构` — 目录树 + 各文件一句话说明
+3. `## 功能说明 / API` — 表格（函数/参数/返回值/异常）+ 补充说明
+4. `## 快速开始` — 可运行命令、期望输出、交互式示例、`PYTHONPATH` 变通
+5. `## 环境要求` — Python 3（类型注解）、无第三方依赖
+6. `## 术语澄清` — adder / divider 并非实际组件，只是 add / div 的叫法
+7. `## 当前限制 / 待办` — 无包管理文件 / 无 `__init__.py` / 无测试 / 无 CLI 入口
+
+## 自检结果
+
+| 检查项 | 结果 |
+|---|---|
+| 章节齐全、顺序正确 | ✅ 7 节齐备 |
+| 与 `pkg/calc.py` 事实一致 | ✅ 逐条核对通过（见下） |
+| Markdown 代码块闭合、层级正确 | ✅ `^``` ` 共 10 处，5 个代码块成对闭合；代码块内 `#` 注释未误判为标题 |
+| 无编造的文件/依赖/命令 | ✅ 仅提到 3 个真实文件；`pyproject.toml` / `setup.py` 只作为**缺失项**出现在限制章节 |
+
+与源码逐条核对：
+- 模块 docstring「示例项目：计算器。」— 逐字一致
+- `add(a: float, b: float) -> float` / `div(a: float, b: float) -> float` — 签名一致
+- 除零行为 `/` 错误信息原文 `除数不能为 0` — 一致
+
+**发现并修正 1 处问题**：初稿「快速开始」写作 `cd target`，但 README 就在 `target/` 内，路径有歧义；已改为 `cd /path/to/target # 本 README 与 pkg/ 所在目录`，并重新 read 确认。
+
+**实跑验证**（非纯静态核对）：
+```
+$ python3 -c "from pkg.calc import add, div; print(add(1, 2)); print(div(1, 2))"
+3
+0.5
+$ python3 -c "from pkg.calc import div; div(1, 0)"
+ValueError: 除数不能为 0
+```
+输出与 README 标注的期望输出一致，异常信息逐字匹配。
+
+## 需要你注意的两点
+
+- README 明确写了「无 `__init__.py`，依赖 Python 3 命名空间包机制导入」，因此示例要求先进入 `target/` 目录再执行——这是当前项目结构下的真实约束，已在文档中如实呈现。
+- 「当前限制 / 待办」一节把缺包管理文件、缺 `__init__.py`、缺测试、缺 CLI 都列为待办；如果你希望项目后续「可 pip 安装」或加测试，我可以再派 coder 做一版改进。
+(agent-main)>>>

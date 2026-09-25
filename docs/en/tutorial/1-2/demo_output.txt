@@ -1,0 +1,28 @@
+── ① User message: USER ──
+kind=user  source='chat_input'  tags=['order']  priority=NORMAL
+  content[0] text      text='Look up order 4521 for me'
+
+── ② Model response: PROVIDER (interleaved multimodal blocks) ──
+kind=provider  source=''  tags=[]  priority=NORMAL
+  content[0] thinking  thinking='The user wants to check an order; query the order tool first.' signature='sig-abc'
+  content[1] text      text="I'll look up the order."
+  content[2] tool_call id='call_9' name='query-order' args={'order_id': '4521'}
+
+── ③ Tool result: TOOL (pairing anchor + struct block) ──
+kind=tool  source=''  tags=[]  priority=NORMAL
+  content[0] struct    data={'status': 'shipped', 'eta': 'tomorrow'}
+tool_call_id=call_9  tool_status=completed
+
+── ④ Event message: EVENT (source states the origin) ──
+kind=event  source='tool_result'  tags=[]  priority=NORMAL
+  content[0] text      text='[background task build #7 finished]'
+  content[1] struct    data={'exit_code': 0}
+
+── ⑤ User multimodal message: media block inlined as base64 ──
+kind=user  source=''  tags=[]  priority=NORMAL
+  content[0] text      text='What is in this image?'
+  content[1] image     name='pixel.png' mime_type=image/png data(base64 first 24 chars)=iVBORw0KGgoAAAANSUhEUgAA…
+
+── ⑥ Pairing-anchor enforcement ──
+constructing an orphan TOOL message → ValueError: kind=TOOL messages must carry both tool_call_id and tool_status
+non-TOOL message carrying pairing fields → ValueError: tool_call_id / tool_status may only be carried by kind=TOOL messages

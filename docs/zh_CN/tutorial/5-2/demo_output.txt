@@ -1,0 +1,11 @@
+== ① 依赖声明：成环 fail-fast ==
+   p1 ↔ p2 互相依赖 → DependencyError
+== ② 迟装（install 迟于 mount）→ 创建期失败 ==
+   迟装 launch 失败: ToolNotFoundError（插件注册的工具本体/注册表在阶段一；必须先于首个 mount）
+== ③ cron 到点触发（编程式登记，最多等 70s）==
+   已登记每分钟任务，等待到点…
+   on_cron_trigger 触发 1 次；内容=['【提醒】该起来活动一下了。']
+   EVENT 消息进树 1 条（投递 source：'cron' 或自定义）
+== ④ 阶段一产物检查 ==
+   skill-load 在全局注册表: True
+   prompt 块含 skills catalog: True

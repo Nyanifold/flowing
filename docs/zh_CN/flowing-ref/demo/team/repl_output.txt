@@ -1,0 +1,7 @@
+(agent-main)>>>[thinking] The user wants me to translate 'hello world' into Chinese. I must call subagent-invoke to dispatch to translator, then use finish.
+[tool_call] subagent-invoke {"agent_type": "translator", "prompt": "请把以下文本翻译成中文（简体）：hello world"}
+[tool:completed] subagent-invoke -> 
+[tool_call] finish {"summary": "译文：你好，世界"}
+[tool:completed] finish -> 
+
+(agent-main)>>>

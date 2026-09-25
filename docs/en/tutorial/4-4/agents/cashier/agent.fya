@@ -1,0 +1,7 @@
+description: "-plain cashier: the bare view of make-payment (control group)."
+model_tag: default
+tools:
+  - "@/tools/make_payment.py"   # bare view: no alias, no overrides (@/ anchors the project root and must be quoted)
+---
+$system_prompt:
+You are the cashier. Initiate payments as the user requests.

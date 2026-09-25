@@ -1,0 +1,20 @@
+── Initial linear chain（head → root, reverse chronological）──
+  4 provider  parent=3 Switch to the south road.
+  3 user      parent=2 The north road is blocked.
+  2 provider  parent=1 Take the north road first.
+  1 user      parent=None How do I get to Route A?
+
+── After forking the parallel branch（head → root, reverse chronological）──
+  6 provider  parent=5 Shorter, but waterlogged.
+  5 user      parent=1 What about the south road?
+  1 user      parent=None How do I get to Route A?
+
+── Back at a: the fork point before insert（head → root, reverse chronological）──
+  1 user      parent=None How do I get to Route A?
+
+after insert: g=7, b.parent=7, e.parent=7 (both re-hung under g = merge semantics)
+── Fork-point structure after insert（head → root, reverse chronological）──
+  1 user      parent=None How do I get to Route A?
+
+e's text after update: 'What about the south road? (Note: bring an umbrella)'
+after remove(d): d is gone (chain.get raises KeyError); its child's parent=3 (re-hung to d's parent c)

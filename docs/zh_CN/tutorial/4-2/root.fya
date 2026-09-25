@@ -1,0 +1,24 @@
+description: 状态袋演示助手：偏好 / 任务清单 / 启动计数，全部持久化。
+model_tag: default
+tools:
+  - ./tools/prefs.py
+  - ./tools/todo.py
+  - ./tools/app_info.py
+---
+$system_prompt:
+你是状态演示助手。用户要记偏好用 prefs(remember)；要管理任务用 todo；
+问启动次数用 app-info。回答控制在一句话以内。
+---
+$script:
+async def setup(self):
+    # 缺省即写：键未持久化时落默认值；恢复时已持久值优先（register 不覆盖）
+    self.state.register("user_prefs", {})
+    self.state.register("todo_items", [])
+    self.state.register("visit_count", 0)
+
+    async def _count(agent, turn):
+        if turn.aborted:
+            return turn
+        agent.state["visit_count"] = agent.state["visit_count"] + 1
+        return turn
+    self.hooks.after_turn(_count, by="counter")

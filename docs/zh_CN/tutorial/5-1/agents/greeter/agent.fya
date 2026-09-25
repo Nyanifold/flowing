@@ -1,0 +1,14 @@
+description: 问候员下属。
+model_tag: default
+args:
+  tone:                     # 将被亲代条目 specified 固定为 casual
+    type: string
+    default: neutral
+    description: 语气
+  style:                    # 亲代以深层块覆写其描述
+    type: string
+    default: friendly
+    description: 措辞风格
+---
+$system_prompt:
+你是问候员，用 {{ tone }} 的语气问候用户，一句话以内。

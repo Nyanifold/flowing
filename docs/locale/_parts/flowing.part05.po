@@ -1,0 +1,1293 @@
+#: flowing.compiler.compile_fya_class:33 of
+msgid "解析或合成失败。"
+msgstr "Parsing or synthesis failed."
+
+#: flowing.compiler.compile_fya_class:35 of
+msgid ":func:`compile_fya_file` —— 落盘形态。"
+msgstr ":func:`compile_fya_file` — the on-disk form."
+
+#: flowing.compiler.compile_fya_file:1 of
+msgid "编译单个 ``.fya`` 为同目录 ``.py``，含 meta hash 校验。"
+msgstr "Compile a single ``.fya`` into a sibling ``.py``, with meta hash verification."
+
+#: flowing.compiler.compile_fya_file:5 of
+msgid "时序四步："
+msgstr "Four steps in sequence:"
+
+#: flowing.compiler.compile_fya_file:7 of
+msgid "合成：经 :func:`compile_fya_class` 同源的 ``_build`` 得到发射 源码（字面层 + 装配 + 合成一步完成）；"
+msgstr "Synthesis: obtain the emitted source via the same ``_build`` as :func:`compile_fya_class` (literal layer + assembly + synthesis in one step);"
+
+#: flowing.compiler.compile_fya_file:9 of
+msgid ""
+"发射：生成 ``.py`` 源码——Parsable 值以类体赋值形式写出 （如 ``system_prompt = Parsable"
+"('$./system-prompt.md')``）， ``$script`` 按「self 签名」二分：self 方法入类体，其余顶层 "
+"语句按原序提升到模块级；"
+msgstr ""
+"Emission: generate the ``.py`` source — Parsable values are written as class-body assignments (e.g. ``system_prompt = Parsable"
+"('$./system-prompt.md')``); ``$script`` is split in two by the \"self signature\": self methods go into the class body, and the remaining top-level "
+"statements are promoted to module level in their original order;"
+
+#: flowing.compiler.compile_fya_file:13 of
+msgid ""
+"meta 校验：读同目录 ``.flowing.meta.yaml`` （每目录一份， 条目以 ``fya_path.name`` "
+"为键）中本文件的条目——产物 ``.py`` 已存在且记录的 ``py_hash`` （AST 口径）与实际不符 → 抛 "
+":class:`flowing.errors.ArtifactModifiedError` （不覆盖）； ``fya_hash`` "
+"（解析结构口径）未变且 ``compiler_version`` 一致 → 跳过发射，直接返回产物路径（幂等）；版本不同 → 强制重编译 （见 "
+":data:`COMPILER_VERSION`）；"
+msgstr ""
+"meta verification: read this file's entry in the sibling ``.flowing.meta.yaml`` (one per directory, entries keyed by ``fya_path.name``) — if the artifact ``.py`` already exists and the recorded ``py_hash`` (AST-level) does not match reality, raise "
+":class:`flowing.errors.ArtifactModifiedError` (no overwrite); if ``fya_hash`` "
+"(parse-structure level) is unchanged and ``compiler_version`` matches, skip emission and return the artifact path directly (idempotent); if the version differs, force recompilation (see "
+":data:`COMPILER_VERSION`);"
+
+#: flowing.compiler.compile_fya_file:20 of
+msgid ""
+"写盘：写产物 ``.py`` 并更新 meta 条目三字段 （``fya_hash`` / ``py_hash`` / "
+"``compiler_version``）。"
+msgstr ""
+"Write to disk: write the artifact ``.py`` and update the three meta entry fields (``fya_hash`` / ``py_hash`` / "
+"``compiler_version``)."
+
+#: flowing.compiler.compile_fya_file:24 of
+msgid "项目根（同 :func:`compile_fya_class`，缺省回落 launch 上下文）。"
+msgstr "Project root (same as :func:`compile_fya_class`; falls back to the launch context by default)."
+
+#: flowing.compiler.compile_fya_file:26 of
+msgid "产物 ``.py`` 的路径（无论本次是否重编译）。"
+msgstr "Path of the artifact ``.py`` (whether or not recompilation happened this time)."
+
+#: flowing.compiler.compile_fya_file:27 of
+msgid "产物被外部修改 （``py_hash`` 不匹配，或无 meta 记录的既有产物）——报错中止， 不静默覆盖。"
+msgstr "The artifact was modified externally (``py_hash`` mismatch, or an existing artifact with no meta record) — abort with an error instead of silently overwriting."
+
+#: flowing.compiler.compile_fya_file:30 of
+msgid "解析或发射失败。"
+msgstr "Parsing or emission failed."
+
+#: flowing.compiler.compile_fya_file:32 of
+msgid ":func:`compile_project` —— 项目级入口。"
+msgstr ":func:`compile_project` — the project-level entry point."
+
+#: flowing.compiler.compile_project:1 of
+msgid "项目级编译：递归扫描 ``*.fya`` 并逐文件编译。"
+msgstr "Project-level compilation: recursively scan ``*.fya`` and compile file by file."
+
+#: flowing.compiler.compile_project:5 of
+msgid ""
+"``flowing compile <path>`` 的唯一编译入口。meta 随产物走——每个 ``.fya`` 的 hash "
+"条目写入其所在目录的 ``.flowing.meta.yaml``。 逐个调用 :func:`compile_fya_file`；任一文件抛 "
+"``ArtifactModifiedError`` 则中止（已产出文件不回滚——编译幂等， 重跑可继续）。"
+msgstr ""
+"The sole compilation entry point of ``flowing compile <path>``. meta travels with the artifacts — each ``.fya``'s hash "
+"entry is written into the ``.flowing.meta.yaml`` of its own directory. Calls :func:`compile_fya_file` one by one; if any file raises "
+"``ArtifactModifiedError``, abort (already-produced files are not rolled back — compilation is idempotent and re-running continues)."
+
+#: flowing.compiler.compile_project:13 of
+msgid "边缘情况：无 ``.fya`` 文件 → 返回空列表（调用方 CLI 打印 「无可编译文件」并正常退出）。"
+msgstr "Edge case: no ``.fya`` files → return an empty list (the calling CLI prints \"no compilable files\" and exits normally)."
+
+#: flowing.compiler.compile_project:15 of
+msgid "重复执行：无变更时全量命中 ``fya_hash``，等价 no-op。"
+msgstr "Repeated execution: with no changes, every ``fya_hash`` hits, equivalent to a no-op."
+
+#: flowing.compiler.compile_project:16 of
+msgid ""
+"不编译 tool / skill 形态的 ``.fya`` （``TOOL.fya`` / ``*.tool.fya`` / "
+"``*.skill.fya``——见 :func:`_is_agent_fya`）。"
+msgstr ""
+"Does not compile tool / skill form ``.fya`` files (``TOOL.fya`` / ``*.tool.fya`` / "
+"``*.skill.fya`` — see :func:`_is_agent_fya`)."
+
+#: flowing.compiler.compile_project:19 of
+msgid "项目根目录。"
+msgstr "The project root directory."
+
+#: flowing.compiler.compile_project:20 of
+msgid "全部产物 ``.py`` 路径（按扫描序，``sorted`` 保证稳定）。"
+msgstr "Paths of all artifact ``.py`` files (in scan order; ``sorted`` guarantees stability)."
+
+#: flowing.compiler.compile_project:21 of
+msgid "首个 hash 冲突处中止。"
+msgstr "Aborts at the first hash conflict."
+
+#: flowing.compiler.compile_project:23 of
+msgid ":func:`flowing.interfaces.cli.cmd_compile` —— CLI 壳与退出码映射。"
+msgstr ":func:`flowing.interfaces.cli.cmd_compile` — the CLI shell and exit-code mapping."
+
+#: ../../api/flowing.rst:41
+msgid "flowing.context module"
+msgstr "flowing.context module"
+
+#: flowing.context:1 of
+msgid "``flowing.context`` —— 上下文组装：system prompt 分层注册、求值与组装输出。"
+msgstr "``flowing.context`` — context assembly: layered registration, evaluation, and assembled output of the system prompt."
+
+#: flowing.context:5 of
+msgid "本模块定义「system prompt 分层注册 → 惰性求值 → Provider adapter 消费」 这条链路上的全部数据结构："
+msgstr "This module defines all data structures on the \"layered system-prompt registration → lazy evaluation → Provider adapter consumption\" pipeline:"
+
+#: flowing.context:8 of
+msgid ""
+":class:`PromptBlock`：一段 system prompt 的注册声明。记录惰性内容 （``content`` 为 "
+":class:`flowing.parsable.Parsable`，注册时不解析）与 管理元数据（``cache`` / ``tags`` / "
+"``by`` / ``enabled``）。"
+msgstr ""
+":class:`PromptBlock`: the registration declaration of one piece of system prompt. Records the lazy content (``content`` is a "
+":class:`flowing.parsable.Parsable`, not parsed at registration) and management metadata (``cache`` / ``tags`` / "
+"``by`` / ``enabled``)."
+
+#: flowing.context:11 of
+msgid ""
+":class:`PromptBlockList`：Agent 级有序容器（每个 Agent 实例一个，即 "
+"``agent.prompt_blocks``），语义继承 :class:`flowing.lists.ManagedList`。"
+msgstr ""
+":class:`PromptBlockList`: the Agent-level ordered container (one per Agent instance, i.e. "
+"``agent.prompt_blocks``); its semantics inherit :class:`flowing.lists.ManagedList`."
+
+#: flowing.context:13 of
+msgid ""
+":class:`PromptSegment`：单个块在一次组装中求值后的产物（已解析字符串 + cache 标记），是 "
+":class:`Context` 的 ``system_prompt`` 元素类型。"
+msgstr ""
+":class:`PromptSegment`: the product of evaluating a single block during one assembly (resolved string + cache flag); the element type of "
+":class:`Context`'s ``system_prompt``."
+
+#: flowing.context:15 of
+msgid ":class:`Context`：组装输出，``Provider.generate()`` 的唯一输入类型。"
+msgstr ":class:`Context`: the assembly output, the sole input type of ``Provider.generate()``. "
+
+#: flowing.context:16 of
+msgid ":class:`ContextUsageEstimate`：当前上下文占用的估算快照（锚点实测 + 本地估算）。"
+msgstr ":class:`ContextUsageEstimate`: an estimate snapshot of current context usage (anchor measurement + local estimation)."
+
+#: flowing.context:19 of
+msgid ""
+"本模块只定义数据结构与同步容器操作：上下文组装不 await 任何东西 （``Parsable.resolve()`` 是同步惰性求值，消息沿 "
+"``parent_id`` 链的收集 是纯内存遍历），全部类与方法都是同步的。组装动作本身由 ``flowing.agent.Agent`` "
+"完成，本模块只规约输出的形状。"
+msgstr ""
+"This module defines only data structures and synchronous container operations: context assembly awaits nothing (``Parsable.resolve()`` is synchronous lazy evaluation, and collecting messages along the "
+"``parent_id`` chain is a pure in-memory traversal); all classes and methods are synchronous. The assembly action itself is performed by ``flowing.agent.Agent``; "
+"this module only specifies the shape of the output."
+
+#: flowing.context:24 of
+msgid ":class:`Context` 是三个正交字段的组合，不是扁平消息列表——adapter 不得把三个字段合并成单一消息流后再自行拆分："
+msgstr ":class:`Context` is a combination of three orthogonal fields, not a flat message list — the adapter must not merge the three fields into a single message stream and then split it back itself:"
+
+#: flowing.context:31 flowing.parsable:136 of
+msgid "内容"
+msgstr "Content"
+
+#: flowing.context:32 of
+msgid "``system_prompt``"
+msgstr "``system_prompt``"
+
+#: flowing.context:33 of
+msgid ""
+"分层 prompt 段（:class:`PromptSegment` 列表，顺序 = 块注册顺序、 跳过已停用块），保留 cache 标记供 "
+"adapter 做缓存优化"
+msgstr ""
+"Layered prompt segments (a :class:`PromptSegment` list, ordered by block registration order, skipping disabled blocks), retaining cache flags for the "
+"adapter's cache optimization"
+
+#: flowing.context:35 of
+msgid "``tools``"
+msgstr "``tools``"
+
+#: flowing.context:36 of
+msgid "当前启用工具的定义列表（:class:`flowing.tool.ToolDefinition`）， 独立存在、不混进消息"
+msgstr "Definition list of currently enabled tools (:class:`flowing.tool.ToolDefinition`), existing independently and not mixed into messages"
+
+#: flowing.context:38 of
+msgid "``messages``"
+msgstr "``messages``"
+
+#: flowing.context:39 of
+msgid ""
+"消息级树上从根到 ``current_head_id`` 的上溯路径 （:class:`flowing.message.Message` "
+"列表，根→head 顺序）"
+msgstr ""
+"The upward path on the message-level tree from the root to ``current_head_id`` (a :class:`flowing.message.Message` "
+"list, in root→head order)"
+
+#: flowing.context:42 of
+msgid ""
+"``cache`` 是框架提供给 Provider adapter 的意图标记，取值 ``\"static\"`` / "
+"``\"dynamic\"`` / ``\"session\"``：``static`` 表示字节稳定、适合前缀缓存 "
+"（如文件引用块）；``dynamic`` 表示每轮可能变化；``session`` 表示会话 "
+"启动渲染一次、会话内不变。框架本地不实现任何缓存策略——每次 ``provider_gen`` 前都现场组装、现场求值，``cache`` "
+"只作意图通道，是否 缓存、如何缓存由 adapter / 服务端决定。"
+msgstr ""
+"``cache`` is an intent flag the framework provides to the Provider adapter, with values ``\"static\"`` / "
+"``\"dynamic\"`` / ``\"session\"``: ``static`` means byte-stable and suitable for prefix caching "
+"(e.g. file-reference blocks); ``dynamic`` means it may change every turn; ``session`` means rendered once at session start "
+"and unchanged within the session. The framework implements no caching policy locally — before every ``provider_gen`` it assembles and evaluates on the spot; ``cache`` "
+"is only an intent channel: whether and how to cache is decided by the adapter / server side."
+
+#: flowing.context:51 of
+msgid "``setup()`` 中注册 prompt 块（动态块 + 文件引用块）："
+msgstr "Register prompt blocks in ``setup()`` (dynamic blocks + file-reference blocks):"
+
+#: flowing.context:75 of
+msgid ""
+"``.fya`` 入口：``system_prompt`` 字段不需要注册块——它经 ``PromptBlockList[0]`` "
+"惰性引用块自动进入（见 :class:`PromptBlockList` docstring）。"
+msgstr ""
+"``.fya`` entry: the ``system_prompt`` field needs no registered block — it enters automatically via the ``PromptBlockList[0]`` "
+"lazy reference block (see the :class:`PromptBlockList` docstring)."
+
+#: flowing.context:81 of
+msgid ""
+"现场求值、零缓存：每次组装重新求值所有 Parsable、重新收集消息路径、 重新生成工具定义；框架不缓存组装结果。这保证环境变量、实例属性、 "
+"模式状态永远取最新值（惰性求值是功能正确性前提，不是性能优化）。"
+msgstr ""
+"On-the-spot evaluation, zero caching: every assembly re-evaluates all Parsables, re-collects the message path, and regenerates tool definitions; the framework never caches assembly results. This guarantees that environment variables, instance attributes, and "
+"mode state always take their latest values (lazy evaluation is a correctness prerequisite, not a performance optimization)."
+
+#: flowing.context:84 of
+msgid "每次组装产生全新对象与全新列表，两次组装的 ``Context`` 互不共享 可变状态。"
+msgstr "Each assembly produces brand-new objects and brand-new lists; two assembled ``Context`` objects share no mutable state."
+
+#: flowing.context:86 of
+msgid ""
+"半截 turn 不截断：崩溃恢复后，最后一条 ``turn_end=True`` 之后已落盘 的半截 turn 消息照常进入 "
+"``messages`` （它们是已产生的完整历史）； 执行状态不恢复、不续跑。"
+msgstr ""
+"Half-finished turns are not truncated: after crash recovery, persisted half-finished turn messages after the last ``turn_end=True`` still enter "
+"``messages`` as usual (they are complete history that was already produced); execution state is not restored and not resumed."
+
+#: flowing.context:89 of
+msgid ""
+"成对匹配：同一分支上 PROVIDER 消息内 ``ToolCallBlock.id`` 与后续 TOOL 消息的 "
+"``tool_call_id`` 字段 1:1 严格成对；恢复时合成的 ``synthetic=True`` 占位 TOOL 消息封闭孤立 "
+"tool_call，adapter 不需要 （也不应该）自行修补。"
+msgstr ""
+"Strict pairing: on the same branch, ``ToolCallBlock.id`` in a PROVIDER message pairs 1:1 with the "
+"``tool_call_id`` field of subsequent TOOL messages; the ``synthetic=True`` placeholder TOOL messages synthesized during recovery close orphaned "
+"tool_calls, so the adapter does not need to (and should not) patch them itself."
+
+#: flowing.context:93 of
+msgid "副线消息不出现：``side_query`` 副线调用的消息不进树、不落盘，不会 出现在主流程组装的 ``messages`` 中。"
+msgstr "Side-line messages do not appear: messages of ``side_query`` side-line calls neither enter the tree nor persist, and never show up in the ``messages`` assembled by the main flow."
+
+#: flowing.context:95 of
+msgid ""
+"组装结果可改写：先经 ``before_provider_gen`` 钩子（value 即 :class:`Context`，handler "
+"可整体改写三个字段）再交给 ``Provider.generate()``。"
+msgstr ""
+"The assembly result is rewritable: it first passes through the ``before_provider_gen`` hook (value is the :class:`Context`; handlers "
+"may rewrite all three fields wholesale) before being handed to ``Provider.generate()``. "
+
+#: flowing.context:98 of
+msgid ""
+"SYSTEM 注入双通道：本模块通道（``prompt_blocks.append(...)`` 注册的块 在每次组装时进入 "
+"``system_prompt``，不触发新回合，适合每轮自动追加的 上下文）；消息队列通道（``enqueue_message`` 投递 "
+"``SYSTEM`` 消息进入 消息历史，触发新回合，适合需要独立处理的通知）。两条通道见 "
+":class:`flowing.message.Message` 与 "
+":meth:`flowing.agent.Agent.enqueue_message`。"
+msgstr ""
+"Two channels for SYSTEM injection: this module's channel (blocks registered via ``prompt_blocks.append(...)`` enter "
+"``system_prompt`` at every assembly, do not trigger a new turn, and suit context appended automatically each round); the message-queue channel (``enqueue_message`` delivers "
+"``SYSTEM`` messages into message history, triggers a new turn, and suits notifications needing independent handling). For the two channels see "
+":class:`flowing.message.Message` and "
+":meth:`flowing.agent.Agent.enqueue_message`."
+
+#: flowing.context:108 of
+msgid "``PromptBlock.content`` 的类型；惰性求值与两步渲染规约。"
+msgstr "The type of ``PromptBlock.content``; the lazy-evaluation and two-step rendering contract."
+
+#: flowing.context:110 of
+msgid "``PromptBlockList`` 遵循的公共容器抽象与元素契约。"
+msgstr "The common container abstraction and element contract that ``PromptBlockList`` follows."
+
+#: flowing.context:112 of
+msgid "``Context.messages`` 的元素类型。"
+msgstr "The element type of ``Context.messages``."
+
+#: flowing.context:114 of
+msgid "``Context.tools`` 的元素类型。"
+msgstr "The element type of ``Context.tools``."
+
+#: flowing.context:116 of
+msgid ":class:`Context` 的最终消费者。"
+msgstr "The final consumer of :class:`Context`."
+
+#: flowing.context:117 of
+msgid ":meth:`flowing.agent.Agent._assemble_context`"
+msgstr ":meth:`flowing.agent.Agent._assemble_context`"
+
+#: flowing.context:118 of
+msgid "组装动作的承担方（内部 API，不属稳定契约）。"
+msgstr "The performer of the assembly action (internal API, not part of the stable contract)."
+
+#: flowing.context.ContextUsageEstimate:1 of
+msgid "当前上下文占用的估计——``flowing.agent.Agent.estimate_context_tokens`` 的 返回类型。"
+msgstr "Estimate of current context usage — the return type of ``flowing.agent.Agent.estimate_context_tokens``."
+
+#: flowing.context.ContextUsageEstimate:6 of
+msgid ""
+"「现在如果把上下文发给 LLM，大约多大」的快照值：``measured`` 是锚点 （最近一次 Provider "
+"实测）覆盖的部分，``estimated`` 是锚点之后（或无 锚点时全段）的本地启发式估算部分，``tokens`` 为两者之和。两部分分开 "
+"承载而非只给一个和——观测方可以区分「多少是实测、多少是猜的」。估算 部分永不用于计费（计费走 "
+"``TurnResult.token_usage`` 聚合口径，两条数据 流不混）。"
+msgstr ""
+"A snapshot value of \"roughly how big the context would be if sent to the LLM now\": ``measured`` is the part covered by the anchor (the most recent Provider "
+"measurement), ``estimated`` is the local heuristic estimate for the part after the anchor (or the whole span when there is no anchor), and ``tokens`` is the sum of both. The two parts are carried separately "
+"rather than as a single sum — observers can tell \"how much is measured versus how much is guessed\". The estimated part is never used for billing (billing follows the "
+"``TurnResult.token_usage`` aggregation; the two data flows do not mix)."
+
+#: flowing.context.ContextUsageEstimate:23 of
+msgid "纯数据投影（dataclass）：读取无副作用。"
+msgstr "Pure data projection (dataclass): reading has no side effects."
+
+#: flowing.context.ContextUsageEstimate:24 of
+msgid "``tokens == (measured or 0) + estimated`` 恒成立（构造方保证）。"
+msgstr "``tokens == (measured or 0) + estimated`` always holds (guaranteed by the constructor side)."
+
+#: flowing.context.ContextUsageEstimate:25 of
+msgid ""
+"``measured is None`` 表示当前路径无有效锚点（全新会话或锚点消息均被 移除）——此时 ``tokens`` "
+"全部为估算，观测方应视为低置信。"
+msgstr ""
+"``measured is None`` means the current path has no valid anchor (a brand-new session, or all anchor messages removed) — in this case ``tokens`` "
+"is entirely estimated and observers should treat it as low-confidence."
+
+#: flowing.context.ContextUsageEstimate:27 of
+msgid ""
+"边缘情况：路径为空 → ``tokens == 0``、``measured is None``、 ``anchor_message_id is "
+"None``。"
+msgstr ""
+"Edge case: empty path → ``tokens == 0``, ``measured is None``, ``anchor_message_id is "
+"None``."
+
+#: flowing.context.ContextUsageEstimate:29 of
+msgid ""
+"``usage_ratio`` 为 ``tokens / context_window``，窗口未知时为 ``None``； 不 "
+"clamp——大于 1.0 是合法的溢出信号（见 :attr:`usage_ratio`）。"
+msgstr ""
+"``usage_ratio`` is ``tokens / context_window``; ``None`` when the window is unknown; not "
+"clamped — values above 1.0 are a legitimate overflow signal (see :attr:`usage_ratio`)."
+
+#: flowing.context.ContextUsageEstimate:34 of
+msgid ":meth:`flowing.agent.Agent.estimate_context_tokens`"
+msgstr ":meth:`flowing.agent.Agent.estimate_context_tokens`"
+
+#: flowing.context.ContextUsageEstimate:35 of
+msgid "构造方与估算规则。"
+msgstr "The constructor side and the estimation rules."
+
+#: flowing.context.ContextUsageEstimate:36 of
+msgid ":func:`flowing.message.estimate_message_tokens`"
+msgstr ":func:`flowing.message.estimate_message_tokens`"
+
+#: flowing.context.ContextUsageEstimate:37 of
+msgid "逐条估算函数。"
+msgstr "The per-message estimation function."
+
+#: flowing.context.ContextUsageEstimate:38 of
+msgid ":class:`flowing.providers.Usage`"
+msgstr ":class:`flowing.providers.Usage`"
+
+#: flowing.context.ContextUsageEstimate:39 of
+msgid "锚点实测数据的类型。"
+msgstr "The type of anchor measurement data."
+
+#: flowing.context.ContextUsageEstimate.tokens:1 of
+msgid "上下文占用总量估计：``(measured or 0) + estimated``。"
+msgstr "Estimated total context usage: ``(measured or 0) + estimated``."
+
+#: flowing.context.ContextUsageEstimate.measured:1 of
+msgid "锚点实测部分（锚点 ``Usage.total_tokens``）；无有效锚点为 ``None``。"
+msgstr "The anchor-measured part (the anchor's ``Usage.total_tokens``); ``None`` when there is no valid anchor."
+
+#: flowing.context.ContextUsageEstimate.estimated:1 of
+msgid "本地启发式估算部分：锚点之后路径上消息与新增工具的估算；无锚点时覆盖 全路径消息、system prompt 与全部启用工具 schema。"
+msgstr "The local heuristic estimate part: estimation of messages on the path after the anchor plus newly added tools; with no anchor it covers all path messages, the system prompt, and the schemas of all enabled tools."
+
+#: flowing.context.ContextUsageEstimate.estimated:4 of
+msgid "估算口径的权威说明在 ``flowing.agent.Agent.estimate_context_tokens``。"
+msgstr "The authoritative description of the estimation semantics lives in ``flowing.agent.Agent.estimate_context_tokens``."
+
+#: flowing.context.ContextUsageEstimate.anchor_message_id:1 of
+msgid "锚点消息 id（当前路径上最近一条有效 PROVIDER 消息）；无锚点为 ``None``。"
+msgstr "Anchor message id (the most recent valid PROVIDER message on the current path); ``None`` when there is no anchor."
+
+#: flowing.context.ContextUsageEstimate.context_window:1 of
+msgid "当前模型的上下文窗口（``ModelConfig.context_window`` 求值结果）；模型未 声明时为 ``None``。"
+msgstr "The current model's context window (the evaluated result of ``ModelConfig.context_window``); ``None`` when the model does not declare one."
+
+#: flowing.context.ContextUsageEstimate.usage_ratio:1 of
+msgid "占用比率 ``tokens / context_window``；窗口未知时为 ``None``。"
+msgstr "Usage ratio ``tokens / context_window``; ``None`` when the window is unknown."
+
+#: flowing.context.ContextUsageEstimate.usage_ratio:5 of
+msgid "不 clamp：大于 1.0 是合法的溢出信号，观测方自行决定阈值反应；本 属性不做任何判断。"
+msgstr "Not clamped: values above 1.0 are a legitimate overflow signal; observers decide their own threshold reactions; this property makes no judgment."
+
+#: ../../api/flowing.rst:49
+msgid "flowing.errors module"
+msgstr "flowing.errors module"
+
+#: flowing.errors:1 of
+msgid "Flowing 统一异常层次（``flowing.errors``）。"
+msgstr "Flowing's unified exception hierarchy (``flowing.errors``)."
+
+#: flowing.errors:5 of
+msgid ""
+"本模块定义 Flowing 框架的全部具名异常类型，是框架核心层（非扩展、非应用层） 的公共契约。``FlowingError`` "
+"是统一根，向下按职责分为十个类别：配置、注入、 钩子、工具、资源、Provider、依赖、通信、格式、编译；另有三个异常直接挂根、 "
+"不属任何类别——``EntryNameConflictError`` （Agent 绑定层别名冲突）、 "
+"``FormatVersionError`` 与 ``CorruptionError`` （jsonl 持久化文件；与声明式 文件格式的 "
+"``FormatError`` 分层，持久化层不专设中间层）。外加一个刻意游离 于普通错误语义之外的信号类 ``Intercepted`` （钩子"
+" handler 的有意硬阻断信号， 刻意不继承 ``FlowingError``）。"
+msgstr ""
+"This module defines all named exception types of the Flowing framework; it is the public contract of the framework core layer (not extensions, not the application layer). ``FlowingError`` "
+"is the unified root, subdivided by responsibility into ten categories: config, provide/inject, hooks, tools, resources, Provider, dependency, communication, format, and compile; three more exceptions hang directly off the root and belong to no category — "
+"``EntryNameConflictError`` (alias conflicts at the Agent binding layer), "
+"``FormatVersionError`` and ``CorruptionError`` (jsonl persistence files; layered apart from the declarative file format's "
+"``FormatError``, the persistence layer gets no dedicated middle layer). Plus one signal class deliberately outside ordinary error semantics, ``Intercepted`` (a hook "
+"handler's intentional hard-interruption signal, deliberately not inheriting ``FlowingError``)."
+
+#: flowing.errors:14 of
+msgid ""
+"import 期作者笔误刻意用内置 ``ValueError``，不入本层次——如 ``register_provider`` 装饰到非 "
+"``Provider`` 子类或缺少非空 ``name`` 类属性 的对象。这类错误是装饰器用错对象（编程错误），不该被任何恢复逻辑捕获； "
+"可恢复的冲突情形另有具名类型（``ProviderNameConflictError``）。"
+msgstr ""
+"Author typos at import time deliberately use the builtin ``ValueError`` and stay outside this hierarchy — e.g. ``register_provider`` decorating an object that is not a "
+"``Provider`` subclass or lacks a non-empty ``name`` class attribute. Such errors are decorating the wrong object (programming errors) and should not be caught by any recovery logic; "
+"recoverable conflict situations have their own named type (``ProviderNameConflictError``)."
+
+#: flowing.errors:19 of
+msgid "异常层次树（示意图，非表格——仅展示继承关系）:"
+msgstr "Exception hierarchy tree (schematic, not a table — shows only inheritance):"
+
+#: flowing.errors:103 of
+msgid ""
+"错误分类与捕获：框架异常统一挂 ``FlowingError``，``except FlowingError`` 可一网打尽框架错误，不误捕 "
+"Python 内置异常与第三方库异常。分类中间层 （``ProviderError`` / ``ToolError`` "
+"等）只承载归属、不附加行为：按类别 捕获用 ``except ProviderError``，精确捕获用具体子类。"
+msgstr ""
+"Error classification and catching: framework exceptions all hang off ``FlowingError``, so ``except FlowingError`` catches every framework error without miscatching "
+"Python builtin or third-party exceptions. Classification middle layers (``ProviderError`` / ``ToolError`` "
+"etc.) carry only attribution, no behavior: catch by category with ``except ProviderError``, catch precisely with concrete subclasses."
+
+#: flowing.errors:107 of
+msgid ""
+"``Intercepted`` 刻意不是 ``FlowingError`` 的子类：它是钩子 handler 的 有意硬阻断信号（审批拒绝 / "
+"安全阻断 / 权限检查等正常业务分支），捕获 框架错误时不会误捕它。"
+msgstr ""
+"``Intercepted`` is deliberately not a subclass of ``FlowingError``: it is a hook handler's intentional hard-interruption signal (normal business branches such as approval rejection / "
+"safety blocking / permission checks), and catching framework errors never miscatches it."
+
+#: flowing.errors:110 of
+msgid ""
+"import 期作者笔误（如 ``register_provider`` 装饰到非 ``Provider`` 子类） 刻意用内置 "
+"``ValueError``：编程错误，不该被任何恢复逻辑捕获。"
+msgstr ""
+"Author typos at import time (e.g. ``register_provider`` decorating a non-``Provider`` subclass) deliberately use the builtin "
+"``ValueError``: programming errors that should not be caught by any recovery logic."
+
+#: flowing.errors:112 of
+msgid ""
+"Provider 调用期错误的可重试分类：``RateLimitedError`` / ``ServerError`` / "
+"``NetworkError`` / ``ProviderTimeoutError`` 属可重试类； ``ContextLengthError``"
+" / ``RequestTooLargeError`` / ``QuotaExhaustedError`` / "
+"``AuthenticationError`` / ``InvalidRequestError`` / "
+"``ContentPolicyError`` 不可重试。可重试性只是分类事实：框架核心不内置重试，是否重试、退避多久 由 "
+"``on_provider_error`` handler（如 ``use_retry()``）决定。"
+msgstr ""
+"Retriability classification of Provider call-time errors: ``RateLimitedError`` / ``ServerError`` / "
+"``NetworkError`` / ``ProviderTimeoutError`` are retriable; ``ContextLengthError``"
+" / ``RequestTooLargeError`` / ``QuotaExhaustedError`` / "
+"``AuthenticationError`` / ``InvalidRequestError`` / "
+"``ContentPolicyError`` are not. Retriability is only a classification fact: the framework core has no built-in retry; whether to retry and how long to back off is decided by the "
+"``on_provider_error`` handler (e.g. ``use_retry()``)."
+
+#: flowing.errors:118 of
+msgid ""
+"Provider 调用期错误一律经 ``on_provider_error`` 分发：handler 写 "
+"``can_continue=True`` 则同一回合内重试，否则回合以 error 结局终止、 Agent 存活；``after_turn`` "
+"收尾钩子在所有路径（含异常路径）照常触发， 已产生的消息照常持久化。``ContextLengthError`` 等原样重发必然重现的 "
+"错误同样分发——压缩 / 换模型 / 仅观察等处置均属 handler 内部逻辑。"
+msgstr ""
+"All Provider call-time errors are dispatched through ``on_provider_error``: if the handler sets "
+"``can_continue=True``, the call is retried within the same turn; otherwise the turn ends with an error outcome and the Agent survives; the ``after_turn`` "
+"teardown hook fires as usual on all paths (including exception paths), and already-produced messages are persisted as usual. Errors like ``ContextLengthError`` that would inevitably recur on an identical resend are dispatched too — "
+"handling such as compaction / switching models / mere observation is internal handler logic."
+
+#: flowing.errors:123 of
+msgid ""
+"``MissingEnvironmentVariableError`` 在 Provider 条目加载时抛出（fail-fast： "
+"出错即刻抛异常、不静默降级），与调用期异常不在同一时序。"
+msgstr ""
+"``MissingEnvironmentVariableError`` is raised when a Provider entry is loaded (fail-fast: "
+"raise immediately on error, no silent degradation); it is not on the same timeline as call-time exceptions."
+
+#: flowing.errors:125 of
+msgid ""
+"错误钩子只有 ``on_provider_error``：``on_tool_error`` / ``on_subagent_error`` / "
+"``on_error`` / ``before_error`` 均不存在。工具 业务错误是 "
+"``ToolResult(status=\"error\")`` 正常产物（LLM 可见、不触发任何 错误钩子）；工具代码崩溃与子 Agent "
+"调用异常直接上抛，无错误钩子兜底； 钩子 handler 的普通异常同样直接上抛（dispatch 不捕获、不继续后续 handler）。"
+msgstr ""
+"The only error hook is ``on_provider_error``: ``on_tool_error`` / ``on_subagent_error`` / "
+"``on_error`` / ``before_error`` do not exist. A tool business error is a normal "
+"``ToolResult(status=\"error\")`` product (visible to the LLM, triggering no error hook); tool code crashes and subagent invocation "
+"exceptions propagate directly with no error hook as backstop; ordinary exceptions from hook handlers likewise propagate directly (dispatch neither catches them nor continues to later handlers)."
+
+#: flowing.errors:131 of
+msgid ""
+"消息与字段：本模块所有异常的消息文本面向人读（日志 / 提示，不回喂 LLM）；机器可读信息以结构化字段为权威，调用方不要解析消息文本。具名 "
+"字段在构造时由参数确定（除显式标注默认值者）。"
+msgstr ""
+"Messages and fields: the message text of every exception in this module is for humans (logs / prompts, never fed back to the LLM); machine-readable information is authoritative in structured fields — callers must not parse message text. Named "
+"fields are fixed by parameters at construction (except those explicitly marked with defaults)."
+
+#: flowing.errors:134 of
+msgid ""
+"内置 ``KeyError`` / ``asyncio.CancelledError`` / ``RuntimeError`` 按 Python "
+"语义使用，不包装进本层次。"
+msgstr ""
+"Builtin ``KeyError`` / ``asyncio.CancelledError`` / ``RuntimeError`` are used with Python "
+"semantics and are not wrapped into this hierarchy."
+
+#: flowing.errors:136 of
+msgid "本模块的全部公开类型属跨版本稳定契约。"
+msgstr "All public types of this module are part of the cross-version stable contract."
+
+#: flowing.errors:141 of
+msgid "逻辑 Turn 的执行期载体；``after_turn`` 收尾钩子在所有路径照常触发。"
+msgstr "The execution-time carrier of a logical Turn; the ``after_turn`` teardown hook fires as usual on all paths."
+
+#: flowing.errors:142 of
+msgid ":class:`flowing.hooks.HookRegistry`"
+msgstr ":class:`flowing.hooks.HookRegistry`"
+
+#: flowing.errors:143 of
+msgid ""
+"``on_provider_error`` 钩子点的声明与 dispatch；``Intercepted`` 的 重抛规则在 dispatch "
+"算法中定义。"
+msgstr ""
+"Declaration and dispatch of the ``on_provider_error`` hook point; the re-raise rule for ``Intercepted`` is defined in the dispatch "
+"algorithm."
+
+#: flowing.errors:146 of
+msgid "``blocked`` / ``error`` 状态的结果载体；工具业务错误是正常产物而 非异常。"
+msgstr "The result carrier for ``blocked`` / ``error`` states; tool business errors are normal products, not exceptions."
+
+#: flowing.errors:148 of
+msgid ":class:`flowing.providers.Provider`"
+msgstr ":class:`flowing.providers.Provider`"
+
+#: flowing.errors:149 of
+msgid "Provider adapter 的异常抛出契约（十个调用期错误类型为互操作标准）。"
+msgstr "The exception-raising contract of Provider adapters (the ten call-time error types are the interoperability standard)."
+
+#: flowing.errors:150 of
+msgid ":mod:`flowing.composables.retry`"
+msgstr ":mod:`flowing.composables.retry`"
+
+#: flowing.errors:151 of
+msgid "可选的 ``use_retry()``——重试策略的唯一内置（非默认）提供方。"
+msgstr "The optional ``use_retry()`` — the only builtin (non-default) provider of retry policy."
+
+#: flowing.errors.ConfigError:1 of
+msgid "配置读取时机与配置命名空间注册相关异常的分类中间层。"
+msgstr "Classification middle layer for exceptions about config-read timing and config-namespace registration."
+
+#: flowing.errors.ConfigError:5 of
+msgid ""
+"配置类异常的公共基类，覆盖两类场景：配置未就绪时读取（ ``ConfigNotReadyError``）与多个扩展注册同一配置命名空间（ "
+"``ConfigNamespaceConflictError``）。配置错误属于部署 / 声明期错误，框架在 出错点立即抛出（fail-"
+"fast），不静默降级。"
+msgstr ""
+"Common base class of config-related exceptions, covering two scenarios: reading config before it is ready (``ConfigNotReadyError``) and multiple extensions registering the same config namespace ("
+"``ConfigNamespaceConflictError``). Config errors are deployment / declaration-time errors; the framework raises immediately at the error site (fail-"
+"fast) without silent degradation."
+
+#: flowing.errors.ConfigError:12 of
+msgid "本类是分类中间层：框架实际抛出的是其具体子类；按类别捕获用 ``except ConfigError``。"
+msgstr "This class is a classification middle layer: what the framework actually raises are its concrete subclasses; catch by category with ``except ConfigError``."
+
+#: flowing.errors.ConfigError:14 of
+msgid "配置错误不可重试：修正配置或修正调用位置后重新启动。"
+msgstr "Config errors are not retriable: fix the config or the call site, then restart."
+
+#: flowing.errors.ConfigError:18 of
+msgid ""
+":class:`flowing.errors.ConfigNotReadyError` "
+":class:`flowing.errors.ConfigNamespaceConflictError` "
+":meth:`flowing.runtime.Runtime.get_config`"
+msgstr ""
+":class:`flowing.errors.ConfigNotReadyError` "
+":class:`flowing.errors.ConfigNamespaceConflictError` "
+":meth:`flowing.runtime.Runtime.get_config`"
+
+#: flowing.errors.ConfigNotReadyError:1 of
+msgid "配置就绪之前调用 ``get_config()`` 时抛出。"
+msgstr "Raised when ``get_config()`` is called before config is ready."
+
+#: flowing.errors.ConfigNotReadyError:5 of
+msgid ""
+"``Runtime.get_config()`` 在配置就绪前被调用时抛出。就绪的时点是优先级链 （环境变量 > 命令行 > 用户级 > 项目级 "
+"> 默认值）浅合并完成之时——典型未 就绪场景是模块顶层（import 期）调用；合并完成后任何时机均可调用 "
+"（``setup()``、钩子回调、工具 callable、``main()`` 后续代码）。"
+msgstr ""
+"Raised when ``Runtime.get_config()`` is called before config is ready. Readiness is the moment the priority chain (environment variables > command line > user level > project level "
+"> defaults) finishes its shallow merge — the typical not-ready scenario is a call at module top level (import time); after the merge completes, calls are fine at any time "
+"(``setup()``, hook callbacks, tool callables, code after ``main()``)."
+
+#: flowing.errors.ConfigNotReadyError:23 flowing.errors.MissingContextError:24
+#: of
+msgid "无结构化字段；消息为固定的英文提示。"
+msgstr "No structured fields; the message is a fixed English prompt."
+
+#: flowing.errors.ConfigNotReadyError:24 of
+msgid "编程错误：修正调用位置（改为在就绪后的时机读取），调用方不捕获。"
+msgstr "Programming error: fix the call site (read at a post-readiness time instead); callers do not catch it."
+
+#: flowing.errors.ConfigNotReadyError:25 of
+msgid "多 Runtime 场景按各自 Runtime 的就绪状态独立判定。"
+msgstr "In multi-Runtime scenarios, readiness is judged independently per Runtime."
+
+#: flowing.errors.ConfigNotReadyError:29 of
+msgid ""
+":meth:`flowing.runtime.Runtime.get_config` "
+":class:`flowing.errors.ConfigError`"
+msgstr ""
+":meth:`flowing.runtime.Runtime.get_config` "
+":class:`flowing.errors.ConfigError`"
+
+#: flowing.errors.ConfigNamespaceConflictError:1 of
+msgid "多个扩展注册同一配置命名空间时抛出。"
+msgstr "Raised when multiple extensions register the same config namespace."
+
+#: flowing.errors.ConfigNamespaceConflictError:5 of
+msgid ""
+"``Runtime.register_config_namespace(name, schema)`` 检测到命名空间已被其它 "
+"扩展注册时抛出。命名空间注册声明「谁负责校验 / 提供默认值 / 类型转换」； "
+"两个扩展认领同一命名空间会产生两套冲突的校验规则，必须在注册时立即失败 （fail-"
+"fast）。未被任何扩展注册的命名空间可自由读取，不触发本异常。"
+msgstr ""
+"Raised when ``Runtime.register_config_namespace(name, schema)`` detects the namespace has already been registered by another "
+"extension. Namespace registration declares \"who is responsible for validation / providing defaults / type conversion\"; "
+"two extensions claiming the same namespace would produce two conflicting sets of validation rules, so it must fail immediately at registration (fail-"
+"fast). Namespaces not registered by any extension can be read freely without triggering this exception."
+
+#: flowing.errors.ConfigNamespaceConflictError:19 of
+msgid "``namespace`` 字段为冲突的配置命名空间名（诊断信息，框架不做后续仲裁）。"
+msgstr "The ``namespace`` field is the conflicting config namespace name (diagnostic information; the framework does no further arbitration)."
+
+#: flowing.errors.ConfigNamespaceConflictError:20
+#: flowing.errors.DuplicateHookPointError:22 of
+msgid "安装期编程错误：调用方不捕获。"
+msgstr "Install-time programming error: callers do not catch it."
+
+#: flowing.errors.ConfigNamespaceConflictError:21 of
+msgid "注册只声明校验职责，不做命名空间访问控制——任何代码可读任何命名空间。"
+msgstr "Registration only declares validation responsibility; it is not namespace access control — any code may read any namespace."
+
+#: flowing.errors.ConfigNamespaceConflictError:25 of
+msgid ""
+":meth:`flowing.runtime.Runtime.register_config_namespace` "
+":class:`flowing.errors.ConfigError`"
+msgstr ""
+":meth:`flowing.runtime.Runtime.register_config_namespace` "
+":class:`flowing.errors.ConfigError`"
+
+#: flowing.errors.ConfigNamespaceConflictError.namespace:1 of
+msgid "冲突的配置命名空间名（诊断信息，框架不做后续仲裁）。"
+msgstr "The conflicting config namespace name (diagnostic information; the framework does no further arbitration)."
+
+#: flowing.errors.ProvideError:1 of
+msgid "provide/inject 机制异常的分类中间层。"
+msgstr "Classification middle layer for provide/inject mechanism exceptions."
+
+#: flowing.errors.ProvideError:5 of
+msgid ""
+"provide-inject 链相关异常的公共基类。inject 沿亲代链（Agent 子树 → Workflow → "
+"Runtime，Runtime 为链终点）逐级上溯查找，命中即返回；当前唯一子类是链 上溯到终点仍未命中时抛出的 "
+"``MissingProvideError``。"
+msgstr ""
+"Common base class of provide-inject chain exceptions. inject walks up the parent chain (Agent subtree → Workflow → "
+"Runtime, with Runtime as the chain terminus) level by level and returns on a hit; its current only subclass is ``MissingProvideError``, "
+"raised when the walk reaches the terminus without a hit."
+
+#: flowing.errors.ProvideError:11 of
+msgid "本类是分类中间层：框架实际抛出的是其具体子类；按类别捕获用 ``except ProvideError``。"
+msgstr "This class is a classification middle layer: what the framework actually raises are its concrete subclasses; catch by category with ``except ProvideError``."
+
+#: flowing.errors.ProvideError:13 of
+msgid "inject 查找是实时的（不缓存）：运行期 ``provide`` 更新后再次 inject 立即得到新值。"
+msgstr "inject lookup is live (not cached): after a runtime ``provide`` update, the next inject immediately gets the new value."
+
+#: flowing.errors.ProvideError:18 of
+msgid ""
+":class:`flowing.errors.MissingProvideError` "
+":meth:`flowing.agent.Agent.inject` :func:`flowing.runtime.inject_from`"
+msgstr ""
+":class:`flowing.errors.MissingProvideError` "
+":meth:`flowing.agent.Agent.inject` :func:`flowing.runtime.inject_from`"
+
+#: flowing.errors.MissingProvideError:1 of
+msgid "inject 沿亲代链上溯到终点（Runtime）仍未找到 key 时抛出。"
+msgstr "Raised when inject walks up the parent chain to its terminus (Runtime) without finding the key."
+
+#: flowing.errors.MissingProvideError:5 of
+msgid ""
+"``inject(key)`` 查找失败时抛出的唯一异常：沿亲代链从当前节点逐级向根查找， 到 Runtime "
+"终点仍未命中即抛出。查找是实时的（不缓存），运行期 ``provide`` 更新后再次 inject 可得新值。"
+msgstr ""
+"The only exception raised when an ``inject(key)`` lookup fails: it searches from the current node up the parent chain toward the root level by level, and raises when the Runtime "
+"terminus is reached without a hit. The lookup is live (not cached); after a runtime ``provide`` update, injecting again yields the new value."
+
+#: flowing.errors.MissingProvideError:18 of
+msgid ""
+"``key`` 字段为未命中的 provide key（``InjectionKey[T]`` 退化为其 ``name`` "
+"字符串）；仅诊断用途，不提供「最接近的 key」之类的猜测。"
+msgstr ""
+"The ``key`` field is the missed provide key (an ``InjectionKey[T]`` degrades to its ``name`` "
+"string); diagnostic only, with no \"closest key\" style guessing."
+
+#: flowing.errors.MissingProvideError:20 of
+msgid "``inject`` 没有默认值参数：需要「缺失时用默认值」的语义，请自行捕获本 异常后回退默认值。"
+msgstr "``inject`` has no default-value parameter: for \"use a default when missing\" semantics, catch this exception yourself and fall back to the default."
+
+#: flowing.errors.MissingProvideError:22 of
+msgid "结构错误、不可重试。"
+msgstr "A structural error; not retriable."
+
+#: flowing.errors.MissingProvideError:23 of
+msgid "启动期插件的静态依赖校验（缺失警告、成环报错）由 ``DependencyError`` 相关机制承担；本异常是运行期动态注入的兜底——两层互补。"
+msgstr "Static dependency validation of plugins at startup (missing-dependency warnings, cycle errors) is handled by the ``DependencyError``-related mechanism; this exception is the backstop for runtime dynamic injection — the two layers complement each other."
+
+#: flowing.errors.MissingProvideError:28 of
+msgid ""
+":meth:`flowing.agent.Agent.inject` :class:`flowing.params.InjectionKey` "
+":class:`flowing.errors.DependencyError`"
+msgstr ""
+":meth:`flowing.agent.Agent.inject` :class:`flowing.params.InjectionKey` "
+":class:`flowing.errors.DependencyError`"
+
+#: flowing.errors.MissingProvideError.key:1 of
+msgid "未命中的 provide key（``InjectionKey[T]`` 退化为其 ``name`` 字符串）；仅诊断用途。"
+msgstr "The missed provide key (an ``InjectionKey[T]`` degrades to its ``name`` string); diagnostic only."
+
+#: flowing.errors.HookError:1 of
+msgid "钩子点声明与访问异常的分类中间层。"
+msgstr "Classification middle layer for hook-point declaration and access exceptions."
+
+#: flowing.errors.HookError:5 of
+msgid ""
+"钩子点声明（``declare()``）与访问（``hooks.<name>`` 查找）相关异常的公共 "
+"基类：访问未声明钩子点（``UnknownHookPointError``）与同名钩子点声明冲突 "
+"（``DuplicateHookPointError``）。插件加载 / 重载路径以 ``except HookError`` "
+"统一兜捕钩子声明阶段的失败，而不误捕其它子系统的异常。"
+msgstr ""
+"Common base class of exceptions about hook-point declaration (``declare()``) and access (``hooks.<name>`` lookup): "
+"accessing an undeclared hook point (``UnknownHookPointError``) and conflicting declarations of a same-named hook point "
+"(``DuplicateHookPointError``). Plugin load / reload paths use ``except HookError`` "
+"to uniformly backstop failures of the hook-declaration phase without miscatching exceptions from other subsystems."
+
+#: flowing.errors.HookError:12 of
+msgid "本类是分类中间层：框架实际抛出的是其具体子类；按类别捕获用 ``except HookError``。"
+msgstr "This class is a classification middle layer: what the framework actually raises are its concrete subclasses; catch by category with ``except HookError``."
+
+#: flowing.errors.HookError:14 of
+msgid "钩子 handler 的普通异常不属于本类——dispatch 不捕获、不继续后续 handler，直接上抛，无兜底钩子。"
+msgstr "Ordinary exceptions from hook handlers do not belong to this class — dispatch neither catches them nor continues to later handlers; they propagate directly, with no backstop hook."
+
+#: flowing.errors.HookError:19 of
+msgid ""
+":class:`flowing.errors.UnknownHookPointError` "
+":class:`flowing.errors.DuplicateHookPointError` "
+":class:`flowing.hooks.HookRegistry`"
+msgstr ""
+":class:`flowing.errors.UnknownHookPointError` "
+":class:`flowing.errors.DuplicateHookPointError` "
+":class:`flowing.hooks.HookRegistry`"
+
+#: flowing.errors.UnknownHookPointError:1 of
+msgid "访问未声明的钩子点时抛出。"
+msgstr "Raised when an undeclared hook point is accessed."
+
+#: flowing.errors.UnknownHookPointError:5 of
+msgid ""
+"``self.hooks.<name>`` 的按名查找只查找不创建：name 既不在框架预填的钩子点 中、也未被任何扩展 "
+"``declare()`` 时抛出。钩子点集合因此是显式契约——扩展 必须先声明再使用，拼写错误在注册时即暴露，而不是静默创建一个永远不会被 "
+"dispatch 的空钩子点。"
+msgstr ""
+"Name lookup on ``self.hooks.<name>`` only looks up, never creates: raised when the name is neither among the framework's pre-filled hook points nor "
+"declared by any extension via ``declare()``. The hook-point set is thus an explicit contract — extensions must declare before use; a typo surfaces at registration time instead of silently creating an empty hook point that will never be "
+"dispatched."
+
+#: flowing.errors.UnknownHookPointError:18 of
+msgid "``name`` 字段为被访问但未声明的钩子点名（精确字符串，不含相似名建议）。"
+msgstr "The ``name`` field is the accessed-but-undeclared hook-point name (exact string, no similar-name suggestions)."
+
+#: flowing.errors.UnknownHookPointError:19 of
+msgid "编程错误：调用方不捕获；修正钩子点名，或先 ``declare()`` / 启用对应扩展。"
+msgstr "Programming error: callers do not catch it; fix the hook-point name, or ``declare()`` first / enable the corresponding extension."
+
+#: flowing.errors.UnknownHookPointError:20 of
+msgid "未启用扩展的 Agent 访问其扩展钩子点即抛本异常——未启用扩展零开销。"
+msgstr "An Agent accessing the hook point of an extension it has not enabled raises this exception — disabled extensions cost nothing."
+
+#: flowing.errors.DuplicateHookPointError:27
+#: flowing.errors.UnknownHookPointError:24 of
+msgid ""
+":meth:`flowing.hooks.HookRegistry.declare` "
+":class:`flowing.errors.HookError`"
+msgstr ""
+":meth:`flowing.hooks.HookRegistry.declare` "
+":class:`flowing.errors.HookError`"
+
+#: flowing.errors.UnknownHookPointError.name:1 of
+msgid "被访问但未声明的钩子点名（精确字符串，不含相似名建议）。"
+msgstr "The accessed-but-undeclared hook-point name (exact string, no similar-name suggestions)."
+
+#: flowing.errors.DuplicateHookPointError:1 of
+msgid "``declare()`` 声明同名钩子点且来源无法区分时抛出。"
+msgstr "Raised when ``declare()`` declares a same-named hook point and the sources cannot be distinguished."
+
+#: flowing.errors.DuplicateHookPointError:5 of
+msgid ""
+"两种冲突形态：同名 + 不同 ``by``；同名 + 双方 ``by=None``。同名 + 同 ``by`` 是幂等返回已有的 "
+"``HookList``，不抛出。"
+msgstr ""
+"Two conflict forms: same name + different ``by``; same name + both ``by=None``. Same name + same ``by`` idempotently returns the existing "
+"``HookList`` without raising."
+
+#: flowing.errors.DuplicateHookPointError:18 of
+msgid ""
+"字段 ``name`` （冲突的钩子点名）、``existing_by`` （已注册声明者的 ``by`` 标识）、``new_by`` "
+"（本次冲突声明者的 ``by`` 标识）。"
+msgstr ""
+"Fields: ``name`` (the conflicting hook-point name), ``existing_by`` (the ``by`` identifier of the already-registered declarer), ``new_by`` "
+"(the ``by`` identifier of the conflicting declarer)."
+
+#: flowing.errors.DuplicateHookPointError:20 of
+msgid "``declare()`` 的 ``by`` 参数必填（框架核心预填钩子点固定为 ``by=\"core\"``）。"
+msgstr "The ``by`` parameter of ``declare()`` is required (framework-core pre-filled hook points are fixed at ``by=\"core\"``)."
+
+#: flowing.errors.DuplicateHookPointError:23 of
+msgid "钩子点声明独占：语义（value 类型、dispatch 时机）由首个声明者拥有。"
+msgstr "Hook-point declaration is exclusive: the semantics (value type, dispatch timing) are owned by the first declarer."
+
+#: flowing.errors.DuplicateHookPointError.name:1 of
+msgid "冲突的钩子点名。"
+msgstr "The conflicting hook-point name."
+
+#: flowing.errors.DuplicateHookPointError.existing_by:1 of
+msgid "已注册声明者的 ``by`` 标识。"
+msgstr "The ``by`` identifier of the already-registered declarer."
+
+#: flowing.errors.DuplicateHookPointError.new_by:1 of
+msgid "本次冲突声明者的 ``by`` 标识。"
+msgstr "The ``by`` identifier of the conflicting declarer."
+
+#: flowing.errors.ToolError:1 of
+msgid "工具定义 / 注册 / 查找异常的分类中间层。"
+msgstr "Classification middle layer for tool definition / registration / lookup exceptions."
+
+#: flowing.errors.ToolError:5 of
+msgid ""
+"工具系统（``script`` / ``mcp`` / ``cli`` / ``request`` 四种类型）的定义期 "
+"与查找期异常公共基类。与工具业务错误严格区分：业务错误是 ``ToolResult(status=\"error\")`` 正常产物，LLM "
+"可见，不走异常通道；本层只 承载「工具坏了」这一类（定义缺失、注册冲突、查找失败）。"
+msgstr ""
+"Common base class of definition-time and lookup-time exceptions of the tool system (the four types ``script`` / ``mcp`` / ``cli`` / ``request``). "
+"Strictly distinct from tool business errors: a business error is a normal ``ToolResult(status=\"error\")`` product, visible to the LLM, "
+"and does not travel the exception channel; this layer carries only the \"the tool is broken\" kind (missing definition, registration conflict, lookup failure)."
+
+#: flowing.errors.ToolError:12 of
+msgid "本类是分类中间层：框架实际抛出的是其具体子类；按类别捕获用 ``except ToolError``。"
+msgstr "This class is a classification middle layer: what the framework actually raises are its concrete subclasses; catch by category with ``except ToolError``."
+
+#: flowing.errors.ToolError:14 of
+msgid "工具 ``execute()`` 内部崩溃不包装为本类——按普通异常直接上抛。"
+msgstr "Crashes inside a tool's ``execute()`` are not wrapped into this class — they propagate directly as ordinary exceptions."
+
+#: flowing.errors.ToolError:18 of
+msgid ""
+":class:`flowing.tool.Tool` :class:`flowing.tool.ToolResult` "
+":class:`flowing.tool.ToolRegistry`"
+msgstr ""
+":class:`flowing.tool.Tool` :class:`flowing.tool.ToolResult` "
+":class:`flowing.tool.ToolRegistry`"
+
+#: flowing.errors.MissingSchemaError:1 of
+msgid "工具参数 schema 缺失且无法推断时抛出。"
+msgstr "Raised when a tool's parameter schema is missing and cannot be inferred."
+
+#: flowing.errors.MissingSchemaError:5 of
+msgid ""
+"两种抛出场景：script 工具裸函数的参数缺少类型标注（无法自动提取 schema）； ``cli`` / ``request`` 工具的 "
+"``.fya`` 未声明必填的 ``args`` （这两类没有自动 推断来源）。``.fya`` 显式声明的 ``args`` "
+"优先级最高，显式声明存在时本异常 不会因类型标注缺失而抛出。"
+msgstr ""
+"Two raising scenarios: a script tool's bare function has parameters without type annotations (schema cannot be extracted automatically); a ``cli`` / ``request`` tool's "
+"``.fya`` does not declare the required ``args`` (these two kinds have no automatic inference source). An explicitly declared ``args`` in the ``.fya`` "
+"takes top priority; when an explicit declaration exists, this exception is never raised for missing type annotations."
+
+#: flowing.errors.MissingSchemaError:12 of
+msgid "字段 ``name`` （工具规范名）与 ``param`` （缺失类型标注的参数名；整体缺失 时为 ``None``）。"
+msgstr "Fields: ``name`` (the tool's canonical name) and ``param`` (the parameter missing a type annotation; ``None`` when the whole schema is missing)."
+
+#: flowing.errors.AmbiguousMcpSourceError:11
+#: flowing.errors.AmbiguousToolError:13 flowing.errors.MissingMcpSourceError:11
+#: flowing.errors.MissingSchemaError:14 of
+msgid "定义期错误：调用方不捕获（fail-fast）。"
+msgstr "Definition-time error: callers do not catch it (fail-fast)."
+
+#: flowing.errors.MissingSchemaError:15
+#: flowing.errors.ResourceNameConflictError:13
+#: flowing.errors.ResourceNotFoundError:14 of
+msgid "不可重试。"
+msgstr "Not retriable."
+
+#: flowing.errors.MissingSchemaError:19 of
+msgid ""
+":class:`flowing.tool.ScriptTool` :mod:`flowing.params` "
+":class:`flowing.errors.ToolError`"
+msgstr ""
+":class:`flowing.tool.ScriptTool` :mod:`flowing.params` "
+":class:`flowing.errors.ToolError`"
+
+#: flowing.errors.MissingSchemaError.name:1 of
+msgid "缺失 schema 的工具规范名。"
+msgstr "The canonical name of the tool missing a schema."
+
+#: flowing.errors.MissingSchemaError.param:1 of
+msgid "缺失类型标注的参数名；整体缺失（如 ``cli`` / ``request`` 未声明 ``args``）时为 ``None``。"
+msgstr "The parameter missing a type annotation; ``None`` when the whole schema is missing (e.g. a ``cli`` / ``request`` tool not declaring ``args``)."
+
+#: flowing.errors.ToolNotFoundError:1 of
+msgid "按规范名在工具注册表中找不到工具时抛出。"
+msgstr "Raised when a tool cannot be found in the tool registry by canonical name."
+
+#: flowing.errors.ToolNotFoundError:5 of
+msgid ""
+"``ToolRegistry.get()`` 按规范名查找已注册工具失败时抛出。规范名是注册时的 唯一标识；Agent "
+"绑定层的别名（``ToolEntry`` 的 ``name_alias``）是另一个 命名空间——按别名查找失败的异常是 "
+"``UnknownToolError``。"
+msgstr ""
+"Raised when ``ToolRegistry.get()`` fails to find a registered tool by canonical name. The canonical name is the unique identifier at registration; the alias at the Agent "
+"binding layer (``ToolEntry``'s ``name_alias``) is a separate namespace — the exception for a failed alias lookup is "
+"``UnknownToolError``."
+
+#: flowing.errors.ToolNotFoundError:11 of
+msgid "``name`` 字段为未命中的工具规范名。"
+msgstr "The ``name`` field is the missed tool canonical name."
+
+#: flowing.errors.ToolNotFoundError:12 of
+msgid "查找失败显式报错而非静默返回 ``None``；调用方可按需捕获（如先探测再注册）。"
+msgstr "Lookup failure raises explicitly instead of silently returning ``None``; callers may catch as needed (e.g. probe before registering)."
+
+#: flowing.errors.ToolNotFoundError:13 of
+msgid "不可重试：注册表内容不会自动变化。"
+msgstr "Not retriable: the registry content does not change by itself."
+
+#: flowing.errors.ToolNotFoundError:17 of
+msgid ""
+":class:`flowing.tool.ToolRegistry` "
+":class:`flowing.errors.UnknownToolError`"
+msgstr ""
+":class:`flowing.tool.ToolRegistry` "
+":class:`flowing.errors.UnknownToolError`"
+
+#: flowing.errors.ToolNotFoundError.name:1 of
+msgid "未命中的工具规范名。"
+msgstr "The missed tool canonical name."
+
+#: flowing.errors.ToolNameConflictError:1 of
+msgid "工具规范名重名注册时抛出。"
+msgstr "Raised when a tool canonical name is registered twice."
+
+#: flowing.errors.ToolNameConflictError:5 of
+msgid ""
+"``ToolRegistry.register()`` 检测到同名规范名时抛出。重名一律不允许，无论 工具类型——包括同一 MCP "
+"服务器不同配置的场景（须用不同规范名）。规范名是 注册表唯一键：静默覆盖会让先注册方的所有 Agent 绑定指向被换掉的实现；需要 "
+"相同实例时应复用已有注册而非重复注册。"
+msgstr ""
+"Raised when ``ToolRegistry.register()`` detects a duplicate canonical name. Duplicates are never allowed, whatever the tool type — including different configurations of the same MCP "
+"server (use distinct canonical names). The canonical name is the registry's unique key: silent overwrite would repoint every Agent binding of the earlier registrant to the replaced implementation; when "
+"the same instance is needed, reuse the existing registration instead of re-registering."
+
+#: flowing.errors.ToolNameConflictError:10 of
+msgid "Agent 绑定层的别名冲突（同 alias）由 ``EntryNameConflictError`` 承载，与本 类（注册表层规范名冲突）分层。"
+msgstr "Alias conflicts at the Agent binding layer (same alias) are carried by ``EntryNameConflictError``, layered apart from this class (canonical-name conflicts at the registry layer)."
+
+#: flowing.errors.ToolNameConflictError:15 of
+msgid "``name`` 字段为发生冲突的工具规范名。"
+msgstr "The ``name`` field is the conflicting tool canonical name."
+
+#: flowing.errors.DependencyError:22 flowing.errors.ToolNameConflictError:16 of
+msgid "安装期错误：调用方不捕获。"
+msgstr "Install-time error: callers do not catch it."
+
+#: flowing.errors.ToolNameConflictError:17 of
+msgid "不提供覆盖开关（与 Provider adapter 注册表不同——工具注册表在 Runtime 实例内，重注册无正当场景）。"
+msgstr "No override switch is provided (unlike the Provider adapter registry — the tool registry lives inside a Runtime instance, and re-registration has no legitimate scenario)."
+
+#: flowing.errors.ToolNameConflictError:22 of
+msgid ""
+":meth:`flowing.tool.ToolRegistry.register` "
+":class:`flowing.errors.EntryNameConflictError`"
+msgstr ""
+":meth:`flowing.tool.ToolRegistry.register` "
+":class:`flowing.errors.EntryNameConflictError`"
+
+#: flowing.errors.ToolNameConflictError.name:1 of
+msgid "发生冲突的工具规范名。"
+msgstr "The conflicting tool canonical name."
+
+#: flowing.errors.UnknownToolError:1 of
+msgid "``tool_call()`` 按别名在 Agent 绑定表中找不到工具时抛出。"
+msgstr "Raised when ``tool_call()`` cannot find a tool by alias in the Agent binding table."
+
+#: flowing.errors.UnknownToolError:5 of
+msgid ""
+"LLM 发起的工具调用仅按别名查找 Agent 级绑定表（``ToolEntry`` 的别名）， 不回退规范名；别名未命中时抛出（典型场景：LLM"
+" 编造了不在 ``Context.tools`` 中的名字）。不回退规范名是刻意的：不同 Agent 对同一工具可注册不同别名与 覆写，回退会绕开"
+" Agent 级绑定层。"
+msgstr ""
+"Tool calls initiated by the LLM look up only the Agent-level binding table by alias (``ToolEntry``'s alias) and never fall back to the canonical name; "
+"raised when the alias misses (typical scenario: the LLM hallucinated a name not in ``Context.tools``). Not falling back to the canonical name is deliberate: different Agents may register different aliases and "
+"overrides for the same tool, and fallback would bypass the Agent-level binding layer."
+
+#: flowing.errors.UnknownToolError:12 of
+msgid "``name`` 字段为 LLM 给出的未命中别名。"
+msgstr "The ``name`` field is the missed alias given by the LLM."
+
+#: flowing.errors.UnknownToolError:13 of
+msgid "框架核心不捕获本异常（直接上抛出工具调用循环）；应用层可在 ``before_tool_call`` 前置校验或自行捕获。"
+msgstr "The framework core does not catch this exception (it propagates straight out of the tool-call loop); the application layer may pre-validate in ``before_tool_call`` or catch it itself."
+
+#: flowing.errors.UnknownToolError:15 of
+msgid "不可自动重试：LLM 可在后续回合修正调用名，是否重试属应用策略。"
+msgstr "Not automatically retriable: the LLM may correct the call name in a later turn; whether to retry is application policy."
+
+#: flowing.errors.UnknownToolError:16 of
+msgid "本异常只在别名完全不存在时抛出：停用（``enabled=False``）只影响 LLM 可见性，不影响本异常的判定。"
+msgstr "This exception is raised only when the alias does not exist at all: disabling (``enabled=False``) only affects LLM visibility and does not affect this exception's judgment."
+
+#: flowing.errors.UnknownToolError:21 of
+msgid ""
+":meth:`flowing.agent.Agent.tool_call` :class:`flowing.tool.ToolEntry` "
+":class:`flowing.errors.ToolNotFoundError`"
+msgstr ""
+":meth:`flowing.agent.Agent.tool_call` :class:`flowing.tool.ToolEntry` "
+":class:`flowing.errors.ToolNotFoundError`"
+
+#: flowing.errors.UnknownToolError.name:1 of
+msgid "未命中的工具别名（LLM 可见名）。"
+msgstr "The missed tool alias (the LLM-visible name)."
+
+#: flowing.errors.AmbiguousToolError:1 of
+msgid "工具 ``.py`` 文件的定义形态歧义时抛出。"
+msgstr "Raised when a tool ``.py`` file's definition form is ambiguous."
+
+#: flowing.errors.AmbiguousToolError:5 of
+msgid ""
+"script 工具的定向查找中，同一 ``.py`` 文件出现以下任一情况即抛出，框架 无法判定用户意图：同时含 "
+"``@flowing_tool`` 打标函数与 Tool 子类；或含多个 打标函数（违反「每文件至多一个」规则）。两种形态生成不同的 Tool "
+"定义路径， 按序选其一或隐式合并都会让行为依赖文件内容的出现顺序。"
+msgstr ""
+"During directed lookup of a script tool, raised when the same ``.py`` file shows either of the following, leaving the framework unable to judge user intent: it contains both a "
+"``@flowing_tool``-tagged function and a Tool subclass; or it contains multiple tagged functions (violating the \"at most one per file\" rule). The two forms produce different Tool "
+"definition paths; picking one in order or merging implicitly would make behavior depend on the order of appearance in the file."
+
+#: flowing.errors.AmbiguousToolError:12 of
+msgid "``path`` 字段为产生歧义的 ``.py`` 文件路径（字符串形式）。"
+msgstr "The ``path`` field is the ambiguous ``.py`` file path (as a string)."
+
+#: flowing.errors.AmbiguousToolError:14 of
+msgid ""
+"``.tool.fya`` 与同名 ``.py`` 并存不属于歧义（``.fya`` 优先）； ``callable:`` "
+"指向已装饰函数属声明通道互斥的违反，抛 ``FormatError``。"
+msgstr ""
+"A ``.tool.fya`` coexisting with a same-named ``.py`` is not ambiguity (``.fya`` wins); a ``callable:`` "
+"pointing at an already-decorated function violates declaration-channel exclusivity and raises ``FormatError``."
+
+#: flowing.errors.AmbiguousToolError:19 of
+msgid ""
+":class:`flowing.tool.ScriptTool` :func:`flowing.tool.flowing_tool` "
+":class:`flowing.errors.ToolError`"
+msgstr ""
+":class:`flowing.tool.ScriptTool` :func:`flowing.tool.flowing_tool` "
+":class:`flowing.errors.ToolError`"
+
+#: flowing.errors.AmbiguousToolError.path:1 of
+msgid "产生歧义的 ``.py`` 文件路径（字符串形式）。"
+msgstr "The ambiguous ``.py`` file path (as a string)."
+
+#: flowing.errors.AmbiguousMcpSourceError:1 of
+msgid "MCP 工具同时声明 ``command`` （stdio）与 ``url`` （远程）时抛出。"
+msgstr "Raised when an MCP tool declares both ``command`` (stdio) and ``url`` (remote)."
+
+#: flowing.errors.AmbiguousMcpSourceError:5 of
+msgid ""
+"``type: mcp`` 的工具必须声明恰好一种连接来源：``command`` 表示 stdio 本地 子进程，``url`` "
+"表示远程服务。两者并存时无法判定连接方式，抛出本异常。"
+msgstr ""
+"A ``type: mcp`` tool must declare exactly one connection source: ``command`` means a local stdio subprocess, ``url`` "
+"means a remote service. When both are present the connection method cannot be determined, so this exception is raised."
+
+#: flowing.errors.AmbiguousMcpSourceError:10 of
+msgid "``name`` 字段为声明冲突的 MCP 工具规范名。"
+msgstr "The ``name`` field is the MCP tool canonical name with the conflicting declaration."
+
+#: flowing.errors.AmbiguousMcpSourceError:12 of
+msgid "与 ``MissingMcpSourceError`` （两者均未声明）构成「恰好一个来源」的对偶 约束。"
+msgstr "Together with ``MissingMcpSourceError`` (neither declared), forms the dual constraint of \"exactly one source\"."
+
+#: flowing.errors.AmbiguousMcpSourceError:17 of
+msgid ""
+":class:`flowing.errors.MissingMcpSourceError` "
+":class:`flowing.errors.ToolError`"
+msgstr ""
+":class:`flowing.errors.MissingMcpSourceError` "
+":class:`flowing.errors.ToolError`"
+
+#: flowing.errors.AmbiguousMcpSourceError.name:1 of
+msgid "声明冲突的 MCP 工具规范名。"
+msgstr "The MCP tool canonical name with the conflicting declaration."
+
+#: flowing.errors.MissingMcpSourceError:1 of
+msgid "MCP 工具的 ``command`` 与 ``url`` 均未声明时抛出。"
+msgstr "Raised when an MCP tool declares neither ``command`` nor ``url``."
+
+#: flowing.errors.MissingMcpSourceError:5 of
+msgid "``type: mcp`` 的工具必须声明一种连接来源；两者皆缺时没有任何可推断的默认 连接方式，抛出本异常。"
+msgstr "A ``type: mcp`` tool must declare one connection source; when both are absent there is no inferable default connection method, so this exception is raised."
+
+#: flowing.errors.MissingMcpSourceError:10 of
+msgid "``name`` 字段为缺失来源声明的 MCP 工具规范名。"
+msgstr "The ``name`` field is the MCP tool canonical name missing a source declaration."
+
+#: flowing.errors.MissingMcpSourceError:12 of
+msgid "与 ``AmbiguousMcpSourceError`` （两者同时声明）构成对偶约束。"
+msgstr "Forms the dual constraint with ``AmbiguousMcpSourceError`` (both declared)."
+
+#: flowing.errors.MissingMcpSourceError:16 of
+msgid ""
+":class:`flowing.errors.AmbiguousMcpSourceError` "
+":class:`flowing.errors.ToolError`"
+msgstr ""
+":class:`flowing.errors.AmbiguousMcpSourceError` "
+":class:`flowing.errors.ToolError`"
+
+#: flowing.errors.MissingMcpSourceError.name:1 of
+msgid "缺失来源声明的 MCP 工具规范名。"
+msgstr "The MCP tool canonical name missing a source declaration."
+
+#: flowing.errors.ResourceError:1 of
+msgid "Resource 注册与访问异常的分类中间层。"
+msgstr "Classification middle layer for Resource registration and access exceptions."
+
+#: flowing.errors.ResourceError:5 of
+msgid ""
+"Resource（Runtime 持有的跨 Agent / 跨任务共享实例，如数据库连接池）的注册 "
+"与读取异常公共基类：重名注册（``ResourceNameConflictError``）与访问未注册 "
+"实例（``ResourceNotFoundError``）。Resource 与 provide/inject 正交：值跟随 Agent "
+"生命周期用 provide，值跨越多个 Agent 与任务用 Resource；Resource 不 走 inject 链，错误类型独立于 "
+"``ProvideError``。"
+msgstr ""
+"Common base class of registration and read exceptions for Resources (Runtime-held shared instances across Agents / tasks, e.g. a database connection pool): "
+"duplicate registration (``ResourceNameConflictError``) and accessing an unregistered instance "
+"(``ResourceNotFoundError``). Resource is orthogonal to provide/inject: use provide for values following an Agent's "
+"lifecycle, Resource for values spanning multiple Agents and tasks; Resource does not travel the inject chain, and its error types are independent of "
+"``ProvideError``."
+
+#: flowing.errors.ResourceError:13 of
+msgid "本类是分类中间层：框架实际抛出的是其具体子类；按类别捕获用 ``except ResourceError``。"
+msgstr "This class is a classification middle layer: what the framework actually raises are its concrete subclasses; catch by category with ``except ResourceError``."
+
+#: flowing.errors.ResourceError:15 of
+msgid ""
+"``get_resource(name, type_hint=...)`` 的 ``type_hint`` 仅供 IDE 推断， 运行时不做 "
+"isinstance 校验，不存在「类型不匹配」异常。"
+msgstr ""
+"The ``type_hint`` of ``get_resource(name, type_hint=...)`` is for IDE inference only; no isinstance check happens at "
+"runtime, and there is no \"type mismatch\" exception."
+
+#: flowing.errors.ResourceError:20 of
+msgid ""
+":meth:`flowing.runtime.Runtime.register_resource` "
+":meth:`flowing.runtime.Runtime.get_resource` "
+":meth:`flowing.agent.Agent.get_resource`"
+msgstr ""
+":meth:`flowing.runtime.Runtime.register_resource` "
+":meth:`flowing.runtime.Runtime.get_resource` "
+":meth:`flowing.agent.Agent.get_resource`"
+
+#: flowing.errors.ResourceNameConflictError:1 of
+msgid "Resource 重名注册时抛出。"
+msgstr "Raised when a Resource is registered under a duplicate name."
+
+#: flowing.errors.ResourceNameConflictError:5 of
+msgid ""
+"``Runtime.register_resource(name, instance)`` 检测到同名时抛出。Resource 是 "
+"全局共享实例：静默覆盖会让已持有旧实例引用的 Agent 与新读取方看到不同对象， 同名即编程错误。注册应在启动根 "
+"Agent（``mount()``）前完成。"
+msgstr ""
+"Raised when ``Runtime.register_resource(name, instance)`` detects a duplicate name. A Resource is a "
+"globally shared instance: silent overwrite would make Agents holding old instance references and new readers see different objects, so a duplicate name is a programming error. Registration should complete before the root "
+"Agent starts (``mount()``)."
+
+#: flowing.errors.ResourceNameConflictError:11 of
+msgid "``name`` 字段为发生冲突的 Resource 名。"
+msgstr "The ``name`` field is the conflicting Resource name."
+
+#: flowing.errors.ResourceNameConflictError:12 of
+msgid "启动期错误：调用方不捕获。"
+msgstr "Startup-time error: callers do not catch it."
+
+#: flowing.errors.ResourceNameConflictError:17 of
+msgid ""
+":meth:`flowing.runtime.Runtime.register_resource` "
+":class:`flowing.errors.ResourceError`"
+msgstr ""
+":meth:`flowing.runtime.Runtime.register_resource` "
+":class:`flowing.errors.ResourceError`"
+
+#: flowing.errors.ResourceNameConflictError.name:1 of
+msgid "发生冲突的 Resource 名。"
+msgstr "The conflicting Resource name."
+
+#: flowing.errors.ResourceNotFoundError:1 of
+msgid "访问未注册的 Resource 时抛出。"
+msgstr "Raised when an unregistered Resource is accessed."
+
+#: flowing.errors.ResourceNotFoundError:5 of
+msgid ""
+"``Runtime.get_resource(name)`` （及 ``Agent.get_resource`` 便捷委托）找不到 "
+"已注册实例时抛出。Resource 获取无感（不在 ``args`` / inject 中声明），缺失 只能在读取点暴露；显式异常比返回 "
+"``None`` 更能防止下游 ``AttributeError`` 式的次生错误。"
+msgstr ""
+"Raised when ``Runtime.get_resource(name)`` (and the ``Agent.get_resource`` convenience delegate) cannot find "
+"a registered instance. Resource acquisition is implicit (not declared in ``args`` / inject), so absence can only surface at the read point; an explicit exception prevents downstream "
+"``AttributeError``-style secondary errors better than returning ``None``."
+
+#: flowing.errors.ResourceNotFoundError:12 of
+msgid "``name`` 字段为未命中的 Resource 名。"
+msgstr "The ``name`` field is the missed Resource name."
+
+#: flowing.errors.ResourceNotFoundError:13 of
+msgid "调用方可按需捕获（如可选能力的降级场景）。"
+msgstr "Callers may catch as needed (e.g. degradation scenarios for optional capabilities)."
+
+#: flowing.errors.ResourceNotFoundError:18 of
+msgid ""
+":meth:`flowing.runtime.Runtime.get_resource` "
+":class:`flowing.errors.ResourceError`"
+msgstr ""
+":meth:`flowing.runtime.Runtime.get_resource` "
+":class:`flowing.errors.ResourceError`"
+
+#: flowing.errors.ResourceNotFoundError.name:1 of
+msgid "未命中的 Resource 名。"
+msgstr "The missed Resource name."

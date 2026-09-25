@@ -1,0 +1,14 @@
+description: Greeting subagent.
+model_tag: default
+args:
+  tone:                     # will be pinned to casual by the parent entry's specified
+    type: string
+    default: neutral
+    description: Tone
+  style:                    # the parent overwrites its description via a deep block
+    type: string
+    default: friendly
+    description: Wording style
+---
+$system_prompt:
+You are the greeter. Greet the user in a {{ tone }} tone, in one sentence.

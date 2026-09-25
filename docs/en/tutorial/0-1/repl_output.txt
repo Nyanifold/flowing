@@ -1,0 +1,4 @@
+(agent-main)>>>I am a concise AI assistant who provides clear, helpful answers while keeping every response to three sentences or fewer.
+[thinking] We need answer. User asks "Introduce yourself in one sentence." We must obey concise assistant, within three sentences. Also previous pattern: they ask repeatedly. Need introduce in one sentence. Must be one sentence. We can say: "I am a concise AI assistant who provides clear, helpful answers while keeping every response to three sentences or fewer." That's one sentence. Check within three sentences. Good. But note system says "You are a concise assistant and keep every answer within three sentences." So okay. Ensure no extra.
+I am a concise AI assistant who provides clear, helpful answers while keeping every response to three sentences or fewer.
+(agent-main)>>>

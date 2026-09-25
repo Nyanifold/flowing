@@ -1,0 +1,22 @@
+== Experiment 1: steer (STEER visible to the current turn, no interruption) ==
+Turn status=completed (completed = not interrupted)
+== Experiment 2: INTERRUPT (interrupt the current turn during tool execution) ==
+Interrupted turn status=cancelled aborted=True (cancelled = interrupted)
+== Experiment 3: pause / resume (suspend and resume the work loop) ==
+During pause, current_turn is not None: True (turn created and stopped at the checkpoint, no LLM call)
+Status after resume: completed
+== Experiment 4: cancel (abort execution; streamed output produced before interruption is persisted) ==
+Status after cancel: cancelled; nodes persisted by this turn: 2 (user + partial provider: an interruption does not lose produced output)
+── message tree (head → root, reverse chronological) ──
+ 12 provider  pri=NORMAL  turn_end=True 
+ 11 user      pri=NORMAL  turn_end=False Tell a very, very long story.
+ 10 provider  pri=NORMAL  turn_end=True 2+2 = 4. I'm the Q&A assistant
+  9 user      pri=NORMAL  turn_end=False Introduce yourself in one sent
+  7 user      pri=INTERRUPT turn_end=False Stop! First answer: what is 2+
+  8 tool      pri=NORMAL  turn_end=False exit_code: 0 --- stdout --- --
+  6 provider  pri=NORMAL  turn_end=False 
+  5 user      pri=NORMAL  turn_end=False First run sleep 20 with bash, 
+  4 provider  pri=NORMAL  turn_end=True 1 2 3 4 5 (steer received)
+  3 user      pri=STEER   turn_end=False Supplement: after the count, a
+  2 provider  pri=NORMAL  turn_end=True 1 2 3 4 5
+  1 user      pri=NORMAL  turn_end=False Count from 1 to 5, one number 

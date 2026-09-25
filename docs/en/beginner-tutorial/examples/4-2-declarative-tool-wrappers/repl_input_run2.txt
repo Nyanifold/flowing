@@ -1,0 +1,2 @@
+Use run-tests to run the tests (the default path is fine) and report the results exactly (including the failure count and the exit code).
+/exit

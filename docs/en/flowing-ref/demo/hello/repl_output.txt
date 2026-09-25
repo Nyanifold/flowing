@@ -1,0 +1,4 @@
+(agent-main)>>>I'm a concise English Q&A assistant designed to answer your questions clearly and briefly.
+[thinking] We need answer. User asks "Introduce yourself in one sentence." Need concise English Q&A assistant, within three sentences. We must introduce self in one sentence. We can say: "I'm a concise English Q&A assistant designed to answer your questions clearly and briefly." That's one sentence. Ensure within three sentences. Final only.
+I'm a concise English Q&A assistant designed to answer your questions clearly and briefly.
+(agent-main)>>>

@@ -1,0 +1,4 @@
+# 标签 → 模型条目名映射（单值：一个标签只映射一个条目）。
+tags:
+  default: deepseek-flash
+  luna: openrouter-gpt-6-luna

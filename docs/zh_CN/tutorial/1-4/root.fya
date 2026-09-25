@@ -1,0 +1,37 @@
+description: 钩子演示助手：before_tool_call 拦截 + after_turn 观察。
+model_tag: default
+args:
+  user_name: str
+tools:
+  - bash     # 演示拦截：危险命令在执行前被钩子硬阻断
+---
+$system_prompt:
+你是演示助手。当前用户：{{ user_name }}；项目根目录绝对路径：{{ env.PWD }}。
+用户要求查看目录时用 bash 的 ls；用户要求删除文件时用 bash 的 rm（有安全
+钩子保护，rm 会被拦截，届时向用户如实解释）。回答控制在一句话以内。
+---
+$script:
+from flowing import Intercepted, on
+
+
+# 挂法一：@on 类上声明（__init__ 阶段注册，早于 setup()）
+@on("after_turn")
+def _(self, turn):
+    self.ask_count += 1
+    print(f"[hook] after_turn: ask_count={self.ask_count} aborted={turn.aborted}")
+    return turn
+
+
+async def setup(self, user_name: str):
+    self.user_name = user_name
+    self.ask_count = 0
+    self.timezone = self.inject("timezone")
+
+    # 挂法二：setup() 内注册（实例级，注册时机在装配期）
+    async def _guard(agent, tool_call):
+        print(f"[hook] before_tool_call: {tool_call.name} args={tool_call.args}")
+        if tool_call.name == "bash" and "rm" in tool_call.args.get("command", ""):
+            # 硬阻断：工具不执行，LLM 收到 blocked 结果与原因
+            raise Intercepted("不允许删除：命令包含 rm，已阻断")
+        return tool_call
+    self.hooks.before_tool_call(_guard)

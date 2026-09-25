@@ -1,0 +1,2416 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C)
+# This file is distributed under the same license as the flowing-agent
+# package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: flowing-agent \n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-09-11 07:02+0800\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: en\n"
+"Language-Team: en <LL@li.org>\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: ../../api/flowing.rst:2
+msgid "flowing package"
+msgstr ""
+
+#: flowing:1 of
+msgid "``flowing`` —— 单机小型 Agent 框架：最终 API 规约（顶层导出）。"
+msgstr ""
+
+#: flowing:4 flowing.Parsable.resolved:4 flowing.agent:4 flowing.agent.Agent:4
+#: flowing.agent.Agent.abort_turn:4 flowing.agent.Agent.add_agent:5
+#: flowing.agent.Agent.add_tool:4 flowing.agent.Agent.branch:4
+#: flowing.agent.Agent.cancel:4 flowing.agent.Agent.cancel_queued:4
+#: flowing.agent.Agent.create_subagent:4 flowing.agent.Agent.destroy:4
+#: flowing.agent.Agent.enqueue_message:4
+#: flowing.agent.Agent.estimate_context_tokens:4 flowing.agent.Agent.fork:4
+#: flowing.agent.Agent.get_agent_class:5 flowing.agent.Agent.get_resource:4
+#: flowing.agent.Agent.get_tool:4 flowing.agent.Agent.inject:4
+#: flowing.agent.Agent.invoke_subagent:4 flowing.agent.Agent.message:4
+#: flowing.agent.Agent.parsable:4 flowing.agent.Agent.pause:4
+#: flowing.agent.Agent.pause_recursive:4 flowing.agent.Agent.pop:4
+#: flowing.agent.Agent.provide:4 flowing.agent.Agent.provider_gen:4
+#: flowing.agent.Agent.push:4 flowing.agent.Agent.query:4
+#: flowing.agent.Agent.register_state:4 flowing.agent.Agent.remove:5
+#: flowing.agent.Agent.remove_by_tags:4
+#: flowing.agent.Agent.set_queued_priority:4 flowing.agent.Agent.setup:4
+#: flowing.agent.Agent.side_query flowing.agent.Agent.snapshot:4
+#: flowing.agent.Agent.steer:5 flowing.agent.Agent.tool_call:4
+#: flowing.agent.Agent.track_background_task:4 flowing.agent.Agent.watch:4
+#: flowing.agent.CancelContext:4 flowing.agent.Execution:4
+#: flowing.agent.FieldUpdate:4 flowing.agent.ProviderErrorContext:4
+#: flowing.agent.TurnContext:5 flowing.agent.TurnResult:4
+#: flowing.agent.build_turn_result:4 flowing.builtins.tools.FinishTool:4
+#: flowing.builtins.tools.SubagentInvokeTool:4 flowing.compiler:4
+#: flowing.compiler.compile_fya_class:4 flowing.compiler.compile_fya_file:4
+#: flowing.compiler.compile_project:4 flowing.context:4
+#: flowing.context.Context:4 flowing.context.ContextUsageEstimate:5
+#: flowing.context.PromptBlock:4 flowing.context.PromptBlockList:5
+#: flowing.context.PromptBlockList.append:4
+#: flowing.context.PromptBlockList.disable_by_owner:4
+#: flowing.context.PromptBlockList.disable_by_tag:5
+#: flowing.context.PromptBlockList.insert:5
+#: flowing.context.PromptBlockList.remove_by_owner:5
+#: flowing.context.PromptBlockList.remove_by_tag:4
+#: flowing.context.PromptSegment:4 flowing.errors:4
+#: flowing.errors.AmbiguousMcpSourceError:4 flowing.errors.AmbiguousToolError:4
+#: flowing.errors.ArtifactModifiedError:4 flowing.errors.AuthenticationError:4
+#: flowing.errors.CommError:4 flowing.errors.CompileError:4
+#: flowing.errors.ConfigError:4 flowing.errors.ConfigNamespaceConflictError:4
+#: flowing.errors.ConfigNotReadyError:4 flowing.errors.ContentPolicyError:4
+#: flowing.errors.ContextLengthError:4 flowing.errors.CorruptionError:4
+#: flowing.errors.DependencyError:4 flowing.errors.DuplicateEndpointError:4
+#: flowing.errors.DuplicateHookPointError:4 flowing.errors.FlowingError:4
+#: flowing.errors.FormatError:4 flowing.errors.FormatVersionError:4
+#: flowing.errors.HookError:4 flowing.errors.Intercepted:4
+#: flowing.errors.InvalidRequestError:4 flowing.errors.MissingContextError:4
+#: flowing.errors.MissingEnvironmentVariableError:4
+#: flowing.errors.MissingFieldError:4 flowing.errors.MissingMcpSourceError:4
+#: flowing.errors.MissingProvideError:4 flowing.errors.MissingSchemaError:4
+#: flowing.errors.NameMismatchError:4 flowing.errors.NetworkError:4
+#: flowing.errors.ProvideError:4 flowing.errors.ProviderError:4
+#: flowing.errors.ProviderNameConflictError:4
+#: flowing.errors.ProviderTimeoutError:4 flowing.errors.QuotaExhaustedError:4
+#: flowing.errors.RateLimitedError:4 flowing.errors.RequestTooLargeError:4
+#: flowing.errors.ReservedAttributeError:4 flowing.errors.ResourceError:4
+#: flowing.errors.ResourceNameConflictError:4
+#: flowing.errors.ResourceNotFoundError:4 flowing.errors.ServerError:4
+#: flowing.errors.SignalDeliveryError:4 flowing.errors.SignalTimeoutError:4
+#: flowing.errors.ToolError:4 flowing.errors.ToolNameConflictError:4
+#: flowing.errors.ToolNotFoundError:4 flowing.errors.UnknownHookPointError:4
+#: flowing.errors.UnknownToolError:4 flowing.hooks:4 flowing.hooks.HookEntry:4
+#: flowing.hooks.HookList:4 flowing.hooks.HookList.dispatch:4
+#: flowing.hooks.HookRegistry:4 flowing.hooks.HookRegistry.declare:4
+#: flowing.hooks.HookRegistry.watch:4 flowing.hooks.PatternRegistrar:4
+#: flowing.hooks.on:4 flowing.lists:4 flowing.lists.ManagedList:4
+#: flowing.lists.ManagedList.append:4 flowing.lists.ManagedList.insert:4
+#: flowing.lists.Togglable:4 flowing.message:4 flowing.message.AudioBlock:4
+#: flowing.message.ContentBlock:4 flowing.message.FileBlock:4
+#: flowing.message.ImageBlock:4 flowing.message.MediaBlock:4
+#: flowing.message.Message:4 flowing.message.MessageChain:4
+#: flowing.message.MessageChain.branch:4 flowing.message.MessageChain.insert:4
+#: flowing.message.MessageChain.remove:4
+#: flowing.message.MessageChain.remove_by_tags:4
+#: flowing.message.MessageChain.reparent:4
+#: flowing.message.MessageChain.update:4 flowing.message.MessageChain.walk:4
+#: flowing.message.MessageKind:4 flowing.message.MessagePriority:4
+#: flowing.message.MessageQueue:4 flowing.message.MessageQueue.dequeue:4
+#: flowing.message.MessageQueue.drain_all:4
+#: flowing.message.MessageQueue.enqueue:4 flowing.message.MessageQueue.peek:4
+#: flowing.message.MessageQueue.remove:4
+#: flowing.message.MessageQueue.set_priority:4
+#: flowing.message.MessageQueue.take_while:4
+#: flowing.message.MessageQueue.wait_not_empty:4 flowing.message.StructBlock:4
+#: flowing.message.TextBlock:4 flowing.message.ThinkingBlock:4
+#: flowing.message.ToolCallBlock:4 flowing.message.VideoBlock:4
+#: flowing.message.estimate_message_tokens:4 flowing.message.to_record:4
+#: flowing.model:4 flowing.model.ModelConfig:4 flowing.params:4
+#: flowing.params.ConfigKey:4 flowing.params.InjectionKey:4
+#: flowing.params.apply_param_overrides:4 flowing.params.bridge_properties:4
+#: flowing.params.expand_args_schema:4 flowing.params.schema_to_model:4
+#: flowing.parsable:4 flowing.parsable.PENDING:4 flowing.parsable.Parsable:4
+#: flowing.parsable.Parsable.bind:4 flowing.parsable.Parsable.resolve:4
+#: flowing.parsable.Parsable.resolved:4 flowing.parser:4
+#: flowing.parser.EntryRef:4 flowing.parser.FyaDocument:4
+#: flowing.parser.RawFya:4 flowing.parser.load_fya_yaml:4
+#: flowing.parser.normalize_entries:4 flowing.parser.parse_fya:4
+#: flowing.parser.split_as:4 flowing.parser.split_fya:4 flowing.paths:4
+#: flowing.paths.NamingRules:4 flowing.paths.classify_ref:4
+#: flowing.paths.infer_name:4 flowing.paths.probe_candidates:4
+#: flowing.paths.resolve_path:4 flowing.persistence:4
+#: flowing.persistence.RecordStore:4 flowing.persistence.StateView:4
+#: flowing.plugins.Plugin:4 flowing.plugins.Plugin.install:5
+#: flowing.plugins.Plugin.shutdown:5 flowing.provide:4
+#: flowing.provide.ProvideNode:4 flowing.provide.inject_from:4
+#: flowing.providers.provider.Provider:4
+#: flowing.providers.provider.Provider.generate:4
+#: flowing.providers.provider.Provider.generate_stream:4
+#: flowing.providers.provider.Provider.get_credential:4
+#: flowing.providers.provider.ProviderConfig:4
+#: flowing.providers.provider.ProviderDelta:4
+#: flowing.providers.provider.ProviderResponse:4
+#: flowing.providers.provider.Usage:4 flowing.runtime:4
+#: flowing.runtime.Runtime:4 flowing.runtime.Runtime.archive_agent:4
+#: flowing.runtime.Runtime.archive_orphans:4
+#: flowing.runtime.Runtime.create_agent:4 flowing.runtime.Runtime.get_agent:4
+#: flowing.runtime.Runtime.get_agent_class:4
+#: flowing.runtime.Runtime.get_config:4 flowing.runtime.Runtime.get_node:4
+#: flowing.runtime.Runtime.get_plugin:4 flowing.runtime.Runtime.get_resource:4
+#: flowing.runtime.Runtime.inject:4 flowing.runtime.Runtime.install:4
+#: flowing.runtime.Runtime.mount:4 flowing.runtime.Runtime.provide:4
+#: flowing.runtime.Runtime.recover_agent:4
+#: flowing.runtime.Runtime.register_agent_type:4
+#: flowing.runtime.Runtime.register_config_namespace:4
+#: flowing.runtime.Runtime.register_resource:4
+#: flowing.runtime.Runtime.register_state:4
+#: flowing.runtime.Runtime.register_tool:4
+#: flowing.runtime.Runtime.resolve_path:4
+#: flowing.runtime.Runtime.set_model_tags:4
+#: flowing.runtime.Runtime.set_models:4 flowing.runtime.Runtime.set_providers:4
+#: flowing.runtime.Runtime.shutdown:4 flowing.runtime.Runtime.snapshot:4
+#: flowing.runtime.Runtime.to_project_path:4 flowing.runtime.launch:4
+#: flowing.runtime.resolve:4 flowing.snapshot:4 flowing.snapshot.AgentInfo:4
+#: flowing.snapshot.AgentSnapshot:4 flowing.snapshot.EntryInfo:4
+#: flowing.snapshot.ExecutionInfo:4 flowing.snapshot.MessageQueueInfo:4
+#: flowing.snapshot.MessageTreeInfo:4 flowing.snapshot.ModelInfo:4
+#: flowing.snapshot.NodeInfo:4 flowing.snapshot.RuntimeSnapshot:4
+#: flowing.snapshot.TurnContextInfo:4 flowing.subagents:4
+#: flowing.subagents.DEFAULT_SUBAGENT_CATALOG_TEMPLATE:5
+#: flowing.subagents.SubagentEntry:4
+#: flowing.subagents.SubagentEntry.catalog_view:4
+#: flowing.subagents.SubagentEntry.resolve:4
+#: flowing.subagents.SubagentInvocation:4 flowing.subagents.SubagentResult:4
+#: flowing.tool:4 flowing.tool.CliTool:4 flowing.tool.Image:4
+#: flowing.tool.McpTool:4 flowing.tool.McpTool.list_tools:4
+#: flowing.tool.MediaConverter:5 flowing.tool.RequestTool:4
+#: flowing.tool.ScriptTool:4 flowing.tool.Tool:4 flowing.tool.Tool.execute:4
+#: flowing.tool.ToolCall:4 flowing.tool.ToolCall.from_block:4
+#: flowing.tool.ToolDefinition:4
+#: flowing.tool.ToolDefinition.clone_with_overrides:4 flowing.tool.ToolEntry:4
+#: flowing.tool.ToolEntry.llm_definition:4 flowing.tool.ToolEntry.resolve:4
+#: flowing.tool.ToolRegistry:4 flowing.tool.ToolRegistry.get:4
+#: flowing.tool.ToolRegistry.get_tool_class:4 flowing.tool.ToolResult:4
+#: flowing.tool.ToolResult.as_message:4 flowing.tool.ToolResult.blocked:4
+#: flowing.tool.flowing_tool:4 flowing.tool.normalize_output:4
+#: flowing.tool.output_to_blocks:4 flowing.tool.register_media_converter:4 of
+msgid "功能介绍"
+msgstr ""
+
+#: flowing:5 of
+msgid "Flowing 的核心立场是「框架只提供机制，不提供策略」。包结构三层："
+msgstr ""
+
+#: flowing:7 of
+msgid ""
+"**框架核心**：``runtime`` / ``agent`` / ``subagents`` / ``message`` / "
+"``context`` / ``parsable`` / ``params`` / ``tool`` / ``model`` / "
+"``hooks`` / ``lists`` / ``errors`` / ``snapshot`` / ``providers`` / "
+"``persistence`` / ``parser`` / ``paths`` / ``provide`` / ``compiler`` —— "
+"本模块顶层导出其中面向日常使用的符号。"
+msgstr ""
+
+#: flowing:13 of
+msgid ""
+"**内置扩展**：``flowing.plugins``（``skills`` / ``comm`` / ``cron`` / "
+"``workflow`` / ``clipboard``）——随包发布、显式 ``runtime.install(...)`` 启用。"
+msgstr ""
+
+#: flowing:15 of
+msgid "**应用层**：``flowing.composables``（``use_xxx(agent)`` 纯函数式注入）。"
+msgstr ""
+
+#: flowing:17 of
+msgid ""
+"运行模型锚点：消息级树（``Message.id`` + ``parent_id`` 链， ``current_head_id`` 指向消息 "
+"id）；Turn 仅为逻辑执行阶段（执行期载体 :class:`flowing.agent.TurnContext`，不落盘、不进树）；能力三正交"
+" （可执行对象 / LLM 可见声明 / Agent 级绑定，推广到 Tool / 子 Agent / Skill）；provide-inject"
+" 沿 ``_parent_id`` 链上溯；实例级钩子系统。"
+msgstr ""
+
+#: flowing:24 of
+msgid "设计动机"
+msgstr ""
+
+#: flowing:25 of
+msgid ""
+"顶层导出收敛到「写一个 Agent 项目一定会 import」的最小集合；其余符号 "
+"（异常明细、快照视图、内部容器）经子模块显式导入，保持顶层命名空间 可读、可记忆。"
+msgstr ""
+
+#: flowing:30 flowing.agent:90 flowing.agent.Agent:18
+#: flowing.agent.Agent.add_tool:26 flowing.agent.Agent.create_subagent:19
+#: flowing.agent.Agent.enqueue_message:10
+#: flowing.agent.Agent.estimate_context_tokens:15 flowing.agent.Agent.fork:19
+#: flowing.agent.Agent.get_resource:10 flowing.agent.Agent.invoke_subagent:26
+#: flowing.agent.Agent.message:13 flowing.agent.Agent.parsable:10
+#: flowing.agent.Agent.pop:9 flowing.agent.Agent.provide:10
+#: flowing.agent.Agent.provider_gen:14 flowing.agent.Agent.query:13
+#: flowing.agent.Agent.set_queued_priority:12 flowing.agent.Agent.setup:15
+#: flowing.agent.Agent.side_query flowing.agent.Agent.snapshot:13
+#: flowing.agent.Agent.steer:11 flowing.agent.ProviderErrorContext:14
+#: flowing.agent.TurnContext:14 flowing.agent.TurnResult:11
+#: flowing.builtins.tools.FinishTool:15
+#: flowing.builtins.tools.SubagentInvokeTool:19 flowing.compiler:54
+#: flowing.context:50 flowing.context.Context:16
+#: flowing.context.ContextUsageEstimate:14 flowing.context.PromptBlock:18
+#: flowing.context.PromptBlockList:25 flowing.context.PromptBlockList.append:11
+#: flowing.context.PromptBlockList.disable_by_tag:10
+#: flowing.context.PromptBlockList.insert:13
+#: flowing.context.PromptBlockList.remove_by_owner:10
+#: flowing.context.PromptBlockList.remove_by_tag:9
+#: flowing.context.PromptSegment:13 flowing.errors:75
+#: flowing.errors.ConfigNamespaceConflictError:11
+#: flowing.errors.ConfigNotReadyError:11 flowing.errors.DependencyError:12
+#: flowing.errors.DuplicateHookPointError:9 flowing.errors.Intercepted:17
+#: flowing.errors.MissingContextError:13
+#: flowing.errors.MissingEnvironmentVariableError:11
+#: flowing.errors.MissingProvideError:10 flowing.errors.SignalTimeoutError:11
+#: flowing.errors.UnknownHookPointError:11 flowing.hooks:196
+#: flowing.hooks.HookList:13 flowing.hooks.HookList.dispatch:10
+#: flowing.hooks.HookRegistry:15 flowing.hooks.HookRegistry.declare:14
+#: flowing.hooks.PatternRegistrar:15 flowing.hooks.on:15 flowing.lists:16
+#: flowing.lists.ManagedList:15 flowing.lists.ManagedList.insert:11
+#: flowing.message:142 flowing.message.MediaBlock:15 flowing.message.Message:16
+#: flowing.message.MessageChain:23 flowing.message.MessageChain.reparent:10
+#: flowing.message.MessageKind:17 flowing.message.MessagePriority:15
+#: flowing.message.MessageQueue:18 flowing.message.MessageQueue.set_priority:15
+#: flowing.message.TextBlock:11 flowing.message.ToolCallBlock:18
+#: flowing.message.estimate_message_tokens:21 flowing.model:49
+#: flowing.model.ModelConfig:21 flowing.model.ModelConfig.resolve:10
+#: flowing.params.ConfigKey:15 flowing.params.InjectionKey:16
+#: flowing.params.apply_param_overrides:33 flowing.parsable:185
+#: flowing.parsable.PENDING:12 flowing.parsable.Parsable:19
+#: flowing.parsable.Parsable.resolve:13 flowing.parser.EntryRef:11
+#: flowing.parser.load_fya_yaml:26 flowing.parser.normalize_entries:45
+#: flowing.parser.parse_fya:16 flowing.parser.split_as:20
+#: flowing.parser.split_fya:30 flowing.paths:47 flowing.paths.NamingRules:12
+#: flowing.paths.resolve_path:11 flowing.persistence:31
+#: flowing.persistence.FileRecordStore:17 flowing.persistence.StateView:19
+#: flowing.plugins.Plugin:16 flowing.plugins.Plugin.install:19
+#: flowing.provide.ProvideNode:13 flowing.providers.provider.Provider:21
+#: flowing.providers.provider.Provider.generate:14
+#: flowing.providers.provider.Provider.generate_stream:16
+#: flowing.providers.provider.Provider.get_credential:11
+#: flowing.providers.provider.ProviderConfig:17
+#: flowing.providers.provider.ProviderDelta:19
+#: flowing.providers.provider.ProviderResponse:11
+#: flowing.providers.provider.Usage:10 flowing.runtime:94
+#: flowing.runtime.Runtime.create_agent:11 flowing.runtime.Runtime.get_agent:14
+#: flowing.runtime.Runtime.get_config:16 flowing.runtime.Runtime.get_node:10
+#: flowing.runtime.Runtime.get_plugin:20
+#: flowing.runtime.Runtime.get_resource:14 flowing.runtime.Runtime.inject:9
+#: flowing.runtime.Runtime.install:15 flowing.runtime.Runtime.mount:37
+#: flowing.runtime.Runtime.provide:12 flowing.runtime.Runtime.recover_agent:16
+#: flowing.runtime.Runtime.register_agent_type:11
+#: flowing.runtime.Runtime.register_config_namespace:11
+#: flowing.runtime.Runtime.register_resource:10
+#: flowing.runtime.Runtime.resolve_path:19 flowing.runtime.Runtime.set_config:8
+#: flowing.runtime.Runtime.set_model_tags:14
+#: flowing.runtime.Runtime.set_models:10
+#: flowing.runtime.Runtime.set_providers:10 flowing.runtime.Runtime.shutdown:12
+#: flowing.runtime.Runtime.snapshot:12 flowing.runtime.launch:18
+#: flowing.runtime.resolve:10 flowing.snapshot:47
+#: flowing.snapshot.AgentSnapshot:17 flowing.snapshot.RuntimeSnapshot:13
+#: flowing.subagents.DEFAULT_SUBAGENT_CATALOG_TEMPLATE:35
+#: flowing.subagents.SubagentEntry:16
+#: flowing.subagents.SubagentEntry.resolve:23 flowing.tool:96
+#: flowing.tool.CliTool:11 flowing.tool.McpTool:19 flowing.tool.RequestTool:11
+#: flowing.tool.ScriptTool:23 flowing.tool.Tool:13 flowing.tool.Tool.execute:12
+#: flowing.tool.ToolCall:11 flowing.tool.ToolDefinition:18
+#: flowing.tool.ToolEntry:12 flowing.tool.ToolRegistry:20
+#: flowing.tool.ToolResult:12 flowing.tool.register_media_converter:20 of
+msgid "使用示例"
+msgstr ""
+
+#: flowing:48 of
+msgid "行为规约"
+msgstr ""
+
+#: flowing:49 of
+msgid ""
+"``flowing.launch(path, **kwargs)`` 是 Runtime 的**唯一创建入口**； 绕过它直接 "
+"``Runtime()`` 因无 ``@`` 上下文抛 ``RuntimeError``。"
+msgstr ""
+
+#: flowing:51 of
+msgid "本模块只做 re-export，不定义任何新符号；各符号的完整契约见所属 子模块的规约。"
+msgstr ""
+
+#: flowing:53 of
+msgid ""
+"稳定性：本模块导出的全部符号属跨版本稳定契约；``_`` 前缀符号与 ``flowing.interfaces.cli`` / "
+"``flowing.interfaces.web`` 的细节不属稳定边界。"
+msgstr ""
+
+#: flowing.agent.Agent:1 of
+msgid "智能体基类——``.fya`` 声明式与手写子类共用的同一类模型。"
+msgstr ""
+
+#: flowing.agent.Agent:5 of
+msgid ""
+"Flowing 的中心对象：每个实例拥有自己的消息队列、常驻工作循环 Task、 消息级树、实例级钩子注册表、工具 / 子 Agent 绑定条目与"
+" provide-inject 链位置。实例即 handle（没有独立的 ``AgentHandle`` 包装）；元信息直接 "
+"作为类属性（没有独立的 ``AgentSpec`` 结构）。"
+msgstr ""
+
+#: flowing.agent.Agent:10 of
+msgid ""
+"实例化不直接进行：唯一创建路径是 :meth:`flowing.runtime.Runtime.create_agent` "
+"（``Agent.create_subagent`` / ``Workflow.create_agent`` / "
+"``Runtime.mount`` 全部委托它）；恢复路径 是 "
+":meth:`flowing.runtime.Runtime.recover_agent`。两条管线都会执行 "
+"``setup()``——每个实例上恰好执行一次（实例级单次契约见 :meth:`setup`）。"
+msgstr ""
+
+#: flowing.agent.Agent:19 of
+msgid "``.fya`` 声明式（``agents/order-agent/agent.fya``）："
+msgstr ""
+
+#: flowing.agent.Agent:50 of
+msgid "手写子类（完全等价）："
+msgstr ""
+
+#: flowing.agent.Agent:82 of
+msgid "运行期使用："
+msgstr ""
+
+#: flowing.Parsable.resolved:17 flowing.Runtime.persist_dir:4
+#: flowing.agent.Agent:92 flowing.agent.Agent.abort_turn:10
+#: flowing.agent.Agent.add_agent:35 flowing.agent.Agent.add_tool:43
+#: flowing.agent.Agent.branch:9 flowing.agent.Agent.cancel:19
+#: flowing.agent.Agent.cancel_all_background_tasks:4
+#: flowing.agent.Agent.cancel_background_task:4
+#: flowing.agent.Agent.cancel_by_tag:4 flowing.agent.Agent.cancel_children:4
+#: flowing.agent.Agent.cancel_queued:11 flowing.agent.Agent.create_subagent:26
+#: flowing.agent.Agent.destroy:19 flowing.agent.Agent.enqueue_message:19
+#: flowing.agent.Agent.enqueue_messages:4
+#: flowing.agent.Agent.estimate_context_tokens:22 flowing.agent.Agent.fork:28
+#: flowing.agent.Agent.get_agent_class:14
+#: flowing.agent.Agent.get_background_tasks:4
+#: flowing.agent.Agent.get_resource:17 flowing.agent.Agent.get_tool:13
+#: flowing.agent.Agent.inject:10 flowing.agent.Agent.invoke_subagent:37
+#: flowing.agent.Agent.message:21 flowing.agent.Agent.parsable:17
+#: flowing.agent.Agent.pause:12 flowing.agent.Agent.pause_recursive:10
+#: flowing.agent.Agent.pop:16 flowing.agent.Agent.provide:17
+#: flowing.agent.Agent.provider_gen:21 flowing.agent.Agent.push:12
+#: flowing.agent.Agent.query:20 flowing.agent.Agent.register_state:11
+#: flowing.agent.Agent.remove:14 flowing.agent.Agent.remove_by_tags:14
+#: flowing.agent.Agent.resume:4 flowing.agent.Agent.resume_recursive:4
+#: flowing.agent.Agent.set_queued_priority:18 flowing.agent.Agent.setup:26
+#: flowing.agent.Agent.side_query flowing.agent.Agent.snapshot:21
+#: flowing.agent.Agent.steer:17 flowing.agent.Agent.stop:4
+#: flowing.agent.Agent.stop_by_tag:4 flowing.agent.Agent.stop_children:4
+#: flowing.agent.Agent.tool_call:16
+#: flowing.agent.Agent.track_background_task:13 flowing.agent.Agent.watch:12
+#: flowing.agent.CancelContext:11 flowing.agent.Execution:12
+#: flowing.agent.FieldUpdate:12 flowing.agent.ProviderErrorContext:26
+#: flowing.agent.TurnContext:29 flowing.agent.TurnResult:20
+#: flowing.agent.build_turn_result:10 flowing.builtins.tools.FinishTool:35
+#: flowing.builtins.tools.FinishTool.execute:4
+#: flowing.builtins.tools.SubagentInvokeTool:30
+#: flowing.builtins.tools.SubagentInvokeTool.execute:4
+#: flowing.compiler.compile_fya_class:18 flowing.compiler.compile_project:12
+#: flowing.context:80 flowing.context.Context:33
+#: flowing.context.ContextUsageEstimate:22
+#: flowing.context.ContextUsageEstimate.usage_ratio:4
+#: flowing.context.PromptBlock:33 flowing.context.PromptBlockList:48
+#: flowing.context.PromptBlockList.append:31
+#: flowing.context.PromptBlockList.disable_by_owner:13
+#: flowing.context.PromptBlockList.disable_by_tag:19
+#: flowing.context.PromptBlockList.enable_by_owner:8
+#: flowing.context.PromptBlockList.enable_by_tag:8
+#: flowing.context.PromptBlockList.insert:30
+#: flowing.context.PromptBlockList.remove_by_owner:21
+#: flowing.context.PromptBlockList.remove_by_tag:18
+#: flowing.context.PromptSegment:22 flowing.errors:102
+#: flowing.errors.AmbiguousMcpSourceError:9
+#: flowing.errors.AmbiguousToolError:11 flowing.errors.ArtifactModifiedError:11
+#: flowing.errors.AuthenticationError:11 flowing.errors.CommError:10
+#: flowing.errors.CompileError:9 flowing.errors.ConfigError:11
+#: flowing.errors.ConfigNamespaceConflictError:18
+#: flowing.errors.ConfigNotReadyError:22 flowing.errors.ContentPolicyError:10
+#: flowing.errors.ContextLengthError:13 flowing.errors.CorruptionError:11
+#: flowing.errors.DependencyError:19 flowing.errors.DuplicateEndpointError:11
+#: flowing.errors.DuplicateHookPointError:17 flowing.errors.FlowingError:10
+#: flowing.errors.FormatError:11 flowing.errors.FormatVersionError:12
+#: flowing.errors.HookError:11 flowing.errors.Intercepted:31
+#: flowing.errors.InvalidRequestError:10 flowing.errors.MissingContextError:23
+#: flowing.errors.MissingEnvironmentVariableError:20
+#: flowing.errors.MissingFieldError:12 flowing.errors.MissingMcpSourceError:9
+#: flowing.errors.MissingProvideError:17 flowing.errors.MissingSchemaError:11
+#: flowing.errors.NameMismatchError:12 flowing.errors.NetworkError:10
+#: flowing.errors.ProvideError:10 flowing.errors.ProviderError:11
+#: flowing.errors.ProviderNameConflictError:13
+#: flowing.errors.ProviderTimeoutError:9 flowing.errors.QuotaExhaustedError:12
+#: flowing.errors.RateLimitedError:11 flowing.errors.RequestTooLargeError:12
+#: flowing.errors.ReservedAttributeError:11 flowing.errors.ResourceError:12
+#: flowing.errors.ResourceNameConflictError:10
+#: flowing.errors.ResourceNotFoundError:11 flowing.errors.ServerError:9
+#: flowing.errors.SignalDeliveryError:11 flowing.errors.SignalTimeoutError:23
+#: flowing.errors.ToolError:11 flowing.errors.ToolNameConflictError:14
+#: flowing.errors.ToolNotFoundError:10 flowing.errors.UnknownHookPointError:17
+#: flowing.errors.UnknownToolError:11 flowing.hooks:246
+#: flowing.hooks.HookEntry:13 flowing.hooks.HookList:24
+#: flowing.hooks.HookList.dispatch:17 flowing.hooks.HookRegistry:27
+#: flowing.hooks.HookRegistry.declare:25 flowing.hooks.PatternRegistrar:22
+#: flowing.hooks.on:49 flowing.lists:35 flowing.lists.ManagedList:35
+#: flowing.lists.ManagedList.append:12
+#: flowing.lists.ManagedList.disable_by_owner:8
+#: flowing.lists.ManagedList.disable_by_tag:8
+#: flowing.lists.ManagedList.enable_by_owner:8
+#: flowing.lists.ManagedList.enable_by_tag:8
+#: flowing.lists.ManagedList.insert:21
+#: flowing.lists.ManagedList.remove_by_owner:8
+#: flowing.lists.ManagedList.remove_by_tag:8 flowing.lists.Togglable:11
+#: flowing.message:159 flowing.message.AudioBlock:10
+#: flowing.message.ContentBlock:17 flowing.message.FileBlock:11
+#: flowing.message.ImageBlock:10 flowing.message.MediaBlock:31
+#: flowing.message.Message:28 flowing.message.MessageChain:44
+#: flowing.message.MessageChain.branch:17 flowing.message.MessageChain.get:4
+#: flowing.message.MessageChain.insert:16
+#: flowing.message.MessageChain.remove:14
+#: flowing.message.MessageChain.remove_by_tags:15
+#: flowing.message.MessageChain.reparent:17
+#: flowing.message.MessageChain.update:10 flowing.message.MessageChain.walk:10
+#: flowing.message.MessageKind:28 flowing.message.MessagePriority:29
+#: flowing.message.MessageQueue:39 flowing.message.MessageQueue.dequeue:15
+#: flowing.message.MessageQueue.drain_all:9
+#: flowing.message.MessageQueue.enqueue:10 flowing.message.MessageQueue.peek:15
+#: flowing.message.MessageQueue.remove:10
+#: flowing.message.MessageQueue.set_priority:22
+#: flowing.message.MessageQueue.take_while:9
+#: flowing.message.MessageQueue.wait_not_empty:10
+#: flowing.message.StructBlock:17 flowing.message.TextBlock:17
+#: flowing.message.ThinkingBlock:12 flowing.message.ToolCallBlock:26
+#: flowing.message.VideoBlock:9 flowing.message.estimate_message_tokens:27
+#: flowing.message.from_record:4 flowing.message.to_record:32 flowing.model:60
+#: flowing.model.ModelConfig:54 flowing.model.ModelConfig.resolve:18
+#: flowing.model.load_model_tags:16 flowing.model.load_models:19
+#: flowing.params.ConfigKey:32 flowing.params.InjectionKey:37
+#: flowing.params.apply_param_overrides:18 flowing.params.bridge_properties:13
+#: flowing.params.schema_to_model:31 flowing.parsable:266
+#: flowing.parsable.EXPRESSION:9 flowing.parsable.FILE_REF:8
+#: flowing.parsable.LITERAL:9 flowing.parsable.PENDING:27
+#: flowing.parsable.Parsable:38 flowing.parsable.Parsable.bind:12
+#: flowing.parsable.Parsable.resolve:27 flowing.parsable.Parsable.resolved:17
+#: flowing.parsable.RAW:9 flowing.parsable.TEMPLATE:7
+#: flowing.parser.EntryRef:20 flowing.parser.FyaDocument:11
+#: flowing.parser.load_fya_yaml:9 flowing.parser.normalize_entries:31
+#: flowing.parser.parse_fya:28 flowing.parser.split_as:10
+#: flowing.parser.split_fya:18 flowing.paths:29 flowing.paths.classify_ref:28
+#: flowing.paths.infer_name:24 flowing.paths.kebab_to_pascal:9
+#: flowing.paths.kebab_to_snake:9 flowing.paths.pascal_to_kebab:9
+#: flowing.paths.path_to_module_name:19 flowing.paths.probe_candidates:18
+#: flowing.paths.resolve_path:28 flowing.paths.snake_to_kebab:9
+#: flowing.paths.to_project_path:10 flowing.persistence:44
+#: flowing.persistence.FileRecordStore:31 flowing.persistence.RecordStore:15
+#: flowing.persistence.StateView:33 flowing.plugins.Plugin:36
+#: flowing.plugins.Plugin.install:28 flowing.plugins.Plugin.shutdown:11
+#: flowing.provide:13 flowing.provide.ProvideNode:21
+#: flowing.provide.ProvideNode.inject:9 flowing.provide.ProvideNode.provide:8
+#: flowing.provide.inject_from:19 flowing.providers.provider.Provider:49
+#: flowing.providers.provider.Provider.generate:22
+#: flowing.providers.provider.Provider.generate_stream:23
+#: flowing.providers.provider.Provider.get_credential:20
+#: flowing.providers.provider.ProviderConfig:29
+#: flowing.providers.provider.ProviderDelta:31
+#: flowing.providers.provider.ProviderResponse:34
+#: flowing.providers.provider.Usage:23 flowing.runtime.Runtime:22
+#: flowing.runtime.Runtime.archive_agent:22
+#: flowing.runtime.Runtime.archive_orphans:17
+#: flowing.runtime.Runtime.create_agent:18 flowing.runtime.Runtime.get_agent:21
+#: flowing.runtime.Runtime.get_agent_class:43
+#: flowing.runtime.Runtime.get_config:23 flowing.runtime.Runtime.get_node:17
+#: flowing.runtime.Runtime.get_plugin:31
+#: flowing.runtime.Runtime.get_resource:26 flowing.runtime.Runtime.inject:15
+#: flowing.runtime.Runtime.install:22 flowing.runtime.Runtime.mount:47
+#: flowing.runtime.Runtime.persist_dir:4 flowing.runtime.Runtime.provide:19
+#: flowing.runtime.Runtime.recover_agent:32
+#: flowing.runtime.Runtime.register_agent_type:21
+#: flowing.runtime.Runtime.register_config_namespace:17
+#: flowing.runtime.Runtime.register_resource:17
+#: flowing.runtime.Runtime.register_state:18
+#: flowing.runtime.Runtime.register_tool:16
+#: flowing.runtime.Runtime.resolve_path:26
+#: flowing.runtime.Runtime.set_config:16
+#: flowing.runtime.Runtime.set_model_tags:20
+#: flowing.runtime.Runtime.set_models:16
+#: flowing.runtime.Runtime.set_providers:16 flowing.runtime.Runtime.shutdown:21
+#: flowing.runtime.Runtime.snapshot:19
+#: flowing.runtime.Runtime.to_project_path:9 flowing.runtime.launch:39
+#: flowing.runtime.resolve:21 flowing.snapshot:74 flowing.snapshot.AgentInfo:10
+#: flowing.snapshot.AgentSnapshot:28 flowing.snapshot.EntryInfo:11
+#: flowing.snapshot.ExecutionInfo:9 flowing.snapshot.MessageQueueInfo:11
+#: flowing.snapshot.MessageTreeInfo:10 flowing.snapshot.ModelInfo:10
+#: flowing.snapshot.NodeInfo:11 flowing.snapshot.RuntimeSnapshot:24
+#: flowing.snapshot.TurnContextInfo:11
+#: flowing.subagents.DEFAULT_SUBAGENT_CATALOG_TEMPLATE:28
+#: flowing.subagents.SubagentEntry:42
+#: flowing.subagents.SubagentEntry.catalog_view:13
+#: flowing.subagents.SubagentEntry.resolve:12
+#: flowing.subagents.SubagentInvocation:12 flowing.subagents.SubagentResult:11
+#: flowing.tool.CliTool:40 flowing.tool.CliTool.execute:4 flowing.tool.Image:15
+#: flowing.tool.McpTool:48 flowing.tool.McpTool.execute:4
+#: flowing.tool.McpTool.list_tools:14 flowing.tool.RequestTool:45
+#: flowing.tool.RequestTool.execute:4 flowing.tool.ScriptTool:69
+#: flowing.tool.Tool:25 flowing.tool.Tool.execute:21 flowing.tool.ToolCall:30
+#: flowing.tool.ToolCall.from_block:10 flowing.tool.ToolDefinition:31
+#: flowing.tool.ToolDefinition.clone_with_overrides:27
+#: flowing.tool.ToolEntry:49 flowing.tool.ToolEntry.llm_definition:10
+#: flowing.tool.ToolEntry.resolve:13 flowing.tool.ToolRegistry:27
+#: flowing.tool.ToolRegistry.get:35 flowing.tool.ToolRegistry.get_tool_class:12
+#: flowing.tool.ToolResult:25 flowing.tool.ToolResult.as_message:28
+#: flowing.tool.ToolResult.blocked:17 flowing.tool.flowing_tool:16
+#: flowing.tool.normalize_output:13 flowing.tool.output_to_blocks:11
+#: flowing.tool.register_media_converter:12 of
+msgid "行为要点"
+msgstr ""
+
+#: flowing.agent.Agent:93 of
+msgid "同名 ``.fya`` 与手写子类并存时 ``.fya`` 优先并告警；两者生成的类 结构完全相同（等价且互斥）。"
+msgstr ""
+
+#: flowing.agent.Agent:95 of
+msgid ""
+"``setup()`` 轻量约束：只做状态赋值、钩子注册、inject 读取、 Composable 调用；网络请求 / 文件 I/O / "
+"大量计算移到工具调用或按需 阶段。``setup()`` 第一个 ``await`` 之前的代码不被其它协程打断。"
+msgstr ""
+
+#: flowing.agent.Agent:98 of
+msgid "不变量：``self.model`` 永远是 ``ModelConfig``；Agent 对模型结构体 只做持有与机械传递，不解释字段。"
+msgstr ""
+
+#: flowing.agent.Agent:100 of
+msgid ""
+"不变量：创建即注册（``_nodes``）；亲节点销毁 → 子递归销毁；destroy 后实例不再可用（从 ``_nodes`` "
+"摘除、三正交结构均清空），但 session 记录保留、可现场恢复。"
+msgstr ""
+
+#: flowing.agent.Agent:106 of
+msgid ":meth:`flowing.runtime.Runtime.create_agent` —— 唯一创建入口。"
+msgstr ""
+
+#: flowing.agent.Agent:107 of
+msgid ":meth:`flowing.runtime.Runtime.recover_agent` —— 恢复入口。"
+msgstr ""
+
+#: flowing.agent:119 flowing.agent.Agent:108 of
+msgid ""
+":class:`flowing.message.Message` / :class:`flowing.message.MessageChain` "
+"—— 消息级树节点与树手术。"
+msgstr ""
+
+#: flowing.Agent.class_name:1 flowing.agent.Agent.class_name:1 of
+msgid ""
+"Python 类名（PascalCase）。``.fya`` 可显式声明 ``class_name:``； 缺省从身份名推断——格式转换经 "
+":func:`flowing.paths.kebab_to_pascal`， 并始终保证以 ``Agent`` "
+"结尾（已结尾则原样，否则补上）。手写子类即 ``__name__``，无需声明。"
+msgstr ""
+
+#: flowing.Agent.class_name:7 flowing.agent.Agent.class_name:7 of
+msgid "身份名的推断（``name`` 非机制字段）"
+msgstr ""
+
+#: flowing.Agent.class_name:8 flowing.agent.Agent.class_name:8 of
+msgid ""
+"Agent 的身份名（注册表 key、``agent_type`` 裸名、引用别名缺省、 ``class_name`` "
+"推断的输入）一律由推断产生，框架不存在 ``name`` 机制字段。推断规则本体在 "
+":func:`flowing.paths.infer_name` （去后缀、通用名取目录名、snake → kebab）："
+msgstr ""
+
+#: flowing.Agent.class_name:13 flowing.agent.Agent.class_name:13 of
+msgid ""
+"路径形态 ``.fya`` / 手写 ``.py``：文件名去 ``.agent.fya`` / ``.fya`` / ``.py`` "
+"后缀；文件名是 ``agent.fya`` / ``AGENT.fya`` 这两个通用名 → 取目录名；"
+msgstr ""
+
+#: flowing.Agent.class_name:16 flowing.agent.Agent.class_name:16 of
+msgid "裸名：注册表 key 本身（``register_agent_type`` 的显式参数）；"
+msgstr ""
+
+#: flowing.Agent.class_name:17 flowing.agent.Agent.class_name:17 of
+msgid ""
+"手写子类：类名 kebab 化（``OrderAgent`` → ``order-agent``，经 "
+":func:`flowing.paths.pascal_to_kebab`）。"
+msgstr ""
+
+#: flowing.Agent.class_name:20 flowing.agent.Agent.class_name:20 of
+msgid ""
+"``.fya`` 与手写子类中不禁止写 ``name``，但仅作一致性断言：与推断值 不符抛 "
+":class:`flowing.errors.NameMismatchError` （消息含声明值 / 推断值 / 来源）；一致时无任何效果。"
+msgstr ""
+
+#: flowing.Agent.description:1 flowing.agent.Agent.description:1 of
+msgid ""
+"Agent 的一句话介绍（Parsable），供亲代 Agent 路由决策与 catalog 渲染读取；渲染上下文为亲代 Agent "
+"实例。可选：缺失 / ``null`` 落 ``None`` （消费方按空串处理）。普通字符串赋值同样可用（消费方原样 取文本）。"
+msgstr ""
+
+#: flowing.Agent.metadata:1 flowing.agent.Agent.metadata:1 of
+msgid "任意静态键值对，框架不解释，透传 ``self.metadata``，供扩展 / Composable 读取。"
+msgstr ""
+
+#: flowing.Agent.system_prompt:1 flowing.agent.Agent.system_prompt:1 of
+msgid ""
+"唯一必填类属性：系统提示词。实例化后进入 ``prompt_blocks[0]`` 的惰性引用块（``by=\"core\"``，内容为 ``{{"
+" self.system_prompt }}`` 模板），每次组装上下文时现场求值——``setup()`` 中改它，下一次 "
+"``provider_gen()`` 自动反映。创建管线在 ``setup()`` 后检查本属性 仍为 PENDING（未赋值）→ "
+"``MissingFieldError``。"
+msgstr ""
+
+#: flowing.Agent.model_tag:1 flowing.agent.Agent.model_tag:1 of
+msgid ""
+"声明层模型意图（``\"fast\" / \"high\" / \"default\"`` 是语义约定、非 枚举），与 Provider "
+"完全解耦；支持 Jinja2 模板（惰性求值，每次 ``provider_gen()`` "
+"前重新求值）。运行时可变：``agent.model_tag = \"high\"`` 会重新解析并覆盖 "
+"``self.model``，只能指向配置已定义模型。 标签未定义回退 ``default``；``default`` 也未定义 → 报错（不静默"
+" 回退）。"
+msgstr ""
+
+#: flowing.Agent.args_model:1 flowing.agent.Agent.args_model:1 of
+msgid ""
+"实例化参数声明（Pydantic BaseModel 子类，声明即模型——同时是 ``subagent-invoke`` 工具 LLM 可见 "
+"schema 与执行层校验的来源）。 三种来源形态："
+msgstr ""
+
+#: flowing.Agent.args_model:5 flowing.agent.Agent.args_model:5 of
+msgid ""
+"``.fya`` 显式写 ``args:`` （纯 JSON Schema 展开式）→ 经 "
+":func:`flowing.params.schema_to_model` 桥接成模型，以其为准 （YAML 优先），``setup()`` "
+"签名仅作校验对照（参数必须有对应字段、 类型标注必须兼容）；"
+msgstr ""
+
+#: flowing.Agent.args_model:9 flowing.agent.Agent.args_model:9 of
+msgid "手写子类显式声明 ``args_model = MyArgs`` （BaseModel 子类）→ 直接使用；"
+msgstr ""
+
+#: flowing.Agent.args_model:11 flowing.agent.Agent.args_model:11 of
+msgid ""
+"两者皆无 → 类创建时从 ``setup()`` 签名推导：类型标注 → 字段类型 （标注缺失 → 构造期抛 "
+"``ValueError``）；带默认值 → 字段默认值 （可选）；无默认值 → 必填。``setup(**kwargs)`` 全 kwarg "
+"吸收形态 → 推导产物为 ``None`` （空模型不接受构造参数）。"
+msgstr ""
+
+#: flowing.Agent.args_model:16 flowing.agent.Agent.args_model:16 of
+msgid "推导发生在类创建期而非实例化期：产物是确定的类属性，运行时无重复 推导。"
+msgstr ""
+
+#: flowing.Agent.source_file:1 flowing.agent.Agent.source_file:1 of
+msgid ""
+"``@/`` 格式源文件路径。类创建时经 ``__init_subclass__`` 从 ``__module__.__file__`` "
+"推算；``.fya`` 来源的类由装配层在生成类时 显式注入（值为该 ``.fya`` 文件的 ``@/`` 路径，优先级最高，不走 "
+"``__module__`` 推算）。显式写 ``None`` 或推算失败 → ``None``。 只读，实例化后不可变。"
+msgstr ""
+
+#: flowing.Agent.registry_key:1 flowing.agent.Agent.registry_key:1 of
+msgid ""
+"注册表键回写——``Runtime`` 注册本类时写入（``register_agent_type`` "
+"与文件派生注册两处）：``ns::name`` 全限定键；从未注册的手写子类为 ``None``。与 ``Tool.registry_key`` "
+"/ ``Skill.registry_key`` 同构， 供 ``add_agent`` 落账 ``name_ori``。内部 "
+"API，不属稳定契约。"
+msgstr ""
+
+#: flowing.Agent.subagent_catalog_template:1
+#: flowing.agent.Agent.subagent_catalog_template:1 of
+msgid "Agent 级 catalog 模板覆写槽位（``<available_subagents>`` 块）。"
+msgstr ""
+
+#: flowing.Agent.subagent_catalog_template:3
+#: flowing.agent.Agent.subagent_catalog_template:3 of
+msgid ""
+"Agent 对象自己有该属性则用其值，否则用 "
+":data:`flowing.subagents.DEFAULT_SUBAGENT_CATALOG_TEMPLATE`； ``.fya`` "
+"中同名字段亦可（落入实例属性或 ``_extra``，``getattr`` 同样命中）。值是 Jinja2 模板源字符串，上下文变量表见 "
+":data:`flowing.subagents.DEFAULT_SUBAGENT_CATALOG_TEMPLATE`。"
+msgstr ""
+
+#: flowing.Agent.node_id:1 flowing.agent.Agent.node_id:1 of
+msgid ""
+"全局唯一 ID（缺省自动生成 ``agent-`` + 6 位随机 hex，create 管线 带注册表防撞重试），生命周期内不可变；恢复路径 "
+"``node_id = agent_id`` （身份连续、可重现）。"
+msgstr ""
+
+#: flowing.Agent.runtime:1 flowing.agent.Agent.runtime:1 of
+msgid "返指 Runtime（对象图根）；不构成循环引用——关闭时 Runtime 主动 遍历销毁子树。内部 API，不属稳定契约。"
+msgstr ""
+
+#: flowing.Agent.model:1 flowing.agent.Agent.model:1 of
+msgid ""
+"模型结构体（运行时成员，可解析、可变）；实例化时由 ``model_tag`` 解析填充初始值。两条动态修改路径：① 改 "
+"``model_tag`` （只能指向配置 已定义模型）；② 直接赋 ``ModelConfig(...)`` （任意模型）。「换模型」 = "
+"换一份完整规格，无中间态。"
+msgstr ""
+
+#: flowing.Agent.hooks:1 flowing.agent.Agent.hooks:1 of
+msgid ""
+"实例级钩子注册表——全部钩子只对当前实例生效；预填核心钩子点 + ``declare()`` 扩展点。``@on()`` 声明在 "
+"``__init__`` 阶段注册， ``setup()`` 中 ``self.hooks.<point>(...)`` 注册的在其后。"
+msgstr ""
+
+#: flowing.Agent.prompt_blocks:1 flowing.agent.Agent.prompt_blocks:1 of
+msgid ""
+"system prompt 分层组装列表（ManagedList 语义）；列表顺序即拼接 顺序（``append`` "
+"追加尾部、``insert`` 任意位置插入）；框架注入的 ``system_prompt`` "
+"惰性引用块（``by=\"core\"``）初始位于 ``[0]``。 动态内容的正确做法是块内模板引用（惰性求值保证最新），而非每回合 "
+"append + remove_by_tag。"
+msgstr ""
+
+#: flowing.Agent.chain:1 flowing.agent.Agent.chain:1 of
+msgid ""
+"消息级树手术入口（``insert`` / ``branch`` / ``remove`` / ``update`` / ``reparent``"
+" 五 op，最小完备集）；运行期改内存链 + append 变更 记录，压缩期重写。"
+msgstr ""
+
+#: flowing.Agent.current_turn:1 flowing.agent.Agent.current_turn:1 of
+msgid ""
+"当前活跃逻辑 Turn 的执行期临时对象；回合收尾（``after_turn`` 钩子之前）置 ``None``。``None`` 语义 = "
+"回合物质上不存活（不再产生 消息）；快照投影只在执行期间可见。"
+msgstr ""
+
+#: flowing.Agent.last_result:1 flowing.agent.Agent.last_result:1 of
+msgid ""
+"最近一次逻辑 Turn 的最终产出（文本或 finish 结构化输出）；亲代 Agent 侧由 ``invoke_subagent`` 读取它构造"
+" ``SubagentResult.result``。 未产生过结果为 ``None``。"
+msgstr ""
+
+#: flowing.Agent.last_result:5 flowing.agent.Agent.last_result:5 of
+msgid ""
+"填充规则（回合收尾时、resolve 等待者之前写入）：``turn.finish_output`` 非 ``None`` → 该 "
+"dict（finish 结构化交卷）；否则 → 本轮最后一条 PROVIDER 消息的文本，为空串则写 ``None``。abort / "
+"cancel / error 路径同样覆写。``side_query`` 不写本字段。"
+msgstr ""
+
+#: flowing.Agent.child_ids:1 flowing.agent.Agent.child_ids:1 of
+msgid ""
+"语义名 → agent_id 翻译表：``invoke_subagent(resume=...)`` 的按名 "
+"查找载体——语义名只存在于唤起方（亲代 Agent）的这张表里，子实例不自 持名字。只读 property（用户写 → "
+"``AttributeError``）；框架内部写经 ``_core_state[\"child_ids\"]`` 整表写透落盘。未命名子 "
+"Agent（创建时 ``name=None``）不入表。destroy 不删表项（记录保留，带记忆续接依赖 它）；显式遗忘经 "
+"``Runtime.archive_agent`` 受控清理。内部 API。"
+msgstr ""
+
+#: flowing.Agent.current_head_id:1 flowing.agent.Agent.current_head_id:1 of
+msgid ""
+"消息级树游标——指向某条消息的 id，即「添加节点的位置」：新消息 链到它并随即将它前移；fork 即切换它。空树（新 Agent）为 "
+"``None``。"
+msgstr ""
+
+#: flowing.Agent.current_head_id:4 flowing.agent.Agent.current_head_id:4 of
+msgid "只读 property（用户写 → ``AttributeError``）；框架内部写透落盘 core.jsonl，恢复时以袋值为准、不校验树。"
+msgstr ""
+
+#: flowing.agent.Agent.register_state:1 of
+msgid "开启一个命名状态空间，返回其 :class:`StateView` （公共 API）。"
+msgstr ""
+
+#: flowing.agent.Agent.register_state:5 of
+msgid ""
+"打开本 Agent 的一个命名状态袋：``<session_dir>/<name>.jsonl``。 与 :attr:`state` "
+"（默认袋）对称的扩展通道：命名袋是插件 / 领域的 独立状态空间（独立文件、独立压缩 / 崩溃边界），不挂载任何 agent "
+"属性——调用方自行持有返回的袋对象。"
+msgstr ""
+
+#: flowing.agent.Agent.register_state:12 of
+msgid "幂等：同 ``name`` 重复调用返回同一视图（同一文件一视图）。"
+msgstr ""
+
+#: flowing.agent.Agent.register_state:13 of
+msgid "``backend`` 当前仅 ``\"file\"``；其它值 → ``ValueError``。"
+msgstr ""
+
+#: flowing.agent.Agent.register_state:14 of
+msgid ""
+"``name`` 校验：合法文件名（不含路径分隔符 / ``..``）；不与 保留文件 ``state`` / ``core`` / "
+"``tree`` / ``meta`` 重名 → 否则 ``ValueError``。"
+msgstr ""
+
+#: flowing.agent.Agent.register_state:17 of
+msgid "打开即重放：持久值立即装袋（开空间即恢复）。"
+msgstr ""
+
+#: flowing.agent.Agent.register_state:18 of
+msgid "键登记走 ``view.register(key, default)``。"
+msgstr ""
+
+#: ../../api/flowing.rst flowing.agent.Agent.get_background_task
+#: flowing.persistence.RecordStore.submit flowing.persistence.RecordStore.sync
+#: flowing.persistence.StateView.get of
+msgid "参数"
+msgstr ""
+
+#: flowing.agent.Agent.register_state:20 of
+msgid "命名状态空间名。"
+msgstr ""
+
+#: flowing.agent.Agent.register_state:21 of
+msgid "后端（当前仅 ``\"file\"``）。"
+msgstr ""
+
+#: ../../api/flowing.rst
+msgid "返回"
+msgstr ""
+
+#: flowing.agent.Agent.register_state:22 of
+msgid "命名袋的 :class:`StateView`。"
+msgstr ""
+
+#: ../../api/flowing.rst flowing.agent.Agent.get_background_task
+#: flowing.agent.Agent.source_dir flowing.message.MessageQueue.dequeue_nowait
+#: flowing.persistence.FileRecordStore.close
+#: flowing.persistence.FileRecordStore.drain
+#: flowing.persistence.RecordStore.close flowing.persistence.RecordStore.drain
+#: flowing.persistence.RecordStore.replay
+#: flowing.persistence.RecordStore.submit flowing.persistence.RecordStore.sync
+#: flowing.persistence.StateView.get of
+msgid "返回类型"
+msgstr ""
+
+#: flowing.agent.Agent.register_state:24 of
+msgid ":attr:`state`、:class:`flowing.persistence.StateView`"
+msgstr ""
+
+#: flowing.Agent.state:1 flowing.agent.Agent.state:1 of
+msgid "本 Agent 默认状态袋的视图——钩子 / 工具 / 插件代码里以 agent 视角读写持久化状态的唯一默认通道（公共 API）。"
+msgstr ""
+
+#: flowing.Agent.state:4 flowing.agent.Agent.state:4 of
+msgid ""
+"``agent.state.cron_jobs`` 属性式、``agent.state[\"weird-key\"]`` "
+"字典式；读写语义（写透落盘、defaults 回退、fail fast）全部继承 "
+":class:`flowing.persistence.StateView` 的类级契约。写透不触发 watcher（watch 不察觉 "
+"state）。扩展状态空间经 :meth:`register_state` 开启（命名袋，独立文件，不挂载属性）。本 property "
+"自身无副作用。"
+msgstr ""
+
+#: flowing.Agent.state:10 flowing.agent.Agent.state:10 of
+msgid ":meth:`register_state`、:meth:`get`、:meth:`set`、 :meth:`delete`"
+msgstr ""
+
+#: flowing.agent.Agent.get:1 of
+msgid "动态键统一读——状态键 / 实例与类属性 / ``_extra`` 三域兼容。"
+msgstr ""
+
+#: flowing.agent.Agent.get:3 of
+msgid ""
+"字符串键的通用读取入口（key 是变量的场景：插件写通用逻辑、slash 命令、调试工具）。查找序：已注册状态键 → 从 "
+"``agent.state`` 读出 （持久值，无则回退 ``default``）；否则 ``getattr`` （实例属性 → 类属性 → "
+"``_extra`` 回退）；仍无 → 返回 ``default``。"
+msgstr ""
+
+#: flowing.agent.Agent.get:8 of
+msgid "字符串键。"
+msgstr ""
+
+#: flowing.agent.Agent.get:9 of
+msgid "三域均未命中时的返回值（默认 ``None``）。"
+msgstr ""
+
+#: flowing.agent.Agent.get:11 of
+msgid ":meth:`set`、:meth:`delete`、:attr:`state`"
+msgstr ""
+
+#: flowing.agent.Agent.set:1 of
+msgid "动态键统一写——状态键 / ``_extra`` / 实例属性三域路由。"
+msgstr ""
+
+#: flowing.agent.Agent.set:3 of
+msgid "已注册状态键 → ``self.state[key] = value`` （写透落盘 + JSON 校验；写不触发 watcher）。"
+msgstr ""
+
+#: flowing.agent.Agent.set:5 of
+msgid "``key`` 在 ``_extra`` 中 → 原地更新（静默仓库，不触发 watcher）。"
+msgstr ""
+
+#: flowing.agent.Agent.set:6 of
+msgid ""
+"否则 ``setattr(self, key, value)``——普通实例属性路径 （``__setattr__`` 的 watcher "
+"通知照常）。"
+msgstr ""
+
+#: flowing.agent.Agent.set:9 of
+msgid ":meth:`get`、:meth:`delete`"
+msgstr ""
+
+#: flowing.agent.Agent.delete:1 of
+msgid "动态键统一删——三域路由（语义同 :meth:`set` 的镜像）。"
+msgstr ""
+
+#: flowing.agent.Agent.delete:3 of
+msgid ""
+"已注册状态键 → ``del self.state[key]`` （删持久值，读回退 default； 不触发 "
+"watcher——删除不是赋值事件）。"
+msgstr ""
+
+#: flowing.agent.Agent.delete:5 of
+msgid "``key`` 在 ``_extra`` 中 → 移除该键。"
+msgstr ""
+
+#: flowing.agent.Agent.delete:6 of
+msgid "否则 ``delattr(self, key)`` （普通实例属性删除；类属性 / 方法删 不掉，``AttributeError`` 原样上抛）。"
+msgstr ""
+
+#: flowing.agent.Agent.delete:9 of
+msgid ":meth:`get`、:meth:`set`"
+msgstr ""
+
+#: flowing.agent.Agent.setup:1 of
+msgid "实例初始化生命周期方法——子类覆写的装配入口。"
+msgstr ""
+
+#: flowing.agent.Agent.setup:5 of
+msgid ""
+"创建管线内被调用（``before_create`` 之后、PENDING 检查之前）； 恢复管线同样调用本方法（args 为持久化值，可被 "
+"``recover_agent`` 的 ``override_args`` 覆盖，触发的是 ``before_recover`` / "
+"``after_recover`` 钩子对）。签名即 args 来源（与 ``args_model`` 对照，见 "
+":attr:`args_model`）。与 ``__init__`` 的分工：核心必要 的初始化全部在 ``__init__`` "
+"（同步骨架，无外部输入）；``setup`` 只承载开发者引入的装配逻辑——依赖 args 与 inject 的赋值、业务 "
+"钩子注册、Composable 启用。"
+msgstr ""
+
+#: flowing.agent.Agent.setup:27 of
+msgid ""
+"实例级单次：``setup()`` 的语义效果与执行它的实例无关——create 与 recover "
+"两条管线各自在一个新建实例上执行同一份装配代码， 每个实例恰好执行一次。装配以新实例的钩子注册表与状态袋为 起点展开（declare 钩子点、注册"
+" handler、provide、Composable）， 各实例装配结果一致；普通实例属性赋值是运行期配置，不落盘、 不加限制；持久化 "
+"state 经 ``agent.state.register`` 键登记、 setup 中写 state 合法（recover 先重放后 "
+"setup，写入不被 覆盖）。"
+msgstr ""
+
+#: flowing.agent.Agent.setup:35 of
+msgid "期待行为：状态赋值、钩子注册、inject 读取、Composable 调用。"
+msgstr ""
+
+#: flowing.agent.Agent.setup:36 of
+msgid ""
+"轻量约束：网络请求 / 文件 I/O / 大量计算移到工具调用或按需 阶段。第一个 ``await`` 之前的代码不被其它协程打断——关键初始化 "
+"放第一个 ``await`` 前。"
+msgstr ""
+
+#: flowing.agent.Agent.setup:39 of
+msgid ""
+"后置条件：返回后框架做 PENDING 检查——仍有 PENDING 字段（如 必填 ``system_prompt`` 未赋值）→ "
+"``MissingFieldError``。"
+msgstr ""
+
+#: flowing.agent.Agent.setup:44 of
+msgid ":meth:`flowing.runtime.Runtime.recover_agent` —— 恢复管线 宿主（恢复时在新实例上执行本方法）。"
+msgstr ""
+
+#: flowing.agent.Agent.setup:46 of
+msgid ":meth:`destroy` —— 对等销毁入口。"
+msgstr ""
+
+#: flowing.agent.Agent.destroy:1 of
+msgid "递归销毁管线入口——实例丢弃，session 记录保留（公共 API）。"
+msgstr ""
+
+#: flowing.agent.Agent.destroy:5 of
+msgid "销毁本实例及其整个生命周期子树。时序（顺序为不变量）："
+msgstr ""
+
+#: flowing.agent.Agent.destroy:7 of
+msgid ""
+"resolve 全部 ``_pending_turns`` （``TurnResult(status=\"cancelled\")``） "
+"——调用方不挂起；"
+msgstr ""
+
+#: flowing.agent.Agent.destroy:9 of
+msgid ""
+"取消常驻工作循环 Task + 取消全部后台任务（只 cancel 不 await， await 无界会让 destroy 挂起）→ "
+"关闭持久化后端（``close()`` = 排空写队列 + 停写任务——不排空即销毁会静默丢尾部记录）；"
+msgstr ""
+
+#: flowing.agent.Agent.destroy:12 of
+msgid "dispatch ``before_destroy``；"
+msgstr ""
+
+#: flowing.agent.Agent.destroy:13 of
+msgid ""
+"深度优先递归 ``child.destroy()`` （子树收集：``_children`` ∪ ``_nodes`` 按 "
+"``_parent_id`` 扫描），清空 ``_children``；"
+msgstr ""
+
+#: flowing.agent.Agent.destroy:15 of
+msgid "从 ``_nodes`` 摘除（池移除实例值）；"
+msgstr ""
+
+#: flowing.agent.Agent.destroy:16 of
+msgid "dispatch ``after_destroy``。"
+msgstr ""
+
+#: flowing.agent.Agent.destroy:20 of
+msgid ""
+"destroy ≠ 删除：只丢实例；session（tree.jsonl + state.jsonl） 与池 key 保留到显式删除目录——「有 "
+"key 无 value → 现场恢复」 （``Runtime.get_agent`` 触发）。"
+msgstr ""
+
+#: flowing.agent.Agent.destroy:23 of
+msgid "幂等：重复调用安全（二次调用时子树已空、已摘除，直接返回）。"
+msgstr ""
+
+#: flowing.agent.Agent.destroy:24 of
+msgid ""
+"与回合收尾窗口的关系：destroy 不以 ``current_turn`` 为守卫， 回合收尾观察窗口（``after_turn`` "
+"钩子运行期间）调用 destroy 合法——取消工作循环 Task 可能中断 finally 的交付段，但第 1 步 会把 "
+"``_pending_turns`` 全部 resolve（cancelled），等待者不挂起； ``after_turn`` "
+"钩子可能被中断跳过，调用方须自知。"
+msgstr ""
+
+#: flowing.agent.Agent.destroy:29 of
+msgid "注意：``before_destroy`` 触发时持久化后端已关闭——handler 中 写状态不会落盘。"
+msgstr ""
+
+#: flowing.agent.Agent.destroy:31 of
+msgid "销毁后实例不可用：``inject`` / ``message`` / ``tool_call`` 等 行为无契约保证。"
+msgstr ""
+
+#: flowing.agent.Agent.destroy:33 of
+msgid "``_parent_id`` 不在销毁时改写：id 是创建时绑定的历史事实。"
+msgstr ""
+
+#: flowing.agent.Agent.destroy:37 of
+msgid ":meth:`flowing.runtime.Runtime.get_agent` —— 现场恢复入口。"
+msgstr ""
+
+#: flowing.agent.Agent.destroy:38 of
+msgid ":meth:`flowing.runtime.Runtime.shutdown` —— 进程级收尾。"
+msgstr ""
+
+#: flowing.agent.Agent.query:1 of
+msgid "统一入口：打包 + 入队 + 等待「包含我这条消息的回合」产物。"
+msgstr ""
+
+#: flowing.agent.Agent.query:5 of
+msgid ""
+"``content: str`` 自动打包为 ``[TextBlock(text=content)]``； ``list`` 直接作为 "
+"ContentBlock 列表。``kind`` 默认 ``USER``，可传 ``SYSTEM`` / ``EVENT`` / ``PEER``"
+" 等。``**kwargs`` 透传给 Message 构造（``source`` / ``priority`` / ``tags`` "
+"等）。返回包含本消息 的逻辑 Turn 的 :class:`TurnResult` （四种结局均 resolve，调用方不 挂起）。"
+msgstr ""
+
+#: flowing.agent.Agent.query:21 of
+msgid "等待语义：等「包含我这条消息」的逻辑回合完成；空闲时可能被 出队合并（一次取出多条消息，共享同一产物），活跃回合中排队等 当前回合完成。"
+msgstr ""
+
+#: flowing.agent.Agent.query:24 of
+msgid "副线不走本方法——副线唯一入口是 :meth:`side_query`。"
+msgstr ""
+
+#: flowing.agent.Agent.query:25 of
+msgid ""
+"取消等待 ≠ 取消回合：``await`` 被取消时消息已在队列（可能已 执行），取消只是不领结果；撤回未出队消息用 "
+":meth:`cancel_queued`。"
+msgstr ""
+
+#: flowing.agent.Agent.query:27 of
+msgid ""
+"死锁禁止：在当前回合的调用栈内（任何钩子、工具 ``execute``、 ``provider_gen`` 期间的 await 点）``await"
+" query()`` 必死锁—— 回合收尾要等钩子返回，钩子要等下一回合产物，下一回合要等当前 回合收尾。跨 Agent 等待同理：等待图成环（A"
+" 等 B、B 等 A）即 死锁，框架不做环检测。"
+msgstr ""
+
+#: flowing.agent.Agent.query:32 of
+msgid ""
+"回合内需要驱动，用 :meth:`steer` （STEER 优先级，当轮 context 可见）；``enqueue_message`` / "
+":meth:`message` 入队的非 STEER 消息回合内不可察觉，只在回合间消费。"
+msgstr ""
+
+#: flowing.agent.Agent.query:35 of
+msgid "崩溃 / ``destroy()`` 都不挂起调用方（resolve cancelled）。"
+msgstr ""
+
+#: flowing.agent.Agent.query:36 of
+msgid "前置条件：实例未被 ``destroy()``。"
+msgstr ""
+
+#: flowing.agent.Agent.query:40 of
+msgid ":meth:`message` —— 散装直发（fire-and-forget 糖）。"
+msgstr ""
+
+#: flowing.agent.Agent.query:41 of
+msgid ":meth:`enqueue_message` —— fire-and-forget 入口。"
+msgstr ""
+
+#: flowing.agent.Agent.query:42 of
+msgid ":meth:`cancel_queued` —— 撤回未出队消息。"
+msgstr ""
+
+#: flowing.agent.Agent.query:43 of
+msgid ":meth:`side_query` —— 副线路径。"
+msgstr ""
+
+#: flowing.agent.Agent.message:1 of
+msgid "散装直接入队（fire-and-forget），返回 ``message_id``，不等待结果。"
+msgstr ""
+
+#: flowing.agent.Agent.message:5 of
+msgid ""
+":meth:`enqueue_message` 的散装箱糖：免去调用方手工构造 ``Message``——``content: str`` "
+"自动打包为 ``[TextBlock(text=content)]``；``list`` 直接作为 ContentBlock "
+"列表。``kind`` 默认 ``USER``，``**kwargs`` 透传给 Message 构造 （``source`` / "
+"``priority`` / ``tags`` 等）。打包后委托 :meth:`enqueue_message`，返回其 "
+"``message_id``。"
+msgstr ""
+
+#: flowing.agent.Agent.message:22 of
+msgid ""
+"fire-and-forget：不注册 ``_pending_turns``、不等待任何回合； 返回值仅是消息 id，可用于 "
+":meth:`cancel_queued` 撤回。"
+msgstr ""
+
+#: flowing.agent.Agent.message:24 of
+msgid ""
+"入队时序（``before_enqueue`` → enqueue → ``after_enqueue``）与 "
+":meth:`enqueue_message` 完全一致；``Intercepted`` 原样上抛。"
+msgstr ""
+
+#: flowing.agent.Agent.message:26 of
+msgid "不返回 ``TurnResult``——想要回合产物请用 :meth:`query`。"
+msgstr ""
+
+#: flowing.agent.Agent.enqueue_message:36 flowing.agent.Agent.message:30 of
+msgid ":meth:`query` —— 等待语义的封装。"
+msgstr ""
+
+#: flowing.agent.Agent.message:31 of
+msgid ":meth:`steer` —— STEER 优先级的特例。"
+msgstr ""
+
+#: flowing.agent.Agent.message:32 of
+msgid ":meth:`enqueue_message` —— 被委托的原始入队入口。"
+msgstr ""
+
+#: flowing.agent.Agent.steer:1 of
+msgid "注入 steer 消息（不等回应）：``message(..., priority=MessagePriority.STEER)`` 的特例。"
+msgstr ""
+
+#: flowing.agent.Agent.steer:6 of
+msgid ""
+"回合进行中向 Agent 追加导向信息（补充约束、修正方向、追加资料）。 固定 ``priority=MessagePriority.STEER"
+"``，fire-and-forget，返回 ``message_id``。"
+msgstr ""
+
+#: flowing.agent.Agent.steer:18 of
+msgid ""
+"吸收语义：STEER 消息的两个消费路径——随出队批次进入回合 （队首 INTERRUPT/STEER 连续段并入下一逻辑回合的消费批次， 见 "
+":meth:`_dequeue`），或回合内层循环每轮 ``provider_gen`` 前被 drain 挂树、当轮 context "
+"即可见；两条路径都不打断当前 回合（对比 ``INTERRUPT`` 的 abort 语义）。"
+msgstr ""
+
+#: flowing.agent.Agent.steer:23 of
+msgid "fire-and-forget：不注册 ``_pending_turns``、不等待回合产物。"
+msgstr ""
+
+#: flowing.agent.Agent.steer:24 of
+msgid "不保证被哪个回合消费：若当前回合已收尾，由下一回合消费。"
+msgstr ""
+
+#: flowing.agent.Agent.steer:28 of
+msgid ":meth:`message` —— 散装直发的一般形。"
+msgstr ""
+
+#: flowing.agent.Agent.steer:29 of
+msgid ":meth:`query` —— 需要回合产物时用。"
+msgstr ""
+
+#: flowing.agent.Agent.enqueue_message:1 of
+msgid "纯入队（fire-and-forget），返回 ``message_id``，不等待结果。"
+msgstr ""
+
+#: flowing.agent.Agent.enqueue_message:5 of
+msgid ""
+"接收已构造的 ``Message`` 对象（打包责任上移到 ``query()`` / ``message()`` 或调用方）。远程用户 / "
+"第三方 / Cron / 异步工具最终 结果的统一投递入口。"
+msgstr ""
+
+#: flowing.agent.Agent.enqueue_message:20 of
+msgid ""
+"时序：dispatch ``before_enqueue`` （可检查 / 修改 / ``raise Intercepted`` "
+"拒绝——内容审核、速率限制、文件过大）→ ``_message_queue.enqueue(msg)`` → dispatch "
+"``after_enqueue`` （纯观察，日志 / 审计）→ 返回 ``msg.id``。"
+msgstr ""
+
+#: flowing.agent.Agent.enqueue_message:24 of
+msgid "消费保证：入队即会被消费（常驻工作循环），无需「入队触发」逻辑。"
+msgstr ""
+
+#: flowing.agent.Agent.enqueue_message:25 of
+msgid ""
+"可入队种类：USER / EVENT / SYSTEM / PLUGIN / SUBAGENT / PEER， 以及异步工具最终结果（以 "
+"``EVENT`` kind 入队，content 为标注块 + 结果块列表）；``PROVIDER`` 消息永远不进队列（回合内产生）。"
+msgstr ""
+
+#: flowing.agent.Agent.enqueue_message:28 of
+msgid "优先级插队只影响消费顺序，不影响 ``_pending_turns`` 关联 （逐条按 id pop）。"
+msgstr ""
+
+#: flowing.agent.Agent.cancel flowing.agent.Agent.enqueue_message
+#: flowing.agent.Agent.fork of
+msgid "raises flowing.errors.Intercepted"
+msgstr ""
+
+#: flowing.agent.Agent.enqueue_message:30 of
+msgid "``before_enqueue`` handler"
+msgstr ""
+
+#: flowing.agent.Agent.enqueue_message:31 of
+msgid "拒绝入队时原样上抛。"
+msgstr ""
+
+#: flowing.agent.Agent.enqueue_message:35 of
+msgid ":meth:`enqueue_messages` —— 批量入队。"
+msgstr ""
+
+#: flowing.agent.Agent.enqueue_message:37 of
+msgid ":meth:`message` —— 散装箱糖。"
+msgstr ""
+
+#: flowing.agent.Agent.enqueue_message:38 of
+msgid ":class:`flowing.message.MessageQueue` —— 排序与阻塞语义。"
+msgstr ""
+
+#: flowing.agent.Agent.enqueue_messages:1 of
+msgid "批量入队（接受单条或列表），返回 ``message_id`` 列表。"
+msgstr ""
+
+#: flowing.agent.Agent.enqueue_messages:5 of
+msgid ""
+"逐条委托 :meth:`enqueue_message` （每条独立经过 ``before_enqueue`` / "
+"``after_enqueue``）；任一条被 ``Intercepted`` 时异常上抛，已入队的不回滚。"
+msgstr ""
+
+#: flowing.agent.Agent.enqueue_messages:8 of
+msgid "返回顺序与输入顺序一致。"
+msgstr ""
+
+#: flowing.agent.Agent.enqueue_messages:10 of
+msgid ":meth:`enqueue_message`"
+msgstr ""
+
+#: flowing.agent.Agent.cancel_queued:1 of
+msgid "撤回一条未出队的排队消息。"
+msgstr ""
+
+#: flowing.agent.Agent.cancel_queued:5 of
+msgid ""
+"从消息队列移除指定消息；若该消息有 ``query()`` 等待者 （``_pending_turns`` 条目），联动 resolve "
+"（``TurnResult(status=\"cancelled\")``，turn 字段为框架合成的空 "
+"``TurnContext``）并移除条目——调用方不挂起。"
+msgstr ""
+
+#: flowing.agent.Agent.cancel_queued:12 of
+msgid "返回 ``True``：消息在队列中，已移除（等待者已联动 resolve）。"
+msgstr ""
+
+#: flowing.agent.Agent.cancel_queued:13
+#: flowing.agent.Agent.set_queued_priority:20 of
+msgid "返回 ``False``：消息已出队（正在或已被回合消费）或不存在—— 不做任何动作。"
+msgstr ""
+
+#: flowing.agent.Agent.cancel_queued:15 of
+msgid "同步方法：不 dispatch 钩子、不 await；future 的 ``set_result`` 同步完成。"
+msgstr ""
+
+#: flowing.agent.Agent.cancel_queued:17 of
+msgid "不影响其它排队消息；不触碰 ``current_turn``。"
+msgstr ""
+
+#: flowing.agent.Agent.cancel_queued:19 of
+msgid ":meth:`query`、:meth:`abort_turn`、 :meth:`set_queued_priority`"
+msgstr ""
+
+#: flowing.agent.Agent.track_background_task:1 of
+msgid "注册一个后台任务并返回注册键（后台机制的唯一注册入口）。"
+msgstr ""
+
+#: flowing.agent.Agent.track_background_task:5 of
+msgid ""
+"后台机制（async generator 工具形态 / ``background`` 标记 / 返回 Task "
+"路径）的驱动任务统一经本方法登记：生成自增序列号注册键 → 写入 ``_background_tasks`` → 挂 done_callback "
+"闭包移除（完成 / 异常 / 取消即弃）→ 返回注册键。注册键随 pending 收据交付 "
+"（``ToolResult.background_task_id``），调用方 / LLM 可据此按 id 取消或查询。"
+msgstr ""
+
+#: flowing.agent.Agent.track_background_task:14 of
+msgid "同步方法；同一任务重复注册产生两个不同键（调用方责任）。"
+msgstr ""
+
+#: flowing.agent.Agent.track_background_task:15 of
+msgid "注册表同时承担：按 id 精确取消、强引用防 GC（后台任务无其他 持有者）、destroy 统一覆盖。"
+msgstr ""
+
+#: flowing.agent.Agent.track_background_task:17 of
+msgid "done_callback 用闭包捕获 str 键——直接传 ``dict.pop`` 会收到 Task 参数而 KeyError。"
+msgstr ""
+
+#: flowing.agent.Agent.track_background_task:20 of
+msgid ":meth:`cancel_background_task`、 :meth:`cancel_all_background_tasks`"
+msgstr ""
+
+#: flowing.agent.Agent.cancel_background_task:1 of
+msgid "按注册键取消单个后台任务。"
+msgstr ""
+
+#: flowing.agent.Agent.cancel_background_task:5 of
+msgid ""
+"返回是否命中注册表（不在册 → ``False``，幂等）；与 ``task.cancel()`` 的返回值无关——命中已完成任务时 "
+"``cancel()`` 返回 ``False`` 但本方法仍返回 ``True``。"
+msgstr ""
+
+#: flowing.agent.Agent.cancel_background_task:8 of
+msgid "同步方法：``task.cancel()`` 为协作式——执行体可在 await 点收 ``CancelledError`` 后自行决定收尾。"
+msgstr ""
+
+#: flowing.agent.Agent.cancel_all_background_tasks:1 of
+msgid "取消全部在册后台任务。"
+msgstr ""
+
+#: flowing.agent.Agent.cancel_all_background_tasks:5 of
+msgid ""
+"遍历 ``task.cancel()`` （只 cancel 不 await——执行体可忽略取消， await 无界会让 "
+"``destroy()`` 挂起）；幂等，空表 no-op。"
+msgstr ""
+
+#: flowing.agent.Agent.cancel_all_background_tasks:7 of
+msgid "不清空注册表（移除由 done_callback 闭包完成；destroy 场景由 destroy 显式 ``clear()``）。"
+msgstr ""
+
+#: flowing.agent.Agent.get_background_tasks:1 of
+msgid "后台任务注册表快照（``task_id → Task``）。"
+msgstr ""
+
+#: flowing.agent.Agent.get_background_tasks:5 of
+msgid "快照：复制 dict，不返回内部引用——调用方改动不影响注册表。"
+msgstr ""
+
+#: flowing.agent.Agent.get_background_tasks:6 of
+msgid "直接暴露 Task 对象，不做防调用方包装。"
+msgstr ""
+
+#: flowing.agent.Agent.get_background_task:1 of
+msgid "按注册键查询单个后台任务；不在册 → ``None``。"
+msgstr ""
+
+#: flowing.agent.Agent.set_queued_priority:1 of
+msgid "重设一条未出队排队消息的优先级（队列立即重排）。"
+msgstr ""
+
+#: flowing.agent.Agent.set_queued_priority:5 of
+msgid ""
+":meth:`flowing.message.MessageQueue.set_priority` 的 Agent 层入口： 把排队中的消息提升 "
+"/ 降低优先级，影响下一轮出队的消费顺序。与 :meth:`cancel_queued` 对称——那个管「反悔撤回」，这个管「催办 / "
+"降级」。重排保留原入队序号：被改优先级的消息插入新优先级带时按 原入队早晚定位，如同它入队时就带着新优先级。"
+msgstr ""
+
+#: flowing.agent.Agent.set_queued_priority:19 of
+msgid "返回 ``True``：消息在队列中，``priority`` 已改写并重排。"
+msgstr ""
+
+#: flowing.agent.Agent.set_queued_priority:22 of
+msgid "同步方法：不 dispatch 钩子、不 await。"
+msgstr ""
+
+#: flowing.agent.Agent.set_queued_priority:23 of
+msgid "不影响正在执行的回合与 ``current_turn``；不改写消息其它字段 （``id`` / ``timestamp`` 等）。"
+msgstr ""
+
+#: flowing.agent.Agent.set_queued_priority:26 of
+msgid ":meth:`cancel_queued`、:meth:`enqueue_message`"
+msgstr ""
+
+#: flowing.agent.Agent.estimate_context_tokens:1 of
+msgid "估计当前上下文占用的 token 数（锚点实测 + 尾部估算，纯观测）。"
+msgstr ""
+
+#: flowing.agent.Agent.estimate_context_tokens:5 of
+msgid ""
+"回答「现在把上下文发给 LLM 大约多大」：沿 ``current_head_id`` 上溯 的当前路径上，找最近一条有效锚点（``kind =="
+" PROVIDER`` 且 ``usage`` 非 ``None`` 且 ``usage.total_tokens > 0`` 的消息）， "
+"锚点覆盖部分用实测值（``measured``），之后的新内容用 "
+":func:`flowing.message.estimate_message_tokens` 逐条估算 "
+"（``estimated``）；无有效锚点时全段估算（含 system prompt 与工具 schema）。每次现场扫描，锚点随 fork / "
+"树手术自动迁移——不维护 持久锚点账本，无陈旧锚点问题；代价是 O(路径长) 扫描。"
+msgstr ""
+
+#: flowing.agent.Agent.estimate_context_tokens:23 of
+msgid "同步、纯读取、无副作用：不 dispatch 钩子、不改任何状态。"
+msgstr ""
+
+#: flowing.agent.Agent.estimate_context_tokens:24 of
+msgid "路径收集口径与上下文组装相同（沿 ``current_head_id`` 上溯）。"
+msgstr ""
+
+#: flowing.agent.Agent.estimate_context_tokens:25 of
+msgid ""
+"锚点命中时：``measured = 锚点.usage.total_tokens`` （含 cache_read——缓存读的 token "
+"也占窗口）；``estimated`` 追加 「当前启用工具中不在 ``_measured_tool_names`` 的 schema 估算」 "
+"——锚点后新增工具的补估规则。"
+msgstr ""
+
+#: flowing.agent.Agent.estimate_context_tokens:29 of
+msgid ""
+"无锚点时：``measured = None``，``estimated`` = system prompt 各 segment 文本估算 + "
+"当前全部启用工具 schema 估算 + 路径全部消息 估算。"
+msgstr ""
+
+#: flowing.agent.Agent.estimate_context_tokens:32 of
+msgid ""
+"``context_window`` 取 ``self.model.resolve(self).context_window`` "
+"（现场求值；模型未声明为 ``None``，此时 ``usage_ratio`` 为 ``None``）。"
+msgstr ""
+
+#: flowing.agent.Agent.estimate_context_tokens:35 of
+msgid "不设阈值、不触发压缩、不告警（策略归插件）；不缓存结果；估算值 永不用于计费。"
+msgstr ""
+
+#: flowing.agent.Agent.estimate_context_tokens:37 of
+msgid ""
+"边缘情况：路径为空 → 全零且 ``measured is None``；锚点消息的 ``usage.total_tokens == 0`` "
+"（异常响应）不算有效锚点，继续上溯。"
+msgstr ""
+
+#: flowing.agent.Agent.estimate_context_tokens:42 of
+msgid ""
+":class:`ContextUsageEstimate`、 "
+":func:`flowing.message.estimate_message_tokens`、 "
+":class:`flowing.providers.Usage`"
+msgstr ""
+
+#: flowing.agent.Agent.provider_gen:1 of
+msgid "单次模型调用——双模式（流式 / 非流式）的唯一入口。"
+msgstr ""
+
+#: flowing.agent.Agent.provider_gen:5 of
+msgid ""
+"时序：``_turn_abort`` 检查（置位 → 直接返回 ``ProviderResponse(message=None, "
+"finish=False, cancelled=True)``， 不抛异常）→ ``self.model.resolve(self)`` "
+"字段级惰性求值 → provider 懒获取（``provider_registry.get(model.provider)``）→ "
+"dispatch ``before_provider_gen`` （可改写完整 ``Context``）→ Provider 调用 （注册 "
+"``Execution(kind=\"request\")``）→ dispatch ``after_provider_gen`` （可改写 "
+"``ProviderResponse``）→ 返回。"
+msgstr ""
+
+#: flowing.agent.Agent.provider_gen:22 of
+msgid ""
+"``stream=True`` （默认）：流式路径——逐 delta 累积进 ``Message.content`` 并经 "
+"``on_provider_delta`` dispatch （纯观察：累积只认 Provider 原始 delta，dispatch 的返回值被"
+" 丢弃、不回写——改写单条 delta 无意义，需改写走 ``after_provider_gen`` 改整条消息；delta 本身不落盘）； "
+"``stream=False``：非流式一次性请求，拿到完整响应后合成一条 全量 delta 同样 dispatch——两种路径的 delta "
+"数据格式完全一致， 订阅者永远可以依赖「每次 ``provider_gen`` 至少一条 delta」。"
+msgstr ""
+
+#: flowing.agent.Agent.provider_gen:30 of
+msgid ""
+"``by``：来源标记，透写到每条 ``ProviderDelta`` 与返回的 ``ProviderResponse`` （adapter "
+"不填，由本方法盖写）。主 Turn 内层循环传 ``\"_turn\"``，``side_query`` 传 ``\"_side\"``；下划线 "
+"开头为框架保留值，插件自定义来源勿用。``after_provider_gen`` 与 ``on_provider_delta`` 钩子点以 "
+"``match_on=\"by\"`` 声明—— ``match_on`` 指定按 value 的哪个字段过滤注册（此处按来源标记 "
+"``by``），handler 可按来源模式过滤注册。"
+msgstr ""
+
+#: flowing.agent.Agent.provider_gen:37 of
+msgid ""
+"流式中断（abort）：已累积内容保留为 ``partial=True`` 的消息 "
+"随响应返回（保留落盘），``cancelled=True``；取消点起不再 dispatch delta。"
+msgstr ""
+
+#: flowing.agent.Agent.provider_gen:40 of
+msgid ""
+"不捕获任何异常：Provider 异常分类（``RateLimitedError`` / ``ContextLengthError`` "
+"等）原样上抛给回合层（统一经 ``on_provider_error`` 分发）。"
+msgstr ""
+
+#: flowing.agent.Agent.provider_gen:43 of
+msgid ""
+"不重试、不缓存、不聚合用量——回合级聚合是回合执行体的职责； 本方法只保证响应消息上附着的 ``message.usage`` 原样抵达 "
+"``after_provider_gen`` 钩子与调用方。"
+msgstr ""
+
+#: flowing.agent.Agent.provider_gen:46 of
+msgid "边缘情况：abort 于 Provider 调用期间——adapter 检测信号返回空 响应而非抛异常（cancel 是正常终止不是错误）。"
+msgstr ""
+
+#: flowing.agent.Agent.provider_gen:51 of
+msgid ":meth:`side_query` —— 副线封装（强制非流式）。"
+msgstr ""
+
+#: flowing.agent.Agent.provider_gen:52 of
+msgid ""
+":meth:`flowing.providers.Provider.generate` / "
+":meth:`flowing.providers.Provider.generate_stream` —— 底层契约。"
+msgstr ""
+
+#: flowing.agent.Agent.provider_gen:54 of
+msgid ":class:`ProviderErrorContext` —— 异常上抛后的决策上下文。"
+msgstr ""
+
+#: flowing.agent.Agent.side_query:1 of
+msgid "副线调用：不 commit、不落盘、固定非流式，返回最终文本。"
+msgstr ""
+
+#: flowing.agent.Agent.side_query:5 of
+msgid ""
+"旁路快速查询（guardrail、内容检查、摘要、情绪推断）：把散装 ``content`` / ``kind`` / ``**kwargs`` "
+"打包为一条 ``Message`` （与 :meth:`query` 相同的打包规则：``str`` → "
+"``[TextBlock(text=content)]``），追加到本次临时 context，直接 ``provider_gen(context,"
+" stream=False, by=\"_side\")`` 一次，返回响应 文本；不产生任何持久化痕迹。``model_tag`` "
+"调用时传参（请求前当场 解析，不改写 ``self.model``）；``None`` 时复用 ``self.model``。"
+msgstr ""
+
+#: flowing.agent.Agent.side_query:19 of
+msgid "\" + window,"
+msgstr ""
+
+#: flowing.agent.Agent.side_query:20 of
+msgid "model_tag=\"fast\")).strip()"
+msgstr ""
+
+#: flowing.agent.Agent.side_query:24 of
+msgid ""
+"注册 ``Execution(kind=\"side_query\")`` （可被 ``cancel_by_tag`` / "
+"级联取消命中）；abort 时返回空文本（不抛异常）。"
+msgstr ""
+
+#: flowing.agent.Agent.side_query:26 of
+msgid ""
+"上下文组装基于当前消息级树（与主路径同一机制，不剥离工具 schema、不做任何副线特化——保证 prompt 缓存命中率）；但本次 交换的请求 "
+"/ 响应消息均不挂树。"
+msgstr ""
+
+#: flowing.agent.Agent.side_query:29 of
+msgid ""
+"响应消费规则（单次交换，无续轮）：返回值 = 仅拼接响应中的 ``TextBlock.text``；``ThinkingBlock`` 与 "
+"``ToolCallBlock`` 一律 丢弃——副线消息不落盘、不再进任何上下文，thinking 无 passback "
+"义务、工具请求无执行机制。``finish`` 字段不读（它是 Turn 循环 的结束判断，副线不是 Turn）。"
+msgstr ""
+
+#: flowing.agent.Agent.side_query:34 of
+msgid ""
+"空文本二义性：abort 与「响应无 TextBlock」（如 thinking 烧光 预算、模型只想调工具）都返回 "
+"``\"\"``，不区分——调用方对空值做 幂等兜底。"
+msgstr ""
+
+#: flowing.agent.Agent.side_query:37 of
+msgid ""
+"截断：不设独立参数，输出上限由本次调用解析出的 ``ModelConfig.max_output_tokens`` "
+"决定；``stop_reason=length`` 的被截断文本是合法返回值，不报错。"
+msgstr ""
+
+#: flowing.agent.Agent.side_query:40 of
+msgid ""
+"不 dispatch turn 族钩子（``before_turn`` 等——副线不是逻辑 Turn）；不更新 "
+"``current_head_id``；不触碰 ``_pending_turns``； 不写 "
+"``last_result``；固定非流式（``stream=True`` 无入口）； 不记入 turn "
+"用量累加器（``TurnResult.token_usage`` 不含副线 消耗）。副线用量的观察点是 "
+"``after_provider_gen`` 钩子——副线 走 ``provider_gen()``，钩子照常触发。"
+msgstr ""
+
+#: flowing.agent.Agent.side_query:46 of
+msgid "异常：Provider 异常直接上抛调用方（副线无 ``on_provider_error`` 回合层兜底——调用方自行决定重试 / 降级）。"
+msgstr ""
+
+#: flowing.agent.Agent.side_query:51 of
+msgid ":meth:`query` —— 主线入口（副线请直接调本方法）。"
+msgstr ""
+
+#: flowing.agent.Agent.side_query:52 of
+msgid ":meth:`provider_gen` —— 底层调用。"
+msgstr ""
+
+#: flowing.agent.Agent.remove:1 of
+msgid "删除一条消息；若删的是 ``current_head_id``，head 回退到其 ``parent_id``。"
+msgstr ""
+
+#: flowing.agent.Agent.remove:6 of
+msgid ""
+"对 :meth:`MessageChain.remove` 的 Agent 层包装：``MessageChain`` "
+"只做链手术（删除时把直接子自动重挂到其亲节点，链保持连续）； 本方法补上 head 维护——当被删除的消息正好是 "
+"``current_head_id`` 时，先把 head 回退到该消息的 ``parent_id``，再执行删除。 ``parent_id`` "
+"为 ``None`` 时 head 变为 ``None``——下一条消息将 作为新根挂树。"
+msgstr ""
+
+#: flowing.agent.Agent.branch:10 flowing.agent.Agent.pop:17
+#: flowing.agent.Agent.push:13 flowing.agent.Agent.remove:15
+#: flowing.agent.Agent.remove_by_tags:15 of
+msgid "同步方法，不 dispatch 钩子。"
+msgstr ""
+
+#: flowing.agent.Agent.remove:16 of
+msgid "``message_id`` 不存在时由 :meth:`MessageChain.remove` 抛 ``KeyError``。"
+msgstr ""
+
+#: flowing.agent.Agent.remove:18 of
+msgid ""
+"删除非 head 消息时，行为与 :meth:`MessageChain.remove` 完全一致 （head "
+"不动；被删消息的直接子自动重挂到其亲节点）。"
+msgstr ""
+
+#: flowing.agent.Agent.remove:21 of
+msgid ":meth:`pop`、:meth:`MessageChain.remove`"
+msgstr ""
+
+#: flowing.agent.Agent.pop:1 of
+msgid "删除 ``current_head_id`` 指向的消息，head 回退到其亲节点。"
+msgstr ""
+
+#: flowing.agent.Agent.pop:5 of
+msgid ""
+":meth:`remove` 的 head 专用便捷包装：删除当前 head 并返回被删除 的消息 id。空树（``current_head_id"
+" is None``）时返回 ``None``。"
+msgstr ""
+
+#: flowing.agent.Agent.pop:18 of
+msgid ""
+"连续 ``pop()`` 会把 head 链从新到旧逐条删除；全部删完后 ``current_head_id is "
+"None``，下一条消息成为新根。"
+msgstr ""
+
+#: flowing.agent.Agent.pop:21 of
+msgid "被删除的消息 id；空树返回 ``None``。"
+msgstr ""
+
+#: flowing.agent.Agent.pop:23 of
+msgid ":meth:`remove`、:meth:`push`"
+msgstr ""
+
+#: flowing.agent.Agent.push:1 of
+msgid "把一条消息挂到 ``current_head_id`` 之下并落盘，head 前移。"
+msgstr ""
+
+#: flowing.agent.Agent.push:5 of
+msgid ""
+"回合外的消息树追加入口：``msg.parent_id = current_head_id`` → 挂入 ``_messages`` → 落盘 →"
+" ``current_head_id = msg.id`` （写透 core 袋）。它也是回合内挂树的核心写路径；本方法不 dispatch "
+"turn 族钩子、不写 ``turn.message_ids``——这两部分由回合内的挂树入口 在调用本方法前后补齐。"
+msgstr ""
+
+#: flowing.agent.Agent.push:14 of
+msgid "``msg.id`` 已存在于 ``_messages`` 时抛 ``ValueError``。"
+msgstr ""
+
+#: flowing.agent.Agent.push:15 of
+msgid "``current_head_id`` 为 ``None`` 时，``msg`` 成为新根 （``parent_id=None``）。"
+msgstr ""
+
+#: flowing.agent.Agent.branch:14 flowing.agent.Agent.push:18 of
+msgid "``msg.id``。"
+msgstr ""
+
+#: flowing.agent.Agent.push:20 of
+msgid ":meth:`pop`、:meth:`branch`"
+msgstr ""
+
+#: flowing.agent.Agent.branch:1 of
+msgid "把一条消息挂到指定亲节点下（``None`` = 新根），不移动 head。"
+msgstr ""
+
+#: flowing.agent.Agent.branch:5 of
+msgid ""
+":meth:`MessageChain.branch` 的 Agent 层透传。调用方传入新消息 与基点；只创建节点并落盘，不改变 "
+"``current_head_id``。"
+msgstr ""
+
+#: flowing.agent.Agent.branch:11 of
+msgid "``parent_id`` 为 ``None`` 时开新根；非 ``None`` 时须存在。"
+msgstr ""
+
+#: flowing.agent.Agent.branch:12 of
+msgid "不移动 ``current_head_id`` （需要切过去用 :meth:`fork`）。"
+msgstr ""
+
+#: flowing.agent.Agent.branch:16 of
+msgid ":meth:`MessageChain.branch`、:meth:`fork`"
+msgstr ""
+
+#: flowing.agent.Agent.remove_by_tags:1 of
+msgid "按 tags 批量删除消息，并保持 head 语义（链连续、无孤儿）。"
+msgstr ""
+
+#: flowing.agent.Agent.remove_by_tags:5 of
+msgid ""
+"透传 :meth:`MessageChain.remove_by_tags`（按消息链线性顺序**从后 往前**逐条 "
+":meth:`MessageChain.remove`——每条删除都会把被删消息 的直接子自动重挂到其亲节点，链保持连续）。head "
+"维护：删除前记录 ``current_head_id`` 的完整祖先链；删除后若 head 已被删，回退到 "
+"祖先链中**第一个仍存活**的祖先（整链被删光 → ``None``），而不是 只回退单层亲节点——批量删除可能连删 head "
+"与其亲节点，单层回退会 指向已删节点。"
+msgstr ""
+
+#: flowing.agent.Agent.remove_by_tags:16 of
+msgid "匹配 / 删除 / 返回计数语义由 :meth:`MessageChain.remove_by_tags` 承担。"
+msgstr ""
+
+#: flowing.agent.Agent.remove_by_tags:19 of
+msgid "删除条数（透传）。"
+msgstr ""
+
+#: flowing.agent.Agent.remove_by_tags:21 of
+msgid ":meth:`remove`、:meth:`MessageChain.remove_by_tags`"
+msgstr ""
+
+#: flowing.agent.Agent.fork:1 of
+msgid "消息级 fork：把 ``current_head_id`` 切到任意历史消息。"
+msgstr ""
+
+#: flowing.agent.Agent.fork:5 of
+msgid ""
+"消息上下文最基本的组织方式（核心机制，非扩展特性）。时序： dispatch ``before_fork`` （可改写 target / "
+"``raise Intercepted`` 阻止）→ 目标合法性检查 → 记录切换前的原 head → 切换 "
+"``current_head_id`` → dispatch ``after_fork`` （纯观察，日志 / 通知 UI 刷新分支列表）。"
+msgstr ""
+
+#: flowing.agent.Agent.fork:11 of
+msgid ""
+"fork 是纯上下文操作，不碰执行：正在运行的工具 / 子 Agent 继续 运行、结果照常交付；执行追踪、生命周期子树、prompt "
+"块、provide 存储、工具条目、消息队列均不被触碰（共享同一实例，不拷贝、不 冻结）。全时合法、无守卫：head "
+"即「添加节点的位置」（每条消息挂树 即前移），回合内 fork 的语义即 seek——本回合后续 append 与 "
+"``provider_gen`` 改在新基址上继续。"
+msgstr ""
+
+#: flowing.agent.Agent.fork:29 of
+msgid ""
+"回合内 fork（seek 语义）合法、无 ``RuntimeError`` 守卫，但调用方 须自知三件事：① 嫁接——fork "
+"后的产物挂在目标所在链上， ``turn.message_ids`` 可能跨链（消费者均按 id 取消息，无机械 故障）；② "
+"上下文瞬移——下一轮上下文组装从新 head 上溯；③ 配对断裂——仅当 fork 落在「tool_call 已挂树、结果未 append」的 "
+"工具执行相位，下一轮组装出「有 result 无 call」，provider 会 显式报错（响亮、可恢复，append-only "
+"保证数据完好）。这是可预想 的操作语义而非损坏，框架不做家长式禁止。"
+msgstr ""
+
+#: flowing.agent.Agent.fork:37 of
+msgid ""
+"外部改方向的推荐定式仍是先终止执行再切上下文（时序可控）： ``cancel()`` → 等回合收尾完成 → ``fork()`` → "
+"发新消息。回合内 直接 fork 适合时序可知的钩子内调用者（如 compact）。"
+msgstr ""
+
+#: flowing.agent.Agent.fork:40 of
+msgid ""
+"上下文压缩 = fork 的应用：压缩把摘要复制为 SYSTEM 新根后经本 方法切换 head，旧分支保留完整历史；何时压缩、如何摘要是 "
+"Composable / 应用层策略（内置 ``flowing.composables.compact``）， fork 只提供机制。"
+msgstr ""
+
+#: flowing.agent.Agent.fork of
+msgid "raises ValueError"
+msgstr ""
+
+#: flowing.agent.Agent.fork:44 of
+msgid "``target_message_id`` 不在 ``_messages``"
+msgstr ""
+
+#: flowing.agent.Agent.fork:45 of
+msgid "中（含已被 ``chain.remove`` 移除的 id）。"
+msgstr ""
+
+#: flowing.agent.Agent.fork:46 of
+msgid "``before_fork`` handler"
+msgstr ""
+
+#: flowing.agent.Agent.fork:47 of
+msgid "阻止 fork。"
+msgstr ""
+
+#: flowing.agent.Agent.fork:48 of
+msgid ""
+"不换 Agent 类型（换类型 = 换身份 = 子 Agent）；不创建第二个 实例、不在两个分支上同时运行（需要并行用子 Agent）；不复制 "
+"/ 截断 tree.jsonl——只是切换游标。"
+msgstr ""
+
+#: flowing.agent.Agent.fork:51 of
+msgid "边缘情况：兄弟分支无顺序信息（互斥分支），UI 排序用 ``Message.timestamp``。"
+msgstr ""
+
+#: flowing.agent.Agent.fork:56 of
+msgid ":attr:`current_head_id` —— 被切换的游标。"
+msgstr ""
+
+#: flowing.agent.Agent.fork:57 of
+msgid ":class:`flowing.message.MessageChain` —— 修改历史结构的 手术入口（与 fork 改视角正交）。"
+msgstr ""
+
+#: flowing.agent.Agent.pause:1 of
+msgid "协作式暂停：关闭工作循环 gate。"
+msgstr ""
+
+#: flowing.agent.Agent.pause:5 of
+msgid ""
+"三个检查点（dequeue 前 / provider_gen 前 / 每个 tool_call 前）均 等待工作循环 "
+"gate——回合之间与回合内关键操作前都可暂停；恢复后 从暂停点继续（pause 是挂起等待，可恢复；abort 是终止退出，不可 "
+"恢复）。暂停期间队列不丢消息——可继续 ``enqueue_message`` 调整 方向，恢复后按序消费。"
+msgstr ""
+
+#: flowing.agent.Agent.pause:13 of
+msgid "同步方法，幂等（重复调用无额外效果）；不 dispatch 钩子。"
+msgstr ""
+
+#: flowing.agent.Agent.pause:14 of
+msgid ""
+"优先级：``pause()`` 与 abort 同时发生时先挂起——``resume()`` 后才判定终止（每处检查点 pause "
+"在前、abort 在后）。"
+msgstr ""
+
+#: flowing.agent.Agent.pause:16 of
+msgid ""
+"不置位任何 ``Execution.pause`` （Execution 层暂停是另一个正交 通道，由 Tool 覆写 / Composable "
+"自管，不级联）。"
+msgstr ""
+
+#: flowing.agent.Agent.pause:18 of
+msgid "作用范围：仅控制本 Agent 的工作循环 turn 检查点——不递归子 Agent（子树暂停用 :meth:`pause_recursive`）。"
+msgstr ""
+
+#: flowing.agent.Agent.pause:21 of
+msgid ":meth:`resume`、:attr:`paused`、:meth:`abort_turn`"
+msgstr ""
+
+#: flowing.agent.Agent.resume:1 of
+msgid "恢复：打开工作循环 gate。"
+msgstr ""
+
+#: flowing.agent.Agent.resume:5 of
+msgid ""
+"同步、幂等；打开后所有挂在检查点上的等待继续，随后立即判定 abort 信号（pause 在前、abort 在后的检查点顺序）。仅恢复本 "
+"Agent（不递归子 Agent——子树恢复用 :meth:`resume_recursive`）； 不触碰任何 ``Execution``。"
+msgstr ""
+
+#: flowing.agent.Agent.pause_recursive:17 flowing.agent.Agent.resume:10 of
+msgid ":meth:`pause`、:meth:`resume_recursive`"
+msgstr ""
+
+#: flowing.agent.Agent.pause_recursive:1 of
+msgid "协作式暂停整棵生命周期子树（本 Agent + 全部后代子 Agent）。"
+msgstr ""
+
+#: flowing.agent.Agent.pause_recursive:5 of
+msgid ""
+"``self.pause()`` 后对 ``_children`` 中每个活子 Agent 递归调用 ``pause_recursive()`` "
+"（深度优先）。典型场景：UI 的「暂停整个工作 流」按钮。"
+msgstr ""
+
+#: flowing.agent.Agent.pause_recursive:11 of
+msgid "同步、幂等；不 dispatch 钩子。"
+msgstr ""
+
+#: flowing.agent.Agent.pause_recursive:12 of
+msgid "只递归生命周期子树的 turn 循环（``_children`` 只装活实例）； 不触碰任何 ``Execution``。"
+msgstr ""
+
+#: flowing.agent.Agent.pause_recursive:14 of
+msgid "与 ``cancel()`` 的级联不同：cancel 经执行注册表逐层传播终止 信号；本方法只挂起各 Agent 的工作循环 gate。"
+msgstr ""
+
+#: flowing.agent.Agent.resume_recursive:1 of
+msgid "恢复整棵生命周期子树（与 :meth:`pause_recursive` 对称）。"
+msgstr ""
+
+#: flowing.agent.Agent.resume_recursive:5 of
+msgid ""
+"同步、幂等；``self.resume()`` 后对 ``_children`` 每个活子 Agent 递归 "
+"``resume_recursive()``；不触碰任何 ``Execution``。"
+msgstr ""
+
+#: flowing.agent.Agent.resume_recursive:8 of
+msgid ":meth:`resume`、:meth:`pause_recursive`"
+msgstr ""
+
+#: flowing.Agent.paused:1 flowing.agent.Agent.paused:1 of
+msgid "是否暂停中——工作循环 gate 当前为关闭状态的只读派生视图。"
+msgstr ""
+
+#: flowing.Agent.paused:3 flowing.agent.Agent.paused:3 of
+msgid "快照层据此展示暂停状态。"
+msgstr ""
+
+#: flowing.Agent.paused:5 flowing.agent.Agent.paused:5 of
+msgid ":meth:`pause`、:meth:`resume`"
+msgstr ""
+
+#: flowing.agent.Agent.abort_turn:1 of
+msgid "只置位当前逻辑 Turn 的退出信号。"
+msgstr ""
+
+#: flowing.agent.Agent.abort_turn:5 of
+msgid ""
+"最小粒度的终止：当前 Turn 在下一个检查点退出，Agent 继续消费 队列。收尾由回合执行体的 ``finally`` 接管（幂等置位 "
+"``turn.aborted`` → abort 钩子 → resolve waiters）。"
+msgstr ""
+
+#: flowing.agent.Agent.abort_turn:11 of
+msgid ""
+"同步、幂等；无活跃 Turn 时置位也安全（下一条消息到达时 Turn 启动、``provider_gen()`` 立即返回 "
+"cancelled，空 Turn 不产生新 树节点）。"
+msgstr ""
+
+#: flowing.agent.Agent.abort_turn:14 of
+msgid "可覆写：子类可改为丢弃 Turn 消息或额外清理。"
+msgstr ""
+
+#: flowing.agent.Agent.abort_turn:15 of
+msgid ""
+"与 ``cancel()`` 的分工：``abort_turn()`` 只终止当前 Turn； ``cancel()`` 终止整个 "
+"Agent（幂等拆解；Agent 无生命周期状态机， 无 ``stopping/stopped`` 中间态可读）。"
+msgstr ""
+
+#: flowing.agent.Agent.abort_turn:19 of
+msgid ":meth:`cancel`、:meth:`pause`"
+msgstr ""
+
+#: flowing.agent.Agent.cancel:1 of
+msgid "协作式终止整个 Agent：全部执行条目 abort + 当前回合退出信号。"
+msgstr ""
+
+#: flowing.agent.Agent.cancel:5 of
+msgid ""
+"时序：dispatch ``before_cancel`` （value 为 :class:`CancelContext`， handler "
+"``raise Intercepted`` 阻止取消）→ 置位 ``_executions`` 全部 abort + 置位回合退出信号 → "
+"dispatch ``after_cancel`` （信号 置位后立即触发——「取消请求已被接受」的事实事件；纯观察，日志 / 通知 / "
+"审计）。无状态值迁移（Agent 无生命周期状态机）。"
+msgstr ""
+
+#: flowing.agent.Agent.cancel:11 of
+msgid ""
+"观察点分工：``after_cancel`` 表达的是「取消已被接受、信号已置 位」，dispatch "
+"点在本方法体内——协作式取消禁止本方法等待回合退出 （回合内的代码调 ``cancel()`` 时等待即自死锁）。「回合真正退出」 的观察归 "
+"``after_turn`` （全路径，handler 读 ``turn.aborted`` 区分 取消与正常结束）。空闲 "
+"Agent（无回合在跑）被 cancel 时 ``after_cancel`` 照常触发：信号置位是事实，与有无回合无关。"
+msgstr ""
+
+#: flowing.agent.Agent.cancel:20 of
+msgid ""
+"协作式：置位是请求不是命令——执行体三选一（立即停止返回已有 / 空结果 / 忽略信号正常完成 / 关键收尾后返回部分结果）；Agent "
+"接收所有返回，不因曾被 cancel 丢弃返回值。"
+msgstr ""
+
+#: flowing.agent.Agent.cancel:23 of
+msgid ""
+"cancel 是正常终止不是错误：工具返回部分输出作正常 ``ToolResult``，Provider 返回空 "
+"``ProviderResponse``——不抛异常。"
+msgstr ""
+
+#: flowing.agent.Agent.cancel:25 of
+msgid "级联取消：亲节点只操作自己的执行注册表与回合退出信号，子 Agent 在 检查点检测到自己的信号后自行清理——每层只负责自己的执行，无 中央调度器。"
+msgstr ""
+
+#: flowing.agent.Agent.cancel:28 of
+msgid "协程（dispatch 钩子）；不接受原因参数（无参）。"
+msgstr ""
+
+#: flowing.agent.Agent.cancel:29 of
+msgid "cancel 后队列中待处理消息不丢弃——交应用层（重新投递 / 记录 日志 / 通知发送方三选一）。"
+msgstr ""
+
+#: flowing.agent.Agent.cancel:31 of
+msgid ""
+"工具被 cancel ≠ Turn 被 cancel：``cancel_children()`` 影响的 工具返回正常 "
+"``ToolResult``，Turn 循环照常。"
+msgstr ""
+
+#: flowing.agent.Agent.cancel:33 of
+msgid "``before_cancel`` handler"
+msgstr ""
+
+#: flowing.agent.Agent.cancel:34 of
+msgid "阻止取消（信号不置位）。"
+msgstr ""
+
+#: flowing.agent.Agent.cancel:38 of
+msgid ":meth:`stop` —— 强制式对称入口（默认等价本方法）。"
+msgstr ""
+
+#: flowing.agent.Agent.cancel:39 of
+msgid ":meth:`cancel_children` / :meth:`cancel_by_tag` —— 更细粒度。"
+msgstr ""
+
+#: flowing.agent.Agent.cancel:40 of
+msgid ":meth:`abort_turn` —— 只终止当前 Turn。"
+msgstr ""
+
+#: flowing.agent.Agent.cancel_children:1 of
+msgid "只协作式取消全部子执行，不动回合退出信号（自己继续）。"
+msgstr ""
+
+#: flowing.agent.Agent.cancel_children:5 of
+msgid "置位 ``_executions`` 全部 abort；Turn 循环照常。"
+msgstr ""
+
+#: flowing.agent.Agent.cancel_children:6 of
+msgid "典型场景：亲代 Agent 推理到一半想调整方向——终止正在跑的子 Agent / 工具，更新提示词，重新发起。"
+msgstr ""
+
+#: flowing.agent.Agent.cancel_children:8 of
+msgid "同步方法（不 dispatch 钩子）。"
+msgstr ""
+
+#: flowing.agent.Agent.cancel_children:10 of
+msgid ":meth:`cancel`、:meth:`cancel_by_tag`"
+msgstr ""
+
+#: flowing.agent.Agent.cancel_by_tag:1 of
+msgid "只置位 ``tags`` 匹配 ``tag`` 的执行条目的取消信号。"
+msgstr ""
+
+#: flowing.agent.Agent.cancel_by_tag:5 of
+msgid ""
+"精细控制：如只取消 ``\"bash\"`` 标签的工具执行，留 ``\"agent\"`` "
+"继续；不动回合退出信号，不匹配任何条目时为空操作。同步方法。"
+msgstr ""
+
+#: flowing.agent.Agent.cancel_by_tag:8 of
+msgid ":attr:`Execution.tags`、:meth:`cancel_children`"
+msgstr ""
+
+#: flowing.agent.Agent.stop:1 of
+msgid "强制式停止——框架默认实现等价于 :meth:`cancel`，子类可覆写。"
+msgstr ""
+
+#: flowing.agent.Agent.stop:5 of
+msgid ""
+"``cancel()`` 是协作式（执行体可忽略信号）；执行体卡死 / 超时 兜底需要更强手段。框架核心不提供强制 kill 通用实现——强制终止"
+" 的手段高度依赖执行体类型（进程 kill、HTTP 连接关闭等），由子类 覆写本方法注入。"
+msgstr ""
+
+#: flowing.agent.Agent.stop:9 of
+msgid "默认实现 = ``await self.cancel()`` （含 before/after_cancel 钩子）。"
+msgstr ""
+
+#: flowing.agent.Agent.stop:11 of
+msgid ""
+"覆写约定：先调默认逻辑或自行置位信号，再做强制动作；Agent 可覆写 ``cancel()`` 为空操作以完全无视协作信号（此时 "
+"``stop()`` 是唯一的停止通道）。"
+msgstr ""
+
+#: flowing.agent.Agent.stop:15 of
+msgid ":meth:`cancel`、:meth:`stop_children`"
+msgstr ""
+
+#: flowing.agent.Agent.stop_children:1 of
+msgid "与 :meth:`cancel_children` 对称的强制式版本；默认等价，可覆写。"
+msgstr ""
+
+#: flowing.agent.Agent.stop_children:5 of
+msgid "默认实现 = ``self.cancel_children()``；自己继续（不动回合退出 信号）。同步方法。"
+msgstr ""
+
+#: flowing.agent.Agent.stop_children:8 of
+msgid ":meth:`cancel_children`、:meth:`stop`"
+msgstr ""
+
+#: flowing.agent.Agent.stop_by_tag:1 of
+msgid "与 :meth:`cancel_by_tag` 对称的强制式版本；默认等价，可覆写。"
+msgstr ""
+
+#: flowing.agent.Agent.stop_by_tag:5 of
+msgid "默认实现 = ``self.cancel_by_tag(tag)``。同步方法。"
+msgstr ""
+
+#: flowing.agent.Agent.stop_by_tag:7 of
+msgid ":meth:`cancel_by_tag`、:meth:`stop`"
+msgstr ""
+
+#: flowing.agent.Agent.create_subagent:1 of
+msgid "干净构造入口：创建并持有子 Agent 实例。"
+msgstr ""
+
+#: flowing.agent.Agent.create_subagent:5 of
+msgid ""
+"直接委托 ``runtime.create_agent``，把 ``agent_type`` 与 ``**kwargs`` "
+"原样透传、``parent_id`` 固定为 ``self.node_id`` ——不提供别的，只提供「自己 的 ``node_id`` 作为 "
+"``parent_id``」。可选 ``name`` 为子代起语义 名（登记进 ``child_ids``，供 "
+"``invoke_subagent(resume=...)`` 按名 续接；语义名只存在亲代侧表中，子实例不自持名字）。"
+msgstr ""
+
+#: flowing.agent.Agent.create_subagent:12 of
+msgid ""
+"与 :meth:`invoke_subagent` 的分工：本方法不做 ``SubagentEntry.resolve()``、不经过 "
+"``before_subagent_invoke`` / ``after_subagent_invoke`` 钩子（仅走创建管线的 "
+"``before_create`` / ``after_create``）、不支持 ``resume`` 续接——适合「创建并持有 "
+"实例」的钩子回调 / 外部代码 / 回合内工具。"
+msgstr ""
+
+#: flowing.agent.Agent.create_subagent:27 of
+msgid "``agent_type`` 是字符串类型名，由 ``get_agent_class`` 惰性解析 为 Agent 类。"
+msgstr ""
+
+#: flowing.agent.Agent.create_subagent:29 of
+msgid "创建即注册（``_nodes``）+ 进入 ``_children`` + provide 链可 上溯到本实例。"
+msgstr ""
+
+#: flowing.agent.Agent.create_subagent:31 of
+msgid ""
+"``name`` 非空时创建成功后登记 ``child_ids[name] = node_id`` "
+"并写透核心袋（整表覆写一行，末行合并防膨胀）；未命名子 Agent 不入表。"
+msgstr ""
+
+#: flowing.agent.Agent.create_subagent:34 of
+msgid "生命周期：调用方自行管理——默认存续（agent 池），显式 ``destroy()`` 或随亲节点销毁。"
+msgstr ""
+
+#: flowing.agent.Agent.create_subagent:36 of
+msgid "异常（类型名解析失败 / PENDING 检查失败等）原样上抛，亲代 Agent 状态不变。"
+msgstr ""
+
+#: flowing.agent.Agent.create_subagent:41 of
+msgid ":meth:`invoke_subagent` —— 带 resolve + 唤起钩子的包装。"
+msgstr ""
+
+#: flowing.agent.Agent.create_subagent:42 of
+msgid ":meth:`flowing.runtime.Runtime.create_agent` —— 真正执行 创建的唯一代码路径。"
+msgstr ""
+
+#: flowing.agent.Agent.invoke_subagent:1 of
+msgid "LLM 工具路径的唤起入口：resolve + 唤起钩子 + 生命周期策略。"
+msgstr ""
+
+#: flowing.agent.Agent.invoke_subagent:5 of
+msgid "时序（两段式，内部拆 :meth:`_prepare_subagent` / :meth:`_run_subagent`）："
+msgstr ""
+
+#: flowing.agent.Agent.invoke_subagent:8 of
+msgid ""
+"准备段（同步 await）：按别名查 ``_subagent_entries`` → ``SubagentEntry.resolve()`` "
+"（LLM args → 完整 kwargs：别名映射 + specified 求值 + inject 注入）→ 构造 "
+":class:`SubagentInvocation` 并 dispatch 亲代 Agent 的 "
+"``before_subagent_invoke`` → 注册 ``Execution(kind=\"agent\")`` → 新建（内部调 "
+":meth:`create_subagent`）或续接（``resume`` 按 实例名找池中实例）。此段失败（``Intercepted`` /"
+" 校验 / 创建抛 异常）同步上抛——子 Agent 要么成功创建要么未创建，工具路径由 "
+"``ToolResult(status=\"error\")`` 承载（LLM 可见）。"
+msgstr ""
+
+#: flowing.agent.Agent.invoke_subagent:17 of
+msgid ""
+"运行段（可后台）：``await child.query(prompt)`` 等待产出 → 构造 :class:`SubagentResult` "
+"→ dispatch ``after_subagent_invoke`` （先于交付：handler 可改写 result， "
+"改写对两条路径同时生效）→ 用改写后的 result 构造 ``Message(kind=SUBAGENT)`` 推入本实例队列（LLM "
+"后续回合感知） 并返回。运行段结局走 ``TurnResult`` 四态正常通道 （``subagent_status`` 承载）。"
+msgstr ""
+
+#: flowing.agent.Agent.invoke_subagent:38 of
+msgid ""
+"``resume`` 与新建参数互斥：续接保持原类型，``kwargs`` 忽略 （实例已存在）；``resume`` 找不到实例名 → "
+"``ValueError``。查找 载体 = ``child_ids`` 语义名表：目标实例活着直接用，已销毁 / 未恢复则经 "
+"``Runtime.get_agent`` 现场恢复并重新进入 ``_children``。"
+msgstr ""
+
+#: flowing.agent.Agent.invoke_subagent:43 of
+msgid ""
+"子 Agent 注册为 ``Execution(kind=\"agent\")``——``cancel()`` / 级联取消可命中；子 Agent"
+" 被 cancel 的已产出部分结果作为正常 产物返回亲代 Agent：``SubagentResult.subagent_status`` 标 "
+"``\"cancelled\"``，``result`` 按统一填充规则。"
+msgstr ""
+
+#: flowing.agent.Agent.invoke_subagent:47 of
+msgid ""
+"唤起失败（创建 / 校验 / 运行抛异常）原样上抛调用方——无专属 错误钩子；工具路径由 "
+"``ToolResult(status=\"error\")`` 承载。"
+msgstr ""
+
+#: flowing.agent.Agent.invoke_subagent:49 of
+msgid ""
+"``after_subagent_invoke`` 在结果构造后、交付前 dispatch（value 为 "
+":class:`SubagentInvocation`，``result`` 已回填）：handler 可改写 "
+"``invocation.result``，改写对返回值与 SUBAGENT 消息同时 生效（两条路径同源）；纯观察需求由不改写的 handler"
+" 承担。本 钩子不接 ``Intercepted``——阻断闸在 ``before_subagent_invoke``。"
+msgstr ""
+
+#: flowing.agent.Agent.invoke_subagent:54 of
+msgid ""
+"同步交付语义：本方法等待子 Agent 完成后，把改写后的 ``SubagentResult`` 作为返回值交给调用方；不再另发 SUBAGENT"
+" 消息入亲代队列。调用方（通常是同步工具路径）负责把结果放进自己 的返回值 / 树节点，避免同源结果二次入队。"
+msgstr ""
+
+#: flowing.agent.Agent.invoke_subagent:58 of
+msgid ""
+"外部代码需要异步执行且不入队时，用 "
+"``asyncio.create_task(agent.invoke_subagent(...))``——本方法是 "
+"协程，可被后台执行；结果只交给该 Task，不会推入 Agent 队列。"
+msgstr ""
+
+#: flowing.agent.Agent.invoke_subagent:61 of
+msgid ""
+"``subagent-invoke`` 工具的 ``asynchronized=True`` 是另一条特殊 路径：它不走本方法，而是拆成 "
+"``_prepare_subagent`` （同步创建） + 后台 "
+"``_run_subagent(enqueue_result=True)``；完成后必定 enqueue SUBAGENT 消息，工具只返回 "
+"``started`` 收据。外部代码若不想 入队，不要走该工具异步路径，用 "
+"``asyncio.create_task(agent.invoke_subagent(...))``。"
+msgstr ""
+
+#: flowing.agent.Agent.invoke_subagent:67 of
+msgid "无论是否入队，``after_subagent_invoke`` 都先于交付 dispatch， 改写后的结果同时是返回值与后续交付内容。"
+msgstr ""
+
+#: flowing.agent.Agent.invoke_subagent:69 of
+msgid "不做 keep_alive 语义——生命周期由 agent 池「默认存续 + 显式 销毁」管理。"
+msgstr ""
+
+#: flowing.agent.Agent.invoke_subagent:74 of
+msgid ":class:`SubagentEntry` —— resolve 与 catalog 的载体。"
+msgstr ""
+
+#: flowing.agent.Agent.invoke_subagent:75 of
+msgid ":class:`SubagentResult` / :class:`SubagentInvocation` —— 结果与钩子 value。"
+msgstr ""
+
+#: flowing.agent.Agent.invoke_subagent:77 of
+msgid ":meth:`create_subagent` —— 干净构造入口。"
+msgstr ""
+
+#: flowing.agent.Agent.tool_call:1 of
+msgid "Agent 工具调用方法——完整钩子链的执行包装。"
+msgstr ""
+
+#: flowing.agent.Agent.tool_call:5 of
+msgid ""
+"时序：dispatch ``before_tool_call`` （可改写 ``ToolCall``； handler 可设置 "
+"``tool_call.shortcut`` 直接给出结果、跳过工具 执行；``raise Intercepted`` 硬阻断）→ 按别名查 "
+"``_tool_entries`` → :meth:`_normalize` （LLM 视角校验 / 别名映射 与 "
+"``ToolEntry.resolve()`` 聚合 / 默认值填充）→ ``Tool.__call__`` 调度（注册 "
+"``Execution(kind=\"tool\")``，finally 清理）→ dispatch ``after_tool_call`` "
+"（可改写结果；shortcut 路径照常触发）→ 收尾 归一（return 前幂等再跑一次 ``normalize_output``，封 "
+"shortcut 与 钩子改写两条缝）→ 返回。"
+msgstr ""
+
+#: flowing.agent.Agent.tool_call:17 of
+msgid "仅按别名查找；未命中 → ``UnknownToolError`` （无规范名回退—— 回退会绕开 Agent 级绑定）。"
+msgstr ""
+
+#: flowing.agent.Agent.tool_call:19 of
+msgid ""
+"``Intercepted`` → 返回 ``ToolResult.blocked(...)`` （LLM 可见 形态为 "
+"``[TextBlock(reason)]``），不上抛。"
+msgstr ""
+
+#: flowing.agent.Agent.tool_call:21 of
+msgid "``ToolResult(status=\"error\")`` 是正常产物：LLM 可见、不触发 任何错误钩子（工具业务错误不走异常通道）。"
+msgstr ""
+
+#: flowing.agent.Agent.tool_call:23 of
+msgid ""
+"LLM 视角校验失败同属正常产物：包装为 ``ToolResult(status=\"error\", error=<LLM "
+"命名空间的错误文本>)``， ``after_tool_call`` 照常触发，随后正常返回进消息树——LLM 的 "
+"自我修正反馈，不是回合异常。内部校验失败（specified / inject / 默认值的配置错误，在 ``Tool.__call__`` "
+"触发）例外：上抛框架 错误通道 + 日志，不包成 ToolResult、不进 LLM 可见文本。"
+msgstr ""
+
+#: flowing.agent.Agent.tool_call:29 of
+msgid "abort 于工具调用循环中：正在执行的工具检测信号返回部分结果； 剩余工具被跳过（不 execute）。"
+msgstr ""
+
+#: flowing.agent.Agent.tool_call:31 of
+msgid ""
+"本方法没有同步 / 异步开关：同步还是异步由工具的 ``execute`` 实现决定。``execute`` 是普通 ``async def`` "
+"→ ``Tool.__call__`` await 到底，本方法返回最终 ``ToolResult``，不 enqueue； "
+"``execute`` 返回 ``asyncio.Task`` → 走异步工具透明化的固定 enqueue "
+"路径。因此「是否入队」只取决于工具实现形态。"
+msgstr ""
+
+#: flowing.agent.Agent.tool_call:36 of
+msgid ""
+"异步工具透明化：``execute()`` 返回 ``asyncio.Task`` 时 ``Tool.__call__`` 不等待，立即产 "
+"``ToolResult(status=\"pending\")`` 收据（经 ``as_message`` 塑形为 "
+"``tool_status=\"pending\"``、 ``content=[]`` 的 TOOL 消息挂树，配对一次性封闭）；同时给 Task"
+" 挂 ``add_done_callback`` （框架固定行为，非扩展点）。完成回调： 取终值 → ``normalize_output`` →"
+" ``output_to_blocks`` → ``Message(kind=EVENT, source=\"tool_result\", "
+"...)`` 构造 STEER 消息进队列（长 turn 可达天级，完成推送须即时 注入——检查点吸收、当轮 context "
+"可见、不打断）；任务异常 → 标注块 + 错误文本块（与同步 error 同语义，LLM 可见）。"
+msgstr ""
+
+#: flowing.agent.Agent.tool_call:49 of
+msgid ":class:`flowing.tool.ToolEntry` —— 绑定条目（resolve 三步）。"
+msgstr ""
+
+#: flowing.agent.Agent.tool_call:50 of
+msgid ":class:`flowing.tool.ToolResult` —— 四状态结果。"
+msgstr ""
+
+#: flowing.agent.Agent.tool_call:51 of
+msgid ":class:`flowing.tool.ToolCall` —— 入参结构。"
+msgstr ""
+
+#: flowing.agent.Agent.source_dir:1 of
+msgid "本 Agent 的文件上下文：``source_file`` 所在目录。"
+msgstr ""
+
+#: flowing.agent.Agent.source_dir:3 of
+msgid ""
+"``source_file`` 是 ``@/`` 格式字符串，经 ``runtime.resolve_path`` 落地为绝对路径后取 "
+"``.parent``；``source_file`` 为 ``None`` → 返回 ``None`` "
+"（无文件上下文，下游裸名解析退化为纯注册表查询； FILE_REF 用 ``./`` 相对路径时由 ``resolve_path`` "
+"报错）。「文件 → 所在目录」换算的唯一承担者：``get_tool`` / ``get_agent_class``、 插件挂载的技能工具、以及 "
+"Parsable 的 FILE_REF 求值一律经本方法， 不允许调用方自行对 ``source_file`` 取 parent。"
+msgstr ""
+
+#: flowing.agent.Agent.get_tool:1 of
+msgid "上下文感知的工具解析门面：自动携带本 Agent 的 ``source_dir``。"
+msgstr ""
+
+#: flowing.agent.Agent.get_tool:5 of
+msgid ""
+"薄委托 ``runtime.tool_registry.get`` （``name_or_path`` + "
+"``source_dir=self.source_dir()``）——与直接调注册表的区别仅在文件 上下文：裸名先查本 Agent "
+"定义文件所在目录的定向文件查找链（文件 覆盖 ``default::`` / ``builtin::``），``./`` / ``../`` "
+"相对路径 可用。无文件上下文（``source_file`` 为 ``None``）时退化为纯注册 表查询。"
+msgstr ""
+
+#: flowing.agent.Agent.get_tool:14 of
+msgid "未找到 → 抛 :class:`flowing.errors.ToolNotFoundError` （注册表与 文件链均不命中）。"
+msgstr ""
+
+#: flowing.agent.Agent.get_tool:17 of
+msgid ""
+":meth:`flowing.tool.ToolRegistry.get` （完整解析语义 "
+"与候选链）、:meth:`get_agent_class` （同构门面）"
+msgstr ""
+
+#: flowing.agent.Agent.get_agent_class:1 of
+msgid "上下文感知的 Agent 类型解析门面：自动携带本 Agent 的 ``source_dir``。"
+msgstr ""
+
+#: flowing.agent.Agent.get_agent_class:6 of
+msgid ""
+"薄委托 ``runtime.get_agent_class`` （``agent_type`` + "
+"``source_dir=self.source_dir()``）——语义与 :meth:`get_tool` 同构 "
+"（裸名文件链优先、文件覆盖注册表；无文件上下文退化为纯注册表 查询）。Agent 侧只有 ``get_agent_class``，没有 "
+"``get_agent``—— 取活实例 / 现场恢复统一走 :meth:`flowing.runtime.Runtime.get_agent`。"
+msgstr ""
+
+#: flowing.agent.Agent.get_agent_class:15 of
+msgid "未找到 → 抛 ``KeyError`` （``get_agent_class`` 的失败形态）。"
+msgstr ""
+
+#: flowing.agent.Agent.get_agent_class:17 of
+msgid ""
+":meth:`flowing.runtime.Runtime.get_agent_class`、 "
+":meth:`flowing.runtime.Runtime.get_agent`"
+msgstr ""
+
+#: flowing.agent.Agent.add_tool:1 of
+msgid "向本 Agent 添加一条工具绑定条目（``_tool_entries`` 的公开写入入口）。"
+msgstr ""
+
+#: flowing.agent.Agent.add_tool:5 of
+msgid ""
+"按引用（``name`` 为字符串时）或现成的 :class:`flowing.parser.EntryRef` "
+"找到工具，判别覆写体（``body``）并构造 :class:`flowing.tool.ToolEntry`， 以别名（``alias`` / "
+"``ref.alias``，缺省 = 规范名）为 key 写入 ``self._tool_entries``。从此该工具进入本 Agent "
+"的可见集 （``enabled=True`` 时对 LLM 可见）与可调用集（``tool_call()`` 仅按 别名查本表）。"
+msgstr ""
+
+#: flowing.agent.Agent.add_tool:12 of
+msgid "两种调用形态（内部统一归一为 EntryRef 后走同一条管线）："
+msgstr ""
+
+#: flowing.agent.Agent.add_tool:14 of
+msgid ""
+"``.fya`` 装配层（主调用方）：``parse_fya`` 产出的 ``EntryRef`` "
+"直接透传——``add_tool(ref)``，此时 ``alias`` / ``body`` 必须缺省 （与 ``ref`` 自带字段重复 → "
+":class:`flowing.errors.FormatError`）；"
+msgstr ""
+
+#: flowing.agent.Agent.add_tool:17 of
+msgid ""
+"程序化（``setup()`` / 运行期）：调用 ``add_tool(name, alias=..., "
+"body=...)``，``body`` 与 ``.fya`` 单键映射项的覆写映射同构 （键集 ``description`` / "
+"``args`` / ``output`` / ``enabled``； 不接受 ``inject`` 键——注入写 args 里的 ``\"{{"
+" self.inject('key') }}\"`` 表达式）；内部经 "
+":func:`flowing.parser.normalize_entries` 构造 EntryRef。"
+msgstr ""
+
+#: flowing.agent.Agent.add_tool:44 of
+msgid "同步、立即生效：下一次上下文组装即可见。"
+msgstr ""
+
+#: flowing.agent.Agent.add_tool:45 of
+msgid ""
+"同 alias 重复添加 → :class:`flowing.errors.EntryNameConflictError`。 "
+"每次生命周期（create / recover）都从 ``__init__`` 的空 ``_tool_entries`` 开始重放 "
+"``setup()``；同一生命周期内重复添加 同 alias 是笔误，快速失败（tool / skill / subagent 绑定层统一 "
+"语义，「都报错不覆盖」）。"
+msgstr ""

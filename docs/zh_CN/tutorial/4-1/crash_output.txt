@@ -1,0 +1,1 @@
+回合完成 status=completed；现在模拟 kill -9（os._exit(9)）

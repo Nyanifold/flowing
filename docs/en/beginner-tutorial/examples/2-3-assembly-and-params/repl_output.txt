@@ -1,0 +1,4 @@
+(agent-main)>>>The current user is Alice, the locale is English (en), and the timezone is Asia/Shanghai.
+[thinking] We need answer in one sentence. User asks: who is current user, locale, timezone. Given: Current user Alice; reply language en; timezone Asia/Shanghai. Locale? language en implies locale maybe en? We don't have explicit locale beyond reply language en. We should say current user is Alice, locale is English (en), timezone Asia/Shanghai. One sentence. Keep within one sentence.
+The current user is Alice, the locale is English (en), and the timezone is Asia/Shanghai.
+(agent-main)>>>

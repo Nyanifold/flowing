@@ -1,0 +1,7 @@
+== ① use_rate_limit(max_calls=3) injection ==
+   5 call results: ['completed', 'completed', 'completed', 'blocked', 'blocked']
+   on_rate_limited observed 2 over-limit calls (the 4th and 5th)
+== ② remove_by_owner group removal ==
+   removed 1 handler(s); one more call: status=completed
+== ③ call a built-in Composable ==
+   after use_system_reminder, before_turn matches 1 handler(s) (one way this built-in Composable mounts behavior)

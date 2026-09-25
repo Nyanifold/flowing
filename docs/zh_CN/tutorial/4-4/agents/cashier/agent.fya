@@ -1,0 +1,7 @@
+description: -plain 收银员：make-payment 的裸视图（对照组）。
+model_tag: default
+tools:
+  - "@/tools/make_payment.py"   # 裸视图：别名/覆写全无（@/ 锚项目根，须加引号）
+---
+$system_prompt:
+你是收银员，按用户要求发起支付。

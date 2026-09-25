@@ -1,0 +1,21 @@
+(agent-main)>>>[thinking] The user wants to have the assistant remember the number 42. According to instructions, I should call subagent-invoke with agent_type assistant, name "memo", and a prompt clearly stating the content to remember, and ask it to repeat back to confirm.
+[tool_call] subagent-invoke {"agent_type": "assistant", "name": "memo", "prompt": "Please remember this piece of information: the number is 42.\n\nAfter storing it, repeat the content back to me to confirm you have it memorized. State clearly: \"I will remember: the number 42.\""}
+[tool:completed] subagent-invoke -> 
+The assistant has stored the information and confirmed:
+
+**"I will remember: the number 42."**
+
+It's now saved in the assistant's memory (instance "memo"), so you can ask me to check back with it anytime.
+[thinking] The assistant confirmed. Relay to user.
+The assistant has stored the information and confirmed:
+
+**"I will remember: the number 42."**
+
+It's now saved in the assistant's memory (instance "memo"), so you can ask me to check back with it anytime.
+(agent-main)>>>[thinking] Resume the memo instance.
+[tool_call] subagent-invoke {"resume": "memo", "prompt": "Earlier I asked you to remember a number. What number was it? Please answer with the number you stored."}
+[tool:completed] subagent-invoke -> 
+I asked the assistant (memo) — here's its answer verbatim:
+
+**"The number you asked me to remember was 42."**
+(agent-main)>>>

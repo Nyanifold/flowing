@@ -1,0 +1,7 @@
+① 宿主 set_config 覆盖: agent.timeout = 90
+
+[宿主审批] bash args={'command': 'echo 宿主你好'}
+[宿主审批] 通过
+输出为：宿主你好
+[宿主] 回合 status=completed
+[宿主] shutdown 完成：尾部记录已排空

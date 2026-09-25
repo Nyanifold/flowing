@@ -1,0 +1,5 @@
+description: "Greeter: uses the model under the chat tag (example of declaring a different model_tag at the declaration layer)."
+model_tag: chat
+---
+$system_prompt:
+You are a greeter. Greet in one sentence.

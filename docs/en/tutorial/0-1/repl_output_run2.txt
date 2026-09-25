@@ -1,0 +1,4 @@
+(agent-main)>>>Alice
+[thinking] We need answer. User asks "What is my name? Reply with the name itself only." We know user's name is Alice from system. Must reply name only. Need comply. Final only "Alice". Ensure within 3 sentences but only name.
+Alice
+(agent-main)>>>

@@ -1,0 +1,20 @@
+== ① Five-form detection (type auto-inferred, no evaluation at construction)==
+   RAW       type=RAW         → 'raw text with {{ braces }}'
+   FILE_REF  type=FILE_REF    → 'Refund policy: full refund within seven days, no questions asked; past that window, manual review is required.'
+   EXPRESSION type=EXPRESSION  → 42
+   TEMPLATE  type=TEMPLATE    → 'Hello Alice'
+   LITERAL   type=LITERAL     → 'plain text'
+== ② Render context (instance attributes flattened + env / config / self entries)==
+   {{ env.DEMO_VAR }}    → 'from an environment variable'
+   {{ config.agent.timeout }} → 60
+   {{ self.node_id }}  → 'agent-main'
+== ③ {{ x.resolved }}: referencing another Parsable's rendered result inside a template ==
+   'Policy: Refund policy: full refund within seven days, no questions asked; past that window, manual review is required.'
+   Contrast (without .resolved, only the template source shows): 'Policy: $./notes/refund.md'
+== ④ Reserved-name conflict → ReservedAttributeError ==
+   Reserved attribute name occupied: 'env'
+== ⑤ Unbound + miss ==
+   unbound resolve() without context → MissingContextError
+   inject miss → MissingProvideError
+== ⑥ PENDING position semantics: field-position _ = a promise that must be fulfilled ==
+   description: _ unfulfilled → MissingFieldError: Required field 'description' of agent type '@/notes/pending-agent.fya' is still PENDING

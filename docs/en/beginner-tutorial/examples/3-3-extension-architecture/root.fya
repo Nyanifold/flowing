@@ -1,0 +1,18 @@
+description: "Extension example assistant: skill-load + echo tool + policy injection demo."
+model_tag: default
+tools:
+  - skill-load       # the tool body registered by the plugin's install; visible to the LLM only when declared
+  - ./tools/echo.py
+skills:
+  - ./skills/daily-tip.md
+---
+$system_prompt:
+You are a demo assistant. Use skill-load when the user wants to load a skill. Keep answers to one sentence.
+---
+$script:
+from flowing.plugins.skills import use_skill
+
+
+async def setup(self):
+    # Phase 2: instance-level enablement (declare hook point + register handler + inject the skills catalog)
+    use_skill(self)

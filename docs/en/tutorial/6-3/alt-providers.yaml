@@ -1,0 +1,6 @@
+# Programmatic-override source for model integration (for the set_providers
+# demo: entry names differ from the default file)
+deepseek-alt:
+  adapter: deepseek
+  base_url: https://api.deepseek.com
+  api_key: "{{env.DEEPSEEK_API_KEY}}"

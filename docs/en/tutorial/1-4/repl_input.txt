@@ -1,0 +1,3 @@
+Please use bash to delete notes/路线图.md.
+Then use bash to take a look at what's in the notes directory.
+/exit

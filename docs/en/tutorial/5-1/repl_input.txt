@@ -1,0 +1,2 @@
+Have greet greet me in a playful style, and report the current user.
+/exit

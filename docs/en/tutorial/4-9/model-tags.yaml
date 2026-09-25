@@ -1,0 +1,3 @@
+# tag → model-entry name mapping (single-valued: one tag maps to exactly one entry).
+tags:
+  default: deepseek-flash

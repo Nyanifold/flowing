@@ -1,0 +1,5 @@
+subagent binding table:
+  coder: visible=True -> in catalog (LLM-visible)
+  reviewer: visible=True -> in catalog (LLM-visible)
+  auditor: visible=False -> not in catalog (LLM-invisible)
+programmatically invoking visible=False auditor -> result='Audit channel activated.' status=completed

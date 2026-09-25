@@ -1,0 +1,46 @@
+description: "Project Q&A assistant: can list directories, read files, and summarize."
+model_tag: default
+args:
+  strict:
+    type: string
+    default: ""
+    description: 'When set to "done", enables the end-of-turn assertion that the reply must contain DONE'
+tools:
+  - read      # bare name: namespace omitted, equivalent to builtin::read
+  - glob
+---
+$system_prompt:
+You are a project Q&A assistant. The absolute path of this project's root
+directory is {{ env.PWD }} (always use this absolute path when calling file
+tools; do not guess other directories). When a question concerns project
+content, first use glob to inspect the directory structure, then use read to
+read the relevant files, and answer based on what you read; do not make
+things up from memory. Keep answers within five sentences.
+---
+$script:
+from flowing import MessageKind, TextBlock
+from flowing.composables import use_prompt_until
+
+
+async def setup(self, strict: str = ""):
+    if strict != "done":
+        return
+
+    # Assertion-based termination: at turn end, check whether the final
+    # reply contains DONE; if not, drive the next round with a steering message
+    def _done(agent, turn) -> bool:
+        for mid in reversed(turn.message_ids):
+            msg = agent.chain.get(mid)
+            if msg.kind is MessageKind.PROVIDER:
+                text = "".join(b.text for b in msg.content
+                               if isinstance(b, TextBlock))
+                return "DONE" in text
+        return True   # empty turn: no nudge
+
+    use_prompt_until(
+        self,
+        predicate=_done,
+        message=("Acceptance condition not met: your final reply must contain "
+                 "DONE on its own line. Please answer the previous question "
+                 "again and append DONE at the end."),
+    )

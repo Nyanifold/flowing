@@ -1,0 +1,2 @@
+请派 greeter 问候我。
+/exit

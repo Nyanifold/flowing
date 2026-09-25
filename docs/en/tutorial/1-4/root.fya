@@ -1,0 +1,36 @@
+description: "Hooks demo assistant: before_tool_call interception + after_turn observation."
+model_tag: default
+args:
+  user_name: str
+tools:
+  - bash     # demo interception: a dangerous command is hard-blocked by a hook before it executes
+---
+$system_prompt:
+You are the demo assistant. Current user: {{ user_name }}; absolute path of the project root: {{ env.PWD }}.
+When the user asks to inspect a directory, use bash's ls; when the user asks to delete a file, use bash's rm (a safety hook protects it: rm will be intercepted; when that happens, explain this honestly to the user). Keep your answer to one sentence.
+---
+$script:
+from flowing import Intercepted, on
+
+
+# Mounting method 1: declare with @on on the class (registered during __init__, earlier than setup())
+@on("after_turn")
+def _(self, turn):
+    self.ask_count += 1
+    print(f"[hook] after_turn: ask_count={self.ask_count} aborted={turn.aborted}")
+    return turn
+
+
+async def setup(self, user_name: str):
+    self.user_name = user_name
+    self.ask_count = 0
+    self.timezone = self.inject("timezone")
+
+    # Mounting method 2: register inside setup() (instance-level, registered at assembly time)
+    async def _guard(agent, tool_call):
+        print(f"[hook] before_tool_call: {tool_call.name} args={tool_call.args}")
+        if tool_call.name == "bash" and "rm" in tool_call.args.get("command", ""):
+            # hard block: the tool does not execute; the LLM receives a blocked result with the reason
+            raise Intercepted("Deletion not allowed: command contains rm; blocked")
+        return tool_call
+    self.hooks.before_tool_call(_guard)

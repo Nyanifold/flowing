@@ -1,0 +1,41 @@
+(agent-main)>>>我先派 coder 写斐波那契函数。
+[thinking] The user wants a Fibonacci function. I need to dispatch to coder first, then reviewer, then summarize.
+
+Let me start with coder.
+[tool_call] subagent-invoke {"agent_type": "coder", "name": "coder-fib", "prompt": "请用 Python 写一个计算斐波那契数列的函数。\n\n要求：\n- 函数名为 fib\n- 接收一个非负整数 n，返回第 n 个斐波那契数（fib(0)=0, fib(1)=1）\n- 代码简洁，包含简短的 docstring\n- 输出完整可运行的代码"}
+[tool:completed] subagent-invoke -> 
+coder 已完成，接着派 reviewer 审查。
+[thinking] Now dispatch to reviewer.
+[tool_call] subagent-invoke {"agent_type": "reviewer", "name": "reviewer-fib", "prompt": "请审查以下 Python 代码（斐波那契函数）：\n\n```python\ndef fib(n: int) -> int:\n    \"\"\"返回第 n 个斐波那契数（fib(0)=0, fib(1)=1）。\"\"\"\n    a, b = 0, 1\n    for _ in range(n):\n        a, b = b, a + b\n    return a\n\nprint(fib(10))  # 55\n```\n\n请给出问题清单（正确性、边界情况、性能、可读性等）。"}
+[tool:completed] subagent-invoke -> 
+已按流程完成：coder 写代码 → reviewer 审查。汇总如下。
+
+## 交付汇总
+
+### 1. 代码（coder 产出）
+
+```python
+def fib(n: int) -> int:
+    """返回第 n 个斐波那契数（fib(0)=0, fib(1)=1）。"""
+    a, b = 0, 1
+    for _ in range(n):
+        a, b = b, a + b
+    return a
+
+print(fib(10))  # 55
+```
+
+采用迭代实现，时间复杂度 O(n)、空间 O(1)，避免了递归的重复计算与栈溢出风险。
+
+### 2. 审查意见（reviewer 产出）
+
+| 级别 | 问题 |
+|------|------|
+| 中 | **未校验 n 为非负整数**：n < 0 时 `range(n)` 为空，函数静默返回 0，而非拒绝无效输入或抛明确异常。 |
+| 低 | **模块顶层直接 `print`**：被作为库导入时产生输出副作用，建议放入 `if __name__ == "__main__":` 或移除。 |
+| 低 | **类型注解不做运行时校验**：传 float 会在 `range(n)` 处抛 TypeError；传 bool 被当作 0/1，接口行为不够明确。 |
+
+### 3. 结论
+
+核心逻辑正确（fib(10)=55 无误），性能与可读性良好。主要待改进项是**输入校验**（中优先级）；两条低优先级问题属于工程规范层面。若需要，我可再派 coder 按审查意见修订一版。
+(agent-main)>>>

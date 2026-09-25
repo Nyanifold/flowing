@@ -1,0 +1,20 @@
+── 初始线性链（head → 根，逆时间序）──
+  4 provider  parent=3 改走南路。
+  3 user      parent=2 北路被堵了。
+  2 provider  parent=1 先沿北路探一段。
+  1 user      parent=None 路线 A 怎么走？
+
+── fork 出平行分支后（head 在南路探索上；北路链完整保留）（head → 根，逆时间序）──
+  6 provider  parent=5 南路更近，但有积水。
+  5 user      parent=1 如果直接走南路呢？
+  1 user      parent=None 路线 A 怎么走？
+
+── 切回 a：insert 前的分叉点（head → 根，逆时间序）──
+  1 user      parent=None 路线 A 怎么走？
+
+insert 后：g=7，b.parent=7，e.parent=7（都重挂到 g 下 = 合并语义）
+── insert 后的分叉点结构（head → 根，逆时间序）──
+  1 user      parent=None 路线 A 怎么走？
+
+update 后 e 的文本：'如果直接走南路呢？（补充：带伞）'
+remove(d) 后：d 已消失（chain.get 抛 KeyError），其子 parent=3（重挂到 d 的亲节点 c）

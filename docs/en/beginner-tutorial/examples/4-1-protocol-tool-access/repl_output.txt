@@ -1,0 +1,14 @@
+(agent-main)>>>I'll check the open PRs and create that issue for you now.
+[tool_call] demo--list-prs {"state": "open"}
+[tool_call] demo--create-issue {"title": "Demo Issue"}
+[tool:completed] demo--create-issue -> {
+  "issue_id": 42,
+  "title": "Demo Issue",
+  "body": "",
+  "url": "https://example.test/issues/42"
+}
+[tool:completed] demo--list-prs -> 
+The open PRs are #1 "fix typo" and #2 "add feature", and I've created Issue #42 titled "Demo Issue" (https://example.test/issues/42).
+[thinking] Answer in one sentence.
+The open PRs are #1 "fix typo" and #2 "add feature", and I've created Issue #42 titled "Demo Issue" (https://example.test/issues/42).
+(agent-main)>>>

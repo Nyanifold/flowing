@@ -1,0 +1,10 @@
+# provider 条目：一个条目 = 一个 API key 身份。
+deepseek:
+  adapter: deepseek
+  base_url: https://api.deepseek.com
+  api_key: "{{env.DEEPSEEK_API_KEY}}"
+# 故障注入条目：adapter 由 demo_control.py 的 @register_provider 注册
+flaky:
+  adapter: flaky
+  base_url: https://api.deepseek.com
+  api_key: "{{env.DEEPSEEK_API_KEY}}"

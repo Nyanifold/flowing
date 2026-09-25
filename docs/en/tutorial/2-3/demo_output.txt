@@ -1,0 +1,8 @@
+Channel A handwritten subclass  : TodoTool name='todo'
+Channel C callable pointer      : TodoToolFn name='todo-fn'
+Channel B @flowing_tool function: Shout name='shout'
+A and C are independent implementations with isomorphic declarations: True
+  same params schema: True
+  A: params=['tasks_text']
+  B: params=['text']
+  C: params=['tasks_text']

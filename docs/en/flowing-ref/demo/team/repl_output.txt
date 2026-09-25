@@ -1,0 +1,8 @@
+(agent-main)>>>I'll dispatch this translation request to the translator specialist.
+[tool_call] subagent-invoke {"agent_type": "translator", "prompt": "Translate the following text into Chinese: \"hello world\""}
+[tool:completed] subagent-invoke -> 
+[thinking] Deliver the translation with finish.
+[tool_call] finish {"summary": "The translation of \"hello world\" into Chinese is: 你好，世界"}
+[tool:completed] finish -> 
+
+(agent-main)>>>

@@ -1,0 +1,4 @@
+(agent-main)>>>Alice
+[thinking] We need answer just name. User asks "What is my name? Answer with just the name itself." We know Alice. Must output just Alice. Ensure no extra.
+Alice
+(agent-main)>>>

@@ -1,0 +1,12 @@
+== (1) Products of two-phase enablement ==
+   skill-load in the global registry: True
+   prompt block contains skills catalog: True
+== (2) Late install (install after mount) -> creation-time failure ==
+   late-install launch failed: ToolNotFoundError (the plugin's registered tool bodies belong to phase 1; install must precede the first mount)
+== (3) Dependency declaration: cycles fail fast ==
+   p1 <-> p2 depend on each other -> DependencyError
+== (4) use_rate_limit(max_calls=3) injection ==
+   5 call results: ['completed', 'completed', 'completed', 'blocked', 'blocked']
+   on_rate_limited observed 2 blocked calls (calls 4 and 5)
+== (5) remove_by_owner removes the whole group ==
+   removed 1 handler(s); one more call: status=completed

@@ -1,0 +1,3 @@
+First dispatch explore to inspect the code structure of the target directory and report back, then use todo to break "write a README.md for this project" into a task list.
+Following the structure and task list from just now, dispatch the coder to write the README.md, and when it is done have it self-check with read and summarize back to you.
+/exit

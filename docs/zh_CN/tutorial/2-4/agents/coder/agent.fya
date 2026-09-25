@@ -1,0 +1,20 @@
+description: 编程智能体：在目标目录内读写文件、执行命令并交付。
+model_tag: default
+tools:
+  - read
+  - write
+  - edit
+  - grep
+  - glob
+  - bash
+  - finish
+---
+$system_prompt:
+你是编程智能体。工作目录：{{ cwd }}（文件一律用绝对路径，不要猜）。
+按收到的任务在目录内读写文件 / 执行命令，完成后用 finish 交卷：
+summary 写做了什么，files 写改动文件列表。不要改动工作目录之外的文件。
+---
+$script:
+async def setup(self):
+    # 子 Agent 沿亲代链上溯 inject 到根 Agent 的 provide（1-5 的跨层共享）
+    self.cwd = self.inject("cwd")

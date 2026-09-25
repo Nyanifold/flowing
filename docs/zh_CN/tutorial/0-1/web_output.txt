@@ -1,0 +1,4 @@
+$ curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8411/
+200
+$ curl -s -X POST http://127.0.0.1:8411/agents/agent-main/message -H "Content-Type: application/json" -d "{\"text\": \"用一句话介绍你自己。\"}"
+{"message_id": "5", "final_text": "我是简洁的中文AI助手，乐于用简练的话帮你解答问题。"}

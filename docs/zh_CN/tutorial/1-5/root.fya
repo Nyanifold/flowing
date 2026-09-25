@@ -1,0 +1,19 @@
+description: 编排者：provide locale，把问候任务派给问候员。
+model_tag: default
+args:
+  locale:                # 根 Agent 的参数 → provide 到链上
+    type: string
+    default: zh
+tools:
+  - subagent-invoke
+subagents:
+  - ./agents/greeter
+---
+$system_prompt:
+你是编排者。收到问候请求时，调用 subagent-invoke 派给问候员 greeter
+（不传参数），把它的问候语原样转达给用户。
+---
+$script:
+async def setup(self, locale: str = "zh"):
+    self.locale = locale
+    self.provide("locale", locale)   # 挂上 provide 链：后代 Agent 经 inject 可得

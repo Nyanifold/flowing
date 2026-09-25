@@ -1,0 +1,4 @@
+① 根 Agent：model_tag='default' → model='deepseek-v4-flash'
+   provider 条目绑定：'deepseek'
+② 运行期 root.model_tag = 'chat' → model='deepseek-chat'
+③ 子 Agent greeter：声明 model_tag='chat' → model='deepseek-chat'

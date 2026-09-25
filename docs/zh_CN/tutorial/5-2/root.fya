@@ -1,0 +1,22 @@
+description: 插件巡礼助手：skills + cron 双插件。
+model_tag: default
+tools:
+  - skill-load       # skills 插件注册的本体；显式声明才对 LLM 可见
+  - schedule-cron    # cron 插件注册的本体
+  - manage-cron
+skills:
+  - ./skills/daily-tip.md
+---
+$system_prompt:
+你是插件演示助手。用户想加载技能时用 skill-load；定时提醒类需求用
+schedule-cron。cron 到点触发时如实告知用户收到了什么。
+---
+$script:
+from flowing.plugins.cron import use_cron
+from flowing.plugins.skills import use_skill
+
+
+async def setup(self):
+    # 阶段二：实例级启用（钩子点声明 + 注册 handler + 绑实例方法）
+    use_skill(self)
+    use_cron(self)

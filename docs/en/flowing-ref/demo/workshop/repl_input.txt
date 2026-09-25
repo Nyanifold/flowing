@@ -1,0 +1,3 @@
+First use bash to run python to get today's date, then answer: what day of the year today is, how many days are left until the end of this year, and what date and weekday it will be 100 days from now. Hand in with finish.
+/messages
+/exit

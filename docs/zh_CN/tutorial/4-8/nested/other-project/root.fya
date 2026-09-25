@@ -1,0 +1,5 @@
+description: Runtime 机制演示助手：最小问答。
+model_tag: default
+---
+$system_prompt:
+你是简洁的中文助手。

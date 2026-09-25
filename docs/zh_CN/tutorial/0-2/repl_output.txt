@@ -1,0 +1,43 @@
+(agent-main)>>>I'll check the project structure and then read that file.
+[tool_call] glob {"path": "<仓库根>/dev-docs/tutorial/0-2", "pattern": "**/*"}
+[tool_call] read {"path": "<仓库根>/dev-docs/tutorial/0-2/notes/使用说明.md"}
+[tool:completed] glob -> <仓库根>/dev-docs/tutorial/0-2/.flowing/agent-main/tree.jsonl
+<仓库根>/dev-docs/tutorial/0-2/.flowing/agent-main/core.jsonl
+<仓库根>/dev-docs/tutorial/0-2/repl_output.txt
+<仓库根>/dev-docs/tutorial/0-2/.flowing/core.jsonl
+<仓库根>/dev-docs/tutorial/0-2/.flowing/agent-main/meta.json
+<仓库根>/dev-docs/tutorial/0-2/__pycache__/main.cpython-313.pyc
+<仓库根>/dev-docs/tutorial/0-2/tests/__pycache__/test_semantics.cpython-313-pytest-9.1.1.pyc
+<仓库根>/dev-docs/tutorial/0-2/tests/test_semantics.py
+<仓库根>/dev-docs/tutorial/0-2/repl_input.txt
+<仓库根>/dev-docs/tutorial/0-2/root.fya
+<仓库根>/dev-docs/tutorial/0-2/notes/使用说明.md
+<仓库根>/dev-docs/tutorial/0-2/notes/路线图.md
+<仓库根>/dev-docs/tutorial/0-2/main.py
+<仓库根>/dev-docs/tutorial/0-2/model-tags.yaml
+<仓库根>/dev-docs/tutorial/0-2/models.yaml
+<仓库根>/dev-docs/tutorial/0-2/providers.yaml
+[tool:completed] read -> 0	# 使用说明
+1	
+2	本目录是一个演示用笔记库。
+3	
+4	## 安装
+5	
+6	需要 Python 3.13 或更高版本。
+7	
+8	## 常用命令
+9	
+10	- `uv sync`：安装依赖
+11	- `uv run pytest`：运行测试
+12	
+13	## 注意事项
+14	
+15	凭证一律经环境变量持有，不要写进任何文件。
+项目根目录下主要有：Python 源码 `main.py`、测试 `tests/test_semantics.py`、笔记 `notes/使用说明.md` 与 `notes/路线图.md`，以及配置文件 `models.yaml`、`model-tags.yaml`、`providers.yaml`，还有 `root.fya`、`repl_input.txt`、`repl_output.txt` 和 `.flowing/`、`__pycache__/` 等生成物。
+
+`notes/使用说明.md` 说明本目录是演示用笔记库，要求 Python 3.13 或更高版本，常用命令为 `uv sync`（装依赖）和 `uv run pytest`（跑测试），并强调凭证一律通过环境变量持有、切勿写入任何文件。
+[thinking] Answer in ≤5 sentences.
+项目根目录下主要有：Python 源码 `main.py`、测试 `tests/test_semantics.py`、笔记 `notes/使用说明.md` 与 `notes/路线图.md`，以及配置文件 `models.yaml`、`model-tags.yaml`、`providers.yaml`，还有 `root.fya`、`repl_input.txt`、`repl_output.txt` 和 `.flowing/`、`__pycache__/` 等生成物。
+
+`notes/使用说明.md` 说明本目录是演示用笔记库，要求 Python 3.13 或更高版本，常用命令为 `uv sync`（装依赖）和 `uv run pytest`（跑测试），并强调凭证一律通过环境变量持有、切勿写入任何文件。
+(agent-main)>>>

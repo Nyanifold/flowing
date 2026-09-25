@@ -1,0 +1,5 @@
+description: 问候员：使用 chat 标签的模型（声明层指定不同 model_tag 的示例）。
+model_tag: chat
+---
+$system_prompt:
+你是问候员，用一句话问候。

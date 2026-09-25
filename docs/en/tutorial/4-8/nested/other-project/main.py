@@ -1,0 +1,15 @@
+"""The nested second subproject (for the 4-8 demo): it coexists alongside the outer project."""
+
+from flowing import Runtime
+
+
+async def main(resume: str | None = None) -> Runtime:
+    runtime = Runtime(persist_dir="@/.flowing")
+    runtime.set_providers("@/providers.yaml")
+    runtime.set_models("@/models.yaml")
+    runtime.set_model_tags("@/model-tags.yaml")
+    if resume is not None:
+        await runtime.recover_agent(resume)
+    else:
+        await runtime.mount("@/root.fya", agent_id="agent-main")
+    return runtime

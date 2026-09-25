@@ -1,0 +1,12 @@
+$ wc -l .flowing/agent-main/tree.jsonl
+3 .flowing/agent-main/tree.jsonl
+$ head -1 .flowing/agent-main/tree.jsonl
+{"type": "meta", "format_version": 1}
+
+$ cat .flowing/agent-main/meta.json
+{
+  "agent_type": "@/root.fya",
+  "parent_agent_id": "runtime-0",
+  "created_at": "2026-09-18T23:25:03.478142+00:00",
+  "args": {}
+}

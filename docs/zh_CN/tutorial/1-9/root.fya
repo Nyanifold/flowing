@@ -1,0 +1,43 @@
+description: 插件与 Composable 演示助手。
+model_tag: default
+tools:
+  - skill-load   # 插件 install 已注册本体；声明才对 LLM 可见（注册 ≠ 可见）
+skills:
+  - ./skills/polite.md   # 声明可用技能（须装 SkillPlugin 并在 setup 里 use_skill）
+---
+$system_prompt:
+你是简洁的演示助手。问候类请求：先调用 skill-load 工具加载 polite 技能
+并结束本轮（不要作答）；技能正文会作为独立消息送达，收到后再严格按正文
+中的固定句式回答。
+---
+$script:
+from flowing import MessageKind, TextBlock
+from flowing.composables import use_prompt_until, use_system_reminder
+from flowing.plugins.skills import use_skill
+
+
+async def setup(self):
+    use_skill(self)   # 插件的实例级启用（阶段二，原理见 5-2）
+
+    # Composable 之一：每回合开头注入一条系统提醒（这里只观察现象）
+    use_system_reminder(
+        self,
+        contents=["[提醒] 当前工作目录：{{ env.PWD }}（来自 use_system_reminder）"],
+    )
+
+    # Composable 之二：回合收尾断言——最终回复须含 DONE，否则 steer 续跑
+    def _done(agent, turn) -> bool:
+        for mid in reversed(turn.message_ids):
+            msg = agent.chain.get(mid)
+            if msg.kind is MessageKind.PROVIDER:
+                text = "".join(b.text for b in msg.content
+                               if isinstance(b, TextBlock))
+                return "DONE" in text
+        return True   # 空回合不催
+
+    use_prompt_until(
+        self,
+        predicate=_done,
+        message=("验收条件未满足：你的最终回复必须包含单独一行的 DONE。"
+                 "请重新回答刚才的问题，并在末尾附上 DONE。"),
+    )

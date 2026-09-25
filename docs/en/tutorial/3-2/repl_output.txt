@@ -1,0 +1,63 @@
+(agent-main)>>>**Message tree** — a hierarchical (parent/child) arrangement of messages, where each message is attached to the one it responds to or derives from.
+
+- **Definition & shape:** The original message sits at the root; each reply or follow-up becomes a child node, so a conversation fans out into branches instead of a flat list. Every node typically carries the message itself plus links to its parent and children.
+- **How it's built:** The links come either from explicit metadata — e.g., email's `Message-ID` / `In-Reply-To` / `References` headers, or a thread ID in chat apps — or are inferred from sender, subject, and timestamps when no such fields exist.
+- **Why it's used:** It powers threaded conversations in email, forums, and chat (letting clients show, collapse, or expand branches), and the same idea appears in distributed systems and blockchains, where a tree/DAG of messages tracks causal order and helps detect forks, duplicates, or out-of-order delivery.
+
+Note: "message tree" means slightly different things across fields (email threading, messaging middleware, distributed protocols); the common thread is the parent-child reply structure.
+[thinking] The user asks: "What is a message tree? Explain with bullet points." Current mode is explain, so answer with at most three bullet points.
+
+Message tree — a concept in messaging systems / email threading / distributed systems / blockchain? Ambiguous. Likely email/messaging: a hierarchical structure of messages linked by replies (parent-child). Let me give a general explanation covering: definition, structure, uses.
+
+Keep to at most three bullets.
+
+I should probably note the ambiguity briefly? Keep concise. Bullets ≤3.
+
+Answer:
+- Definition: a message tree is a hierarchical (parent-child) arrangement of messages where each message is linked to the one it replies to or is derived from, with the original at the root and replies as branches.
+- Structure: each node holds a message (ID, sender, timestamp) plus references to parent/children; typically built from explicit fields (e.g., In-Reply-To/References headers in email, thread IDs in chat) or inferred from timestamps and subjects.
+- Uses: powers threaded conversations in email/forums/chat, makes it easy to display conversations, collapse branches, follow a topic, and in distributed systems (e.g., causal broadcast, gossip, blockchains/DAGs) it tracks causal order and detects forks/duplicates.
+
+Maybe mention it appears in different fields. That's three bullets.
+**Message tree** — a hierarchical (parent/child) arrangement of messages, where each message is attached to the one it responds to or derives from.
+
+- **Definition & shape:** The original message sits at the root; each reply or follow-up becomes a child node, so a conversation fans out into branches instead of a flat list. Every node typically carries the message itself plus links to its parent and children.
+- **How it's built:** The links come either from explicit metadata — e.g., email's `Message-ID` / `In-Reply-To` / `References` headers, or a thread ID in chat apps — or are inferred from sender, subject, and timestamps when no such fields exist.
+- **Why it's used:** It powers threaded conversations in email, forums, and chat (letting clients show, collapse, or expand branches), and the same idea appears in distributed systems and blockchains, where a tree/DAG of messages tracks causal order and helps detect forks, duplicates, or out-of-order delivery.
+
+Note: "message tree" means slightly different things across fields (email threading, messaging middleware, distributed protocols); the common thread is the parent-child reply structure.
+(agent-main)>>>[thinking] I need to call the switch-mode tool with mode "poem", then answer in poem mode (modern poem, no bullet points).
+
+I should make the tool call first, then write the poem. Can I do both in one turn? The instruction says use the tool then answer again in the new mode. I'll make the call, and since there's a dependency (must switch before answering), I should call the tool first, wait for result... but the format allows me to include the answer after. Actually the guideline: if there are dependencies, wait. The switch is a dependency for the mode. But practically I can call the tool and then produce the poem in the next turn. Safer: call the tool now, then in the following turn write the poem. However, typical behavior is to call the tool and answer in the same message. Let me call the tool alone first to be safe? The instruction says "use the switch-mode tool to complete the switch, then answer the question again in the new mode." That implies sequential. But system prompt also says make independent calls together. This one is dependent-ish.
+
+I'll just call the tool, then after result, answer. But I only get one block. I'll call the tool and then continue after receiving the result. Let me do the tool call.
+[tool_call] switch-mode {"mode": "poem"}
+[tool:completed] switch-mode -> 
+One message opens its mouth and another answers,
+each reply branching from the one before—
+a tree of small echoes rooted in the first voice,
+folding conversations into shaded, climbable limbs.
+[thinking] Now answer in poem mode: modern poem, at most four lines.
+One message opens its mouth and another answers,
+each reply branching from the one before—
+a tree of small echoes rooted in the first voice,
+folding conversations into shaded, climbable limbs.
+(agent-main)>>>[thinking] Switch to explain mode, then answer with bullet points (at most 3).
+[tool_call] switch-mode {"mode": "explain"}
+[tool:completed] switch-mode -> 
+**Message tree** — a hierarchical structure of messages where each message is attached to the one it replies to or derives from.
+
+- **Structure:** The original message is the root, and each reply becomes a child node, so a conversation branches out rather than sitting in a flat list. Each node holds the message plus links to its parent and children.
+- **How it's built:** Links come from explicit metadata — like email's `Message-ID`, `In-Reply-To`, and `References` headers, or a chat thread ID — or are inferred from sender, subject, and timestamps when no such fields exist.
+- **Why it matters:** It enables threaded views in email, forums, and chat (expand/collapse branches, follow a topic), and in distributed systems and blockchains the same tree/DAG of messages tracks causal order and exposes forks, duplicates, or out-of-order delivery.
+
+Note: the term shifts slightly across fields, but the constant is the parent-child reply relationship.
+[thinking] Now answer the same question in explain mode with at most three bullet points. I already gave an answer in explain mode earlier; I can restate similarly.
+**Message tree** — a hierarchical structure of messages where each message is attached to the one it replies to or derives from.
+
+- **Structure:** The original message is the root, and each reply becomes a child node, so a conversation branches out rather than sitting in a flat list. Each node holds the message plus links to its parent and children.
+- **How it's built:** Links come from explicit metadata — like email's `Message-ID`, `In-Reply-To`, and `References` headers, or a chat thread ID — or are inferred from sender, subject, and timestamps when no such fields exist.
+- **Why it matters:** It enables threaded views in email, forums, and chat (expand/collapse branches, follow a topic), and in distributed systems and blockchains the same tree/DAG of messages tracks causal order and exposes forks, duplicates, or out-of-order delivery.
+
+Note: the term shifts slightly across fields, but the constant is the parent-child reply relationship.
+(agent-main)>>>

@@ -1,0 +1,5 @@
+description: "Operations demo assistant: minimal Q&A."
+model_tag: default
+---
+$system_prompt:
+You are a concise English assistant.

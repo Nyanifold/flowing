@@ -1,0 +1,53 @@
+/* 面包屑栏语言切换按钮 + 悬停下拉菜单（breadcrumbs.html） */
+li.langswitch {
+  position: relative;
+  border-right: 1px solid #c9c9c9;
+  margin-right: 8px;
+  padding-right: 8px;
+}
+.langswitch-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  vertical-align: middle;
+}
+.langswitch-btn:hover {
+  color: #2980b9;
+}
+ul.langswitch-menu {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 100%;
+  min-width: 7em;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  background: #fcfcfc;
+  border: 1px solid #c9c9c9;
+  border-radius: 2px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  z-index: 400;
+  text-align: left;
+}
+.langswitch:hover ul.langswitch-menu,
+.langswitch:focus-within ul.langswitch-menu {
+  display: block;
+}
+ul.langswitch-menu li {
+  padding: 4px 12px;
+  font-size: 90%;
+  white-space: nowrap;
+}
+ul.langswitch-menu li.current {
+  font-weight: bold;
+  color: #404040;
+}
+ul.langswitch-menu li a {
+  display: block;
+  color: #2980b9;
+}

@@ -1,0 +1,2 @@
+请把 'hello world' 翻译成中文。
+/exit

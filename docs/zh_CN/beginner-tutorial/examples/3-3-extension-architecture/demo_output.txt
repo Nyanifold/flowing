@@ -1,0 +1,12 @@
+== ① 两阶段启用的产物检查 ==
+   skill-load 在全局注册表: True
+   prompt 块含 skills catalog: True
+== ② 迟装（install 迟于 mount）→ 创建期失败 ==
+   迟装 launch 失败: ToolNotFoundError（插件注册的工具本体在阶段一；必须先于首个 mount）
+== ③ 依赖声明：成环 fail-fast ==
+   p1 ↔ p2 互相依赖 → DependencyError
+== ④ use_rate_limit(max_calls=3) 注入 ==
+   5 次调用结果: ['completed', 'completed', 'completed', 'blocked', 'blocked']
+   on_rate_limited 观测到 2 次超限（第 4、5 发）
+== ⑤ remove_by_owner 整组移除 ==
+   移除 1 条 handler；再调一次: status=completed

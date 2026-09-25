@@ -1,0 +1,20 @@
+== ① 五种形式判定（type 自动推断，构造时不求值）==
+   RAW       type=RAW         → '含 {{ 花括号 }} 的原文'
+   FILE_REF  type=FILE_REF    → '退款政策：七天内无理由退款，超期需审核。'
+   EXPRESSION type=EXPRESSION  → 42
+   TEMPLATE  type=TEMPLATE    → '你好 小明'
+   LITERAL   type=LITERAL     → '普通文本'
+== ② 渲染上下文（实例属性摊平 + env / config / self 入口）==
+   {{ env.DEMO_VAR }}    → '来自环境变量'
+   {{ config.agent.timeout }} → 60
+   {{ self.node_id }}  → 'agent-main'
+== ③ {{ x.resolved }}：模板内引用另一个 Parsable 的渲染结果 ==
+   '政策：退款政策：七天内无理由退款，超期需审核。'
+   对照（不写 .resolved 只显示模板原文）: '政策：$./notes/refund.md'
+== ④ 保留名冲突 → ReservedAttributeError ==
+   Reserved attribute name occupied: 'env'
+== ⑤ 未绑定 + 未命中 ==
+   未绑定无上下文 resolve → MissingContextError
+   inject 未命中 → MissingProvideError
+== ⑥ PENDING 位置分流：字段位 _ = 必须兑现的承诺 ==
+   description: _ 未兑现 → MissingFieldError: Required field 'description' of agent type '@/notes/pending-agent.fya' is still PENDING

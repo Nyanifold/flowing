@@ -1,0 +1,26 @@
+description: "State bag demo assistant: preferences / todo list / launch counter, all persisted."
+model_tag: default
+tools:
+  - ./tools/prefs.py
+  - ./tools/todo.py
+  - ./tools/app_info.py
+---
+$system_prompt:
+You are a state-demo assistant. Users record preferences with prefs(remember),
+manage tasks with todo, and ask launch counts with app-info. Keep answers to one
+sentence.
+---
+$script:
+async def setup(self):
+    # default-on-register: persist the default when the key is not persisted;
+    # on recovery the persisted value wins (register never overwrites)
+    self.state.register("user_prefs", {})
+    self.state.register("todo_items", [])
+    self.state.register("visit_count", 0)
+
+    async def _count(agent, turn):
+        if turn.aborted:
+            return turn
+        agent.state["visit_count"] = agent.state["visit_count"] + 1
+        return turn
+    self.hooks.after_turn(_count, by="counter")

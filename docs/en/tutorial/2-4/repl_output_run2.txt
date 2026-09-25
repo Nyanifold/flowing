@@ -1,0 +1,33 @@
+(agent-main)>>>I'll dispatch the coder with full context from the exploration findings, instructing it to write the README and self-verify by reading it back.
+[thinking] Let me dispatch the coder to write the README.md, with instructions to self-check by reading it back and report.
+
+I should give the coder full context from the explore-agent findings.
+[tool_call] subagent-invoke {"agent_type": "coder", "name": "readme-writer", "prompt": "Write a README.md for the project at this absolute path:\n\n<repo-root>/dev-docs/tutorial-en/2-4/target\n\nCreate the file at: <repo-root>/dev-docs/tutorial-en/2-4/target/README.md\n\nCONTEXT (from a completed exploration of the directory — verify anything you rely on by reading the files yourself):\n\nDirectory tree:\n```\ntarget/\n├── notes/\n│   ├── adder.md      (~0.4 KB)\n│   └── divider.md    (~0.6 KB)\n└── pkg/\n    └── calc.py       (~170 bytes, 11 lines)\n```\n\nSource file `pkg/calc.py`:\n- Module docstring: \"\"\"Example project: a calculator.\"\"\"\n- No imports, no classes.\n- `add(a: float, b: float) -> float` → returns a + b\n- `div(a: float, b: float) -> float` → raises ValueError(\"divisor must not be 0\") when b == 0, else returns a / b\n\nOther facts:\n- Tech stack: plain Python 3 (type hints). No third-party dependencies.\n- No entry point / CLI / __main__; it is a library module meant to be imported: `from pkg.calc import add, div`.\n- `pkg/` has NO `__init__.py` (so it is a source folder, not an importable package as checked in).\n- No license, no tests, no env vars, no build tooling (no pyproject.toml, setup.py, package.json, Makefile).\n- `notes/adder.md` and `notes/divider.md` are meta-commentary clarifying that `adder` and `divider` are NOT real components — only informal labels for the `add` and `div` functions respectively. `add(1, 2)` → `3`.\n\nTASK: Write a clear, accurate README.md. Required sections:\n1. Project title & overview (note it is described as \"Example project: a calculator\" and is an intentionally minimal/tutorial project).\n2. Requirements (Python 3, standard library only, no external deps).\n3. Installation / setup (no build needed; how to import it, e.g. `from pkg.calc import add, div`, and the caveat that `pkg/` has no `__init__.py`).\n4. Usage — concrete examples for `add(a, b)` and `div(a, b)`, including that `div` raises `ValueError(\"divisor must not be 0\")` when the divisor is 0.\n5. Project structure — describe the tree above.\n6. Notes — clarify that \"adder\"/\"divider\" mentioned in `notes/` are informal names, not real components; also note there are currently no tests and no license.\n\nAccuracy requirements:\n- Do NOT invent features, license, tests, CLI, or dependencies that do not exist.\n- Use valid markdown with fenced code blocks. Keep it concise and professional.\n\nSELF-CHECK STEP (required): After writing the file, read the file back from disk with your read tool and verify:\n- The file exists at the exact path and is non-empty.\n- All 6 required sections are present.\n- The code examples are correct (add(1, 2) == 3; div(6, 3) == 2.0; div(x, 0) raises ValueError).\n- No fabricated content was added.\n\nThen report back to me with: the absolute file path, the final file content (or a faithful summary), and the results of your self-check. Do not modify any other files."}
+[tool:completed] subagent-invoke -> 
+The coder has finished and self-verified. Updating the task list:
+[thinking] The coder completed and self-checked. Now summarize to the user, and mark todos done. I should update the todo list to mark completed items.
+
+Let me update the todo with [x] marks.
+[tool_call] todo {"tasks_text": "[x] Gather README content requirements from explore-agent findings (project purpose, tech stack, usage)\n[x] Draft README.md at <repo-root>/dev-docs/tutorial-en/2-4/target/README.md with sections: Project Title & Overview, Requirements, Installation/Setup, Usage examples for add() and div(), Project Structure, Notes\n[x] Document the add(a, b) and div(a, b) API including divide-by-zero ValueError behavior\n[x] Clarify in README that \"adder\"/\"divider\" in notes/ are informal names, not real components\n[x] Include note that pkg/ has no __init__.py and there are no tests\n[x] Write README.md to disk and verify contents\n"}
+[tool:completed] todo -> 
+## ✅ Done — README.md written and verified
+
+**File:** `<repo-root>/dev-docs/tutorial-en/2-4/target/README.md` (3,260 bytes, 116 lines)
+
+**What the coder did**
+1. Verified all source facts first by reading `pkg/calc.py`, `notes/adder.md`, `notes/divider.md`, and by actually running the module: `add(1,2)==3`, `div(6,3)==2.0`, `div(1,0)` raised `ValueError("divisor must not be 0")`.
+2. Wrote the README with all 6 required sections:
+   - **Title/Overview** — "Example project: a calculator", noting it's an intentionally minimal tutorial library
+   - **Requirements** — Python 3, stdlib only, no external deps, no build tooling
+   - **Installation/Setup** — no build needed, `from pkg.calc import add, div`, plus the caveat that `pkg/` has no `__init__.py`
+   - **Usage** — examples for `add(a,b)` and `div(a,b)`, including the divide-by-zero `ValueError` case with a traceback and `try/except`
+   - **Project Structure** — annotated tree
+   - **Notes** — "adder"/"divider" are informal names only; no tests; no license
+3. **Self-check:** read the file back from disk — exists, non-empty, all 6 sections present, examples empirically correct, no fabricated content; balanced fenced code blocks. Cleaned up the transient `pkg/__pycache__` from its verification run.
+
+**Task list:** 6/6 complete, 0 open.
+
+**Changed files:** `README.md` (new) only — no other files created or modified.
+
+Everything requested is complete: exploration → task breakdown → coder write → self-check → report. Let me know if you'd like any wording or section changes.
+(agent-main)>>>

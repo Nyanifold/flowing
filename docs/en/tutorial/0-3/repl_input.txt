@@ -1,0 +1,3 @@
+Please check what files are in the notes directory and report back faithfully.
+Please create a new file 总结.md in the notes directory and write the key points of 使用说明.md into it.
+/exit

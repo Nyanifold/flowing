@@ -1,0 +1,17 @@
+(agent-main)>>>I'll have the assistant memorize that.
+[tool_call] subagent-invoke {"agent_type": "assistant", "name": "memo", "prompt": "Please memorize the following: the number is 42. Repeat it back to confirm you have memorized it."}
+[tool:completed] subagent-invoke -> 
+The assistant has memorized it. Its response:
+
+> Got it—I've memorized that the number is 42.
+[thinking] The assistant confirms. Now relay verbatim.
+The assistant has memorized it. Its response:
+
+> Got it—I've memorized that the number is 42.
+(agent-main)>>>[thinking] Resume the memo instance.
+[tool_call] subagent-invoke {"resume": "memo", "prompt": "What number did I ask you to remember earlier?"}
+[tool:completed] subagent-invoke -> 
+The assistant replied:
+
+> You asked me to remember the number 42.
+(agent-main)>>>

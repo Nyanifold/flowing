@@ -1,0 +1,9 @@
+(agent-main)>>>[thinking] The user wants me to parse tasks. Let me call the todo tool.
+[tool_call] todo {"tasks_text": "draft the proposal\n[x] buy coffee (already done)\n\nsend the email"}
+[tool:completed] todo -> 
+3 items total, 2 open: draft the proposal and send the email are pending, while buy coffee is done.
+(agent-main)>>>[thinking] Call the todo tool with empty text to demonstrate the error case.
+[tool_call] todo {"tasks_text": ""}
+[tool:error] todo -> Task list is empty: provide at least one task
+The tool returned the error: "Task list is empty: provide at least one task." No items were parsed, so there is nothing to report as total or open.
+(agent-main)>>>

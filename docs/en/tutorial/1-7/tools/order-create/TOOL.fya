@@ -1,0 +1,11 @@
+# request-type tool: POST -> parameters go into the JSON body; output extracts
+# fields per the declared schema.
+name: order-create
+type: request
+description: Create a new order.
+url: http://127.0.0.1:8641/api/orders
+method: POST
+args:
+  item: {type: string, description: Product name}
+  count: {type: integer, default: 1, description: Quantity}
+output: {type: object, properties: {order_id: {type: string}, total: {type: number}}}

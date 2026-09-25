@@ -1,0 +1,951 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C)
+# This file is distributed under the same license as the flowing-agent
+# package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: flowing-agent \n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-09-11 07:02+0800\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: en\n"
+"Language-Team: en <LL@li.org>\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: ../../api/flowing.builtins.rst:2
+msgid "flowing.builtins package"
+msgstr "flowing.builtins package"
+
+#: flowing.builtins:1 of
+msgid "``flowing.builtins`` —— 出厂内置工具与标准子智能体（``builtin::`` 命名空间）。"
+msgstr "``flowing.builtins`` — factory built-in tools and standard subagents (the ``builtin::`` namespace)."
+
+#: flowing.builtins:4 flowing.builtins.agents:4
+#: flowing.builtins.agents.ExploreAgent:4 flowing.builtins.register_builtins:4
+#: flowing.builtins.tools:4 flowing.builtins.tools.BashTool:4
+#: flowing.builtins.tools.EditTool:4 flowing.builtins.tools.FinishTool:4
+#: flowing.builtins.tools.GlobTool:4 flowing.builtins.tools.GrepTool:4
+#: flowing.builtins.tools.ReadTool:4
+#: flowing.builtins.tools.SubagentInvokeTool:4
+#: flowing.builtins.tools.WriteTool:4 of
+msgid "功能介绍"
+msgstr "Overview"
+
+#: flowing.builtins:5 of
+msgid ""
+"本包是框架随包发布的「出厂自带」能力集合，全部注册在 ``builtin::`` 命名空间下（注册行为见 "
+":func:`register_builtins`，由 ``Runtime`` 构造 期自动执行，随每个 ``Runtime`` 实例天生在场）："
+msgstr ""
+"This package is the set of capabilities shipped out of the box with the framework, all registered under the "
+"``builtin::`` namespace (registration is performed by :func:`register_builtins`, which runs automatically during ``Runtime`` construction, so it is inherently present in every ``Runtime`` instance):"
+
+#: flowing.builtins:9 of
+msgid ""
+":mod:`flowing.builtins.tools` —— 内置工具全集：核心内置 ``subagent-invoke`` "
+"（子智能体唤起入口）与出厂内置的 ``finish`` （子 Agent 可选交卷），加六个标准文件 / shell 工具 ``read`` / "
+"``write`` / ``bash`` / ``edit`` / ``grep`` / ``glob``；"
+msgstr ""
+":mod:`flowing.builtins.tools` — the full set of built-in tools: the core built-in ``subagent-invoke`` "
+"(the subagent invocation entry point) and the shipped ``finish`` (optional result submission for sub-agents), plus six standard file / shell tools ``read`` / "
+"``write`` / ``bash`` / ``edit`` / ``grep`` / ``glob``;"
+
+#: flowing.builtins:13 of
+msgid ":mod:`flowing.builtins.agents` —— 标准子智能体 ``ExploreAgent`` （只读代码库探索）。"
+msgstr ":mod:`flowing.builtins.agents` — the standard subagent ``ExploreAgent`` (read-only codebase exploration)."
+
+#: flowing.builtins:17 flowing.builtins.tools:16 of
+msgid "全局约定（跨符号、影响使用的约定）"
+msgstr "Global Conventions (cross-symbol conventions that affect usage)"
+
+#: flowing.builtins:18 of
+msgid ""
+"注册不等于可见。条目进入注册表只代表「框架认识它」，不代表 LLM 能看到 它：Agent "
+"的工具目录（``Context.tools``）只包含该 Agent 在 ``.fya`` 的 ``tools:`` 或 ``add_tool``"
+" 中显式声明的条目；可写文件、执行命令的危险 工具（``write`` / ``bash`` / ``edit`` 等）必须由使用者显式声明才会被"
+" LLM 看到——框架不会因为注册就把它们暴露给 LLM，这是安全边界，不是疏忽。 标准子智能体同理：``ExploreAgent`` 需亲代 "
+"Agent 在 ``subagents:`` 或 ``add_agent`` 中显式声明才会进入其 catalog。"
+msgstr ""
+"Registration does not imply visibility. An entry being in the registry only means the framework knows it; it does not mean the LLM can see it: an agent's "
+"tool catalog (``Context.tools``) contains only entries explicitly declared by that agent in ``tools:`` of its ``.fya`` or via ``add_tool``"
+"; dangerous tools that write files or execute commands (``write`` / ``bash`` / ``edit`` etc.) must be explicitly declared by the user before the"
+" LLM can see them — the framework never exposes them to the LLM merely because they are registered. This is a security boundary, not an oversight. The same applies to standard subagents: ``ExploreAgent`` enters a parent "
+"agent's catalog only when explicitly declared in ``subagents:`` or via ``add_agent``."
+
+#: flowing.builtins:26 of
+msgid ""
+"``builtin::`` 是裸名查找的兜底层：裸名引用先查 ``default::`` 再查 ``builtin::``——插件 / 应用可在 "
+"``default::`` 注册同名条目覆盖内置行为， 被覆盖的条目仍可用 ``builtin::xxx`` 全限定名显式引用。"
+msgstr ""
+"``builtin::`` is the fallback layer for bare-name lookup: a bare-name reference is looked up in ``default::`` first, then ``builtin::`` — plugins / applications may register "
+"same-named entries under ``default::`` to override the built-in behavior; overridden entries can still be explicitly referenced via the fully qualified name ``builtin::xxx``."
+
+#: flowing.builtins:31 flowing.builtins.agents:14
+#: flowing.builtins.agents.ExploreAgent:15 flowing.builtins.tools:37
+#: flowing.builtins.tools.FinishTool:15
+#: flowing.builtins.tools.SubagentInvokeTool:19 of
+msgid "使用示例"
+msgstr "Examples"
+
+#: flowing.builtins:32 of
+msgid "``.fya`` 中显式声明本 Agent 可用的工具（只读工具直接声明；危险工具同样 必须显式声明才会对 LLM 可见）::"
+msgstr "Explicitly declare in ``.fya`` the tools available to this agent (read-only tools are declared directly; dangerous tools must likewise be explicitly declared to be visible to the LLM)::"
+
+#: flowing.builtins:43 of
+msgid ":mod:`flowing.builtins.tools` —— 内置工具全集。"
+msgstr ":mod:`flowing.builtins.tools` — the full set of built-in tools."
+
+#: flowing.builtins:44 of
+msgid ":mod:`flowing.builtins.agents` —— 标准子智能体。"
+msgstr ":mod:`flowing.builtins.agents` — standard subagents."
+
+#: flowing.builtins:45 of
+msgid ":mod:`flowing.tool` —— ``builtin::`` / ``default::`` 命名空间与 裸名查找规则。"
+msgstr ":mod:`flowing.tool` — the ``builtin::`` / ``default::`` namespaces and the bare-name lookup rules."
+
+#: flowing.builtins.tools.BashTool:1 of
+msgid "``bash`` —— 经 ``/bin/bash`` 执行 shell 命令（高危可写工具）。"
+msgstr "``bash`` — execute shell commands via ``/bin/bash`` (high-risk writable tool)."
+
+#: flowing.builtins.tools.BashTool:5 of
+msgid ""
+"LLM 在宿主环境执行 shell 命令的工具：命令经 ``/bin/bash -c`` 运行， 返回 ``stdout`` / "
+"``stderr`` / ``exit_code`` 拼成的文本。高危工具—— 任意命令执行，继承 Agent 进程的全部权限。"
+msgstr ""
+"The tool with which the LLM executes shell commands in the host environment: the command runs via ``/bin/bash -c`` and returns "
+"text assembled from ``stdout`` / ``stderr`` / ``exit_code``. High-risk tool — arbitrary command execution, inheriting all permissions of the agent process."
+
+#: flowing.builtins.agents.ExploreAgent:23
+#: flowing.builtins.register_builtins:11 flowing.builtins.tools.BashTool:10
+#: flowing.builtins.tools.BashTool.execute:4 flowing.builtins.tools.EditTool:9
+#: flowing.builtins.tools.EditTool.execute:4
+#: flowing.builtins.tools.FinishTool:35
+#: flowing.builtins.tools.FinishTool.execute:4
+#: flowing.builtins.tools.GlobTool:9 flowing.builtins.tools.GlobTool.execute:4
+#: flowing.builtins.tools.GrepTool:10 flowing.builtins.tools.GrepTool.execute:4
+#: flowing.builtins.tools.ReadTool:9 flowing.builtins.tools.ReadTool.execute:5
+#: flowing.builtins.tools.SubagentInvokeTool:30
+#: flowing.builtins.tools.SubagentInvokeTool.execute:4
+#: flowing.builtins.tools.WriteTool:9
+#: flowing.builtins.tools.WriteTool.execute:4 of
+msgid "行为要点"
+msgstr "Key Behaviors"
+
+#: flowing.builtins.tools.BashTool:11 of
+msgid ""
+"参数：``command`` （必填）；``timeout`` （秒，默认 120，超时杀进程 组并返回 error）；``cwd`` "
+"（工作目录，可选；给则必须是绝对路径， 相对 → error ``ToolResult``）。"
+msgstr ""
+"Parameters: ``command`` (required); ``timeout`` (seconds, default 120; on timeout the process group is killed and an error is returned); ``cwd`` "
+"(working directory, optional; if given it must be an absolute path, relative → error ``ToolResult``)."
+
+#: flowing.builtins.tools.BashTool:14 of
+msgid ""
+"返回：``stdout`` / ``stderr`` / ``exit_code`` 拼成的裸文本；非零 退出码不是异常——照常在 output "
+"里返回（LLM 应看到）。"
+msgstr ""
+"Returns: raw text assembled from ``stdout`` / ``stderr`` / ``exit_code``; a non-zero exit code is not an exception — it is returned in the output "
+"as usual (the LLM should see it)."
+
+#: flowing.builtins.tools.BashTool:16 of
+msgid "危险面：任意命令执行，继承 Agent 进程全部权限。审批 / 命令过滤属 策略层（``before_tool_call``），本工具不做。"
+msgstr "Danger surface: arbitrary command execution, inheriting all permissions of the agent process. Approval / command filtering belongs to the policy layer (``before_tool_call``); this tool does not do it."
+
+#: flowing.builtins.tools.BashTool:18 of
+msgid "不支持交互式命令（stdin 关闭）；不保持会话状态（每次调用是新 进程，工作目录经 ``cwd`` 参数显式给出）。"
+msgstr "Interactive commands are not supported (stdin is closed); no session state is kept (each call is a new process; the working directory is given explicitly via the ``cwd`` parameter)."
+
+#: flowing.builtins.tools.BashTool:21 of
+msgid ""
+":class:`flowing.builtins.WriteTool`、 :class:`flowing.builtins.EditTool` "
+"—— 同属可写工具族。"
+msgstr ""
+":class:`flowing.builtins.WriteTool`, :class:`flowing.builtins.EditTool` "
+"— fellow members of the writable tool family."
+
+#: flowing.builtins.tools.BashTool.execute:1 of
+msgid "执行命令并返回 ``stdout`` / ``stderr`` / ``exit_code`` 拼成的裸文本。"
+msgstr "Execute the command and return raw text assembled from ``stdout`` / ``stderr`` / ``exit_code``."
+
+#: flowing.builtins.tools.BashTool.execute:5 of
+msgid "超时杀整个进程组（子进程自立会话，含命令再拉起的孙进程）， 随后返回 ``status=\"error\"`` 的 ``ToolResult``。"
+msgstr "On timeout the entire process group is killed (the child process starts its own session, including grandchildren spawned by the command), then a ``ToolResult`` with ``status=\"error\"`` is returned."
+
+#: flowing.builtins.tools.BashTool.execute:7 of
+msgid ""
+"``cwd`` 非绝对 → ``ValueError``——经 ``Tool.__call__`` 包装为 "
+"``status=\"error\"`` （LLM 可见，可自纠正）。"
+msgstr ""
+"Non-absolute ``cwd`` → ``ValueError`` — wrapped by ``Tool.__call__`` into "
+"``status=\"error\"`` (visible to the LLM, which can self-correct)."
+
+#: ../../api/flowing.builtins.rst
+msgid "参数"
+msgstr "Parameters"
+
+#: ../../api/flowing.builtins.rst flowing.builtins.agents.ExploreAgent.setup of
+msgid "返回类型"
+msgstr "Return type"
+
+#: flowing.builtins.tools.EditTool:1 of
+msgid "``edit`` —— 精确字符串替换（可写工具）。"
+msgstr "``edit`` — exact string replacement (writable tool)."
+
+#: flowing.builtins.tools.EditTool:5 of
+msgid ""
+"LLM 编辑文件内容的工具：把文件中与 ``old_string`` 精确相等的文本 替换为 "
+"``new_string``。默认要求唯一命中，避免误改。"
+msgstr ""
+"The tool with which the LLM edits file content: replaces text in the file that exactly equals ``old_string`` with "
+"``new_string``. By default a unique match is required, to avoid accidental edits."
+
+#: flowing.builtins.tools.EditTool:10 of
+msgid ""
+"参数：``path`` / ``old_string`` / ``new_string`` （必填；``path`` 遵循 ``cwd`` "
+"基准口径——见模块 docstring）；``cwd`` （路径基准， 默认 ``None``）；``replace_all`` （默认 "
+"``False``）。"
+msgstr ""
+"Parameters: ``path`` / ``old_string`` / ``new_string`` (all required; ``path`` follows the ``cwd`` "
+"base convention — see the module docstring); ``cwd`` (path base, default ``None``); ``replace_all`` (default "
+"``False``)."
+
+#: flowing.builtins.tools.EditTool:13 of
+msgid ""
+"唯一性约束：``replace_all=False`` 时 ``old_string`` 命中次数 不等于 1 → error（0 "
+"次命中即没找到，多次命中即歧义，均不改文件）。"
+msgstr ""
+"Uniqueness constraint: with ``replace_all=False``, if the number of matches of ``old_string`` is not equal to 1 → error (0 "
+"matches means not found, multiple matches means ambiguity; in both cases the file is left unchanged)."
+
+#: flowing.builtins.tools.EditTool:15 of
+msgid "返回：收据文本（路径与替换次数）。"
+msgstr "Returns: receipt text (path and number of replacements)."
+
+#: flowing.builtins.tools.EditTool:16 of
+msgid "危险面：任意路径改文件。审批属策略层（``before_tool_call``）。"
+msgstr "Danger surface: modifies files at arbitrary paths. Approval belongs to the policy layer (``before_tool_call``)."
+
+#: flowing.builtins.tools.EditTool:17 of
+msgid "编辑不是原子操作：工具先读取文件、替换、再写回；同一文件并发 编辑时后完成者覆盖先完成者（同一 Agent 串行执行，天然安全）。"
+msgstr "Editing is not atomic: the tool reads the file, replaces, then writes back; with concurrent edits to the same file, the later finisher overwrites the earlier one (the same agent executes serially, so it is inherently safe)."
+
+#: flowing.builtins.tools.EditTool:20 of
+msgid ":class:`flowing.builtins.WriteTool` —— 整文件覆盖写。"
+msgstr ":class:`flowing.builtins.WriteTool` — whole-file overwrite."
+
+#: flowing.builtins.tools.EditTool.execute:1 of
+msgid "替换并返回收据文本（``已编辑 <路径>：替换 <次数> 处``）。"
+msgstr "Replace and return receipt text (``Edited <path>: replaced <count> occurrence(s)``)."
+
+#: flowing.builtins.tools.EditTool.execute:5 of
+msgid ""
+"唯一性约束（见类 docstring）：0 次命中 / ``replace_all=False`` 时多次命中 → 抛 "
+"``ValueError``，文件不变；经 ``Tool.__call__`` 包装为 ``status=\"error\"`` 的 "
+"``ToolResult`` （LLM 可见，可自 纠正）。"
+msgstr ""
+"Uniqueness constraint (see the class docstring): 0 matches, or multiple matches with ``replace_all=False`` → raises "
+"``ValueError`` and leaves the file unchanged; wrapped by ``Tool.__call__`` into a ``status=\"error\"`` "
+"``ToolResult`` (visible to the LLM, which can self-correct)."
+
+#: flowing.builtins.agents.ExploreAgent:1 of
+msgid "``explore-agent`` —— 只读代码库探索子智能体。"
+msgstr "``explore-agent`` — read-only codebase exploration subagent."
+
+#: flowing.builtins.agents.ExploreAgent:5 of
+msgid ""
+"最常见的委派形态：主 Agent 把「读懂这块代码」的活派出去，拿回一段 结论文本，自己继续干活。工具集固定为只读的 ``read`` / "
+"``grep`` / ``glob``——结构上不可能修改文件或执行命令，委派方无需审批策略即可 放心使用。"
+msgstr ""
+"The most common delegation pattern: the main agent delegates the job of understanding this piece of code, gets back a passage of "
+"conclusion text, and continues its own work. The tool set is fixed to the read-only ``read`` / "
+"``grep`` / ``glob`` — it is structurally impossible to modify files or execute commands, so the delegating side can use it safely without any approval policy."
+
+#: flowing.builtins.agents.ExploreAgent:10 of
+msgid ""
+"「只读」不靠提示词自律，靠工具集构成保证：不给 ``write`` / ``edit`` / ``bash`` "
+"就没有可写面。这是「能力即声明的条目集」机制的 标准示范。"
+msgstr ""
+"Read-only is not enforced by prompt self-discipline but guaranteed by the tool set composition: without ``write`` / ``edit`` / ``bash`` "
+"there is no writable surface. This is the standard demonstration of the capabilities-as-declared-entry-sets mechanism."
+
+#: flowing.builtins.agents.ExploreAgent:24 of
+msgid ""
+"工具集固定为 ``read`` / ``grep`` / ``glob`` （全部只读）；子类想 加可写工具须显式覆写 "
+":meth:`setup`——此时它不再是「只读探索」， 安全语义自负。"
+msgstr ""
+"The tool set is fixed to ``read`` / ``grep`` / ``glob`` (all read-only); a subclass that wants to add writable tools must explicitly override "
+":meth:`setup` — at that point it is no longer read-only exploration, and it bears the security semantics itself."
+
+#: flowing.builtins.agents.ExploreAgent:27 of
+msgid ""
+"交卷：默认以 plain 文本回复作为结果回传亲代 Agent（不绑 ``finish``——不调用 ``finish`` 是子 Agent "
+"的最常用法，见 :class:`flowing.builtins.FinishTool`）。"
+msgstr ""
+"Result submission: by default the plain text reply is returned to the parent agent as the result (``finish`` is not bound — not calling ``finish`` is the most common usage of a sub-agent, "
+"see :class:`flowing.builtins.FinishTool`)."
+
+#: flowing.builtins.agents.ExploreAgent:30 of
+msgid "``setup()`` 不接受任何初始化参数；子 Agent 条目无需（也不应）为 它声明 ``args:`` 覆写。"
+msgstr "``setup()`` accepts no initialization parameters; a sub-agent entry does not need (and should not have) an ``args:`` override declared for it."
+
+#: flowing.builtins.agents.ExploreAgent:33 of
+msgid ""
+":mod:`flowing.builtins.tools`、 "
+":class:`flowing.builtins.SubagentInvokeTool`"
+msgstr ""
+":mod:`flowing.builtins.tools`, "
+":class:`flowing.builtins.SubagentInvokeTool`"
+
+#: flowing.builtins.ExploreAgent.system_prompt:1
+#: flowing.builtins.agents.ExploreAgent.system_prompt:1 of
+msgid ""
+"唯一必填类属性：系统提示词。实例化后进入 ``prompt_blocks[0]`` 的惰性引用块（``by=\"core\"``，内容为 ``{{"
+" self.system_prompt }}`` 模板），每次组装上下文时现场求值——``setup()`` 中改它，下一次 "
+"``provider_gen()`` 自动反映。创建管线在 ``setup()`` 后检查本属性 仍为 PENDING（未赋值）→ "
+"``MissingFieldError``。"
+msgstr ""
+"The only required class attribute: the system prompt. After instantiation it enters a lazy reference block at ``prompt_blocks[0]`` (``by=\"core\"``, whose content is the ``{{"
+" self.system_prompt }}`` template), evaluated on the spot each time the context is assembled — change it in ``setup()`` and the next "
+"``provider_gen()`` reflects it automatically. The creation pipeline checks after ``setup()`` whether this attribute is still PENDING (unassigned) → "
+"``MissingFieldError``."
+
+#: flowing.builtins.agents.ExploreAgent.setup:1 of
+msgid "把只读工具集（``read`` / ``grep`` / ``glob``）绑定到本实例。"
+msgstr "Bind the read-only tool set (``read`` / ``grep`` / ``glob``) to this instance."
+
+#: flowing.builtins.agents.ExploreAgent.setup:3 of
+msgid ""
+"创建 / 恢复管线各自在一个新建实例上运行一次本方法（实例级单次 契约见 "
+":meth:`flowing.agent.Agent.setup`）；每次运行都从空条目 表开始，各实例装配互不干扰。"
+msgstr ""
+"Both the creation and the restore pipelines run this method exactly once on a freshly created instance (the instance-level run-once "
+"contract is documented in :meth:`flowing.agent.Agent.setup`); each run starts from an empty entry table, so the assembly of different instances does not interfere with each other."
+
+#: flowing.builtins.ExploreAgent.source_file:1
+#: flowing.builtins.agents.ExploreAgent.source_file:1 of
+msgid ""
+"``@/`` 格式源文件路径。类创建时经 ``__init_subclass__`` 从 ``__module__.__file__`` "
+"推算；``.fya`` 来源的类由装配层在生成类时 显式注入（值为该 ``.fya`` 文件的 ``@/`` 路径，优先级最高，不走 "
+"``__module__`` 推算）。显式写 ``None`` 或推算失败 → ``None``。 只读，实例化后不可变。"
+msgstr ""
+"Source file path in ``@/`` format. Inferred at class creation time via ``__init_subclass__`` from ``__module__.__file__``; "
+"for classes originating from a ``.fya`` file, the assembly layer explicitly injects it when generating the class (the value is the ``@/`` path of that ``.fya`` file, takes highest precedence, and bypasses "
+"the ``__module__`` inference). Explicitly writing ``None`` or a failed inference → ``None``. Read-only, immutable after instantiation."
+
+#: flowing.builtins.tools.FinishTool:1 of
+msgid "``finish`` —— 子 Agent 结构化交卷工具（普通工具，显式绑定）。"
+msgstr "``finish`` — structured result-submission tool for sub-agents (an ordinary tool, explicitly bound)."
+
+#: flowing.builtins.tools.FinishTool:5 of
+msgid ""
+"LLM 主动调用 ``finish`` 以结束子 Agent 当前逻辑 Turn 并返回结构化 结果。工具级 ``definition`` "
+"只有骨架参数 ``summary``；真正的结构化 返回字段来自 Agent ``tools:`` 条目中的 ``output:`` "
+"声明——该声明 展开为 ``finish`` 的额外参数（见使用示例）。"
+msgstr ""
+"The LLM actively calls ``finish`` to end the sub-agent's current logical Turn and return a structured result. The tool-level ``definition`` "
+"has only the skeleton parameter ``summary``; the actual structured return fields come from the ``output:`` declaration in the agent's ``tools:`` entry — "
+"that declaration expands into extra parameters of ``finish`` (see Examples)."
+
+#: flowing.builtins.tools.FinishTool:10 of
+msgid ""
+"不调用 ``finish`` 是子 Agent 的最常用法：回合自然结束时，其 plain "
+"文本回复（``last_result``）即作为结果回传亲代 Agent——``finish`` 只是 给想结构化提前交卷的子 Agent "
+"一个可选出口，不是必备能力。"
+msgstr ""
+"Not calling ``finish`` is the most common usage of a sub-agent: when the turn ends naturally, its plain "
+"text reply (``last_result``) is returned to the parent agent as the result — ``finish`` merely gives a sub-agent that wants to submit a structured result early "
+"an optional exit; it is not a required capability."
+
+#: flowing.builtins.tools.FinishTool:36 of
+msgid ""
+"动态 schema 机制：``output`` 走 :class:`flowing.tool.ToolEntry` 的 "
+"``override_params``——框架核心不感知 ``output`` 的含义，它只是 普通覆写字段；动态 schema 不修改 "
+":class:`flowing.tool.ToolRegistry` 原始定义（``clone_with_overrides`` 语义保证）。"
+msgstr ""
+"Dynamic schema mechanism: ``output`` goes through the ``override_params`` of "
+":class:`flowing.tool.ToolEntry` — the framework core is unaware of the meaning of ``output``; it is just an ordinary override field. The dynamic schema does not modify the "
+"original definition in :class:`flowing.tool.ToolRegistry` (guaranteed by the ``clone_with_overrides`` semantics)."
+
+#: flowing.builtins.tools.FinishTool:40 of
+msgid ""
+"``output`` 字段与 ``finish`` 自身参数合并（``summary`` 与 ``output`` 字段），对 "
+"``llm_definition()`` / ``resolve()`` 透明； ``output`` 本身不是 LLM 可见参数。"
+msgstr ""
+"The ``output`` fields are merged with ``finish``'s own parameters (``summary`` plus the ``output`` fields), transparent to "
+"``llm_definition()`` / ``resolve()``; ``output`` itself is not an LLM-visible parameter."
+
+#: flowing.builtins.tools.FinishTool:43 of
+msgid "无 ``output`` 声明 → 只有 ``summary``，LLM 以自由文本结束。"
+msgstr "Without an ``output`` declaration → only ``summary``; the LLM finishes with free text."
+
+#: flowing.builtins.tools.FinishTool:44 of
+msgid ""
+"``output:`` 与 ``args:`` 在 ``ToolEntry`` 内合并进同一 "
+"``override_params``；``output`` 覆写是任意工具的通用字段（与 ``args:`` "
+"平级）——省略字段即移除，改变类型即覆写，无需完整 重声明。"
+msgstr ""
+"``output:`` and ``args:`` are merged into the same "
+"``override_params`` within ``ToolEntry``; the ``output`` override is a generic field for any tool (on par with ``args:``) "
+"— omitting a field removes it, changing its type overrides it; no full re-declaration is needed."
+
+#: flowing.builtins.tools.FinishTool:48 of
+msgid ""
+"可见性走通用通道：``finish`` 对 LLM 可见只经 ``.fya`` ``tools:`` 声明或显式 "
+"``add_tool(\"finish\")``。"
+msgstr ""
+"Visibility goes through the generic channel: ``finish`` becomes visible to the LLM only via a ``.fya`` ``tools:`` declaration or an explicit "
+"``add_tool(\"finish\")``."
+
+#: flowing.builtins.tools.FinishTool:50 of
+msgid ""
+"结束机制：调用后，本回合在其余并行工具调用照常执行完后自然结束， 返回载荷写入 ``Agent.last_result`` 并作为结果回传亲代 "
+"Agent；配对 TOOL 消息正常挂树，本回合的回合结束标记（``turn_end=True``）落在 该消息上。"
+msgstr ""
+"Termination mechanism: after the call, the current turn ends naturally once the remaining parallel tool calls finish executing as usual; the return payload is written to ``Agent.last_result`` and returned to the parent "
+"agent as the result; the paired TOOL message is attached to the tree normally, and the turn-end marker of this turn (``turn_end=True``) lands on that message."
+
+#: flowing.builtins.tools.FinishTool:57 of
+msgid ":class:`flowing.tool.ToolEntry` —— 覆写数据载体。"
+msgstr ":class:`flowing.tool.ToolEntry` — the carrier of override data."
+
+#: flowing.builtins.tools.FinishTool:58 of
+msgid ":meth:`flowing.agent.Agent.add_tool` —— 显式绑定入口。"
+msgstr ":meth:`flowing.agent.Agent.add_tool` — the explicit binding entry point."
+
+#: flowing.builtins.tools.FinishTool.execute:1 of
+msgid "收集结构化返回字段并结束子 Agent 当前逻辑 Turn。"
+msgstr "Collect the structured return fields and end the sub-agent's current logical Turn."
+
+#: flowing.builtins.tools.FinishTool.execute:5 of
+#, python-brace-format
+msgid ""
+"``kwargs`` 接收 ``output:`` 声明展开的动态字段；返回 ``{\"summary\": ..., **动态字段}``——无 "
+"``output`` 声明时 ``summary`` 的值即自由文本字符串，声明后值换为结构化字段集， 返回结构本身不变。"
+msgstr ""
+"``kwargs`` receives the dynamic fields expanded from the ``output:`` declaration; returns ``{\"summary\": ..., **dynamic_fields}`` — without "
+"an ``output`` declaration the value of ``summary`` is the free-text string; with the declaration the value becomes the structured field set, while the return structure itself stays unchanged."
+
+#: flowing.builtins.tools.FinishTool.execute:9 of
+msgid ""
+"结束机制：同一载荷置位 ``caller.current_turn.finish_output`` ——置位即请求本回合自然结束（视同 "
+"``finish=True``，工具段照常 执行完），载荷由子 Agent 收尾段写入 ``Agent.last_result`` 并 "
+"作为结果回传亲代 Agent。"
+msgstr ""
+"Termination mechanism: the same payload sets ``caller.current_turn.finish_output`` — setting it requests the current turn to end naturally (treated as "
+"``finish=True``; the tool section still finishes executing as usual); the payload is written to ``Agent.last_result`` by the sub-agent's wrap-up section and "
+"returned to the parent agent as the result."
+
+#: flowing.builtins.tools.FinishTool.execute:13 of
+msgid "前置：``caller.current_turn`` 非 ``None`` （工具只在回合内执行）。"
+msgstr "Precondition: ``caller.current_turn`` is not ``None`` (the tool only executes within a turn)."
+
+#: flowing.builtins.tools.FinishTool.execute:15 of
+msgid ":class:`flowing.agent.TurnContext` —— 逻辑 Turn 执行期对象。"
+msgstr ":class:`flowing.agent.TurnContext` — the logical Turn execution-time object."
+
+#: flowing.builtins.tools.GlobTool:1 of
+msgid "``glob`` —— 按模式找文件（只读）。"
+msgstr "``glob`` — find files by pattern (read-only)."
+
+#: flowing.builtins.tools.GlobTool:5 of
+msgid "LLM 在目录中按 glob 模式枚举文件的工具：返回匹配文件的绝对路径 列表，最近修改的在前。"
+msgstr "The tool with which the LLM enumerates files in a directory by glob pattern: returns a list of absolute paths of matching files, most recently modified first."
+
+#: flowing.builtins.tools.GlobTool:10 of
+msgid ""
+"参数：``pattern`` （glob 模式，必填，``**`` 递归）；``path`` （基准 目录，必填，遵循 ``cwd`` "
+"基准口径——见模块 docstring）；``cwd`` （路径基准，默认 ``None``）。"
+msgstr ""
+"Parameters: ``pattern`` (glob pattern, required; ``**`` recurses); ``path`` (base directory, required, follows the ``cwd`` "
+"base convention — see the module docstring); ``cwd`` (path base, default ``None``)."
+
+#: flowing.builtins.tools.GlobTool:13 of
+msgid ""
+"返回：匹配文件的绝对路径文本（每行一条，按 mtime 倒序——最近 修改在前）；只列文件不列目录。无匹配返回「（无匹配）」；结果数 超过 100"
+" 个时截断并注明。"
+msgstr ""
+"Returns: text of absolute paths of matching files (one per line, ordered by mtime descending — most recently modified first); lists files only, not directories. Returns \"(no matches)\" when nothing matches; when there are more than 100"
+" results, the list is truncated with a note."
+
+#: flowing.builtins.tools.GlobTool:16 of
+msgid ""
+"只做文件系统枚举：不跟随 ``.gitignore`` （与 ``grep`` 的 ``rg`` 语义不同），也不做内容过滤（那是 "
+"``grep`` 的职责）。"
+msgstr ""
+"Only filesystem enumeration: does not follow ``.gitignore`` (unlike the ``rg`` semantics of ``grep``), and does no content filtering (that is "
+"``grep``'s job)."
+
+#: flowing.builtins.tools.GlobTool:18 of
+msgid "边缘情况：基准目录不存在或不是目录 → ``status=\"error\"`` 的 ``ToolResult``。"
+msgstr "Edge case: the base directory does not exist or is not a directory → a ``ToolResult`` with ``status=\"error\"``."
+
+#: flowing.builtins.tools.GlobTool.execute:1 of
+msgid "枚举并返回绝对路径文本（每行一条，mtime 倒序）。"
+msgstr "Enumerate and return absolute-path text (one per line, mtime descending)."
+
+#: flowing.builtins.tools.GlobTool.execute:5 of
+msgid ""
+"基准目录不存在或不是目录 → 抛 ``ValueError``——经 ``Tool.__call__`` 包装为 "
+"``status=\"error\"`` 的 ``ToolResult`` （LLM 可见，可自纠正）。"
+msgstr ""
+"Base directory missing or not a directory → raises ``ValueError`` — wrapped by ``Tool.__call__`` into "
+"a ``ToolResult`` with ``status=\"error\"`` (visible to the LLM, which can self-correct)."
+
+#: flowing.builtins.tools.GlobTool.execute:8 of
+msgid "结果数超过 100 个时截断并注明；无匹配返回「（无匹配）」。"
+msgstr "When there are more than 100 results, the list is truncated with a note; returns \"(no matches)\" when nothing matches."
+
+#: flowing.builtins.tools.GrepTool:1 of
+msgid "``grep`` —— 内容搜索（只读），体内委托 ``rg``。"
+msgstr "``grep`` — content search (read-only), delegating to ``rg`` internally."
+
+#: flowing.builtins.tools.GrepTool:5 of
+msgid ""
+"LLM 在目录中搜索文本的工具：按 ripgrep 正则匹配文件内容，返回带 路径与行号的匹配行。要求宿主环境安装 ``rg`` "
+"（ripgrep）——未安装时 工具报错，不做 Python 兜底扫描（行为一致性优先于可用性）。"
+msgstr ""
+"The tool with which the LLM searches text in a directory: matches file contents with ripgrep regexes and returns matching lines with paths and line numbers. Requires ``rg`` "
+"(ripgrep) installed in the host environment — if not installed the tool reports an error and does not fall back to a Python scan (behavioral consistency takes priority over availability)."
+
+#: flowing.builtins.tools.GrepTool:11 of
+msgid ""
+"参数：``pattern`` （ripgrep 正则，必填）；``path`` （搜索根，必填， 遵循 ``cwd`` 基准口径——见模块 "
+"docstring）；``cwd`` （路径基准， 默认 ``None``）；``glob`` （文件名过滤，可选）。"
+msgstr ""
+"Parameters: ``pattern`` (ripgrep regex, required); ``path`` (search root, required, follows the ``cwd`` base convention — see the module "
+"docstring); ``cwd`` (path base, default ``None``); ``glob`` (file-name filter, optional)."
+
+#: flowing.builtins.tools.GrepTool:14 of
+msgid "匹配语义沿用 ``rg`` 默认行为：尊重 ``.gitignore``、跳过隐藏文件。"
+msgstr "Matching semantics follow ``rg``'s default behavior: respects ``.gitignore`` and skips hidden files."
+
+#: flowing.builtins.tools.GrepTool:15 of
+msgid ""
+"返回：匹配行文本，每行 ``<路径>:<行号>:<内容>``；路径一律以绝对 形式呈现。无匹配返回「（无匹配）」；匹配行数超过 250 "
+"行时截断并注明。"
+msgstr ""
+"Returns: text of matching lines, each line ``<path>:<line_number>:<content>``; paths are always presented in absolute form. Returns \"(no matches)\" when nothing matches; when there are more than 250 "
+"matching lines, the output is truncated with a note."
+
+#: flowing.builtins.tools.GrepTool:18 of
+msgid ""
+"边缘情况：``rg`` 未安装 / ``rg`` 执行失败（退出码非 0 或 1）→ ``status=\"error\"`` 的 "
+"``ToolResult``；退出码 1（无匹配）不是错误。"
+msgstr ""
+"Edge cases: ``rg`` not installed / ``rg`` execution failed (exit code other than 0 or 1) → a ``status=\"error\"`` "
+"``ToolResult``; exit code 1 (no matches) is not an error."
+
+#: flowing.builtins.tools.GrepTool.execute:1 of
+msgid "调 ``rg`` 并返回带行号匹配文本。"
+msgstr "Call ``rg`` and return matching text with line numbers."
+
+#: flowing.builtins.tools.GrepTool.execute:5 of
+msgid ""
+"``rg`` 未安装 / 执行失败（退出码非 0 或 1）→ 抛 ``RuntimeError``——经 ``Tool.__call__`` "
+"包装为 ``status=\"error\"`` 的 ``ToolResult`` （LLM 可见，可自纠正）； 退出码 "
+"1（无匹配）不是错误，返回「（无匹配）」。"
+msgstr ""
+"``rg`` not installed / execution failed (exit code other than 0 or 1) → raises ``RuntimeError`` — wrapped by ``Tool.__call__`` "
+"into a ``ToolResult`` with ``status=\"error\"`` (visible to the LLM, which can self-correct); exit code "
+"1 (no matches) is not an error and returns \"(no matches)\"."
+
+#: flowing.builtins.tools.GrepTool.execute:9 of
+msgid "匹配行数超过 250 行时截断并注明（见类 docstring）。"
+msgstr "When there are more than 250 matching lines, the output is truncated with a note (see the class docstring)."
+
+#: flowing.builtins.tools.ReadTool:1 of
+msgid "``read`` —— 读 UTF-8 文本文件（只读）。"
+msgstr "``read`` — read UTF-8 text files (read-only)."
+
+#: flowing.builtins.tools.ReadTool:5 of
+msgid "LLM 读取文本文件内容的工具，支持按行号窗口截取（``offset`` / ``limit``）。只读，不产生任何写操作。"
+msgstr "The tool with which the LLM reads text file content, supporting extraction by line-number window (``offset`` / ``limit``). Read-only; produces no write operations."
+
+#: flowing.builtins.tools.ReadTool:10 of
+msgid ""
+"参数：``path`` （必填，遵循 ``cwd`` 基准口径——见模块 docstring）； ``cwd`` （路径基准，默认 "
+"``None``）；``offset`` / ``limit`` （行号 窗口，0 基；缺省从头读全文件）。"
+msgstr ""
+"Parameters: ``path`` (required, follows the ``cwd`` base convention — see the module docstring); ``cwd`` (path base, default "
+"``None``); ``offset`` / ``limit`` (line-number window, 0-based; by default reads the whole file from the beginning)."
+
+#: flowing.builtins.tools.ReadTool:13 of
+msgid ""
+"返回：带行号前缀的文本，每行 ``<行号>\\t<内容>``，行号与 ``offset`` 同一 0 基口径（传什么下标就见什么行号）；单行超过 "
+"2000 字符时截断。"
+msgstr ""
+"Returns: text with line-number prefixes, each line ``<line_number>\\t<content>``; line numbers share the same 0-based convention as ``offset`` (whatever index you pass is the line number you see); a single line longer than "
+"2000 characters is truncated."
+
+#: flowing.builtins.tools.ReadTool:16 of
+msgid ""
+"边缘情况：路径是目录 / 文件不存在 / 非 UTF-8 编码 / 相对路径且 无 ``cwd`` / ``cwd`` 非绝对 → "
+"``status=\"error\"`` 的 ``ToolResult`` （工具失败是 LLM 可见的正常产物）。"
+msgstr ""
+"Edge cases: path is a directory / file does not exist / non-UTF-8 encoding / relative path with no ``cwd`` / non-absolute ``cwd`` → "
+"a ``ToolResult`` with ``status=\"error\"`` (tool failure is a normal, LLM-visible artifact)."
+
+#: flowing.builtins.tools.ReadTool:20 of
+msgid ""
+":class:`flowing.builtins.GrepTool`、 :class:`flowing.builtins.GlobTool` ——"
+" 同属只读工具族。"
+msgstr ""
+":class:`flowing.builtins.GrepTool`, :class:`flowing.builtins.GlobTool` — "
+"fellow members of the read-only tool family."
+
+#: flowing.builtins.tools.ReadTool.execute:1 of
+msgid "读文件并返回带行号文本（``<行号>\\t<内容>``，行窗由 ``offset`` / ``limit`` 截取）。"
+msgstr "Read the file and return text with line numbers (``<line_number>\\t<content>``, with the line window cut by ``offset`` / ``limit``)."
+
+#: flowing.builtins.tools.ReadTool.execute:6 of
+msgid "行号前缀与 ``offset`` 同一 0 基口径：传什么下标就见什么行号。"
+msgstr "The line-number prefix shares the same 0-based convention as ``offset``: whatever index you pass is the line number you see."
+
+#: flowing.builtins.tools.ReadTool.execute:7 of
+msgid ""
+"参数 / IO 错误（路径是目录、文件不存在、非 UTF-8、相对路径无 ``cwd`` 基准）抛 ``ValueError``——经 "
+"``Tool.__call__`` 包装为 ``status=\"error\"`` 的 ``ToolResult`` （LLM "
+"可见，可自纠正）。"
+msgstr ""
+"Parameter / IO errors (path is a directory, file does not exist, non-UTF-8, relative path without a ``cwd`` base) raise ``ValueError`` — wrapped by "
+"``Tool.__call__`` into a ``ToolResult`` with ``status=\"error\"`` (visible to the LLM, "
+"which can self-correct)."
+
+#: flowing.builtins.tools.SubagentInvokeTool:1 of
+msgid "``subagent-invoke`` —— 子智能体唤起工具（核心内置）。"
+msgstr "``subagent-invoke`` — the subagent invocation tool (core built-in)."
+
+#: flowing.builtins.tools.SubagentInvokeTool:5 of
+msgid ""
+"LLM 唤起子 Agent 的唯一工具入口：不需要为每个子 Agent 类型生成独立 ``ToolDefinition``——工具只有这一个，各子"
+" Agent 类型的参数描述经 ``<available_subagents>`` XML catalog 注入 system "
+"prompt。骨架参数 五个（全部可选）：``name`` （新建时命名，之后可续接）、``agent_type`` （子 Agent 类型，与 "
+"``resume`` 二选一）、``prompt`` （任务提示）、 ``resume`` （已存在实例名续接，与 ``agent_type`` "
+"互斥）、 ``asynchronized`` （异步模式开关）；各类型声明的其余 args 经 catalog 让 LLM 感知、经 "
+"``SubagentEntry.resolve()`` 聚合。"
+msgstr ""
+"The LLM's only tool entry point for invoking sub-agents: there is no need to generate a separate ``ToolDefinition`` for each sub-agent type — there is only this one tool, and the parameter descriptions of each sub-"
+"agent type are injected into the system prompt via the ``<available_subagents>`` XML "
+"catalog. Five skeleton parameters (all optional): ``name`` (named at creation, can be resumed later), ``agent_type`` (sub-agent type, choose one of "
+"``agent_type`` and ``resume``), ``prompt`` (task prompt), ``resume`` (resume an existing instance by name, mutually exclusive with ``agent_type``), "
+"``asynchronized`` (async mode switch); the remaining args declared by each type are made perceivable to the LLM via the catalog and aggregated via "
+"``SubagentEntry.resolve()``."
+
+#: flowing.builtins.tools.SubagentInvokeTool:14 of
+msgid ""
+"本工具随 Runtime 构造期注册，永远在注册表在场；但可见性不自动—— 需用户显式声明（``.fya`` ``tools:`` 或 "
+"``add_tool``）才进 ``Context.tools`` （一切工具以用户声明为准，框架不隐式附加）。"
+msgstr ""
+"This tool is registered during Runtime construction and is always present in the registry; but visibility is not automatic — it requires an explicit user declaration (``.fya`` ``tools:`` or "
+"``add_tool``) to enter ``Context.tools`` (all tools are governed by user declaration; the framework never attaches them implicitly)."
+
+#: flowing.builtins.tools.SubagentInvokeTool:31 of
+msgid ""
+"同步路径（``asynchronized=False``，默认）：调用公开同步 API ``invoke_subagent`` （该 API 不 "
+"enqueue），把 ``SubagentResult`` 的 全部字段平铺进本工具的返回 dict（``status`` / "
+"``name_alias`` / ``subagent_id`` / ``result`` / ``subagent_status``），不再另发"
+" SUBAGENT 消息，避免同源结果二次入队。"
+msgstr ""
+"Synchronous path (``asynchronized=False``, the default): calls the public synchronous API ``invoke_subagent`` (that API does not "
+"enqueue), and flattens all fields of ``SubagentResult`` into this tool's return dict (``status`` / "
+"``name_alias`` / ``subagent_id`` / ``result`` / ``subagent_status``), without sending an additional"
+" SUBAGENT message, avoiding double-enqueueing the same-origin result."
+
+#: flowing.builtins.tools.SubagentInvokeTool:36 of
+#, python-brace-format
+msgid ""
+"异步路径（``asynchronized=True``）：不等待子 Agent 完成——创建段 同步 await（失败照常产 "
+"``status=\"error\"`` 结果，LLM 可见），随后 立即返回 ``{\"invoked\": ..., \"status\": "
+"\"started\"}`` 收据（pending 状态）；运行段在后台执行，子 Agent 真实产出以 "
+"``Message(kind=SUBAGENT)`` 在完成时推入亲代队列，LLM 在后续回合 感知。"
+msgstr ""
+"Asynchronous path (``asynchronized=True``): does not wait for the sub-agent to finish — the creation phase is awaited synchronously (failures still produce a "
+"``status=\"error\"`` result, visible to the LLM), then immediately returns a ``{\"invoked\": ..., \"status\": "
+"\"started\"}`` receipt (pending state); the run phase executes in the background, and the sub-agent's real output is pushed into the parent queue as a "
+"``Message(kind=SUBAGENT)`` upon completion, which the LLM perceives in subsequent turns."
+
+#: flowing.builtins.tools.SubagentInvokeTool:42 of
+msgid ""
+"校验：``agent_type`` 与 ``resume`` 互斥且至少其一；违反 → ``status=\"error\"`` 结果（LLM "
+"可见的自我修正反馈）。"
+msgstr ""
+"Validation: ``agent_type`` and ``resume`` are mutually exclusive and at least one is required; violation → a ``status=\"error\"`` result (self-correction "
+"feedback visible to the LLM)."
+
+#: flowing.builtins.tools.SubagentInvokeTool:44 of
+msgid "本工具不直接创建 / 销毁 Agent（那是 ``invoke_subagent`` 管线的 职责）；不感知 catalog 渲染。"
+msgstr "This tool does not directly create / destroy agents (that is the job of the ``invoke_subagent`` pipeline); it is unaware of catalog rendering."
+
+#: flowing.builtins.tools.SubagentInvokeTool:46 of
+msgid ""
+"可见性：本工具由 Runtime 核心注册，但不自动出现在任何 Agent 的 "
+"``Context.tools``——需用户显式声明（``.fya`` ``tools:`` 或 ``add_tool(\"subagent-"
+"invoke\")``）。"
+msgstr ""
+"Visibility: this tool is registered by the Runtime core, but does not automatically appear in any agent's "
+"``Context.tools`` — it requires an explicit user declaration (``.fya`` ``tools:`` or ``add_tool(\"subagent-"
+"invoke\")``)."
+
+#: flowing.builtins.tools.SubagentInvokeTool:52 of
+msgid ":meth:`flowing.agent.Agent.invoke_subagent` —— 真正的唤起管线。"
+msgstr ":meth:`flowing.agent.Agent.invoke_subagent` — the real invocation pipeline."
+
+#: flowing.builtins.tools.SubagentInvokeTool:53 of
+msgid ":class:`flowing.subagents.SubagentEntry` —— catalog 与参数聚合。"
+msgstr ":class:`flowing.subagents.SubagentEntry` — catalog and parameter aggregation."
+
+#: flowing.builtins.tools.SubagentInvokeTool:54 of
+msgid ":class:`flowing.builtins.FinishTool` —— 子 Agent 侧的可选交卷工具。"
+msgstr ":class:`flowing.builtins.FinishTool` — the optional result-submission tool on the sub-agent side."
+
+#: flowing.builtins.tools.SubagentInvokeTool.execute:1 of
+msgid "转发 ``caller.invoke_subagent()`` 并返回确认收据。"
+msgstr "Forward to ``caller.invoke_subagent()`` and return an acknowledgment receipt."
+
+#: flowing.builtins.tools.SubagentInvokeTool.execute:5 of
+msgid ""
+"``agent_type`` 与 ``resume`` 互斥且至少其一（空串视为未给）； 违反时抛 ``ValueError``——经 "
+"``Tool.__call__`` 包装为 ``status=\"error\"`` （LLM 可见，可自纠正）。"
+msgstr ""
+"``agent_type`` and ``resume`` are mutually exclusive and at least one is required (an empty string counts as not given); violations raise ``ValueError`` — wrapped by "
+"``Tool.__call__`` into ``status=\"error\"`` (visible to the LLM, which can self-correct)."
+
+#: flowing.builtins.tools.SubagentInvokeTool.execute:8 of
+msgid ""
+"``kwargs`` 为该子 Agent 类型声明的其余 args（catalog 中 LLM 可见），原样透传给 "
+"``invoke_subagent`` 经 ``SubagentEntry. resolve()`` 聚合。"
+msgstr ""
+"``kwargs`` are the remaining args declared by that sub-agent type (visible to the LLM in the catalog), passed through verbatim to "
+"``invoke_subagent`` and aggregated by ``SubagentEntry.resolve()``."
+
+#: flowing.builtins.tools.SubagentInvokeTool.execute:11 of
+#, python-brace-format
+msgid ""
+"``asynchronized=True``：不等待子 Agent 完成——创建段同步 await （失败即上抛，经 "
+"``Tool.__call__`` 的 except 顺序分派为 ``status=\"error\"`` / ``blocked``，LLM "
+"可见），随后立即返回 ``{\"invoked\": ..., \"status\": \"started\"}`` 收据；运行段在后台 "
+"执行，结局以 ``Message(kind=SUBAGENT)`` 推入亲代队列。"
+msgstr ""
+"``asynchronized=True``: does not wait for the sub-agent to finish — the creation phase is awaited synchronously (failures are raised, then dispatched by "
+"``Tool.__call__``'s except ordering into ``status=\"error\"`` / ``blocked``, visible to the "
+"LLM), then immediately returns a ``{\"invoked\": ..., \"status\": \"started\"}`` receipt; the run phase executes in the "
+"background, and the outcome is pushed into the parent queue as a ``Message(kind=SUBAGENT)``."
+
+#: flowing.builtins.tools.SubagentInvokeTool.execute:16 of
+msgid ""
+"缺省 ``False``：同步等待子 Agent 完成——``invoke_subagent`` 同步交付结果、不 enqueue "
+"SUBAGENT 消息；随后把返回的 ``SubagentResult`` 全字段平铺进本工具返回 dict，不再另发 SUBAGENT 消息。"
+msgstr ""
+"Default ``False``: waits synchronously for the sub-agent to finish — ``invoke_subagent`` delivers the result synchronously and does not enqueue "
+"a SUBAGENT message; then all fields of the returned ``SubagentResult`` are flattened into this tool's return dict, without sending an additional SUBAGENT message."
+
+#: flowing.builtins.tools.WriteTool:1 of
+msgid "``write`` —— 覆盖写 UTF-8 文本文件（可写工具）。"
+msgstr "``write`` — overwrite-write UTF-8 text files (writable tool)."
+
+#: flowing.builtins.tools.WriteTool:5 of
+msgid "LLM 写入文件内容的工具：整文件覆盖（上级目录自动创建），不是追加。 可写工具，危险面见行为要点。"
+msgstr "The tool with which the LLM writes file content: whole-file overwrite (parent directories are created automatically), not append. Writable tool; see Key Behaviors for the danger surface."
+
+#: flowing.builtins.tools.WriteTool:10 of
+msgid ""
+"参数：``path`` / ``content`` （均必填；``path`` 遵循 ``cwd`` 基准 口径——见模块 "
+"docstring）；``cwd`` （路径基准，默认 ``None``）。"
+msgstr ""
+"Parameters: ``path`` / ``content`` (both required; ``path`` follows the ``cwd`` base convention — see the module "
+"docstring); ``cwd`` (path base, default ``None``)."
+
+#: flowing.builtins.tools.WriteTool:12 of
+msgid "语义：整文件覆盖（上级目录自动创建），不是追加。"
+msgstr "Semantics: whole-file overwrite (parent directories are created automatically), not append."
+
+#: flowing.builtins.tools.WriteTool:13 of
+msgid "危险面：任意路径覆盖写。审批 / 路径白名单属策略层 （``before_tool_call`` 钩子），本工具不做。"
+msgstr "Danger surface: overwrite-writing at arbitrary paths. Approval / path whitelisting belongs to the policy layer (the ``before_tool_call`` hook); this tool does not do it."
+
+#: flowing.builtins.tools.WriteTool:15 of
+msgid "边缘情况：路径是目录 / 相对路径且无 ``cwd`` → ``status=\"error\"`` 的 ``ToolResult``。"
+msgstr "Edge cases: path is a directory / relative path with no ``cwd`` → a ``ToolResult`` with ``status=\"error\"``."
+
+#: flowing.builtins.tools.WriteTool.execute:1 of
+msgid "覆盖写文件并返回路径收据文本（``已写入 <路径>（<字符数> 字符）``）。"
+msgstr "Overwrite-write the file and return a path receipt text (``Wrote <path> (<chars> characters)``)."
+
+#: flowing.builtins.tools.WriteTool.execute:5 of
+msgid ""
+"参数 / IO 错误（路径是目录、相对路径无 ``cwd`` 基准）抛 ``ValueError``——经 ``Tool.__call__`` "
+"包装为 ``status=\"error\"`` 的 ``ToolResult`` （LLM 可见，可自纠正）。"
+msgstr ""
+"Parameter / IO errors (path is a directory, relative path without a ``cwd`` base) raise ``ValueError`` — wrapped by ``Tool.__call__`` "
+"into a ``ToolResult`` with ``status=\"error\"`` (visible to the LLM, which can self-correct)."
+
+#: flowing.builtins.register_builtins:1 of
+msgid "把全部出厂内置件注册进 ``builtin::`` 命名空间。"
+msgstr "Register all factory built-ins into the ``builtin::`` namespace."
+
+#: flowing.builtins.register_builtins:5 of
+msgid ""
+"``Runtime.__init__`` 的唯一调用点：八个内置工具经 ``runtime.register_tool(..., "
+"namespace=\"builtin\")`` 注册， ``ExploreAgent`` 经 "
+"``runtime.register_agent_type(\"explore-agent\", ExploreAgent, "
+"namespace=\"builtin\")`` 注册。"
+msgstr ""
+"The only call site of ``Runtime.__init__``: the eight built-in tools are registered via ``runtime.register_tool(..., "
+"namespace=\"builtin\")``, and ``ExploreAgent`` is registered via "
+"``runtime.register_agent_type(\"explore-agent\", ExploreAgent, "
+"namespace=\"builtin\")``."
+
+#: flowing.builtins.register_builtins:12 of
+msgid ""
+"只写注册表：不触碰任何 Agent 实例，也不产生 LLM 可见性——可见性 只能由 Agent 级显式声明产生（见包 docstring "
+"的「注册不等于可见」）。"
+msgstr ""
+"Only writes to the registry: it touches no agent instance and produces no LLM visibility — visibility can only arise from agent-level explicit declarations (see \"registration does not imply visibility\" in the package "
+"docstring)."
+
+#: flowing.builtins.register_builtins:14 of
+msgid ""
+"预期在 ``Runtime`` 构造期恰好调用一次；同一 ``Runtime`` 重复调用 会因同名工具条目已注册而抛 "
+":class:`flowing.errors.ToolNameConflictError`。"
+msgstr ""
+"Expected to be called exactly once during ``Runtime`` construction; calling it again on the same ``Runtime`` raises "
+":class:`flowing.errors.ToolNameConflictError` because same-named tool entries are already registered."
+
+#: flowing.builtins.register_builtins:18 of
+msgid ""
+":mod:`flowing.builtins.tools`、 :mod:`flowing.builtins.agents`、 "
+":meth:`flowing.runtime.Runtime.register_tool`"
+msgstr ""
+":mod:`flowing.builtins.tools`, :mod:`flowing.builtins.agents`, "
+":meth:`flowing.runtime.Runtime.register_tool`"
+
+#: ../../api/flowing.builtins.rst:10
+msgid "Submodules"
+msgstr "Submodules"
+
+#: ../../api/flowing.builtins.rst:13
+msgid "flowing.builtins.agents module"
+msgstr "flowing.builtins.agents module"
+
+#: flowing.builtins.agents:1 of
+msgid "``flowing.builtins.agents`` —— 标准子智能体（``builtin::`` 命名空间）。"
+msgstr "``flowing.builtins.agents`` — standard subagents (the ``builtin::`` namespace)."
+
+#: flowing.builtins.agents:5 of
+msgid ""
+"本模块提供框架随包发布的标准子 Agent 类型：:class:`ExploreAgent` （注册名 ``explore-"
+"agent``，只读代码库探索），注册在 ``builtin::`` 命名空间下。"
+msgstr ""
+"This module provides the standard sub-agent type shipped with the framework: :class:`ExploreAgent` (registered as ``explore-"
+"agent``, read-only codebase exploration), registered under the ``builtin::`` namespace."
+
+#: flowing.builtins.agents:9 of
+msgid ""
+"注册不等于可唤起：与工具同一「声明为准」原则——亲代 Agent 须在 ``.fya`` 的 ``subagents:`` 声明或 "
+"``add_agent`` 显式绑定后，该类型才会出现在其 catalog（LLM 可见）中。"
+msgstr ""
+"Registration does not imply invokability: the same declaration-governs principle as tools — the parent agent must declare it in ``subagents:`` of its ``.fya`` or explicitly bind it via "
+"``add_agent`` before the type appears in its catalog (visible to the LLM)."
+
+#: flowing.builtins.agents:21 of
+msgid ":mod:`flowing.builtins.tools`、 :class:`flowing.agent.Agent`"
+msgstr ":mod:`flowing.builtins.tools`, :class:`flowing.agent.Agent`"
+
+#: ../../api/flowing.builtins.rst:21
+msgid "flowing.builtins.tools module"
+msgstr "flowing.builtins.tools module"
+
+#: flowing.builtins.tools:1 of
+msgid "``flowing.builtins.tools`` —— 内置工具全集（``builtin::`` 命名空间）。"
+msgstr "``flowing.builtins.tools`` — the full set of built-in tools (the ``builtin::`` namespace)."
+
+#: flowing.builtins.tools:5 of
+msgid ""
+"本模块定义框架出厂内置的八个工具，全部为普通 :class:`flowing.tool.Tool` 子类，经 "
+":func:`flowing.builtins.register_builtins` 注册进 ``builtin::`` 命名空间："
+msgstr ""
+"This module defines the eight tools built into the framework at the factory, all ordinary :class:`flowing.tool.Tool` subclasses, registered "
+"into the ``builtin::`` namespace via :func:`flowing.builtins.register_builtins`:"
+
+#: flowing.builtins.tools:9 of
+msgid ""
+"核心内置：:class:`SubagentInvokeTool` （``subagent-invoke``，子智能体 唤起入口）与 "
+":class:`FinishTool` （``finish``，子 Agent 可选交卷）；"
+msgstr ""
+"Core built-ins: :class:`SubagentInvokeTool` (``subagent-invoke``, the subagent invocation entry point) and "
+":class:`FinishTool` (``finish``, optional result submission for sub-agents);"
+
+#: flowing.builtins.tools:11 of
+msgid ""
+"标准文件 / shell 工具：:class:`ReadTool` / :class:`WriteTool` / "
+":class:`BashTool` / :class:`EditTool` / :class:`GrepTool` / "
+":class:`GlobTool`。"
+msgstr ""
+"Standard file / shell tools: :class:`ReadTool` / :class:`WriteTool` / "
+":class:`BashTool` / :class:`EditTool` / :class:`GrepTool` / "
+":class:`GlobTool`."
+
+#: flowing.builtins.tools:17 of
+msgid ""
+"注册不等于可见（安全边界）：任何工具对 LLM 可见都必须经 Agent 级显式 声明（``.fya`` ``tools:`` 或 "
+"``add_tool``）——可写文件、执行命令的危险 工具（``write`` / ``bash`` / "
+"``edit``）不会因为注册就进入任何 Agent 的 ``Context.tools``。本模块只提供「能干什么」；「该不该批准」（Bash "
+"任意 命令、Write/Edit 覆盖写）是策略，由 ``before_tool_call`` 钩子 / 审批 插件承担。"
+msgstr ""
+"Registration does not imply visibility (a security boundary): for any tool to be visible to the LLM it must be explicitly declared at the agent level (``.fya`` ``tools:`` or "
+"``add_tool``) — dangerous tools that write files or execute commands (``write`` / ``bash`` / "
+"``edit``) never enter any agent's ``Context.tools`` merely by being registered. This module only provides what can be done; whether it should be approved (Bash arbitrary "
+"commands, Write/Edit overwrite-writing) is policy, borne by the ``before_tool_call`` hook / approval plugins."
+
+#: flowing.builtins.tools:24 of
+msgid ""
+"路径基准（``cwd``）口径：所有文件 / 目录参数（``path`` / ``pattern``） "
+"默认只收绝对路径；相对路径当且仅当该次调用的 ``cwd`` 非 ``None`` 时 允许，相对 ``cwd`` 解析；``cwd`` "
+"自身必须是绝对路径（默认 ``None``， 即不给基准）。相对路径无基准或 ``cwd`` 非绝对 → ``status=\"error\"``"
+" 的 ``ToolResult`` （LLM 可见、可自纠正）。设计意图：基准必须由调用方显式 给出，LLM 视角下没有隐含的「当前目录」。"
+msgstr ""
+"Path base (``cwd``) convention: all file / directory parameters (``path`` / ``pattern``) "
+"accept only absolute paths by default; a relative path is allowed if and only if ``cwd`` of that call is not ``None``, and is resolved relative to ``cwd``; ``cwd`` "
+"itself must be an absolute path (default ``None``, i.e. no base given). A relative path without a base, or a non-absolute ``cwd`` → a ``status=\"error\"`` "
+"``ToolResult`` (visible to the LLM, which can self-correct). Design intent: the base must be given explicitly by the caller; from the LLM's perspective there is no implicit current directory."
+
+#: flowing.builtins.tools:31 of
+msgid ""
+"工具失败是正常产物：六个文件 / shell 工具的参数错误与 IO 错误（路径是 目录 / 文件不存在 / 非 UTF-8 编码 / "
+"``rg`` 未安装等）一律以 ``status=\"error\"`` 的 ``ToolResult`` 呈现（LLM 可见、不触发错误钩子），"
+" LLM 应看到错误文本并自行修正调用。"
+msgstr ""
+"Tool failure is a normal artifact: parameter errors and IO errors of the six file / shell tools (path is a directory / file does not exist / non-UTF-8 encoding / "
+"``rg`` not installed, etc.) are always presented as a ``ToolResult`` with ``status=\"error\"`` (visible to the LLM, without triggering error hooks); "
+"the LLM should see the error text and correct the call itself."
+
+#: flowing.builtins.tools:38 of
+msgid ""
+"``cwd`` 同时是「``.fya`` 定义期经智能体属性传参」的示范位：Agent 自己 有 ``cwd`` 属性（如 ``setup`` "
+"中赋值 ``self.cwd = \"/srv/proj\"``）时， ``.fya`` 的 tools 条目把 ``cwd`` "
+"参数覆写为引用该属性的 Parsable 模板 （:mod:`flowing.parsable`——声明层的模板值，调用期以调用方 Agent 为"
+" 上下文求值），实现调用期自动注入::"
+msgstr ""
+"``cwd`` is also the demonstration slot for passing parameters via agent attributes at ``.fya`` definition time: when the agent itself "
+"has a ``cwd`` attribute (e.g. assigned in ``setup`` as ``self.cwd = \"/srv/proj\"``), the tools entry in ``.fya`` overrides the ``cwd`` "
+"parameter with a Parsable template referencing that attribute (:mod:`flowing.parsable` — a template value at the declaration layer, evaluated at call time with the calling agent as "
+"the context), achieving automatic injection at call time::"
+
+#: flowing.builtins.tools:53 of
+msgid ""
+"之后 LLM 调 ``read(path=\"src/main.py\")`` 时 ``cwd`` 已由声明层固定为该 Agent 的 "
+"``cwd``——LLM 只需给相对路径，基准管理是声明层的职责。"
+msgstr ""
+"Afterwards, when the LLM calls ``read(path=\"src/main.py\")``, ``cwd`` has already been pinned by the declaration layer to that agent's "
+"``cwd`` — the LLM only needs to give a relative path; base management is the declaration layer's responsibility."
+
+#: flowing.builtins.tools:56 of
+msgid ":mod:`flowing.builtins.agents`、 :mod:`flowing.tool`、:mod:`flowing.agent`"
+msgstr ":mod:`flowing.builtins.agents`, :mod:`flowing.tool`, :mod:`flowing.agent`"

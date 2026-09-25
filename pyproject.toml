@@ -1,8 +1,20 @@
 [project]
 name = "flowing-agent"
 version = "0.1.0"
-description = "Add your description here"
+description = "A lightweight, extensible, descriptive agent runtime framework"
+authors = [{ name = "Nyanifold" }]
+license = "MIT"
 readme = "README.md"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
+
 requires-python = ">=3.13"
 dependencies = [
     "aiohttp>=3.14.3",
@@ -17,6 +29,11 @@ dependencies = [
     "pydantic>=2.13.5",
     "ruamel-yaml>=0.19.1",
 ]
+
+[project.urls]
+Repository = "https://github.com/Nyanifold/flowing"
+Documentation = "https://flowing-agent.readthedocs.io/"
+Issues = "https://github.com/Nyanifold/flowing/issues"
 
 [project.scripts]
 flowing = "flowing.interfaces.cli:main"

@@ -1,0 +1,37 @@
+(agent-main)>>>I'll inspect the project structure first.
+[tool_call] glob {"pattern": "**/*", "path": "<repo-root>/dev-docs/beginner-tutorial-en/examples/1-2-tool-calling"}
+[tool_call] read {"path": "<repo-root>/dev-docs/beginner-tutorial-en/examples/1-2-tool-calling/notes/使用说明.md"}
+[tool:completed] read -> 0	# Usage Notes
+1	
+2	This directory is a demo note library.
+3	
+4	## Installation
+5	
+6	Python 3.13 or higher is required.
+7	
+8	## Common Commands
+9	
+10	- `uv sync`: installs dependencies
+11	- `uv run pytest`: runs the tests
+12	
+13	## Notes
+14	
+15	Credentials must always be held in environment variables; never write them
+16	into any file.
+[tool:completed] glob -> <repo-root>/dev-docs/beginner-tutorial-en/examples/1-2-tool-calling/.flowing/agent-main/tree.jsonl
+<repo-root>/dev-docs/beginner-tutorial-en/examples/1-2-tool-calling/.flowing/agent-main/core.jsonl
+<repo-root>/dev-docs/beginner-tutorial-en/examples/1-2-tool-calling/repl_output.txt
+<repo-root>/dev-docs/beginner-tutorial-en/examples/1-2-tool-calling/.flowing/core.jsonl
+<repo-root>/dev-docs/beginner-tutorial-en/examples/1-2-tool-calling/.flowing/agent-main/meta.json
+<repo-root>/dev-docs/beginner-tutorial-en/examples/1-2-tool-calling/__pycache__/main.cpython-313.pyc
+<repo-root>/dev-docs/beginner-tutorial-en/examples/1-2-tool-calling/root.fya
+<repo-root>/dev-docs/beginner-tutorial-en/examples/1-2-tool-calling/main.py
+<repo-root>/dev-docs/beginner-tutorial-en/examples/1-2-tool-calling/repl_input.txt
+<repo-root>/dev-docs/beginner-tutorial-en/examples/1-2-tool-calling/README.md
+<repo-root>/dev-docs/beginner-tutorial-en/examples/1-2-tool-calling/model-tags.yaml
+<repo-root>/dev-docs/beginner-tutorial-en/examples/1-2-tool-calling/models.yaml
+<repo-root>/dev-docs/beginner-tutorial-en/examples/1-2-tool-calling/providers.yaml
+<repo-root>/dev-docs/beginner-tutorial-en/examples/1-2-tool-calling/notes/使用说明.md
+<repo-root>/dev-docs/beginner-tutorial-en/examples/1-2-tool-calling/notes/路线图.md
+The project contains `main.py`, `root.fya`, `README.md`, plus config files (`models.yaml`, `model-tags.yaml`, `providers.yaml`), sample I/O files (`repl_input.txt`, `repl_output.txt`), a `.flowing/` state directory (core.jsonl, tree.jsonl, meta.json), a `__pycache__` cache, and two notes docs (`使用说明.md`, `路线图.md`). The file `notes/使用说明.md` ("Usage Notes") is a short demo note library: it requires Python 3.13+, lists commands `uv sync` (install dependencies) and `uv run pytest` (run tests), and warns that credentials must live in environment variables and never be written into files.
+(agent-main)>>>

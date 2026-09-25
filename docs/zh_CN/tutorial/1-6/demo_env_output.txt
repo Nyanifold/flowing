@@ -1,0 +1,1 @@
+凭证缺失在装配期 fail fast → FormatError: environment variable referenced by template '{{ env.NO_SUCH_VAR }}' is missing: 'mappingproxy object' has no attribute 'NO_SUCH_VAR'

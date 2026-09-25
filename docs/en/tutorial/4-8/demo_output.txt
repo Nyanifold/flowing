@@ -1,0 +1,15 @@
+== ① Two coexisting Runtimes and @ isolation ==
+   A.project_root = 4-8 (outer project)
+   B.project_root = other-project (nested directory)
+   B's @/root.fya resolves to B's own root: True
+== ② Availability scope of module-level resolve() ==
+   calling flowing.resolve() after launch returns → RuntimeError: @ context not registered via flowing.launch; resolve() unavailable
+== ③ provide endpoint / Resource (out-of-tree direct reference) ==
+   root inject('app_name') = 'demo-a' (chain endpoint = Runtime)
+   get_resource('db').dsn = 'sqlite:///demo.db' (no injection chain; direct reference to the shared instance)
+== ④ Pool registry / lazy providers ==
+   pool entries: ['agent-main']
+   provider candidates: 1 / instantiated: 0
+== ⑤ snapshot (pull channel) ==
+   runtime.snapshot: nodes=['agent-main', 'runtime-0'] plugins=[]
+   agent.snapshot: node_id=agent-main model=deepseek-v4-flash queue=MessageQueueInfo(size=0, pending=0) tree=MessageTreeInfo (message tree view)

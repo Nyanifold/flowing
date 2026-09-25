@@ -1,0 +1,7 @@
+description: "Mechanics experiment assistant: observes control traces on the queue and the tree."
+model_tag: default
+tools:
+  - bash   # Experiment 2 needs an interruptible stretch of tool execution
+---
+$system_prompt:
+You are a concise English assistant. Keep answers within five sentences.

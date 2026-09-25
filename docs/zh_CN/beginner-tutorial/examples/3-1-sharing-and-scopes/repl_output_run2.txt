@@ -1,0 +1,7 @@
+(agent-main)>>>[thinking] The user asks to dispatch greeter. I should call subagent-invoke with agent_type "greeter", no parameters.
+[tool_call] subagent-invoke {"agent_type": "greeter", "prompt": "请向用户问好。"}
+[tool:completed] subagent-invoke -> 
+问候员 greeter 的问候语如下：
+
+> 你好！很高兴见到你，有什么我可以帮你的吗？
+(agent-main)>>>

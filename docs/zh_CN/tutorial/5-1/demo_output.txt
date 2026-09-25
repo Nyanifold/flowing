@@ -1,0 +1,11 @@
+== ① 编译产物等价手写子类（逐项比对）==
+   description 等价: True
+   system_prompt 模板等价: True（块内容带末尾换行，strip 后同）
+   args schema 等价（properties 键集）: True
+== ② glob 展开与别名条目 ==
+   tools（glob 展开）: ['audit', 'payment', 'subagent-invoke']
+   subagent 别名 greet: name_ori='@/agents/greeter::greeter' specified={'tone': 'casual'}
+   catalog 视图: name='greet' （tone 已被 specified 移出参数表：'<params>' 中无 tone）
+== ③ 失败断言（负例）==
+   name 一致性断言: NameMismatchError
+   @on 未声明钩子点: UnknownHookPointError: Unknown hook point: '@on markers found no owning hook point: no_such_hook (method _) — hook point name misspelled, or the corresponding plugin/Composable is not enabled in setup()' (not declared)

@@ -1,0 +1,3 @@
+请用 bash 删除 notes/路线图.md。
+再用 bash 看一下 notes 目录里有什么。
+/exit

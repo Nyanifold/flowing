@@ -1,0 +1,3642 @@
+#: flowing.parsable.FILE_REF:11 of
+msgid "文件读取发生在求值时而非解析时；文件修改后下次求值自动反映新内容 （进程内语义，无文件系统监听）。"
+msgstr ""
+"File reading happens at evaluation time rather than parse time; after the "
+"file is modified, the next evaluation automatically reflects the new "
+"content (in-process semantics, no filesystem watching)."
+
+#: flowing.parsable.FILE_REF:13 of
+msgid ""
+"路径前缀（``./``、``../``、``@/``、多级 ``../../``）经 ``Runtime.resolve_path(path, "
+"*, source_dir)`` 解析；``source_dir`` 由 ``Agent.source_dir`` 统一供给。先剥 ``$`` "
+"再进 ``resolve_path``： ``$`` 只是形式标记而非路径成分。"
+msgstr ""
+"Path prefixes (``./``, ``../``, ``@/``, multi-level ``../../``) are resolved via "
+"``Runtime.resolve_path(path, *, source_dir)``; ``source_dir`` is uniformly "
+"supplied by ``Agent.source_dir``. The ``$`` is stripped before entering "
+"``resolve_path``: ``$`` is only a form marker, not a path component."
+
+#: flowing.parsable.FILE_REF:17 of
+msgid ""
+"边缘情况：想让结果字符串本身以 ``$`` 开头（如 ``\"$200.00\"``），必须 写 ``$\"$200.00\"`` "
+"（``RAW`` 形式），否则会被当作文件引用。"
+msgstr ""
+"Edge case: to make the resulting string itself start with ``$`` (e.g. "
+"``\"$200.00\"``), you must write ``$\"$200.00\"`` (the ``RAW`` form); "
+"otherwise it is treated as a file reference."
+
+#: flowing.parsable.FILE_REF:20 of
+msgid ":class:`Parsable`、:data:`RAW`、 ``flowing.runtime.Runtime.resolve_path``"
+msgstr ":class:`Parsable`, :data:`RAW`, ``flowing.runtime.Runtime.resolve_path``"
+
+#: flowing.parsable.EXPRESSION:1 of
+msgid "纯表达式形式标记。"
+msgstr "Pure-expression form marker."
+
+#: flowing.parsable.EXPRESSION:3 of
+msgid ""
+"``strip(source)`` 恰好是一个完整的 ``{{ expr }}`` （无任何其它内容）时的 ``Parsable.type`` "
+"取值；``resolve()`` 返回表达式的原生类型值（``int`` / ``bool`` / ``dict`` 等），不做字符串化——这是 "
+"Parsable 结果类型「不一定 是 ``str``」的唯一来源。"
+msgstr ""
+"The ``Parsable.type`` value when ``strip(source)`` is exactly one complete "
+"``{{ expr }}`` (with nothing else); ``resolve()`` returns the expression's "
+"native-typed value (``int`` / ``bool`` / ``dict`` etc.) without "
+"stringification — this is the only source of the Parsable result type "
+"\"not necessarily being ``str``\"."
+
+#: flowing.parsable.EXPRESSION:10 of
+msgid ""
+"判定式：``strip(source)`` 以 ``{{`` 开头、``}}`` 结尾，且内部恰好一个 完整表达式（无嵌套未配对的 ``{{`` "
+"/ ``}}``、无首尾其它字符）。"
+msgstr ""
+"Criterion: ``strip(source)`` starts with ``{{``, ends with ``}}``, and "
+"contains exactly one complete expression inside (no nested unpaired "
+"``{{`` / ``}}``, no other leading or trailing characters)."
+
+#: flowing.parsable.EXPRESSION:12 of
+#, python-brace-format, python-format
+msgid ""
+"混合文本（``\"Hello {{ user_name }}, welcome!\"``）与 ``{% if %}`` 控制 "
+"的值均不是纯表达式，落入 ``TEMPLATE``，结果为 ``str``。"
+msgstr ""
+"Mixed text (``\"Hello {{ user_name }}, welcome!\"``) and values with "
+"``{% if %}`` control flow are not pure expressions; they fall into "
+"``TEMPLATE`` and the result is ``str``."
+
+#: flowing.parsable.EXPRESSION:14 of
+msgid "``.fya`` 中双花括号必须写在 YAML 引号内，否则 YAML 解析先行报错。"
+msgstr ""
+"In ``.fya``, double braces must be written inside YAML quotes, otherwise "
+"YAML parsing fails first."
+
+#: flowing.parsable.EXPRESSION:15 of
+msgid ""
+"结果收尾（一层）：表达式求值结果是 :class:`Parsable` 时，经其 ``.resolved`` 渲染一层后返回（类属性经描述符 "
+"``__get__`` 已绑定实例， 内层模板随之渲染）。这保证 ``{{ self.system_prompt }}`` 这类「引用另 一个 "
+"Parsable」的惰性引用拿到的是渲染后文本而非 Parsable 对象；递归 深度仍只有一层。注意 ``__str__`` "
+"只展示模板源（不求值），本收尾必须 用 ``.resolved`` 而非 ``str()``。"
+msgstr ""
+"Result finalization (one level): when the expression evaluates to a "
+":class:`Parsable`, it is rendered one level via its ``.resolved`` before "
+"being returned (class attributes are already bound to the instance via "
+"the descriptor ``__get__``, so the inner template is rendered along). "
+"This guarantees that lazy references like ``{{ self.system_prompt }}`` "
+"that \"reference another Parsable\" get the rendered text rather than the "
+"Parsable object; recursion depth is still only one level. Note that "
+"``__str__`` only shows the template source (no evaluation), so this "
+"finalization must use ``.resolved``, not ``str()``."
+
+#: flowing.parsable.EXPRESSION:22 of
+msgid ":class:`Parsable`、:data:`TEMPLATE`、:attr:`Parsable.resolved`"
+msgstr ":class:`Parsable`, :data:`TEMPLATE`, :attr:`Parsable.resolved`"
+
+#: flowing.parsable.TEMPLATE:1 of
+msgid "模板形式标记。"
+msgstr "Template form marker."
+
+#: flowing.parsable.TEMPLATE:3 of
+#, python-brace-format, python-format
+msgid ""
+"``source`` 含 Jinja2 语法（``{{ }}`` 插值 / ``{% %}`` 控制结构）但不 满足纯表达式判定时的 "
+"``Parsable.type`` 取值；``resolve()`` 返回 ``str``。"
+msgstr ""
+"The ``Parsable.type`` value when ``source`` contains Jinja2 syntax "
+"(``{{ }}`` interpolation / ``{% %}`` control structures) but does not "
+"meet the pure-expression criterion; ``resolve()`` returns ``str``."
+
+#: flowing.parsable.TEMPLATE:8 of
+#, python-brace-format, python-format
+msgid ""
+"走完整两步渲染；``{% include %}`` 可在模板内任意位置组合外部文件， 路径前缀规则与 ``$`` "
+"引用相同，解析基准也同源（经框架自定义 Jinja2 加载器 → ``Runtime.resolve_path``，基准为绑定实例的 "
+"``Agent.source_dir``）。"
+msgstr ""
+"Goes through the full two-step rendering; ``{% include %}`` can compose "
+"external files at any position in the template. The path prefix rules are "
+"the same as for ``$`` references, and the resolution base shares the same "
+"source (via the framework's custom Jinja2 loader → "
+"``Runtime.resolve_path``, with the bound instance's ``Agent.source_dir`` "
+"as the base)."
+
+#: flowing.parsable.TEMPLATE:12 of
+msgid "结果恒为 ``str``；需要原生类型时改写为纯表达式（``EXPRESSION``）。"
+msgstr ""
+"The result is always ``str``; when a native type is needed, rewrite it as "
+"a pure expression (``EXPRESSION``)."
+
+#: flowing.parsable.TEMPLATE:13 of
+msgid ""
+"模板引用了不存在的上下文变量时按 Jinja2 默认行为处理：未定义变量 渲染为空（含 ``config.limits.turns`` "
+"这类链式访问），框架不额外做 严格模式校验。"
+msgstr ""
+"When a template references a non-existent context variable, Jinja2's "
+"default behavior applies: undefined variables render as empty (including "
+"chained access like ``config.limits.turns``); the framework adds no extra "
+"strict-mode validation."
+
+#: flowing.parsable.TEMPLATE:16 of
+#, python-brace-format, python-format
+msgid ""
+"模板继承（``{% extends %}`` / ``{% block %}``）暂不支持——不在契约 "
+"枚举内，写了可能碰巧渲染但语义不保证；跨文件组合请用 ``$`` 引用或 ``{% include %}``。"
+msgstr ""
+"Template inheritance (``{% extends %}`` / ``{% block %}``) is not "
+"supported for now — it is outside the contract enumeration; writing it "
+"may happen to render but the semantics are not guaranteed. For "
+"cross-file composition use ``$`` references or ``{% include %}``."
+
+#: flowing.parsable.TEMPLATE:21 of
+msgid "混合内容中的 Parsable 引用"
+msgstr "Parsable references in mixed content"
+
+#: flowing.parsable.TEMPLATE:22 of
+msgid ""
+"模板是混合内容——字面文本、控制结构与插值共存。插值位上的 :class:`Parsable` 对象不隐式渲染（``__str__`` "
+"只展示模板源）：要它的 渲染结果，写 ``{{ x.resolved }}``；写 ``{{ x }}`` 得到的是它未渲染的 模板原文。"
+msgstr ""
+"A template is mixed content — literal text, control structures, and "
+"interpolation coexist. A :class:`Parsable` object in an interpolation "
+"position is not implicitly rendered (``__str__`` only shows the template "
+"source): to get its rendered result, write ``{{ x.resolved }}``; writing "
+"``{{ x }}`` yields its unrendered template source."
+
+#: flowing.parsable.TEMPLATE:27 of
+msgid "一个典型场景——system prompt 引用了共享的规则片段文件："
+msgstr ""
+"A typical scenario — the system prompt references a shared rule snippet "
+"file:"
+
+#: flowing.parsable.TEMPLATE:36 of
+msgid ""
+"这里 ``user_id`` 是普通实例属性（摊平上下文），直接插值； ``refund_policy`` 是 "
+"Parsable——``.resolved`` 明确表示「此处发生一次 求值」，不写则渲染出 ``$./refund-rules.md`` "
+"这个模板原文。被引用片段 内部若再引用 Parsable，同样各写各的 ``.resolved``——嵌套渲染的每一步 "
+"都是显式的，不存在无限递归通道。"
+msgstr ""
+"Here ``user_id`` is a plain instance attribute (flattened into the "
+"context) and is interpolated directly; ``refund_policy`` is a Parsable — "
+"``.resolved`` explicitly states \"an evaluation happens here\"; without "
+"it, the raw template text ``$./refund-rules.md`` is rendered. If the "
+"referenced snippet in turn references another Parsable internally, each "
+"level likewise writes its own ``.resolved`` — every step of nested "
+"rendering is explicit, and there is no infinite-recursion channel."
+
+#: flowing.parsable.TEMPLATE:42 of
+msgid ":class:`Parsable`、:data:`EXPRESSION`、:data:`FILE_REF`"
+msgstr ":class:`Parsable`, :data:`EXPRESSION`, :data:`FILE_REF`"
+
+#: flowing.parsable.RAW:1 of
+msgid "原始字面量形式标记（``$\"...\"``）。"
+msgstr "Raw literal form marker (``$\"...\"``)."
+
+#: flowing.parsable.RAW:3 of
+msgid ""
+"``source`` 形如 ``$\"...\"`` 时的 ``Parsable.type`` 取值；从首个 ``$\"`` 到最后一个 "
+"``\"`` 贪婪匹配，内部可含双引号与 ``{{ }}`` 等 Jinja2 语法 字符而无需转义。``resolve()`` "
+"跳过全部两步渲染，直接返回引号内文本 （恒为 ``str``）。"
+msgstr ""
+"The ``Parsable.type`` value when ``source`` looks like ``$\"...\"``; it "
+"matches greedily from the first ``$\"`` to the last ``\"``, and the "
+"interior may contain double quotes and Jinja2 syntax characters such as "
+"``{{ }}`` without escaping. ``resolve()`` skips both rendering steps and "
+"directly returns the text inside the quotes (always ``str``)."
+
+#: flowing.parsable.RAW:10 of
+msgid "边缘情况一：``$\"含有 \"引号\" 的原始文本\"`` 的值为 ``含有 \"引号\" 的原始文本`` （贪婪匹配到最后一个引号）。"
+msgstr ""
+"Edge case 1: ``$\"raw text with \"quotes\" inside\"`` has the value ``raw "
+"text with \"quotes\" inside`` (greedy match up to the last quote)."
+
+#: flowing.parsable.RAW:12 of
+msgid "边缘情况二：``$\"_\"`` 的值是普通字符串 ``\"_\"``，不触发 PENDING 语义。"
+msgstr ""
+"Edge case 2: ``$\"_\"`` has the value of the plain string ``\"_\"`` and "
+"does not trigger PENDING semantics."
+
+#: flowing.parsable.RAW:13 of
+msgid "边缘情况三：``$\"$200.00\"`` 的值是字符串 ``$200.00``，不会被当作文件 引用。"
+msgstr ""
+"Edge case 3: ``$\"$200.00\"`` has the value of the string ``$200.00`` and "
+"is not treated as a file reference."
+
+#: flowing.parsable.RAW:15 of
+msgid ""
+"不做任何渲染、不读文件、不访问渲染上下文；短路发生在绑定检查之前， 未绑定也能 ``resolve``、不抛 "
+"``MissingContextError``。"
+msgstr ""
+"No rendering, no file reading, no access to the rendering context; the "
+"short-circuit happens before the binding check, so ``resolve`` works even "
+"when unbound and never raises ``MissingContextError``."
+
+#: flowing.parsable.RAW:18 of
+msgid ":class:`Parsable`、:data:`PENDING`、:data:`LITERAL`"
+msgstr ":class:`Parsable`, :data:`PENDING`, :data:`LITERAL`"
+
+#: flowing.parsable.PENDING:1 of
+msgid "延迟定义哨兵——``.fya`` 中 ``field: _`` 的解析结果。"
+msgstr ""
+"Deferred-definition sentinel — the parse result of ``field: _`` in "
+"``.fya``."
+
+#: flowing.parsable.PENDING:5 of
+msgid ""
+"``_`` 在解析阶段不映射为 ``None`` 或空字符串，而是映射为本模块级单例 哨兵，表示「我承诺稍后（``setup()`` "
+"或具名块中）赋值」。独立哨兵使 「承诺了但没兑现」能被精确检测——``None`` / ``\"\"`` / ``[]`` 都是合法的 "
+"显式值（``field: null`` 对可选字段表示「确实无值」），不能兼作「未赋值」 标记。"
+msgstr ""
+"During parsing, ``_`` is not mapped to ``None`` or an empty string, but "
+"to this module-level singleton sentinel, meaning \"I promise to assign it "
+"later (in ``setup()`` or in a named block)\". A dedicated sentinel makes "
+"\"promised but not delivered\" precisely detectable — ``None`` / ``\"\"`` / "
+"``[]`` are all legitimate explicit values (``field: null`` means "
+"\"genuinely no value\" for optional fields) and cannot double as an "
+"\"unassigned\" marker."
+
+#: flowing.parsable.PENDING:28 of
+msgid ""
+"写法映射：``field: _`` → ``PENDING``；字段缺失或 ``field: null`` → 可选字段 "
+"``None``、必填字段视同 ``_`` （``PENDING``）；``field: $\"_\"`` → 字符串 ``\"_\"`` "
+"（RAW 形式，不触发 PENDING）。"
+msgstr ""
+"Syntax mapping: ``field: _`` → ``PENDING``; a missing field or ``field: "
+"null`` → ``None`` for optional fields, treated as ``_`` (``PENDING``) for "
+"required fields; ``field: $\"_\"`` → the string ``\"_\"`` (RAW form, does "
+"not trigger PENDING)."
+
+#: flowing.parsable.PENDING:31 of
+msgid ""
+"位置分流：字段位 ``_`` = 「必须兑现的承诺」（创建管线检查点）；覆写位 （entry 覆写 / ``args`` 覆写）``_`` = "
+"空补丁（装配层解析为空、可从 基底回填，不报错）；资源列表项位禁止 ``_`` "
+"（``flowing.parser.normalize_entries`` 抛 ``FormatError``）。"
+msgstr ""
+"Position-based dispatch: ``_`` in a field position = \"a promise that must "
+"be honored\" (creation-pipeline checkpoint); ``_`` in an override "
+"position (entry override / ``args`` override) = an empty patch (the "
+"assembly layer parses it as empty; it can be backfilled from the base "
+"definition without error); ``_`` is forbidden in resource list item "
+"positions (``flowing.parser.normalize_entries`` raises ``FormatError``)."
+
+#: flowing.parsable.PENDING:35 of
+msgid ""
+"``PENDING`` / ``None`` / ``\"\"`` / ``[]`` 四者用 ``is`` 可精确区分； "
+"不提供布尔语义保证——禁止用真值判断代替 ``is`` 判断，``if field:`` 的结果不作契约。"
+msgstr ""
+"``PENDING`` / ``None`` / ``\"\"`` / ``[]`` are precisely distinguishable "
+"with ``is``; no boolean-semantics guarantee is provided — it is forbidden "
+"to substitute truthiness checks for ``is`` checks; the result of ``if "
+"field:`` is not part of the contract."
+
+#: flowing.parsable.PENDING:38 of
+msgid ""
+"检查时机：不在解析时（解析只标记），而在创建管线 ``setup()`` 返回后、 ``after_create`` 前——此时 "
+"``before_create`` 钩子与 Composable 已有 充分赋值机会，而 ``after_create`` "
+"观察者能保证看到完整字段。字段位 检查点抛 :class:`flowing.errors.MissingFieldError` （覆写位 "
+"PENDING 无 检查点——空补丁语义）。"
+msgstr ""
+"Check timing: not at parse time (parsing only marks), but in the creation "
+"pipeline after ``setup()`` returns and before ``after_create`` — by then "
+"``before_create`` hooks and Composables have had ample opportunity to "
+"assign, while ``after_create`` observers are guaranteed to see complete "
+"fields. The field-position checkpoint raises "
+":class:`flowing.errors.MissingFieldError` (override-position PENDING has "
+"no checkpoint — empty-patch semantics)."
+
+#: flowing.parsable.PENDING:43 of
+msgid ""
+"替换语义：多层具名块（如 ``$subagents.pay.system_prompt:``）赋值时， 源字段为 ``PENDING`` → "
+"合法替换；源字段已有实际值 → 报冲突。即 ``_`` 不是「忽略」，而是「该位置的 PENDING 可被具名块替换」的合法 前提。"
+msgstr ""
+"Replacement semantics: when a multi-level named block (e.g. "
+"``$subagents.pay.system_prompt:``) assigns a value, a source field of "
+"``PENDING`` → legal replacement; a source field that already has an "
+"actual value → conflict error. In other words, ``_`` is not \"ignore\", "
+"but the legal precondition that \"the PENDING at this position may be "
+"replaced by a named block\"."
+
+#: flowing.parsable.PENDING:47 of
+msgid "不变量：进程内只有一个 ``PENDING`` 实例；可安全跨模块 ``is`` 比较。"
+msgstr ""
+"Invariant: there is only one ``PENDING`` instance per process; ``is`` "
+"comparison across modules is safe."
+
+#: flowing.parsable.PENDING:51 of
+msgid ":data:`_UNSET`"
+msgstr ":data:`_UNSET`"
+
+#: flowing.parsable.PENDING:52 of
+msgid "语义不同的另一个哨兵（「未设置」），不可混用。"
+msgstr ""
+"Another sentinel with different semantics (\"not set\"); must not be used "
+"interchangeably."
+
+#: flowing.parsable.PENDING:53 of
+msgid "``flowing.runtime.Runtime.create_agent``"
+msgstr "``flowing.runtime.Runtime.create_agent``"
+
+#: flowing.parsable.PENDING:54 of
+msgid "PENDING 检查点所在的创建管线。"
+msgstr "The creation pipeline where the PENDING checkpoint lives."
+
+#: ../../api/flowing.rst:105
+msgid "flowing.parser module"
+msgstr "flowing.parser module"
+
+#: flowing.parser:1 of
+msgid "``flowing.parser`` —— ``.fya`` 纯字面前端：把文本切分为结构化声明文档。"
+msgstr ""
+"``flowing.parser`` — the pure-literal frontend for ``.fya``: splits text "
+"into a structured declarative document."
+
+#: flowing.parser:5 of
+msgid ""
+"本模块是 ``.fya`` 处理三层流水（字面层 → 装配层 → 合成层）中的 字面层：只做「文本 → 结构化数据」的转换，产出 "
+":class:`FyaDocument` （或中间的 :class:`RawFya`）。:class:`FyaDocument` 分三部分："
+msgstr ""
+"This module is the literal layer of the three-stage ``.fya`` processing "
+"pipeline (literal layer → assembly layer → synthesis layer): it only "
+"performs the \"text → structured data\" conversion, producing a "
+":class:`FyaDocument` (or the intermediate :class:`RawFya`). A "
+":class:`FyaDocument` has three parts:"
+
+#: flowing.parser:9 of
+msgid ""
+"``fields``：顶层 YAML 映射（``_`` 已映射为 :data:`flowing.parsable.PENDING`； "
+"``entry_fields`` 声明的资源列表已规范化为 ``list[EntryRef]``）；"
+msgstr ""
+"``fields``: the top-level YAML mapping (``_`` already mapped to "
+":data:`flowing.parsable.PENDING`; resource lists declared in "
+"``entry_fields`` already normalized to ``list[EntryRef]``);"
+
+#: flowing.parser:11 of
+msgid "``blocks``：具名块（``$<点分路径>:``）块体原文，原样持有、不填回—— 填回（merge）属装配层；"
+msgstr ""
+"``blocks``: the raw bodies of named blocks (``$<dotted.path>:``), held "
+"verbatim and not merged back — merging belongs to the assembly layer;"
+
+#: flowing.parser:13 of
+msgid "``script``：``$script`` 块原文。"
+msgstr "``script``: the raw text of the ``$script`` block."
+
+#: flowing.parser:15 of
+msgid ""
+"本模块与资源无关：不内置 \"agent\" / \"tool\" / \"skill\" 等任何关键词； 「哪些字段是资源列表」由调用方经 "
+"``entry_fields`` 声明，「路径形态怎么 推断名字」由调用方经 :class:`flowing.paths.NamingRules`"
+" 提供。"
+msgstr ""
+"This module is resource-agnostic: it has no built-in keywords such as "
+"\"agent\" / \"tool\" / \"skill\"; \"which fields are resource lists\" is "
+"declared by the caller via ``entry_fields``, and \"how to infer a name "
+"from a path form\" is supplied by the caller via "
+":class:`flowing.paths.NamingRules`."
+
+#: flowing.parser:20 of
+msgid "``.fya`` 词法规则（本模块管辖的全部语法）"
+msgstr "``.fya`` lexical rules (all syntax governed by this module)"
+
+#: flowing.parser:21 of
+msgid ""
+"文件 = 顶层 YAML 段 + 0..n 个块；块分隔符 ``---`` 独占一行； 块头为分隔后次行 ``$<点分路径>:`` "
+"（路径段为纯标识符，无下标）； 块体为到下一个 ``---`` 或 EOF 的原文；"
+msgstr ""
+"File = top-level YAML section + 0..n blocks; the block separator ``---`` "
+"occupies its own line; the block header is the line right after the "
+"separator, of the form ``$<dotted.path>:`` (path segments are pure "
+"identifiers, no subscripts); the block body is the raw text up to the "
+"next ``---`` or EOF;"
+
+#: flowing.parser:24 of
+msgid "``$script`` 是保留块名：内容单独取出，不进 ``blocks``；"
+msgstr ""
+"``$script`` is a reserved block name: its content is extracted separately "
+"and does not enter ``blocks``;"
+
+#: flowing.parser:25 of
+msgid ""
+"YAML 标量恰为 ``_`` → :data:`~flowing.parsable.PENDING` （递归进嵌套 "
+"dict/list）；``$\"_\"`` 是普通字符串不受影响；非字符串 YAML 值保持原生 类型（``Parsable`` "
+"包装是装配层职责）。"
+msgstr ""
+"A YAML scalar exactly equal to ``_`` → :data:`~flowing.parsable.PENDING` "
+"(recursing into nested dict/list); ``$\"_\"`` is a plain string and "
+"unaffected; non-string YAML values keep their native types (``Parsable`` "
+"wrapping is the assembly layer's responsibility)."
+
+#: flowing.parser:30 of
+msgid "边界"
+msgstr "Boundaries"
+
+#: flowing.parser:31 of
+msgid "不 merge 具名块（填回规则与导航在装配层）；"
+msgstr ""
+"Does not merge named blocks (merge-back rules and navigation live in the "
+"assembly layer);"
+
+#: flowing.parser:32 of
+msgid ""
+"不做引用解析：``EntryRef.raw`` 保留原始字符串，形态判别经 "
+":func:`flowing.paths.classify_ref`，实际查找在各 registry；"
+msgstr ""
+"Does not resolve references: ``EntryRef.raw`` keeps the original string; "
+"form classification goes through :func:`flowing.paths.classify_ref`, and "
+"actual lookup happens in each registry;"
+
+#: flowing.parser:34 of
+msgid "不识别任何具体字段名（``tools`` / ``args`` 等对 parser 无意义）。"
+msgstr ""
+"Does not recognize any concrete field names (``tools`` / ``args`` etc. "
+"are meaningless to the parser)."
+
+#: flowing.parser:38 of
+msgid ":mod:`flowing.paths` —— 引用形态与命名词汇。"
+msgstr ":mod:`flowing.paths` — reference forms and naming vocabulary."
+
+#: flowing.parser:39 of
+msgid ":mod:`flowing.compiler` —— 合成层（内存类 / 落盘 ``.py`` 两形态 同源），共享本前端。"
+msgstr ""
+":mod:`flowing.compiler` — the synthesis layer (in-memory class / on-disk "
+"``.py`` forms share the same source), sharing this frontend."
+
+#: flowing.parser.EntryRef:1 of
+msgid "资源列表条目的字面规范化产物。"
+msgstr "The literal normalization product of a resource list entry."
+
+#: flowing.parser.EntryRef:5 of
+msgid ""
+"``tools:`` / ``subagents:`` / ``skills:`` 列表项的统一形态：原始引用 "
+"串不拆、别名落定、覆写映射原样持有。本类型只携带「指向谁、叫什么、 临时附言」三件字面事实——解析到目标（注册表查找 / 候选链探测）不在 此层。"
+msgstr ""
+"The unified form of ``tools:`` / ``subagents:`` / ``skills:`` list items: "
+"the raw reference string is not split, the alias is settled, and the "
+"override mapping is held verbatim. This type carries only three literal "
+"facts — \"whom it points to, what it is called, and the ad-hoc note\" — "
+"resolving to the target (registry lookup / candidate-chain probing) is "
+"not in this layer."
+
+#: flowing.parser.EntryRef:12 of
+#, python-brace-format
+msgid "``- ./payment as pay: {args: [...]}`` 产出："
+msgstr "``- ./payment as pay: {args: [...]}`` produces:"
+
+#: flowing.parser.EntryRef:21 of
+msgid ""
+"``raw`` 从不被本模块内部解析——路径内的 ``::``、限定名的 ``ns::`` 都原样保留；消费方按需再调 "
+":func:`flowing.paths.classify_ref` 分流。"
+msgstr ""
+"``raw`` is never parsed inside this module — ``::`` inside paths and the "
+"``ns::`` of qualified names are all kept verbatim; consumers call "
+":func:`flowing.paths.classify_ref` again as needed to dispatch."
+
+#: flowing.parser.EntryRef:24 of
+msgid ""
+"``alias`` 在规范化后永远有值（推断规则见 :func:`normalize_entries`），是后续一切匹配（装配层深层块导航、 "
+"冲突检测、LLM 可见名）的唯一键。"
+msgstr ""
+"``alias`` always has a value after normalization (see "
+":func:`normalize_entries` for the inference rules) and is the sole key "
+"for all subsequent matching (deep named-block navigation in the assembly "
+"layer, conflict detection, LLM-visible names)."
+
+#: flowing.parser.EntryRef:28 of
+msgid ":func:`normalize_entries` —— 唯一构造通道。"
+msgstr ":func:`normalize_entries` — the sole construction channel."
+
+#: flowing.parser.EntryRef.raw:1 of
+msgid "``as`` 前的原始字符串：路径 / 裸名 / ``ns::name``，不拆。"
+msgstr ""
+"The raw string before ``as``: a path / bare name / ``ns::name``, not "
+"split."
+
+#: flowing.parser.EntryRef.alias:1 of
+msgid ""
+"最终别名：显式 ``as`` 值 > 限定名 name 段 > 裸名本身 > 路径形态 经 "
+":func:`flowing.paths.infer_name` 推断。"
+msgstr ""
+"The final alias: explicit ``as`` value > the name segment of a qualified "
+"name > the bare name itself > inferred from the path form via "
+":func:`flowing.paths.infer_name`."
+
+#: flowing.parser.EntryRef.body:1 of
+#, python-brace-format
+msgid ""
+"单键映射项的值（如 ``{args: [...]}``）；字符串项 为空映射。内容对本模块不透明——命名取中性的「映射体」，不预设 "
+"「覆写」语义（语义解释归各资源装配层 / ``Agent.add_tool`` 等消费方）。"
+msgstr ""
+"The value of a single-key mapping item (e.g. ``{args: [...]}``); string "
+"items get an empty mapping. The content is opaque to this module — it is "
+"named with the neutral term \"mapping body\" and presupposes no "
+"\"override\" semantics (semantic interpretation belongs to each resource's "
+"assembly layer / consumers such as ``Agent.add_tool``)."
+
+#: flowing.parser.FyaDocument:1 of
+msgid "``.fya`` 文件的字面解析终产物（:func:`parse_fya` 的返回）。"
+msgstr ""
+"The final literal-parse product of a ``.fya`` file (the return value of "
+":func:`parse_fya`)."
+
+#: flowing.parser.FyaDocument:5 of
+msgid ""
+"「已规范化、未求值、未合并」的声明文档：``fields`` 中 ``_`` 已是 "
+":data:`~flowing.parsable.PENDING`、声明为资源列表的字段已是 "
+"``list[EntryRef]``；``blocks`` 原样持有等待装配层填回；``script`` 等待装配层编译为类体方法。"
+msgstr ""
+"A declaration document that is \"normalized, unevaluated, unmerged\": in "
+"``fields``, ``_`` is already :data:`~flowing.parsable.PENDING` and fields "
+"declared as resource lists are already ``list[EntryRef]``; ``blocks`` are "
+"held verbatim awaiting merge-back by the assembly layer; ``script`` "
+"awaits compilation into class-body methods by the assembly layer."
+
+#: flowing.parser.FyaDocument:12 of
+msgid "产出值都是「生的」：具名块是原始字符串，YAML 值是原生类型； 不构造 ``Parsable``、不做文件查找、不校验字段语义。"
+msgstr ""
+"All produced values are \"raw\": named blocks are raw strings and YAML "
+"values are native types; no ``Parsable`` is constructed, no file lookup "
+"is performed, and field semantics are not validated."
+
+#: flowing.parser.FyaDocument:14 of
+msgid "不变量：``blocks`` 的 key 唯一（重复路径在切分期已报错）且 不含 ``$script``。"
+msgstr ""
+"Invariant: ``blocks`` keys are unique (duplicate paths already errored "
+"during splitting) and never contain ``$script``."
+
+#: flowing.parser.FyaDocument.fields:1 of
+msgid ""
+"顶层 YAML（``_`` → ``PENDING`` 已映射；``entry_fields`` 列表 已规范化为 "
+"``list[EntryRef]``）。"
+msgstr ""
+"The top-level YAML (``_`` → ``PENDING`` already mapped; ``entry_fields`` "
+"lists already normalized to ``list[EntryRef]``)."
+
+#: flowing.parser.FyaDocument.blocks:1 of
+msgid "具名块（路径 → 原文），未填回。"
+msgstr "Named blocks (path → raw text), not merged back."
+
+#: flowing.parser.FyaDocument.script:1 of
+msgid "``$script`` 块原文；无则 ``None``。"
+msgstr "Raw text of the ``$script`` block; ``None`` if absent."
+
+#: flowing.parser.RawFya:1 of
+msgid ":func:`split_fya` 的中间产物：文本切分结果，YAML 尚未加载。"
+msgstr ""
+"The intermediate product of :func:`split_fya`: the text-splitting result, "
+"with YAML not yet loaded."
+
+#: flowing.parser.RawFya:5 of
+msgid "公开供调试与测试；正常调用方应使用 :func:`parse_fya` 一次走完。"
+msgstr ""
+"Exposed publicly for debugging and testing; normal callers should use "
+":func:`parse_fya` to run the whole pipeline in one go."
+
+#: flowing.parser.RawFya.yaml_text:1 of
+msgid "顶层 YAML 段原文（可能为空串）。"
+msgstr "Raw text of the top-level YAML section (may be an empty string)."
+
+#: flowing.parser.RawFya.blocks:1 of
+msgid "具名块路径 → 块体原文（不含 ``$script``）。"
+msgstr "Named-block path → raw block body (excludes ``$script``)."
+
+#: flowing.parser.RawFya.script:1 of
+msgid "``$script`` 块体原文；无则 ``None``。"
+msgstr "Raw body of the ``$script`` block; ``None`` if absent."
+
+#: flowing.parser.parse_fya:1 of
+msgid "``.fya`` 文本 → :class:`FyaDocument` （字面层流水一次走完）。"
+msgstr ""
+"``.fya`` text → :class:`FyaDocument` (the literal-layer pipeline run "
+"through in one go)."
+
+#: flowing.parser.parse_fya:5 of
+msgid "主管线（顺序不变量）："
+msgstr "Main pipeline (order invariant):"
+
+#: flowing.parser.parse_fya:7 of
+msgid ":func:`split_fya` 切分为顶层 YAML 文本、具名块、``$script``；"
+msgstr ""
+":func:`split_fya` splits into top-level YAML text, named blocks, and "
+"``$script``;"
+
+#: flowing.parser.parse_fya:8 of
+msgid ":func:`load_fya_yaml` 加载 YAML（``_`` → ``PENDING`` 递归映射）；"
+msgstr ""
+":func:`load_fya_yaml` loads the YAML (``_`` → ``PENDING`` recursive "
+"mapping);"
+
+#: flowing.parser.parse_fya:9 of
+msgid "对 ``entry_fields`` 声明的字段调 :func:`normalize_entries` 规范化资源列表；其余字段原样不动。"
+msgstr ""
+"Calls :func:`normalize_entries` on fields declared in ``entry_fields`` to "
+"normalize resource lists; all other fields are left untouched."
+
+#: flowing.parser.parse_fya:12 of
+msgid "不 merge：具名块填回（含深层导航、PENDING 替换规则）是装配层 职责。"
+msgstr ""
+"No merging: merging named blocks back (including deep navigation and "
+"PENDING replacement rules) is the assembly layer's responsibility."
+
+#: flowing.parser.parse_fya:29 of
+msgid "``entry_fields`` 中声明但文件里不存在的字段：不报错（缺省视为 无声明——字段缺失语义由装配层按「必填 / 可选」各自决定）。"
+msgstr ""
+"Fields declared in ``entry_fields`` but absent from the file: no error "
+"(treated by default as undeclared — the semantics of a missing field are "
+"decided per field by the assembly layer as \"required / optional\")."
+
+#: flowing.parser.parse_fya:31 of
+msgid "声明字段的值不是列表 → :class:`FormatError` （资源列表必须是 YAML 列表）。"
+msgstr ""
+"A declared field whose value is not a list → :class:`FormatError` (a "
+"resource list must be a YAML list)."
+
+#: flowing.parser.parse_fya:33 of
+msgid "``naming`` 仅在条目规范化遇路径形态时需要；其余形态可缺省。"
+msgstr ""
+"``naming`` is only needed when entry normalization encounters a path "
+"form; it may be omitted for other forms."
+
+#: flowing.parser.parse_fya:34 of
+msgid "边缘情况：空文件 / 仅 YAML 无块 / 仅块无 YAML——均合法， ``fields`` 与 ``blocks`` 相应为空。"
+msgstr ""
+"Edge cases: empty file / YAML only with no blocks / blocks only with no "
+"YAML — all are legal, with ``fields`` and ``blocks`` empty accordingly."
+
+#: flowing.parser.parse_fya:37 flowing.parser.split_fya:37 of
+msgid "``.fya`` 文件全文。"
+msgstr "The full text of the ``.fya`` file."
+
+#: flowing.parser.parse_fya:38 of
+msgid "声明为资源列表的字段名集合（值会被规范化 为 ``list[EntryRef]``）。"
+msgstr ""
+"The set of field names declared as resource lists (their values are "
+"normalized to ``list[EntryRef]``)."
+
+#: flowing.parser.normalize_entries:58 flowing.parser.parse_fya:40 of
+msgid "路径形态条目的别名推断规则表。"
+msgstr "The alias-inference rule table for path-form entries."
+
+#: flowing.parser.parse_fya:41 of
+msgid "规范化后的声明文档。"
+msgstr "The normalized declaration document."
+
+#: flowing.parser.parse_fya:42 of
+msgid "声明字段的值不是列表；或切分 / YAML 加载阶段发现非法结构（块路径重复、块头不合法、顶层非映射、 YAML 语法错误等）。"
+msgstr ""
+"A declared field's value is not a list; or an illegal structure is found "
+"during the splitting / YAML loading stages (duplicate block paths, "
+"illegal block headers, a non-mapping top level, YAML syntax errors, "
+"etc.)."
+
+#: flowing.parser.parse_fya:46 of
+msgid ":class:`FyaDocument` —— 产物契约。"
+msgstr ":class:`FyaDocument` — the product contract."
+
+#: flowing.parser.split_fya:1 of
+msgid "``.fya`` 文本 → 顶层 YAML 文本 + 具名块 + ``$script``。"
+msgstr "``.fya`` text → top-level YAML text + named blocks + ``$script``."
+
+#: flowing.parser.split_fya:5 of
+msgid "纯文本切分，不触碰 YAML 语义。规则："
+msgstr "Pure text splitting; YAML semantics are not touched. Rules:"
+
+#: flowing.parser.split_fya:7 of
+msgid "第一个 ``---`` 独占一行之前的全部内容为顶层 YAML 段；文件以 ``---`` 开头则 YAML 段为空；"
+msgstr ""
+"Everything before the first ``---`` occupying its own line is the "
+"top-level YAML section; if the file starts with ``---``, the YAML section "
+"is empty;"
+
+#: flowing.parser.split_fya:9 of
+msgid ""
+"每个块：``---`` 独占一行，次行必须是块头 ``$<点分路径>:``， 块体为块头行之后到下一个 ``---`` 或 EOF "
+"的原文（不去缩进、 不去尾部换行——内容整形由消费方决定）；"
+msgstr ""
+"Each block: a ``---`` on its own line, and the next line must be the "
+"block header ``$<dotted.path>:``; the block body is the raw text from "
+"after the header line to the next ``---`` or EOF (indentation is not "
+"stripped, trailing newlines are not removed — content shaping is up to "
+"the consumer);"
+
+#: flowing.parser.split_fya:12 of
+msgid ""
+"块路径：``$`` 后点分标识符序列，段字符集 ``[A-Za-z0-9_-]+``； 不允许 ``[n]`` "
+"下标段（列表一律按别名寻址，见装配层导航规则）；"
+msgstr ""
+"Block path: a dot-separated identifier sequence after ``$``, with segment "
+"character set ``[A-Za-z0-9_-]+``; ``[n]`` subscript segments are not "
+"allowed (lists are always addressed by alias; see the assembly layer's "
+"navigation rules);"
+
+#: flowing.parser.split_fya:14 of
+msgid "``$script`` 保留：其块体进 :attr:`RawFya.script`，不进 ``blocks``。"
+msgstr ""
+"``$script`` is reserved: its body goes into :attr:`RawFya.script`, not "
+"into ``blocks``."
+
+#: flowing.parser.split_fya:19 of
+msgid ""
+"块路径重复（含大小写差异视为不同 key——不做归一化，笔误由装配层 未命中报错暴露）→ "
+":class:`FormatError`；``$script`` 出现多次 → :class:`FormatError`。"
+msgstr ""
+"Duplicate block paths (case differences count as different keys — no "
+"normalization; typos surface as miss errors in the assembly layer) → "
+":class:`FormatError`; ``$script`` appearing multiple times → "
+":class:`FormatError`."
+
+#: flowing.parser.split_fya:22 of
+msgid ""
+"块头不合法（``---`` 后次行不匹配 ``$...:`` 形式、路径含空段或 非法字符、含 ``[``）→ "
+":class:`FormatError`。"
+msgstr ""
+"Illegal block header (the line after ``---`` does not match the ``$...:`` "
+"form, the path contains empty segments or illegal characters, or contains "
+"``[``) → :class:`FormatError`."
+
+#: flowing.parser.split_fya:24 of
+msgid "块体允许为空串（如 ``$field:`` 后无内容）——空串也是「值」， 与「未声明」不同。"
+msgstr ""
+"A block body may be an empty string (e.g. no content after ``$field:``) — "
+"an empty string is still a \"value\", different from \"undeclared\"."
+
+#: flowing.parser.split_fya:26 of
+msgid ""
+"本函数不解析 YAML、不识别 ``_`` （那是 :func:`load_fya_yaml` 的 "
+"职责）；不校验路径段对应的字段是否真实存在（装配层导航时才检查）。"
+msgstr ""
+"This function does not parse YAML and does not recognize ``_`` (that is "
+":func:`load_fya_yaml`'s responsibility); nor does it check whether the "
+"field corresponding to a path segment actually exists (that is checked "
+"when the assembly layer navigates)."
+
+#: flowing.parser.split_fya:38 of
+msgid ":class:`RawFya` （YAML 段原文 / 具名块 / ``$script``）。"
+msgstr ":class:`RawFya` (raw YAML section / named blocks / ``$script``)."
+
+#: flowing.parser.split_fya:39 of
+msgid "块分隔后缺块头、块头非法、块路径 重复或 ``$script`` 重复。"
+msgstr ""
+"Missing block header after a separator, illegal block header, duplicate "
+"block path, or duplicate ``$script``."
+
+#: flowing.parser.split_fya:42 of
+msgid ":func:`load_fya_yaml` —— 紧接着的 YAML 加载层。"
+msgstr ":func:`load_fya_yaml` — the YAML loading layer that follows."
+
+#: flowing.parser.normalize_entries:1 of
+msgid "资源列表 → ``list[EntryRef]`` （``as`` 切分 + 形态判别 + 别名推断）。"
+msgstr ""
+"Resource list → ``list[EntryRef]`` (``as`` splitting + form "
+"classification + alias inference)."
+
+#: flowing.parser.normalize_entries:5 of
+msgid "逐条处理顺序（不变量）："
+msgstr "Per-item processing order (invariant):"
+
+#: flowing.parser.normalize_entries:7 of
+#, python-brace-format
+msgid ""
+"形态校验：项须为字符串（纯引用）或单键映射 （``{<引用>: <覆写映射>}``）；其余（含多键映射、标量）→ "
+":class:`FormatError`；"
+msgstr ""
+"Form validation: an item must be a string (pure reference) or a "
+"single-key mapping (``{<reference>: <override mapping>}``); anything else "
+"(including multi-key mappings and scalars) → :class:`FormatError`;"
+
+#: flowing.parser.normalize_entries:10 of
+msgid ":func:`split_as` 切分引用串；"
+msgstr ":func:`split_as` splits the reference string;"
+
+#: flowing.parser.normalize_entries:11 of
+msgid ""
+":func:`flowing.paths.classify_ref` 判别形态（路径前缀优先—— 路径内 ``::`` 不解析；否则按第一个 "
+"``::`` 为限定名）；"
+msgstr ""
+":func:`flowing.paths.classify_ref` classifies the form (path prefix takes "
+"priority — ``::`` inside a path is not parsed; otherwise split at the "
+"first ``::`` as a qualified name);"
+
+#: flowing.parser.normalize_entries:13 of
+msgid "别名推断（首个命中者生效），规则见下表。"
+msgstr ""
+"Alias inference (first match wins); rules are in the table below."
+
+#: flowing.parser.normalize_entries:15 of
+msgid "别名推断（按优先级，首个命中者生效）"
+msgstr "Alias inference (by priority, first match wins)"
+
+#: flowing.parser.normalize_entries:18 of
+msgid "情形"
+msgstr "Case"
+
+#: flowing.parser.normalize_entries:19 of
+msgid "别名取值"
+msgstr "Alias value"
+
+#: flowing.parser.normalize_entries:20 of
+msgid "显式 ``as`` （``- payment as pay``）"
+msgstr "Explicit ``as`` (``- payment as pay``)"
+
+#: flowing.parser.normalize_entries:21 of
+msgid "``as`` 右侧的别名"
+msgstr "The alias to the right of ``as``"
+
+#: flowing.parser.normalize_entries:22 of
+msgid "限定名（``ns::name``）"
+msgstr "Qualified name (``ns::name``)"
+
+#: flowing.parser.normalize_entries:23 of
+msgid "第一个 ``::`` 后的 ``name`` 段"
+msgstr "The ``name`` segment after the first ``::``"
+
+#: flowing.parser.normalize_entries:24 of
+msgid "裸名"
+msgstr "Bare name"
+
+#: flowing.parser.normalize_entries:25 of
+msgid "引用串本身"
+msgstr "The reference string itself"
+
+#: flowing.parser.normalize_entries:26 of
+msgid "路径形态（``./a/payment`` 等）"
+msgstr "Path form (``./a/payment`` etc.)"
+
+#: flowing.parser.normalize_entries:27 of
+msgid ""
+"经 :func:`flowing.paths.infer_name` 推断（需 ``naming`` 规则表，否则 "
+":class:`FormatError`）"
+msgstr ""
+"Inferred via :func:`flowing.paths.infer_name` (requires the ``naming`` "
+"rule table, otherwise :class:`FormatError`)"
+
+#: flowing.parser.normalize_entries:32 of
+msgid ""
+"列表项为 ``PENDING`` （YAML 写了 ``- _``）→ :class:`FormatError`： "
+"列表项没有别名无法被深层块寻址，``_`` 在此是永远无法兑现的 承诺（``PENDING`` 只存在于可按名寻址的位置：标量字段与覆写值）。"
+msgstr ""
+"A list item of ``PENDING`` (YAML wrote ``- _``) → :class:`FormatError`: a "
+"list item has no alias and cannot be addressed by deep blocks, so ``_`` "
+"here is a promise that can never be honored (``PENDING`` only exists in "
+"name-addressable positions: scalar fields and override values)."
+
+#: flowing.parser.normalize_entries:35 of
+#, python-brace-format
+msgid ""
+"单键映射的值为 ``PENDING`` （``- payment: _``）→ 解析为空 覆写 ``{}`` "
+"（空补丁语义：声明了覆写位、内容为空，可从原始定义 全量回填）；值为标量 / 列表 → :class:`FormatError` （覆写集合必须 "
+"是映射或 ``_``）。"
+msgstr ""
+"A single-key mapping whose value is ``PENDING`` (``- payment: _``) → "
+"parsed as an empty override ``{}`` (empty-patch semantics: an override "
+"position is declared, its content is empty, and it can be fully "
+"backfilled from the original definition); a scalar / list value → "
+":class:`FormatError` (the override set must be a mapping or ``_``)."
+
+#: flowing.parser.normalize_entries:39 of
+msgid ""
+"重复别名不在本层报错：撞名检测（``EntryNameConflictError``） 是装配层职责（它需要目标身份做 glob "
+"例外判定，本层没有）。"
+msgstr ""
+"Duplicate aliases are not an error at this layer: name-collision "
+"detection (``EntryNameConflictError``) is the assembly layer's "
+"responsibility (it needs target identities for glob-exception "
+"determination, which this layer does not have)."
+
+#: flowing.parser.normalize_entries:41 of
+msgid "本函数不解析 ``raw`` （不读文件、不查注册表）；不解释 ``body`` 内容。"
+msgstr ""
+"This function does not resolve ``raw`` (no file reading, no registry "
+"lookup) and does not interpret the ``body`` content."
+
+#: flowing.parser.normalize_entries:57 of
+msgid "资源列表项（字符串或单键映射）。"
+msgstr "Resource list items (strings or single-key mappings)."
+
+#: flowing.parser.normalize_entries:59 of
+msgid "规范化后的 ``EntryRef`` 列表。"
+msgstr "The normalized ``EntryRef`` list."
+
+#: flowing.parser.normalize_entries:60 of
+msgid "项形态非法、列表项为 ``PENDING``、 覆写集合不是映射或 ``_``、路径形态条目缺 ``naming``。"
+msgstr ""
+"Illegal item form, a list item of ``PENDING``, an override set that is "
+"neither a mapping nor ``_``, or a path-form entry missing ``naming``."
+
+#: flowing.parser.normalize_entries:63 of
+msgid ":func:`parse_fya` —— 按 ``entry_fields`` 调用本函数。"
+msgstr ":func:`parse_fya` — calls this function per ``entry_fields``."
+
+#: flowing.parser.split_as:1 of
+msgid "``\"<ref> as <alias>\"`` → ``(ref, alias)``；无 ``as`` → ``(s, None)``。"
+msgstr ""
+"``\"<ref> as <alias>\"`` → ``(ref, alias)``; without ``as`` → ``(s, None)``."
+
+#: flowing.parser.split_as:5 of
+msgid ""
+"``as`` 语法的唯一切分实现。两个消费点：本模块的条目规范化 （资源列表项）与装配层的覆写参数项判别（``working_dir as "
+"cwd`` → ``param_aliases``）。"
+msgstr ""
+"The sole splitting implementation of the ``as`` syntax. Two consumption "
+"sites: entry normalization in this module (resource list items) and "
+"override-parameter item classification in the assembly layer "
+"(``working_dir as cwd`` → ``param_aliases``)."
+
+#: flowing.parser.split_as:11 of
+msgid "按两侧至少一个空白的 ``as`` 切分；出现多个 ``as`` → :class:`FormatError` （嵌套引用无意义，几乎必为笔误）；"
+msgstr ""
+"Splits on ``as`` with at least one whitespace on each side; multiple "
+"``as`` occurrences → :class:`FormatError` (nested references are "
+"meaningless and almost certainly a typo);"
+
+#: flowing.parser.split_as:13 of
+msgid "``as`` 任一侧为空串 → :class:`FormatError`；"
+msgstr "An empty string on either side of ``as`` → :class:`FormatError`;"
+
+#: flowing.parser.split_as:14 of
+msgid "返回的两段均 ``strip``；内部空白原样保留（``ref`` 可能是含 目录段的路径，但不会含首尾空白）。"
+msgstr ""
+"Both returned segments are ``strip``ped; interior whitespace is kept "
+"verbatim (``ref`` may be a path containing directory segments, but never "
+"has leading or trailing whitespace)."
+
+#: flowing.parser.split_as:16 of
+msgid "本函数不校验 ref / alias 的字符集与形态（各属 :func:`flowing.paths.classify_ref` 与装配层）。"
+msgstr ""
+"This function does not validate the character sets or forms of ref / "
+"alias (those belong to :func:`flowing.paths.classify_ref` and the "
+"assembly layer respectively)."
+
+#: flowing.parser.split_as:27 of
+msgid "引用串（可含 ``as``）。"
+msgstr "The reference string (may contain ``as``)."
+
+#: flowing.parser.split_as:28 of
+msgid "``(ref, alias)`` 二元组；无 ``as`` 时 ``alias`` 为 ``None``。"
+msgstr ""
+"The ``(ref, alias)`` pair; when there is no ``as``, ``alias`` is ``None``."
+
+#: flowing.parser.split_as:29 of
+msgid "出现多个 ``as``，或任一侧为空。"
+msgstr "Multiple ``as`` occurrences, or either side is empty."
+
+#: flowing.parser.load_fya_yaml:1 of
+msgid "YAML 文本 → dict，标量 ``_`` 递归映射为 ``PENDING``。"
+msgstr ""
+"YAML text → dict, with the scalar ``_`` recursively mapped to ``PENDING``."
+
+#: flowing.parser.load_fya_yaml:5 of
+msgid ""
+"``.fya`` 顶层段与 skill ``.md`` frontmatter 共用的 YAML 加载器—— 保证 ``_`` → "
+"``PENDING`` 语义全框架只有这一处实现。"
+msgstr ""
+"The YAML loader shared by the ``.fya`` top-level section and skill "
+"``.md`` frontmatter — guaranteeing that the ``_`` → ``PENDING`` semantics "
+"have only this one implementation across the whole framework."
+
+#: flowing.parser.load_fya_yaml:10 of
+#, python-brace-format
+msgid ""
+"映射规则：YAML 标量值恰为字符串 ``\"_\"`` → :data:`~flowing.parsable.PENDING`，递归作用于嵌套 "
+"dict/list （``args: {description: _}`` 内同样生效）；``$\"_\"`` 等其它字符串 原样（RAW "
+"语义无涉本层）。"
+msgstr ""
+"Mapping rule: a YAML scalar value exactly equal to the string ``\"_\"`` → "
+":data:`~flowing.parsable.PENDING`, applied recursively into nested "
+"dict/list (also effective inside ``args: {description: _}``); other "
+"strings such as ``$\"_\"`` are kept verbatim (RAW semantics are not this "
+"layer's concern)."
+
+#: flowing.parser.load_fya_yaml:14 of
+msgid ""
+"列表项位置的 ``PENDING`` 在本层不报错：``tools: [payment, _]`` 可以加载；但 "
+":func:`normalize_entries` 会拒绝（列表项无别名 寻址通道，``_`` 无法兑现——见该函数）。"
+msgstr ""
+"``PENDING`` in a list-item position is not an error at this layer: "
+"``tools: [payment, _]`` loads fine; but :func:`normalize_entries` rejects "
+"it (a list item has no alias-addressing channel, so ``_`` can never be "
+"honored — see that function)."
+
+#: flowing.parser.load_fya_yaml:17 of
+msgid "非字符串 YAML 值保持原生类型（``max_turns: 10`` → ``int``）； ``Parsable`` 包装属装配层。"
+msgstr ""
+"Non-string YAML values keep their native types (``max_turns: 10`` → "
+"``int``); ``Parsable`` wrapping belongs to the assembly layer."
+
+#: flowing.parser.load_fya_yaml:19 of
+msgid ""
+"空文本 → 空 dict；顶层不是映射（如标量 / 列表）→ :class:`FormatError` （报文含首个非注释非空行的行号）；YAML"
+" 语法 错误 → :class:`FormatError` （包装原始异常，报文含行号）。"
+msgstr ""
+"Empty text → empty dict; a non-mapping top level (e.g. a scalar / list) → "
+":class:`FormatError` (the message includes the line number of the first "
+"non-comment non-empty line); a YAML syntax error → :class:`FormatError` "
+"(wrapping the original exception, with the line number in the message)."
+
+#: flowing.parser.load_fya_yaml:22 of
+msgid "本函数不做环境变量展开、不做 ``$`` 引用解析（那是 Parsable 求值期）。"
+msgstr ""
+"This function performs no environment-variable expansion and no ``$`` "
+"reference resolution (those happen at Parsable evaluation time)."
+
+#: flowing.parser.load_fya_yaml:33 of
+msgid "YAML 文本。"
+msgstr "YAML text."
+
+#: flowing.parser.load_fya_yaml:34 of
+msgid "顶层映射 dict。"
+msgstr "The top-level mapping dict."
+
+#: flowing.parser.load_fya_yaml:35 of
+msgid "顶层不是映射，或 YAML 语法错误。"
+msgstr "The top level is not a mapping, or a YAML syntax error."
+
+#: flowing.parser.load_fya_yaml:37 of
+msgid ":data:`flowing.parsable.PENDING` —— 哨兵语义本体。"
+msgstr ":data:`flowing.parsable.PENDING` — the sentinel semantics itself."
+
+#: ../../api/flowing.rst:113
+msgid "flowing.paths module"
+msgstr "flowing.paths module"
+
+#: flowing.paths:1 of
+msgid "``flowing.paths`` —— 资源引用与路径词汇：前缀、形态判别、解析、命名格式。"
+msgstr ""
+"``flowing.paths`` — resource reference and path vocabulary: prefixes, "
+"form classification, resolution, naming formats."
+
+#: flowing.paths:5 of
+msgid "本模块集中定义框架内「资源引用字符串」的路径词法规则，供 ``.fya`` 装配、 注册表查找等场景共用："
+msgstr ""
+"This module centrally defines the path lexical rules for \"resource "
+"reference strings\" within the framework, shared by scenarios such as "
+"``.fya`` assembly and registry lookup:"
+
+#: flowing.paths:8 of
+msgid ""
+"路径前缀表（:data:`PATH_PREFIXES`）：``./``、``../``、``@/`` 三类相对 "
+"前缀，全框架唯一权威来源（``parsable`` 的 ``$`` 引用、各 registry 的 候选链与 "
+"``Runtime.resolve_path`` 共用同一组前缀）；"
+msgstr ""
+"Path prefix table (:data:`PATH_PREFIXES`): the three relative prefixes "
+"``./``, ``../``, ``@/`` — the single authoritative source for the whole "
+"framework (``parsable``'s ``$`` references, each registry's candidate "
+"chains, and ``Runtime.resolve_path`` all share this same set of "
+"prefixes);"
+
+#: flowing.paths:11 of
+msgid ""
+"引用形态判别（:func:`classify_ref`）：把引用字符串判为路径 / 限定名 （``ns::name``）/ "
+"裸名三种形态之一——只回答「这个字符串长什么样」， 不回答「去哪找」；"
+msgstr ""
+"Reference form classification (:func:`classify_ref`): classifies a "
+"reference string into one of three forms — path / qualified name "
+"(``ns::name``) / bare name. It only answers \"what does this string look "
+"like\", not \"where to find it\";"
+
+#: flowing.paths:14 of
+msgid ""
+"路径解析与表示（:func:`resolve_path` / :func:`to_project_path`）： 前缀 → "
+"``pathlib.Path`` 的纯函数，以及逆向的对外表示（根内 ``@/`` 形式）；"
+msgstr ""
+"Path resolution and representation (:func:`resolve_path` / "
+":func:`to_project_path`): pure functions from prefix → ``pathlib.Path``, "
+"plus the reverse outward representation (the in-root ``@/`` form);"
+
+#: flowing.paths:17 of
+msgid ""
+"候选链探测（:func:`probe_candidates`）：按调用方给定的候选名列表逐个 "
+"探测存在性，首个命中返回——链内容是各资源的规则（留在各模块），探测 循环只有一份；"
+msgstr ""
+"Candidate-chain probing (:func:`probe_candidates`): probes existence one "
+"by one against a caller-supplied candidate-name list and returns the "
+"first hit — the chain content is each resource's rule (kept in each "
+"module), while the probing loop exists only once;"
+
+#: flowing.paths:20 of
+msgid ""
+"身份名推断（:class:`NamingRules` / :func:`infer_name`）：文件名/目录名 → "
+"规范身份名（去后缀、通用名取目录名、snake→kebab）；"
+msgstr ""
+"Identity-name inference (:class:`NamingRules` / :func:`infer_name`): "
+"file/directory name → canonical identity name (strip suffixes, generic "
+"names take the directory name, snake→kebab);"
+
+#: flowing.paths:22 of
+msgid "命名格式互转：kebab / snake / Pascal 三格式的双向纯转换 （:func:`kebab_to_snake` 等四个函数）。"
+msgstr ""
+"Naming-format conversion: bidirectional pure conversions among the three "
+"formats kebab / snake / Pascal (:func:`kebab_to_snake` and three other "
+"functions)."
+
+#: flowing.paths:25 of
+msgid "本模块只做字符串与路径运算：不做文件读取、注册表查找或 glob 展开（这些 是调用方职责）；不含资源语义——候选链内容、后缀策略由各资源模块提供。"
+msgstr ""
+"This module only does string and path operations: no file reading, "
+"registry lookup, or glob expansion (those are the caller's "
+"responsibility); it carries no resource semantics — candidate-chain "
+"content and suffix policies are supplied by each resource module."
+
+#: flowing.paths:30 of
+msgid ""
+"路径形态的判定规则（:func:`classify_ref`）：任一资源引用字符串，只要 不含 ``::`` 且含 ``/`` "
+"或反斜杠字符，一律判为路径，以引用方提供的 ``source_dir`` 为基准解析，不再要求必须写 ``./`` 前缀。判定顺序固定： "
+"路径前缀（``./`` / ``../`` / ``@/``）与绝对路径优先；其次含 ``::`` → 看第一个 ``::`` "
+"之前的左段：左段是纯标识符则判限定名（``ns::name``）， 左段含路径特征（含 ``/`` 或以 ``.py`` "
+"结尾）则判路径（``文件::类名`` 形态，如 ``./agents.py::OrderAgent``，完整规则见 "
+":func:`classify_ref`）； 再次含 ``/`` 或反斜杠字符 → 路径；最后才是裸名。"
+msgstr ""
+"Path-form determination rule (:func:`classify_ref`): any resource "
+"reference string, as long as it contains no ``::`` and contains ``/`` or "
+"a backslash character, is classified as a path and resolved against the "
+"``source_dir`` supplied by the referrer; the ``./`` prefix is no longer "
+"required. The determination order is fixed: path prefixes (``./`` / "
+"``../`` / ``@/``) and absolute paths first; then if it contains ``::`` → "
+"look at the left segment before the first ``::``: a pure-identifier left "
+"segment means a qualified name (``ns::name``), a left segment with path "
+"traits (containing ``/`` or ending in ``.py``) means a path (the "
+"``file::ClassName`` form, e.g. ``./agents.py::OrderAgent``; see "
+":func:`classify_ref` for the full rules); next, containing ``/`` or a "
+"backslash character → path; finally, everything else is a bare name."
+
+#: flowing.paths:38 of
+msgid ""
+"因此 ``agents/order-agent`` 这类写法在 Agent 的 ``tools:`` / ``subagents:`` / "
+"``skills:`` 引用中按路径解析，以该 Agent 定义文件 所在目录为 ``source_dir`` 基准。"
+msgstr ""
+"Therefore spellings like ``agents/order-agent`` in an Agent's ``tools:`` "
+"/ ``subagents:`` / ``skills:`` references resolve as paths, with the "
+"directory containing that Agent definition file as the ``source_dir`` "
+"base."
+
+#: flowing.paths:41 of
+msgid ""
+"``@/`` 前缀指向 flowing 子项目目录（工程根）：:func:`resolve_path` 以调用方显式传入的 "
+"``project_root`` 为基准；框架运行期由 :meth:`flowing.runtime.Runtime.resolve_path` "
+"注入（``@`` 上下文按 asyncio Task 隔离——一个进程可同时运行多个 Runtime，互不串扰）。"
+msgstr ""
+"The ``@/`` prefix points at the flowing sub-project directory (project "
+"root): :func:`resolve_path` resolves against the ``project_root`` "
+"explicitly passed by the caller; at framework runtime it is injected by "
+":meth:`flowing.runtime.Runtime.resolve_path` (the ``@`` context is "
+"isolated per asyncio Task — one process can run multiple Runtimes without "
+"cross-interference)."
+
+#: flowing.paths:64 of
+msgid ""
+":mod:`flowing.parser` —— 条目引用的形态分流与别名推断，消费 :func:`classify_ref` / "
+":func:`infer_name`。 :meth:`flowing.runtime.Runtime.resolve_path` —— "
+"运行期入口，注入 ``project_root`` 与 ``source_dir`` 后委托本模块纯函数。"
+msgstr ""
+":mod:`flowing.parser` — form dispatch and alias inference for entry "
+"references, consuming :func:`classify_ref` / :func:`infer_name`. "
+":meth:`flowing.runtime.Runtime.resolve_path` — the runtime entry point; "
+"after injecting ``project_root`` and ``source_dir`` it delegates to this "
+"module's pure functions."
+
+#: flowing.paths.PATH_PREFIXES:1 of
+msgid ""
+"相对路径前缀表：``\"./\"`` （以引用方提供的 ``source_dir`` 为基准）、 ``\"../\"`` "
+"（``source_dir`` 的上级目录，多级 ``\"../../\"`` 逐级向上）、 ``\"@/\"`` （项目根，以调用方传入的 "
+"``project_root`` 为基准）。"
+msgstr ""
+"Relative path prefix table: ``\"./\"`` (resolved against the "
+"``source_dir`` supplied by the referrer), ``\"../\"`` (the parent "
+"directory of ``source_dir``; multi-level ``\"../../\"`` climbs level by "
+"level), ``\"@/\"`` (the project root, resolved against the "
+"``project_root`` passed by the caller)."
+
+#: flowing.paths.PATH_PREFIXES:5 of
+msgid ""
+"绝对路径不在表内，由前导 ``/`` （POSIX；Windows UNC 归一后为 ``//`` 前缀）或 Windows "
+"盘符（``C:/``）另行判定。``~`` 也是合法前缀，永远按 绝对路径触发：``\"~\"`` / ``\"~/...\"`` 经 "
+"``os.path.expanduser`` 展开为 当前用户家目录（POSIX 为 ``$HOME``，Windows 为 "
+"``%USERPROFILE%``）， 之后的处理与绝对路径同规则。``~`` 写法受支持，日常引用推荐用 ``./`` / ``@/`` "
+"或绝对路径，语义更直接。"
+msgstr ""
+"Absolute paths are not in the table and are determined separately by a "
+"leading ``/`` (POSIX; Windows UNC normalizes to a ``//`` prefix) or a "
+"Windows drive letter (``C:/``). ``~`` is also a legal prefix and always "
+"triggers as an absolute path: ``\"~\"`` / ``\"~/...\"`` is expanded via "
+"``os.path.expanduser`` to the current user's home directory (``$HOME`` on "
+"POSIX, ``%USERPROFILE%`` on Windows), after which it follows the same "
+"rules as absolute paths. The ``~`` spelling is supported, but for "
+"everyday references ``./`` / ``@/`` or absolute paths are recommended for "
+"their more direct semantics."
+
+#: flowing.paths.PATH_PREFIXES:12 of
+msgid ""
+"前缀判定中反斜杠与斜杠等价：``\".\\\"`` 视同 ``\"./\"``、``\"..\\\"`` 视同 "
+"``\"../\"``、``\"~\\\"`` 视同 ``\"~/\"`` （多级同理）；实现先做分隔符归一。"
+msgstr ""
+"In prefix determination, backslashes and slashes are equivalent: "
+"``\".\\\"`` is treated as ``\"./\"``, ``\"..\\\"`` as ``\"../\"``, and "
+"``\"~\\\"`` as ``\"~/\"`` (likewise for multiple levels); the "
+"implementation normalizes separators first."
+
+#: flowing.paths.PATH_PREFIXES:15 of
+#, python-brace-format, python-format
+msgid ""
+"本表是全框架路径前缀的唯一权威来源：``parsable`` 的 ``$`` 引用与 ``{% include "
+"%}``、:func:`classify_ref` 的路径形态判定、 "
+":meth:`flowing.runtime.Runtime.resolve_path` 共用本表。"
+msgstr ""
+"This table is the single authoritative source of path prefixes for the "
+"whole framework: ``parsable``'s ``$`` references and ``{% include %}``, "
+":func:`classify_ref`'s path-form determination, and "
+":meth:`flowing.runtime.Runtime.resolve_path` all share this table."
+
+#: flowing.paths.NamingRules:1 of
+msgid "路径形态的身份名推断规则表：机制在 :func:`infer_name`，规则内容由各资源提供。"
+msgstr ""
+"The identity-name inference rule table for the path form: the mechanism "
+"lives in :func:`infer_name`; the rule content is supplied by each "
+"resource."
+
+#: flowing.paths.NamingRules:5 of
+msgid ""
+"本类型只承载「哪些文件名是通用名、按什么顺序剥离后缀」这两张表， 不含推断逻辑。框架内各资源模块在紧邻其候选链声明处定义自己的规则 "
+"常量：Agent 的 ``AGENT_NAMING`` （见 ``flowing.runtime``）、Tool 的 "
+"``TOOL_NAMING`` （见 ``flowing.tool``）、Skill 的 ``SKILL_NAMING`` （见 "
+"``flowing.plugins.skills``）。"
+msgstr ""
+"This type only carries the two tables \"which file names are generic "
+"names\" and \"in what order to strip suffixes\", with no inference logic. "
+"Each resource module in the framework defines its own rule constant right "
+"next to its candidate-chain declaration: the Agent's ``AGENT_NAMING`` "
+"(see ``flowing.runtime``), the Tool's ``TOOL_NAMING`` (see "
+"``flowing.tool``), the Skill's ``SKILL_NAMING`` (see "
+"``flowing.plugins.skills``)."
+
+#: flowing.paths.NamingRules.suffixes:1 of
+msgid "依次尝试剥离的后缀（排在前面的先匹配，如 ``.agent.fya`` 先于 ``.fya``）。"
+msgstr ""
+"Suffixes to try stripping in order (earlier entries match first, e.g. "
+"``.agent.fya`` before ``.fya``)."
+
+#: flowing.paths.NamingRules.generic_names:1 of
+msgid "通用文件名集合：basename 原样命中（未去后缀）时，身份名取所在 目录名。"
+msgstr ""
+"Set of generic file names: when the basename matches verbatim (without "
+"suffix stripping), the identity name takes the containing directory name."
+
+#: flowing.paths.classify_ref:1 of
+msgid "把一个资源引用字符串判为路径 / 限定名 / 裸名三种形态之一。"
+msgstr ""
+"Classifies a resource reference string into one of three forms: path / "
+"qualified name / bare name."
+
+#: flowing.paths.classify_ref:5 of
+msgid "纯词法判定，不做通道选择：本函数只回答「这个字符串长什么样」， 「去哪找」（注册表查找、路径定位）由各注册表与装配层负责。判定 顺序固定："
+msgstr ""
+"Pure lexical determination, no channel selection: this function only "
+"answers \"what does this string look like\"; \"where to find it\" "
+"(registry lookup, path location) is the responsibility of each registry "
+"and the assembly layer. The determination order is fixed:"
+
+#: flowing.paths.classify_ref:9 of
+msgid ""
+"命中 :data:`PATH_PREFIXES` 任一项、前导 ``/`` （绝对路径）、 Windows 盘符（``C:/``）或 ``~`` "
+"形态 → ``\"path\"``——整体视为 路径字符串，内部不再做任何格式解析（路径中出现 ``::`` 只是 路径字符，不参与切分）；"
+msgstr ""
+"Matching any entry of :data:`PATH_PREFIXES`, a leading ``/`` (absolute "
+"path), a Windows drive letter (``C:/``), or the ``~`` form → ``\"path\"`` "
+"— the whole string is treated as a path string with no further format "
+"parsing inside (a ``::`` appearing in a path is just a path character and "
+"does not participate in splitting);"
+
+#: flowing.paths.classify_ref:13 of
+msgid ""
+"含 ``::`` → 看第一个 ``::`` 之前的左段：左段含路径特征（含 ``/`` 或反斜杠，或以 ``.py`` 结尾）→ "
+"``\"path\"`` （``文件::类名`` 形态，如 ``./agents.py::OrderAgent``——多 Agent 子类文件的 "
+"消歧引用；切分与类名选择语义在调用方，见 "
+":meth:`flowing.runtime.Runtime.get_agent_class`）；左段为纯 标识符 → "
+"``\"qualified\"`` （限定名 ``ns::name``，按第一个 ``::`` 切分，见 "
+":func:`flowing.parser.normalize_entries`）；"
+msgstr ""
+"Containing ``::`` → look at the left segment before the first ``::``: a "
+"left segment with path traits (containing ``/`` or a backslash, or ending "
+"in ``.py``) → ``\"path\"`` (the ``file::ClassName`` form, e.g. "
+"``./agents.py::OrderAgent`` — the disambiguating reference for files with "
+"multiple Agent subclasses; splitting and class-name selection semantics "
+"are the caller's, see "
+":meth:`flowing.runtime.Runtime.get_agent_class`); a pure-identifier left "
+"segment → ``\"qualified\"`` (qualified name ``ns::name``, split at the "
+"first ``::``, see :func:`flowing.parser.normalize_entries`);"
+
+#: flowing.paths.classify_ref:20 of
+msgid ""
+"含 ``/`` 或反斜杠字符（且无 ``::``）→ ``\"path\"``——普通相对 路径，解析时以引用方提供的 "
+"``source_dir`` 为基准；"
+msgstr ""
+"Containing ``/`` or a backslash character (and no ``::``) → ``\"path\"`` — "
+"an ordinary relative path, resolved against the ``source_dir`` supplied "
+"by the referrer;"
+
+#: flowing.paths.classify_ref:22 of
+msgid "其余 → ``\"bare\"`` （裸名）。"
+msgstr "Everything else → ``\"bare\"`` (bare name)."
+
+#: flowing.paths.classify_ref:24 of
+msgid "资源引用字符串。"
+msgstr "A resource reference string."
+
+#: flowing.paths.classify_ref:25 of
+msgid "``\"path\"`` / ``\"qualified\"`` / ``\"bare\"`` 之一。"
+msgstr "One of ``\"path\"`` / ``\"qualified\"`` / ``\"bare\"``."
+
+#: flowing.paths.classify_ref:29 of
+msgid ""
+"``a::b::c`` 判为 ``\"qualified\"``：本函数只命名形态，多个 ``::`` "
+"不报错——切分语义在调用方，后续查找必然不命中，由查找层报错。"
+msgstr ""
+"``a::b::c`` is classified as ``\"qualified\"``: this function only names "
+"the form; multiple ``::`` do not error — splitting semantics are the "
+"caller's, the subsequent lookup inevitably misses, and the lookup layer "
+"reports the error."
+
+#: flowing.paths.classify_ref:31 of
+msgid "``a::b/c`` 含 ``::``，判为 ``\"qualified\"`` （不是路径）。"
+msgstr ""
+"``a::b/c`` contains ``::`` and is classified as ``\"qualified\"`` (not a "
+"path)."
+
+#: flowing.paths.classify_ref:32 of
+msgid "裸 ``@`` （不带斜杠）不命中任何路径形态，落入 ``\"bare\"`` （几乎 必为笔误）。"
+msgstr ""
+"A bare ``@`` (without a slash) matches no path form and falls into "
+"``\"bare\"`` (almost certainly a typo)."
+
+#: flowing.paths.classify_ref:34 of
+msgid "本函数不校验裸名 / 限定名的字符集（名称校验在各资源装配层）。"
+msgstr ""
+"This function does not validate the character sets of bare / qualified "
+"names (name validation lives in each resource's assembly layer)."
+
+#: flowing.paths.classify_ref:36 of
+msgid ":func:`resolve_path` —— ``\"path\"`` 形态的实际解析。"
+msgstr ":func:`resolve_path` — actual resolution of the ``\"path\"`` form."
+
+#: flowing.paths.resolve_path:1 of
+msgid "把带前缀的路径字符串解析为 ``pathlib.Path`` （``@/`` / ``./`` / ``../`` / 绝对路径）。"
+msgstr ""
+"Resolves a prefixed path string into a ``pathlib.Path`` (``@/`` / ``./`` "
+"/ ``../`` / absolute path)."
+
+#: flowing.paths.resolve_path:5 of
+msgid ""
+"前缀语义：``@/`` → ``project_root``；``./`` → ``source_dir``； ``../`` → "
+"``source_dir.parent``，多级 ``../../`` 逐级向上；绝对路径 "
+"原样接受。本函数面向「路径形态」的引用：裸名（无前缀、无分隔符） 的查找属注册表 / 装配层，不经本函数。"
+msgstr ""
+"Prefix semantics: ``@/`` → ``project_root``; ``./`` → ``source_dir``; "
+"``../`` → ``source_dir.parent``, with multi-level ``../../`` climbing "
+"level by level; absolute paths are accepted verbatim. This function "
+"targets references in the \"path form\": bare-name (no prefix, no "
+"separator) lookup belongs to the registry / assembly layer and does not "
+"go through this function."
+
+#: flowing.paths.resolve_path:19 of
+msgid ""
+"带前缀的路径字符串（``@/`` / ``./`` / ``../`` / 绝对 路径 / 含 ``/`` 或反斜杠的普通相对路径 / ``~``"
+" 形态）。"
+msgstr ""
+"A prefixed path string (``@/`` / ``./`` / ``../`` / absolute path / "
+"ordinary relative path containing ``/`` or a backslash / ``~`` form)."
+
+#: flowing.paths.resolve_path:21 of
+msgid "``@/`` 前缀的解析基准（项目根）。"
+msgstr "The resolution base for the ``@/`` prefix (project root)."
+
+#: flowing.paths.resolve_path:22 of
+msgid "``./`` / ``../`` 与普通相对路径的解析基准；不提供 时遇到这些形态抛 :class:`ValueError`。"
+msgstr ""
+"The resolution base for ``./`` / ``../`` and ordinary relative paths; "
+"when not provided, encountering these forms raises :class:`ValueError`."
+
+#: flowing.paths.resolve_path:24 of
+msgid "解析出的 ``Path``。解析结果可能越出 ``project_root`` （绝对路径或 ``../`` 逃逸均合法）。"
+msgstr ""
+"The resolved ``Path``. The result may escape ``project_root`` (both "
+"absolute paths and ``../`` escapes are legal)."
+
+#: flowing.paths.resolve_path:29 of
+msgid "前缀判定中反斜杠与斜杠等价（``.\\`` 视同 ``./``、``..\\`` 视同 ``../``，多级同理）；实现先做分隔符归一。"
+msgstr ""
+"In prefix determination, backslashes and slashes are equivalent (``.\\`` "
+"is treated as ``./``, ``..\\`` as ``../``, likewise for multiple levels); "
+"the implementation normalizes separators first."
+
+#: flowing.paths.resolve_path:31 of
+msgid ""
+"``~`` / ``~/...`` 永远按绝对路径触发：经 ``os.path.expanduser`` 展开为当前用户家目录（POSIX "
+"``$HOME`` / Windows ``%USERPROFILE%``）后按绝对路径规则处理。``~`` 写法受支持，日常 引用推荐用 "
+"``./`` / ``@/`` 或绝对路径。"
+msgstr ""
+"``~`` / ``~/...`` always trigger as absolute paths: after expansion via "
+"``os.path.expanduser`` to the current user's home directory (POSIX "
+"``$HOME`` / Windows ``%USERPROFILE%``), they are processed by the "
+"absolute-path rules. The ``~`` spelling is supported, but for everyday "
+"references ``./`` / ``@/`` or absolute paths are recommended."
+
+#: flowing.paths.resolve_path:35 of
+msgid "``@/`` 不带后续路径段表示根目录本身（``@/`` → ``project_root``）。"
+msgstr ""
+"``@/`` with no following path segment denotes the root directory itself "
+"(``@/`` → ``project_root``)."
+
+#: flowing.paths.resolve_path:36 of
+#, python-brace-format, python-format
+msgid ""
+"适用面：仅 flowing 项目资源引用（``.fya`` 的 ``$`` / ``{% include %}``、``tools:`` / "
+"``skills:`` / ``subagents:`` 等 路径字段）；不涉及 flowing "
+"自身配置读取（``providers.yaml`` 等 宿主启动层配置不经本函数解析）。"
+msgstr ""
+"Scope: only flowing project resource references (``.fya``'s ``$`` / "
+"``{% include %}``, path fields such as ``tools:`` / ``skills:`` / "
+"``subagents:``); it does not cover flowing's own configuration reading "
+"(host startup-layer configuration such as ``providers.yaml`` is not "
+"resolved through this function)."
+
+#: flowing.paths.resolve_path:40 of
+msgid "不做存在性检查（解析 ≠ 打开文件）；不做 glob 展开（展开由调用方）。"
+msgstr ""
+"No existence check (resolution ≠ opening a file); no glob expansion "
+"(expansion is the caller's job)."
+
+#: flowing.paths.resolve_path:42 of
+msgid ":func:`to_project_path` —— 逆向的对外表示。"
+msgstr ":func:`to_project_path` — the reverse outward representation."
+
+#: flowing.paths.to_project_path:1 of
+msgid "把 ``Path`` 转换为对外表示：项目根内用 ``@/`` 相对形式，根外保留绝对路径。"
+msgstr ""
+"Converts a ``Path`` to its outward representation: the ``@/`` relative "
+"form inside the project root, the absolute path kept outside the root."
+
+#: flowing.paths.to_project_path:3 of
+msgid "要表示的路径。"
+msgstr "The path to represent."
+
+#: flowing.paths.to_project_path:4 of
+msgid "项目根，用于判定内外与计算相对路径。"
+msgstr ""
+"The project root, used to determine inside/outside and to compute "
+"relative paths."
+
+#: flowing.paths.to_project_path:5 of
+msgid ""
+"``path`` 位于 ``project_root`` 内时返回 ``\"@/\"`` 加相对 路径（等于根本身时返回 "
+"``\"@/\"``）；位于根外时返回绝对路径 字符串原样。"
+msgstr ""
+"Returns ``\"@/\"`` plus the relative path when ``path`` is inside "
+"``project_root`` (returns ``\"@/\"`` when it equals the root itself); "
+"returns the absolute path string verbatim when outside the root."
+
+#: flowing.paths.to_project_path:11 of
+msgid ""
+"对象（消息 / 快照 / 日志 / 错误文本）中的路径字段统一经本函数 表示：项目内容用根相对形式（跨机共享语义只对项目内容成立）， "
+"宿主环境路径如实呈现。"
+msgstr ""
+"Path fields in objects (messages / snapshots / logs / error text) are "
+"uniformly represented via this function: project content uses the "
+"root-relative form (cross-machine sharing semantics only hold for project "
+"content); host-environment paths are presented as-is."
+
+#: flowing.paths.to_project_path:14 of
+msgid "不做符号链接解析（``resolve()``），按纯路径分量判断内外；根外 不做 ``../`` 相对化。"
+msgstr ""
+"No symlink resolution (``resolve()``); inside/outside is determined by "
+"pure path components; no ``../`` relativization for paths outside the "
+"root."
+
+#: flowing.paths.to_project_path:17 of
+msgid ":func:`resolve_path` —— 正向解析。"
+msgstr ":func:`resolve_path` — the forward resolution."
+
+#: flowing.paths.probe_candidates:1 of
+msgid "按候选名列表逐个探测存在性，返回首个命中者的完整路径；全部未命中返回 ``None``。"
+msgstr ""
+"Probes existence one by one against a candidate-name list and returns the "
+"full path of the first hit; returns ``None`` when nothing hits."
+
+#: flowing.paths.probe_candidates:5 of
+msgid ""
+"框架内三资源（Agent / Tool / Skill）的目录形态定向查找链共用本 函数做探测循环：候选名及其顺序是各资源的规则，由调用方构造并 "
+"传入（如 Agent 的 ``AGENT.fya > agent.fya > ...``、Tool 的 ``TOOL.fya > "
+"...``）；本函数只做「按传入顺序逐个检查 ``base_dir`` 下是否存在，首个命中返回」。"
+msgstr ""
+"The directed lookup chains of the three in-framework resources (Agent / "
+"Tool / Skill) in directory form share this function as their probing "
+"loop: the candidate names and their order are each resource's rule, "
+"constructed and passed in by the caller (e.g. the Agent's ``AGENT.fya > "
+"agent.fya > ...``, the Tool's ``TOOL.fya > ...``); this function only "
+"\"checks one by one, in the given order, whether each candidate exists "
+"under ``base_dir``, returning the first hit\"."
+
+#: flowing.paths.probe_candidates:11 of
+msgid "候选名相对的基准目录。"
+msgstr "The base directory the candidate names are relative to."
+
+#: flowing.paths.probe_candidates:12 of
+msgid "候选文件名列表（相对 ``base_dir``），顺序即 优先级。"
+msgstr ""
+"List of candidate file names (relative to ``base_dir``); order is "
+"priority."
+
+#: flowing.paths.probe_candidates:14 of
+msgid "首个存在者的完整路径；全部未命中返回 ``None`` （不报错， 「不命中」的处置是调用方职责）。"
+msgstr ""
+"The full path of the first existing candidate; returns ``None`` when "
+"nothing hits (no error — handling \"no hit\" is the caller's "
+"responsibility)."
+
+#: flowing.paths.probe_candidates:19 of
+msgid "不区分文件 / 目录形态：候选名本身由调用方决定（如 ``TOOL.fya`` 或 ``payment.tool.fya``）。"
+msgstr ""
+"Does not distinguish file / directory forms: the candidate names "
+"themselves are decided by the caller (e.g. ``TOOL.fya`` or "
+"``payment.tool.fya``)."
+
+#: flowing.paths.probe_candidates:21 of
+msgid "不做并存告警：同名 ``.fya`` / ``.py`` 并存检测在调用方。"
+msgstr ""
+"No coexistence warning: detecting same-name ``.fya`` / ``.py`` "
+"coexistence is the caller's job."
+
+#: flowing.paths.probe_candidates:23 of
+msgid ":func:`infer_name` —— 命中后的身份名推断。"
+msgstr ":func:`infer_name` — identity-name inference after a hit."
+
+#: flowing.paths.infer_name:1 of
+msgid "从文件或目录路径推断规范身份名（kebab-case）。"
+msgstr "Infers the canonical identity name (kebab-case) from a file or directory path."
+
+#: flowing.paths.infer_name:5 of
+msgid "推断顺序（首个命中者生效）："
+msgstr "Inference order (first match wins):"
+
+#: flowing.paths.infer_name:7 of
+msgid ""
+"basename 命中 ``naming.generic_names`` → 取所在目录名（如 ``agents/order-"
+"agent/agent.fya`` → ``order-agent``）；"
+msgstr ""
+"basename matches ``naming.generic_names`` → take the containing directory "
+"name (e.g. ``agents/order-agent/agent.fya`` → ``order-agent``);"
+
+#: flowing.paths.infer_name:9 of
+msgid ""
+"否则按 ``naming.suffixes`` 顺序剥离首个匹配后缀，取剩余部分 （如 ``pay_agent.py`` → "
+"``pay_agent``）；"
+msgstr ""
+"otherwise strip the first matching suffix in ``naming.suffixes`` order "
+"and take the remainder (e.g. ``pay_agent.py`` → ``pay_agent``);"
+
+#: flowing.paths.infer_name:11 of
+msgid ""
+"把 ``_`` 替换为 ``-`` 并按 kebab-case 规则校验（``pay_agent`` → ``pay-agent``；与 "
+":func:`snake_to_kebab` 的转换规则一致， 但不要求输入是 snake 形态）。"
+msgstr ""
+"Replace ``_`` with ``-`` and validate by the kebab-case rules "
+"(``pay_agent`` → ``pay-agent``; same conversion rules as "
+":func:`snake_to_kebab`, but the input is not required to be in snake "
+"form)."
+
+#: flowing.paths.infer_name:15 of
+msgid "目录形态传入目录路径本身即可（basename 即目录名，无后缀可剥）。"
+msgstr ""
+"For the directory form, just pass the directory path itself (the basename "
+"is the directory name, with no suffix to strip)."
+
+#: flowing.paths.infer_name:17 of
+msgid "文件或目录路径。"
+msgstr "A file or directory path."
+
+#: flowing.paths.infer_name:18 of
+msgid "规则表（:class:`NamingRules`）。"
+msgstr "The rule table (:class:`NamingRules`)."
+
+#: flowing.paths.infer_name:19 of
+msgid "规范身份名（kebab-case）。"
+msgstr "The canonical identity name (kebab-case)."
+
+#: flowing.paths.infer_name:20 of
+msgid "剥离后为空串（如文件全名恰为 后缀），或结果不是合法 kebab-case 名时。"
+msgstr ""
+"Raised when stripping yields an empty string (e.g. the full file name is "
+"exactly a suffix), or the result is not a legal kebab-case name."
+
+#: flowing.paths.infer_name:25 of
+msgid "不做存在性检查（纯字符串运算）。"
+msgstr "No existence check (pure string operations)."
+
+#: flowing.paths.infer_name:26 of
+msgid "不判断路径形态：调用方先经 :func:`classify_ref` 判别为路径形态 后再调用。"
+msgstr ""
+"Does not determine the path form: the caller must first classify it as "
+"the path form via :func:`classify_ref` before calling this."
+
+#: flowing.paths.infer_name:29 of
+msgid ""
+":class:`NamingRules` —— 规则表；显式 ``as`` 别名优先 于本推断（``split_as`` 见 "
+":func:`flowing.parser.split_as`）。"
+msgstr ""
+":class:`NamingRules` — the rule table; an explicit ``as`` alias takes "
+"priority over this inference (``split_as``: see "
+":func:`flowing.parser.split_as`)."
+
+#: flowing.paths.kebab_to_snake:1 of
+msgid "kebab-case → snake_case（``payment-agent`` → ``payment_agent``）。"
+msgstr "kebab-case → snake_case (``payment-agent`` → ``payment_agent``)."
+
+#: flowing.paths.kebab_to_pascal:3 flowing.paths.kebab_to_snake:3 of
+msgid "待转换的 kebab-case 名。"
+msgstr "The kebab-case name to convert."
+
+#: flowing.paths.kebab_to_pascal:4 flowing.paths.kebab_to_snake:4
+#: flowing.paths.pascal_to_kebab:5 flowing.paths.snake_to_kebab:4 of
+msgid "转换结果。"
+msgstr "The conversion result."
+
+#: flowing.paths.kebab_to_snake:5 of
+msgid "输入不是合法 kebab-case（小写 字母数字、单连字符分段）时——本函数同时是 kebab 名称校验的兜底。"
+msgstr ""
+"Raised when the input is not legal kebab-case (lowercase alphanumeric, "
+"segments joined by single hyphens) — this function doubles as the "
+"backstop for kebab-name validation."
+
+#: flowing.paths.kebab_to_snake:10 of
+msgid "转换为机械替换（``-`` → ``_``），无其它规则。"
+msgstr "The conversion is a mechanical replacement (``-`` → ``_``); no other rules."
+
+#: flowing.paths.kebab_to_snake:12 of
+msgid ":func:`snake_to_kebab` —— 逆转换。"
+msgstr ":func:`snake_to_kebab` — the inverse conversion."
+
+#: flowing.paths.snake_to_kebab:1 of
+msgid "snake_case → kebab-case（``payment_agent`` → ``payment-agent``）。"
+msgstr "snake_case → kebab-case (``payment_agent`` → ``payment-agent``)."
+
+#: flowing.paths.snake_to_kebab:3 of
+msgid "待转换的 snake_case 名。"
+msgstr "The snake_case name to convert."
+
+#: flowing.paths.snake_to_kebab:5 of
+msgid "输入不是小写 snake_case（小写 字母数字、单下划线分段）时。"
+msgstr ""
+"Raised when the input is not lowercase snake_case (lowercase "
+"alphanumeric, segments joined by single underscores)."
+
+#: flowing.paths.snake_to_kebab:10 of
+msgid "转换为机械替换（``_`` → ``-``），无其它规则。"
+msgstr "The conversion is a mechanical replacement (``_`` → ``-``); no other rules."
+
+#: flowing.paths.snake_to_kebab:12 of
+msgid ":func:`kebab_to_snake` —— 逆转换。"
+msgstr ":func:`kebab_to_snake` — the inverse conversion."
+
+#: flowing.paths.kebab_to_pascal:1 of
+msgid "kebab-case → PascalCase（``payment-agent`` → ``PaymentAgent``）。"
+msgstr "kebab-case → PascalCase (``payment-agent`` → ``PaymentAgent``)."
+
+#: flowing.paths.kebab_to_pascal:5 of
+msgid "输入不是合法 kebab-case 时 （校验规则与 :func:`kebab_to_snake` 相同）。"
+msgstr ""
+"Raised when the input is not legal kebab-case (same validation rules as "
+":func:`kebab_to_snake`)."
+
+#: flowing.paths.kebab_to_pascal:10 of
+msgid ""
+"纯格式转换，不叠加资源后缀策略：「类名始终以 ``Agent`` 结尾」等 规则由资源装配层在本函数结果上叠加 / 校验（如 "
+"``flowing.compiler`` 的 ``class_name`` 推断：``pay`` → ``PayAgent`` 的补后缀发生在 "
+"装配层，不在本函数）。"
+msgstr ""
+"Pure format conversion, with no resource-suffix policy layered on: rules "
+"like \"class names always end in ``Agent``\" are layered on / validated by "
+"the resource assembly layer on top of this function's result (e.g. "
+"``flowing.compiler``'s ``class_name`` inference: the suffix completion of "
+"``pay`` → ``PayAgent`` happens in the assembly layer, not in this "
+"function)."
+
+#: flowing.paths.kebab_to_pascal:15 of
+msgid ":func:`pascal_to_kebab` —— 逆转换。"
+msgstr ":func:`pascal_to_kebab` — the inverse conversion."
+
+#: flowing.paths.pascal_to_kebab:1 of
+msgid "PascalCase → kebab-case（``PaymentAgent`` → ``payment-agent``）。"
+msgstr "PascalCase → kebab-case (``PaymentAgent`` → ``payment-agent``)."
+
+#: flowing.paths.pascal_to_kebab:3 of
+msgid "待转换的 PascalCase 名（首字符为大写字母，不含 ``-`` / ``_`` / 空白）。"
+msgstr ""
+"The PascalCase name to convert (first character an uppercase letter, no "
+"``-`` / ``_`` / whitespace)."
+
+#: flowing.paths.pascal_to_kebab:6 of
+msgid "输入不是合法 PascalCase 时。"
+msgstr "Raised when the input is not legal PascalCase."
+
+#: flowing.paths.pascal_to_kebab:10 of
+msgid ""
+"词边界规则：小写或数字 → 大写处切分；连续大写串（缩写词）在 「大写 → 大写小写」的收尾处切分——``HTTPClient`` → "
+"``http-client``，``PayAgent`` → ``pay-agent``。"
+msgstr ""
+"Word-boundary rule: split at lowercase-or-digit → uppercase transitions; "
+"a run of consecutive uppercase letters (an acronym) is split at the tail "
+"of the \"uppercase → uppercase-lowercase\" boundary — ``HTTPClient`` → "
+"``http-client``, ``PayAgent`` → ``pay-agent``."
+
+#: flowing.paths.pascal_to_kebab:13 of
+msgid "纯格式转换，不去除任何资源后缀：``PayAgent`` 转出 ``pay-agent``， 含 ``agent`` 段（后缀语义属资源层）。"
+msgstr ""
+"Pure format conversion; no resource suffix is removed: ``PayAgent`` "
+"converts to ``pay-agent``, retaining the ``agent`` segment (suffix "
+"semantics belong to the resource layer)."
+
+#: flowing.paths.pascal_to_kebab:16 of
+msgid ":func:`kebab_to_pascal` —— 逆转换。"
+msgstr ":func:`kebab_to_pascal` — the inverse conversion."
+
+#: flowing.paths.path_to_module_name:1 of
+msgid "把文件路径换算为确定性的动态加载模块名（内部 API，不属稳定契约）。"
+msgstr ""
+"Converts a file path into a deterministic dynamically-loaded module name "
+"(internal API, not part of the stable contract)."
+
+#: flowing.paths.path_to_module_name:3 of
+msgid ""
+"表示风格与 :func:`to_project_path` 一致：``project_root`` 非 ``None`` 且在根内 → "
+"``@/`` 根相对形式；根外或 ``project_root=None`` → 绝对 路径原样。随后把非标点字符（``\\w`` "
+"之外，即分隔符与标点）清洗为 ``_``、去首尾 ``_``，拼上 ``prefix`` 返回——``\\w`` 在 str 正则下 "
+"Unicode 感知，中文等 Unicode 字母原样保留（``@/工具/搜索.py`` → ``工具_搜索_py``）。供 "
+"``importlib`` 动态加载 （``spec_from_file_location``）的模块命名共用（Agent / Tool 的文件 "
+"通道加载点）。"
+msgstr ""
+"The representation style matches :func:`to_project_path`: "
+"``project_root`` is not ``None`` and the path is inside the root → the "
+"``@/`` root-relative form; outside the root or ``project_root=None`` → "
+"the absolute path verbatim. Then non-word characters (everything outside "
+"``\\w``, i.e. separators and punctuation) are cleaned into ``_``, leading "
+"and trailing ``_`` are stripped, and ``prefix`` is prepended before "
+"returning — ``\\w`` under str regex is Unicode-aware, so Unicode letters "
+"such as CJK characters are kept verbatim (``@/工具/搜索.py`` → "
+"``工具_搜索_py``). Shared for module naming by ``importlib`` dynamic "
+"loading (``spec_from_file_location``) at the file-channel load points of "
+"Agent / Tool."
+
+#: flowing.paths.path_to_module_name:12 of
+msgid "源文件路径。"
+msgstr "The source file path."
+
+#: flowing.paths.path_to_module_name:13 of
+msgid "项目根（决定 ``@/`` 相对表示；``None`` → 绝对 路径表示）。"
+msgstr ""
+"The project root (decides the ``@/`` relative representation; ``None`` → "
+"absolute-path representation)."
+
+#: flowing.paths.path_to_module_name:15 of
+msgid "模块名前缀（如 ``\"flowing_agent_file_\"``）。"
+msgstr "Module-name prefix (e.g. ``\"flowing_agent_file_\"``)."
+
+#: flowing.paths.path_to_module_name:16 of
+msgid "确定性模块名（同路径同名，跨进程稳定）。"
+msgstr ""
+"A deterministic module name (same path → same name, stable across "
+"processes)."
+
+#: flowing.paths.path_to_module_name:20 of
+msgid ""
+"相对 ``hash()`` 命名的取舍：确定性、跨进程稳定、人眼可辨（排查 ``__module__`` "
+"时直接看出源文件）；清洗是有损的（``@/a/b.py`` → ``a_b_py``），不同路径清洗后同名理论上可能（如 ``a-b.py`` 与"
+" ``a/b_py``），但碰撞形态可诊断，且模块名只作标签（动态加载不进 ``sys.modules``）。"
+msgstr ""
+"Trade-off versus ``hash()``-based naming: deterministic, stable across "
+"processes, and human-recognizable (the source file is directly visible "
+"when inspecting ``__module__``); the cleaning is lossy (``@/a/b.py`` → "
+"``a_b_py``), so different paths could theoretically collide after "
+"cleaning (e.g. ``a-b.py`` vs ``a/b_py``), but collision forms are "
+"diagnosable, and the module name is only a label (dynamic loading does "
+"not enter ``sys.modules``)."
+
+#: flowing.paths.path_to_module_name:26 of
+msgid ":func:`to_project_path` —— 表示风格的来源。"
+msgstr ":func:`to_project_path` — the source of the representation style."
+
+#: ../../api/flowing.rst:121
+msgid "flowing.persistence module"
+msgstr "flowing.persistence module"
+
+#: flowing.persistence:1 of
+msgid "``flowing.persistence`` —— 持久化机制层：记录落盘、重放与状态袋视图。"
+msgstr ""
+"``flowing.persistence`` — the persistence mechanism layer: record "
+"flushing, replay, and the state-bag view."
+
+#: flowing.persistence:5 of
+msgid "本模块承载 Flowing 全部「记录落盘」机制，三个成员："
+msgstr ""
+"This module hosts all of Flowing's \"record-to-disk\" mechanisms, with "
+"three members:"
+
+#: flowing.persistence:7 of
+msgid ""
+":class:`RecordStore` —— 持久化后端契约（五个动词：``submit`` / ``replay`` / ``drain`` "
+"/ ``close`` / ``sync``）。类型层 Protocol， 零运行成本；未来接入非文件后端（数据库等）时实现同一 Protocol"
+" 即可。"
+msgstr ""
+":class:`RecordStore` — the persistence backend contract (five verbs: "
+"``submit`` / ``replay`` / ``drain`` / ``close`` / ``sync``). A type-level "
+"Protocol with zero runtime cost; to plug in a non-file backend (e.g. a "
+"database) in the future, just implement the same Protocol."
+
+#: flowing.persistence:10 of
+msgid ""
+":class:`FileRecordStore` —— 文件系实现：一行一条 JSON 记录（jsonl）， write-behind "
+"落盘（提交同步排队、写入由唯一后台任务异步执行）。"
+msgstr ""
+":class:`FileRecordStore` — the file-based implementation: one JSON record "
+"per line (jsonl), write-behind flushing (submission enqueues "
+"synchronously; writing is executed asynchronously by a single background "
+"task)."
+
+#: flowing.persistence:12 of
+msgid ""
+":class:`StateView` —— 状态袋视图：属性式 / 字典式访问，写透到落盘 后端；经 "
+"``flowing.agent.Agent.state`` （默认袋）、 "
+"``flowing.agent.Agent.register_state`` （命名袋）与 "
+"``flowing.runtime.Runtime.register_state`` / ``Runtime.states`` "
+"（全局命名空间）暴露。"
+msgstr ""
+":class:`StateView` — the state-bag view: attribute-style / dict-style "
+"access, write-through to the on-disk backend; exposed via "
+"``flowing.agent.Agent.state`` (default bag), "
+"``flowing.agent.Agent.register_state`` (named bags), and "
+"``flowing.runtime.Runtime.register_state`` / ``Runtime.states`` (global "
+"namespaces)."
+
+#: flowing.persistence:18 of
+msgid ""
+"服务的文件：每 Agent session 目录的 ``tree.jsonl`` （消息行 + 变更记录 行）与 ``state.jsonl`` "
+"（状态 set/delete 行）；Runtime 持久化根的 ``<namespace>.jsonl`` （全局命名空间状态）。一个文件一个 "
+"``FileRecordStore`` 实例，实例归属该文件的属主（Agent / Runtime）。"
+msgstr ""
+"Files served: each Agent session directory's ``tree.jsonl`` (message "
+"lines + change-record lines) and ``state.jsonl`` (state set/delete "
+"lines); the Runtime persistence root's ``<namespace>.jsonl`` (global "
+"namespace state). One ``FileRecordStore`` instance per file, owned by "
+"that file's owner (Agent / Runtime)."
+
+#: flowing.persistence:23 of
+#, python-brace-format
+msgid ""
+"文件格式契约（jsonl）：每个文件第一行恒为元数据记录 ``{\"type\": \"meta\", \"format_version\": "
+"<int>}``，之后每行一条 JSON 记录。 ``tree.jsonl`` 的消息行与变更记录行格式由 "
+":mod:`flowing.message` （``flowing.message.to_record`` / ``MessageChain`` "
+"五 op）定义；``state.jsonl`` 与 ``<namespace>.jsonl`` 的状态行格式由 "
+":class:`StateView` 定义 （``{\"op\": \"set\", \"key\": ..., \"value\": "
+"...}`` / ``{\"op\": \"delete\", \"key\": ...}``）。"
+msgstr ""
+"File format contract (jsonl): the first line of every file is always a "
+"metadata record ``{\"type\": \"meta\", \"format_version\": <int>}``, "
+"followed by one JSON record per line. The message-line and change-record "
+"line formats of ``tree.jsonl`` are defined by :mod:`flowing.message` "
+"(``flowing.message.to_record`` / the five ``MessageChain`` ops); the "
+"state-line format of ``state.jsonl`` and ``<namespace>.jsonl`` is defined "
+"by :class:`StateView` (``{\"op\": \"set\", \"key\": ..., \"value\": ...}`` "
+"/ ``{\"op\": \"delete\", \"key\": ...}``)."
+
+#: flowing.persistence:45 of
+msgid ""
+"提交返回不代表已写盘（write-behind）：``submit`` 只把记录排入内存 "
+"队列并立即返回；真正写入文件由唯一的后台任务异步执行。正常关闭 （``close()``）时会先把未写盘的内容写完再结束。崩溃窗口 = 已提交 "
+"未写入的尾部记录（正常为毫秒级）；窗口内丢失不破坏一致性——内存是 权威，崩溃后权威同灭，重放恢复到的状态自洽（如同丢失的操作从未 发生）。"
+msgstr ""
+"A submission returning does not mean it has been written to disk "
+"(write-behind): ``submit`` only enqueues the record into an in-memory "
+"queue and returns immediately; the actual file write is executed "
+"asynchronously by the single background task. On a normal shutdown "
+"(``close()``), unwritten content is flushed before finishing. Crash "
+"window = submitted-but-unwritten tail records (normally milliseconds); "
+"loss within the window does not break consistency — memory is the "
+"authority, and after a crash the authority perishes with it, so the state "
+"recovered by replay is self-consistent (as if the lost operations never "
+"happened)."
+
+#: flowing.persistence:51 of
+msgid ""
+"排空屏障钉死在两个位置：属主收尾（Agent ``destroy`` / Runtime ``shutdown``）前 ``close()`` "
+"（内含排空）；任何整文件重写（``sync`` 请求、压缩）之前——压缩统一由后台任务在队列见底处执行，天然满足 此前提。"
+msgstr ""
+"Drain barriers are pinned at two positions: ``close()`` (which includes a "
+"drain) before owner finalization (Agent ``destroy`` / Runtime "
+"``shutdown``); and before any whole-file rewrite (``sync`` request, "
+"compaction) — compaction is uniformly executed by the background task at "
+"the queue's bottom, satisfying this precondition by construction."
+
+#: flowing.persistence:55 of
+msgid ""
+"poison = fail fast：写入过程中首次落盘失败（磁盘满 / 权限 / 序列化 错误）后，store 进入 poison "
+"态并记住该异常；此后任何 ``submit`` 同步重抛同一异常——沉默接受会造成内存与文件永久分叉且无人知晓， 必须让错误在操作现场爆出。"
+msgstr ""
+"poison = fail fast: after the first write failure during flushing (disk "
+"full / permission / serialization error), the store enters the poison "
+"state and remembers that exception; any subsequent ``submit`` "
+"synchronously re-raises the same exception — silently accepting would "
+"permanently diverge memory from file with nobody noticing, so the error "
+"must surface at the operation site."
+
+#: flowing.persistence:59 of
+msgid ""
+"版本与迁移：文件版本号是文件级而非记录级。重放时版本低于当前 → 经迁移链逐段升级到当前格式（未登记迁移函数的段，记录原样通过）； 版本高于当前 "
+"→ 抛 :class:`flowing.errors.FormatVersionError` （文件比框架新，静默读是数据风险）。迁移完成后文件借"
+" ``sync`` 原子重写为新版本（一次性动作）。无版本首行的存量文件按版本 0 处理，走同一迁移链。"
+msgstr ""
+"Versioning and migration: the file version number is file-level, not "
+"record-level. During replay, a version lower than the current one → "
+"upgraded segment by segment through the migration chain to the current "
+"format (segments without a registered migration function pass records "
+"through verbatim); a version higher than the current one → raises "
+":class:`flowing.errors.FormatVersionError` (the file is newer than the "
+"framework; silently reading it is a data risk). After migration "
+"completes, the file is atomically rewritten to the new version via "
+"``sync`` (a one-time action). Legacy files without a version header line "
+"are treated as version 0 and go through the same migration chain."
+
+#: flowing.persistence:65 of
+msgid ""
+"容错：撕裂末行（崩溃半截写产物，无换行结尾）截断丢弃；中间行 JSON 损坏抛 "
+":class:`flowing.errors.CorruptionError` （数据事故，报警不 容忍）。"
+msgstr ""
+"Fault tolerance: a torn last line (a half-written product of a crash, "
+"with no trailing newline) is truncated and discarded; corrupted JSON in a "
+"middle line raises :class:`flowing.errors.CorruptionError` (a data "
+"accident — alarms, no tolerance)."
+
+#: flowing.persistence:68 of
+msgid "维护对调用方透明：末行合并、墓碑压缩与状态全量压缩都不会改变任何 逻辑内容，重放结果永远等于「全部操作的顺序重放结果」。"
+msgstr ""
+"Maintenance is transparent to callers: last-line merge, tombstone "
+"compaction, and full state compaction never change any logical content; "
+"the replay result always equals \"the in-order replay result of all "
+"operations\"."
+
+#: flowing.persistence:70 of
+msgid "末行合并（``state.jsonl`` 开、``tree.jsonl`` 关）：同 key 连续写就 地重写末行，文件大小不随写入次数增长。"
+msgstr ""
+"Last-line merge (on for ``state.jsonl``, off for ``tree.jsonl``): "
+"consecutive writes to the same key rewrite the last line in place, so "
+"file size does not grow with the number of writes."
+
+#: flowing.persistence:72 of
+msgid ""
+"墓碑压缩（仅 ``tree.jsonl``）：删除标记行（tombstone）累积到阈值 （默认 "
+"256）后整文件原子重写，物理清除墓碑行与被标记删除的消息行。"
+msgstr ""
+"Tombstone compaction (``tree.jsonl`` only): when deletion-marker lines "
+"(tombstones) accumulate to the threshold (default 256), the whole file is "
+"atomically rewritten, physically removing tombstone lines and the message "
+"lines marked as deleted."
+
+#: flowing.persistence:74 of
+msgid "状态全量压缩：状态文件行数超阈值或属主收尾 / 恢复重放后整文件原子 重写。"
+msgstr ""
+"Full state compaction: when the state file's line count exceeds the "
+"threshold, or after owner finalization / recovery replay, the whole file "
+"is atomically rewritten."
+
+#: flowing.persistence:76 of
+msgid ""
+"恢复 = 重放重建：进程重启后内存为空，文件是唯一事实来源——重放 记录序列即可重建出与崩溃前一致的对象状态（消息树经 "
+"``tree.jsonl``、 状态经 ``state.jsonl`` / ``<namespace>.jsonl``）。TurnContext "
+"不落盘， 恢复时不存在「半截回合」。"
+msgstr ""
+"Recovery = replay-based rebuilding: after a process restart, memory is "
+"empty and the files are the sole source of truth — replaying the record "
+"sequence rebuilds object state identical to that before the crash (the "
+"message tree via ``tree.jsonl``, state via ``state.jsonl`` / "
+"``<namespace>.jsonl``). TurnContext is not persisted, so there is no "
+"\"half-finished turn\" at recovery time."
+
+#: flowing.persistence:80 of
+msgid "跨实例无顺序承诺：不同文件（跨 Agent / 跨命名空间）之间没有写入 顺序承诺；同一文件内的记录按提交顺序落盘。"
+msgstr ""
+"No ordering guarantee across instances: there is no write-ordering "
+"guarantee between different files (across Agents / across namespaces); "
+"records within the same file are flushed in submission order."
+
+#: flowing.persistence:85 of
+msgid ""
+":class:`flowing.agent.Agent` —— tree/state 两 store 的属主。 "
+":class:`flowing.runtime.Runtime` —— 全局命名空间 store 的属主。 "
+":class:`flowing.message.MessageChain` —— 变更记录行（tombstone / update / move "
+"/ 邻接调整）的产生者。 :mod:`flowing.errors` —— ``FormatVersionError`` / "
+"``CorruptionError``。"
+msgstr ""
+":class:`flowing.agent.Agent` — owner of the tree/state stores. "
+":class:`flowing.runtime.Runtime` — owner of the global-namespace store. "
+":class:`flowing.message.MessageChain` — producer of the change-record "
+"lines (tombstone / update / move / adjacency adjustment). "
+":mod:`flowing.errors` — ``FormatVersionError`` / ``CorruptionError``."
+
+#: flowing.persistence.FORMAT_VERSION:1 of
+msgid "当前 jsonl 行格式版本号。"
+msgstr "The current jsonl line-format version number."
+
+#: flowing.persistence.FORMAT_VERSION:3 of
+#, python-brace-format
+msgid ""
+"每个持久化文件的首行恒为 ``{\"type\": \"meta\", \"format_version\": FORMAT_VERSION}``"
+" （新建 / 整文件重写时写入）；无版本首行的存量文件按版本 0 处理。行格式 变更 = 本常量 +1，并在 :data:`MIGRATIONS`"
+" 登记一段相邻版本迁移函数。"
+msgstr ""
+"The first line of every persistence file is always ``{\"type\": \"meta\", "
+"\"format_version\": FORMAT_VERSION}`` (written on creation / whole-file "
+"rewrite); legacy files without a version header line are treated as "
+"version 0. A line-format change = this constant +1, plus registering an "
+"adjacent-version migration function in :data:`MIGRATIONS`."
+
+#: flowing.persistence.MIGRATIONS:1 of
+msgid ""
+"迁移链：``MIGRATIONS[v]`` = v → v+1 的相邻版本迁移函数（输入旧版本 "
+"记录序列，输出新版本记录序列）；``replay`` 从文件版本起逐段串联升级至 :data:`FORMAT_VERSION`。当前为空表（v1 "
+"即现状，无待迁移版本）。"
+msgstr ""
+"Migration chain: ``MIGRATIONS[v]`` = the adjacent-version migration "
+"function from v → v+1 (takes an old-version record sequence, outputs a "
+"new-version record sequence); ``replay`` chains segment by segment from "
+"the file version up to :data:`FORMAT_VERSION`. Currently an empty table "
+"(v1 is the status quo; no versions awaiting migration)."
+
+#: flowing.persistence.RecordStore:1 of
+msgid "持久化后端契约（五动词）——类型层 Protocol，零运行成本。"
+msgstr ""
+"The persistence backend contract (five verbs) — a type-level Protocol "
+"with zero runtime cost."
+
+#: flowing.persistence.RecordStore:5 of
+msgid ""
+"任何后端（本模块的 :class:`FileRecordStore`，或未来的数据库后端）兑现 这五个动词即可替换接入：``submit`` "
+"（同步提交一条记录）、``replay`` （实例方法，按写入序逐条吐记录）、``drain`` （排空屏障）、``close`` （排空 + "
+"停写任务）、``sync`` （请求整文件原子重写为给定终态记录）。 契约把「Agent / Runtime "
+"依赖后端的面」显性化：两侧对后端的全部依赖 就这五个方法 + 「记录是 dict」的约定。物理布局（append / 末行合并 / "
+"压缩机制）是各后端的实现细节，不进本契约——但各动词的语义承诺（如 ``sync`` 的原子性）各后端必须兑现。"
+msgstr ""
+"Any backend (this module's :class:`FileRecordStore`, or a future database "
+"backend) that honors these five verbs can be plugged in "
+"interchangeably: ``submit`` (synchronously submit one record), ``replay`` "
+"(an instance method, yielding records one by one in write order), "
+"``drain`` (drain barrier), ``close`` (drain + stop the write task), "
+"``sync`` (request an atomic whole-file rewrite to a given final record "
+"sequence). The contract makes explicit \"the surface on which Agent / "
+"Runtime depend on the backend\": both sides' entire dependence on the "
+"backend is these five methods plus the convention that \"a record is a "
+"dict\". Physical layout (append / last-line merge / compaction mechanism) "
+"is each backend's implementation detail and stays out of this contract — "
+"but each verb's semantic promises (e.g. the atomicity of ``sync``) must "
+"be honored by every backend."
+
+#: flowing.persistence.RecordStore:16 of
+msgid "兑现模块 docstring 的持久化契约（排队语义 / 两个排空屏障点 / poison 重抛）。"
+msgstr ""
+"Honor the persistence contract in the module docstring (queueing "
+"semantics / the two drain-barrier points / poison re-raise)."
+
+#: flowing.persistence.RecordStore:18 of
+#, python-brace-format
+msgid ""
+"``replay`` 按写入顺序产出；遇撕裂末行（尾部不完整 JSON 行）截断 丢弃、不报错。首行 ``{\"type\": \"meta\","
+" \"format_version\": ...}`` 元数据记录不产出给调用方——版本判读与低版本迁移在 ``replay`` 内部 "
+"完成，调用方拿到的永远是当前版本的记录序列。"
+msgstr ""
+"``replay`` yields records in write order; a torn last line (an incomplete "
+"JSON line at the tail) is truncated and discarded without error. The "
+"first-line ``{\"type\": \"meta\", \"format_version\": ...}`` metadata "
+"record is not yielded to the caller — version interpretation and "
+"lower-version migration are completed inside ``replay``, and the caller "
+"always receives a record sequence at the current version."
+
+#: flowing.persistence.RecordStore:22 of
+msgid ""
+"``sync`` 语义承诺：重写完成后存储内容 = 给定终态记录序列；过程原子 （任何时刻观察者只见旧内容或新内容，无半重写状态）；生效时机同排队"
+" 语义（请求排队，后台任务队列见底后执行）。"
+msgstr ""
+"``sync`` semantic promise: after the rewrite completes, the stored "
+"content = the given final record sequence; the process is atomic (at any "
+"moment an observer sees either the old content or the new content, never "
+"a half-rewritten state); the effective timing follows the queueing "
+"semantics (the request is enqueued and executed by the background task "
+"once the queue drains)."
+
+#: flowing.persistence.RecordStore:26 of
+msgid ":class:`FileRecordStore` —— 文件系实现。"
+msgstr ":class:`FileRecordStore` — the file-based implementation."
+
+#: flowing.persistence.RecordStore.submit:1 of
+msgid "同步提交一条记录（排队即返；poison 态重抛）。"
+msgstr ""
+"Synchronously submit one record (returns upon enqueueing; re-raises in "
+"the poison state)."
+
+#: flowing.persistence.RecordStore.replay:1 of
+msgid "按写入序逐条产出记录（撕裂末行截断丢弃）。"
+msgstr ""
+"Yield records one by one in write order (a torn last line is truncated "
+"and discarded)."
+
+#: flowing.persistence.FileRecordStore.drain:1
+#: flowing.persistence.RecordStore.drain:1 of
+msgid "排空屏障：返回时此前提交的记录已全部落盘。"
+msgstr ""
+"Drain barrier: upon return, all previously submitted records have been "
+"flushed to disk."
+
+#: flowing.persistence.RecordStore.close:1 of
+msgid "排空并停止写任务；幂等。"
+msgstr "Drain and stop the write task; idempotent."
+
+#: flowing.persistence.RecordStore.sync:1 of
+msgid "请求将存储整体同步为给定终态记录序列（原子重写）。"
+msgstr ""
+"Request that the storage be wholly synchronized to the given final record "
+"sequence (atomic rewrite)."
+
+#: flowing.persistence.RecordStore.sync:3 of
+msgid ""
+"终态记录由调用方从其内存权威导出传入（如 ``StateView`` 从 ``_persisted`` "
+"导出），不是后端对文件重放结果的归约——文件可能有已 提交未写入的尾部记录，直接重放会得到旧值。真正的「重放 → 归约 → "
+"写回」式压缩是文件后端的墓碑压缩（store 自主触发），与本动词分工 明确。"
+msgstr ""
+"The final-state records are exported and passed in by the caller from its "
+"in-memory authority (e.g. ``StateView`` exporting from ``_persisted``), "
+"not reduced by the backend from a replay of the file — the file may have "
+"submitted-but-unwritten tail records, and replaying directly would yield "
+"stale values. The true \"replay → reduce → write back\" style compaction "
+"is the file backend's tombstone compaction (self-triggered by the store), "
+"with a clear division of labor from this verb."
+
+#: flowing.persistence.RecordStore.sync:9 of
+msgid ""
+"排队语义同 ``submit`` （请求入队即返，后台任务在队列见底后执行）； 语义承诺原子——任何时刻观察者只见旧内容或新内容，无半同步状态。 "
+"后端不解释记录内容。"
+msgstr ""
+"Queueing semantics same as ``submit`` (the request returns upon "
+"enqueueing; the background task executes once the queue drains); the "
+"semantic promise is atomic — at any moment an observer sees either the "
+"old content or the new content, never a half-synced state. The backend "
+"does not interpret record content."
+
+#: flowing.persistence.FileRecordStore:1 of
+msgid "文件系记录存储：一行一条 JSON 记录，write-behind 落盘。"
+msgstr ""
+"File-based record store: one JSON record per line, write-behind flushing."
+
+#: flowing.persistence.FileRecordStore:3 of
+msgid ""
+":class:`RecordStore` （契约 Protocol）的文件系实现，也是当前唯一实现。 "
+"一个实例管一个文件。写侧：``submit`` 同步入队（FIFO），唯一的后台 任务串行取出并 append；读侧：``replay`` "
+"按序重放（撕裂末行丢弃）； 收尾：``close`` = 排空 + 停写任务；维护：``sync`` 请求入队，后台任务 "
+"在队列见底后执行原子重写。"
+msgstr ""
+"The file-based implementation of :class:`RecordStore` (the contract "
+"Protocol), and currently the only implementation. One instance manages "
+"one file. Write side: ``submit`` enqueues synchronously (FIFO), and the "
+"single background task takes records out serially and appends them; read "
+"side: ``replay`` replays in order (torn last line discarded); "
+"finalization: ``close`` = drain + stop the write task; maintenance: "
+"``sync`` requests are enqueued and the background task performs the "
+"atomic rewrite once the queue drains."
+
+#: flowing.persistence.FileRecordStore:9 of
+msgid ""
+"常规使用不直接接触本类：Agent / Runtime 侧的状态读写经 :class:`StateView` （``agent.state`` /"
+" ``agent.register_state`` / ``runtime.register_state``），消息落盘由 "
+"``flowing.agent.Agent`` 内部 完成。本类供框架内部与持久化集成使用，也可被宿主工程直接复用；其 "
+"公开方法（五动词与构造参数）属稳定契约。构造点：Agent 的 ``__init__`` 经 ``_open_stores``，Runtime 的"
+" ``register_state``。"
+msgstr ""
+"Normal usage does not touch this class directly: state reads/writes on "
+"the Agent / Runtime side go through :class:`StateView` (``agent.state`` / "
+"``agent.register_state`` / ``runtime.register_state``), and message "
+"flushing is done inside ``flowing.agent.Agent``. This class serves "
+"framework internals and persistence integration, and may also be reused "
+"directly by host projects; its public methods (the five verbs and the "
+"constructor parameters) are part of the stable contract. Construction "
+"sites: the Agent's ``__init__`` via ``_open_stores``; the Runtime's "
+"``register_state``."
+
+#: flowing.persistence.FileRecordStore:32 of
+msgid "FIFO：同一实例的记录按 ``submit`` 调用顺序写入文件。"
+msgstr ""
+"FIFO: records of the same instance are written to the file in ``submit`` "
+"call order."
+
+#: flowing.persistence.FileRecordStore:33 of
+msgid ""
+"write-behind：``submit`` 返回不代表已写盘；``close()`` 会先把未写盘 的内容写完再结束。属主收尾必须走 "
+"``close()``，否则尾部记录静默丢失。"
+msgstr ""
+"write-behind: ``submit`` returning does not mean the record has been "
+"written to disk; ``close()`` finishes writing the unwritten content "
+"before ending. Owner finalization must go through ``close()``, otherwise "
+"tail records are silently lost."
+
+#: flowing.persistence.FileRecordStore:35 of
+msgid "排空屏障：``drain()`` 返回时，此前提交的记录已全部落盘。"
+msgstr ""
+"Drain barrier: when ``drain()`` returns, all previously submitted records "
+"have been flushed to disk."
+
+#: flowing.persistence.FileRecordStore:36 of
+msgid "poison：写入过程中首次落盘异常后，``submit`` 同步重抛同一异常； store 不再接受新记录。"
+msgstr ""
+"poison: after the first flush exception during writing, ``submit`` "
+"synchronously re-raises the same exception; the store no longer accepts "
+"new records."
+
+#: flowing.persistence.FileRecordStore:38 of
+msgid ""
+"replay 容错：撕裂末行截断丢弃；中间行损坏抛 :class:`flowing.errors.CorruptionError` "
+"（数据事故，报警不容忍）。"
+msgstr ""
+"replay fault tolerance: a torn last line is truncated and discarded; a "
+"corrupted middle line raises "
+":class:`flowing.errors.CorruptionError` (a data accident — alarms, no "
+"tolerance)."
+
+#: flowing.persistence.FileRecordStore:40 of
+msgid ""
+"版本处理：首行 ``meta`` 记录不产出；版本低于当前 → 经 ``MIGRATIONS`` 迁移链升级后产出，并借 ``sync`` "
+"原子回写为新版本（一次性）；版本 高于当前 → 抛 :class:`flowing.errors.FormatVersionError`。"
+msgstr ""
+"Version handling: the first-line ``meta`` record is not yielded; a "
+"version lower than the current one → upgraded through the ``MIGRATIONS`` "
+"migration chain before yielding, and atomically written back to the new "
+"version via ``sync`` (one-time); a version higher than the current one → "
+"raises :class:`flowing.errors.FormatVersionError`."
+
+#: flowing.persistence.FileRecordStore:43 of
+msgid ""
+"末行合并（``merge_last_line=True`` 时）：同 key 连续 ``set`` 就地 重写末行，末行 ``set k`` 紧跟"
+" ``delete k`` 截尾——文件大小不随写入 次数增长，逻辑内容不变。"
+msgstr ""
+"Last-line merge (when ``merge_last_line=True``): consecutive ``set``s to "
+"the same key rewrite the last line in place, and a last line ``set k`` "
+"immediately followed by ``delete k`` is trimmed from the tail — file size "
+"does not grow with the number of writes, and logical content is "
+"unchanged."
+
+#: flowing.persistence.FileRecordStore:46 of
+msgid ""
+"墓碑压缩（``tombstone_threshold``）：文件里删除标记行（tombstone） 计数达到阈值（默认 "
+"256）后，后台任务在队列见底处整文件原子重写， 物理清除墓碑行与被标记删除的消息行，重放结果不变。"
+msgstr ""
+"Tombstone compaction (``tombstone_threshold``): when the count of "
+"deletion-marker lines (tombstones) in the file reaches the threshold "
+"(default 256), the background task atomically rewrites the whole file at "
+"the queue's bottom, physically removing tombstone lines and the message "
+"lines marked as deleted; the replay result is unchanged."
+
+#: flowing.persistence.FileRecordStore:49 of
+msgid "压缩与重写的排空前提：墓碑压缩与 ``sync`` 请求的全量重写只在后台 任务内、队列见底后执行，不可能与在队记录竞争。"
+msgstr ""
+"Drain precondition for compaction and rewriting: tombstone compaction and "
+"the full rewrite of a ``sync`` request only execute inside the background "
+"task after the queue drains, so they cannot race with queued records."
+
+#: flowing.persistence.FileRecordStore:51 of
+msgid ""
+"非行为：不做跨实例排序（跨 Agent / 跨命名空间无顺序承诺）；热路径 （``submit`` / append）不做 fsync "
+"策略承诺（机器级掉电耐受为演进位； ``sync`` 路径的文件 fsync 是原子性前提，不在此列）。"
+msgstr ""
+"Non-behaviors: no cross-instance ordering (no ordering guarantee across "
+"Agents / namespaces); no fsync-policy promise on the hot path (``submit`` "
+"/ append) (machine-level power-loss tolerance is an evolution slot; the "
+"file fsync on the ``sync`` path is an atomicity precondition and not "
+"covered here)."
+
+#: flowing.persistence.FileRecordStore:55 of
+msgid "目标文件路径（上级目录由属主管线保证存在）。"
+msgstr ""
+"Target file path (the parent directory is guaranteed to exist by the "
+"owner's pipeline)."
+
+#: flowing.persistence.FileRecordStore:56 of
+msgid "同 key 连续写时就地重写末行（state.jsonl 开、 tree.jsonl 关）。"
+msgstr ""
+"Rewrite the last line in place on consecutive writes to the same key (on "
+"for state.jsonl, off for tree.jsonl)."
+
+#: flowing.persistence.FileRecordStore:58 of
+msgid "墓碑计数触发压缩的阈值（默认 256；仅 tree.jsonl 有意义）。"
+msgstr ""
+"Tombstone-count threshold that triggers compaction (default 256; only "
+"meaningful for tree.jsonl)."
+
+#: flowing.persistence.FileRecordStore:61 of
+msgid ""
+":class:`RecordStore` （后端契约 Protocol）、 :class:`StateView` "
+"（状态袋视图，经契约形态内嵌本类）。"
+msgstr ""
+":class:`RecordStore` (the backend contract Protocol), :class:`StateView` "
+"(the state-bag view, embedding this class through the contract form)."
+
+#: flowing.persistence.FileRecordStore.submit:1 of
+msgid "同步提交一条记录：检查未关闭与 poison 态后入队，立即返回。"
+msgstr ""
+"Synchronously submit one record: enqueue after checking not-closed and "
+"poison state, then return immediately."
+
+#: flowing.persistence.FileRecordStore.submit:3 of
+msgid ""
+"返回不代表已写盘（write-behind）；store 处于 poison 态时同步重抛首次 落盘异常。记录必须 JSON "
+"可序列化——校验在后台任务写入时执行，不可 序列化即 poison 来源之一。"
+msgstr ""
+"Returning does not mean the record has been written to disk "
+"(write-behind); when the store is in the poison state, the first flush "
+"exception is synchronously re-raised. Records must be JSON-serializable — "
+"validation happens when the background task writes, and being "
+"unserializable is one source of poison."
+
+#: flowing.persistence.FileRecordStore.submit:7 of
+msgid "要落盘的记录（dict，必须 JSON 可序列化）。"
+msgstr "The record to flush (a dict, must be JSON-serializable)."
+
+#: flowing.persistence.FileRecordStore.submit:9
+#: flowing.persistence.FileRecordStore.sync:12 of
+msgid "已 ``close()`` 后仍调用。"
+msgstr "Called after ``close()``."
+
+#: flowing.persistence.FileRecordStore.replay:1 of
+msgid "按写入序逐条产出记录；撕裂末行截断丢弃，中间行损坏报警。"
+msgstr ""
+"Yield records one by one in write order; a torn last line is truncated "
+"and discarded, and a corrupted middle line raises an alarm."
+
+#: flowing.persistence.FileRecordStore.replay:3 of
+msgid ""
+"实例方法（非 classmethod）：定位信息在构造时给出——这是非文件后端的 "
+"演进缝（数据库后端无路径概念）。只读；低版本文件的迁移后回写是例外 （借 ``sync`` 通道完成）。"
+msgstr ""
+"An instance method (not a classmethod): the locating information is given "
+"at construction — this is the evolution seam for non-file backends (a "
+"database backend has no path concept). Read-only; the post-migration "
+"write-back of a lower-version file is the exception (done via the "
+"``sync`` channel)."
+
+#: flowing.persistence.FileRecordStore.replay:7 of
+#, python-brace-format
+msgid ""
+"版本处理：首行 ``{\"type\": \"meta\", \"format_version\": ...}`` 不产出给 调用方；版本低于当前"
+" → 经 ``MIGRATIONS`` 迁移链逐段升级到当前版本后 产出，并借 ``sync`` 把文件原子回写为新版本（一次性动作）；版本高于 "
+"当前 → 抛 :class:`flowing.errors.FormatVersionError`；无版本首行的存量 文件按版本 0 "
+"走同一迁移链。在无运行中事件循环的上下文消费本生成器时， 迁移回写跳过（记录照常产出、下次 replay 重试），框架记一条警告日志。"
+msgstr ""
+"Version handling: the first-line ``{\"type\": \"meta\", "
+"\"format_version\": ...}`` is not yielded to the caller; a version lower "
+"than the current one → upgraded segment by segment through the "
+"``MIGRATIONS`` chain to the current version before yielding, and the file "
+"is atomically written back to the new version via ``sync`` (a one-time "
+"action); a version higher than the current one → raises "
+":class:`flowing.errors.FormatVersionError`; legacy files without a "
+"version header line go through the same migration chain as version 0. "
+"When this generator is consumed in a context without a running event "
+"loop, the migration write-back is skipped (records are still yielded, and "
+"the next replay retries); the framework logs one warning."
+
+#: flowing.persistence.FileRecordStore.replay:14 of
+msgid "按写入顺序产出记录的迭代器（meta 首行不产出）。"
+msgstr ""
+"An iterator yielding records in write order (the meta first line is not "
+"yielded)."
+
+#: flowing.persistence.FileRecordStore.replay:16 of
+msgid "文件版本高于当前支持版本。"
+msgstr "The file version is higher than the currently supported version."
+
+#: flowing.persistence.FileRecordStore.replay:17 of
+msgid "中间行 JSON 损坏。"
+msgstr "Corrupted JSON in a middle line."
+
+#: flowing.persistence.FileRecordStore.drain:3 of
+msgid ""
+"两个钉死调用点：属主收尾（经 ``close``）与整文件重写类维护之前。压缩 由后台任务内部触发，无需外部调用本方法。poison "
+"态下「返回即全部落盘」 的承诺已被破坏——此时同步重抛首次落盘异常（不静默返回）。"
+msgstr ""
+"Two pinned call sites: owner finalization (via ``close``) and before "
+"whole-file-rewrite maintenance. Compaction is triggered internally by the "
+"background task, so no external call to this method is needed. In the "
+"poison state the \"return means everything flushed\" promise is already "
+"broken — so it synchronously re-raises the first flush exception instead "
+"of returning silently."
+
+#: flowing.persistence.FileRecordStore.close:1 of
+msgid "排空并停止写任务；幂等（重复调用安全）。"
+msgstr "Drain and stop the write task; idempotent (safe to call repeatedly)."
+
+#: flowing.persistence.FileRecordStore.close:3 of
+msgid ""
+"正常关闭先把未写盘的内容写完（排空），再停止后台写任务。poison 态下 不重复抛出已暴露过的首次落盘异常（收尾职责是清理，错误已在 "
+"``submit`` / ``drain`` 处爆出）。"
+msgstr ""
+"A normal close finishes writing the unwritten content first (drain), then "
+"stops the background write task. In the poison state it does not re-raise "
+"the already-surfaced first flush exception (finalization's job is "
+"cleanup; the error has already surfaced at ``submit`` / ``drain``)."
+
+#: flowing.persistence.FileRecordStore.sync:1 of
+msgid "契约动词实现：请求将本文件全量原子同步为给定终态记录。"
+msgstr ""
+"Contract verb implementation: request that this file be wholly and "
+"atomically synchronized to the given final-state records."
+
+#: flowing.persistence.FileRecordStore.sync:3 of
+msgid ""
+"poison 检查后把维护请求（含终态记录）入队即返；后台任务在队列见底后 取出执行原子重写。终态记录由调用方从其内存权威导出传入（如 "
+":class:`StateView` 从 ``_persisted`` 导出——非重放文件归约，见 "
+"``RecordStore.sync``），本类不解释记录内容。重写产物永远是当前版本 格式（首行 ``meta`` 版本记录原样保留在最前）。"
+msgstr ""
+"After the poison check, the maintenance request (including the "
+"final-state records) is enqueued and the call returns; the background "
+"task takes it out once the queue drains and performs the atomic rewrite. "
+"The final-state records are exported and passed in by the caller from its "
+"in-memory authority (e.g. :class:`StateView` exporting from "
+"``_persisted`` — not a reduction of replayed file content, see "
+"``RecordStore.sync``); this class does not interpret record content. The "
+"rewrite product is always in the current version format (the first-line "
+"``meta`` version record stays at the front)."
+
+#: flowing.persistence.FileRecordStore.sync:9 of
+msgid "终态记录序列（不含 meta 首行；重写时自动写当前版本 meta 首行）。"
+msgstr ""
+"The final-state record sequence (excluding the meta first line; the "
+"rewrite automatically writes the current-version meta first line)."
+
+#: flowing.persistence.StateView:1 of
+msgid "状态袋视图——写透持久化：读写都直接作用于落盘存储。"
+msgstr ""
+"State-bag view — write-through persistence: reads and writes act directly "
+"on the on-disk storage."
+
+#: flowing.persistence.StateView:5 of
+msgid ""
+"状态袋（state bag）是「该智能体 / 该命名空间的持久化状态」的视图： "
+"每个状态键就是一个特殊属性——读写经本视图走持久化通道（写透到对应的 jsonl 文件）。Agent 侧经 ``agent.state`` "
+"（默认袋，``state.jsonl``）与 ``agent.register_state(name)`` "
+"（命名袋，``<name>.jsonl``）暴露；Runtime 侧经 ``runtime.register_state(namespace)``"
+" / ``runtime.states`` （``<namespace>.jsonl``）暴露。本类契约对两侧一致适用。"
+msgstr ""
+"A state bag is the view of \"the persisted state of this agent / this "
+"namespace\": each state key is a special attribute — reads and writes go "
+"through this view into the persistence channel (write-through to the "
+"corresponding jsonl file). On the Agent side it is exposed via "
+"``agent.state`` (the default bag, ``state.jsonl``) and "
+"``agent.register_state(name)`` (named bags, ``<name>.jsonl``); on the "
+"Runtime side via ``runtime.register_state(namespace)`` / "
+"``runtime.states`` (``<namespace>.jsonl``). This class's contract applies "
+"uniformly to both sides."
+
+#: flowing.persistence.StateView:12 of
+msgid "访问形态（两种等价）::"
+msgstr "Access forms (two equivalent ones)::"
+
+#: flowing.persistence.StateView:34 of
+msgid ""
+"写透：set / delete 经后端 ``submit`` 同步提交、排队即返回——返回不 代表已落盘（见模块 docstring「write-"
+"behind」）。值必须 JSON 可序列 化，否则写入时立即报错（fail-fast，不留到恢复时爆雷）。"
+msgstr ""
+"Write-through: set / delete are submitted synchronously via the backend's "
+"``submit`` and return upon enqueueing — returning does not mean flushed "
+"to disk (see the module docstring on \"write-behind\"). Values must be "
+"JSON-serializable, otherwise writing fails immediately (fail-fast, not "
+"deferred to blow up at recovery time)."
+
+#: flowing.persistence.StateView:37 of
+msgid "无写闸门：写透不设管线时序拦截——``setup()`` 中写状态合法，且不被 恢复重放覆盖（恢复管线重放先于 ``setup()`` 完成）。"
+msgstr ""
+"No write gate: write-through sets no pipeline-timing interception — "
+"writing state inside ``setup()`` is legal and is not overwritten by "
+"recovery replay (the recovery pipeline's replay completes before "
+"``setup()``)."
+
+#: flowing.persistence.StateView:39 of
+msgid ""
+"键登记（``register``）：``register(key, default)`` 幂等——键未持久化 时把 ``default`` "
+"写落盘并返回 ``default``；键已持久化时跳过、返回 当前持久值。首次登记把默认值写落盘，之后该键的值以持久值为准，不再 "
+"随代码里默认参数的变化而变化。"
+msgstr ""
+"Key registration (``register``): ``register(key, default)`` is idempotent "
+"— when the key is not yet persisted, ``default`` is written to disk and "
+"returned; when the key is already persisted, it is skipped and the "
+"current persisted value is returned. The first registration writes the "
+"default to disk; afterwards the key's value is governed by the persisted "
+"value and no longer changes with the default parameter in the code."
+
+#: flowing.persistence.StateView:43 of
+msgid "无 schema：直接赋值即写入——不强制先 ``register``。恢复重放把全部 持久化键直接装袋（无论是否登记过），不存在「未登记键」特例。"
+msgstr ""
+"No schema: plain assignment writes immediately — prior ``register`` is "
+"not mandatory. Recovery replay loads all persisted keys directly into the "
+"bag (registered or not); there is no \"unregistered key\" special case."
+
+#: flowing.persistence.StateView:45 of
+msgid ""
+"崩溃容忍：崩溃窗口 = 已提交未写入的尾部记录（正常为毫秒级）；窗口 内丢失至多对应最后一次修改，语义等价于断电。文件尾部残行（就地 "
+"重写的撕裂产物）重放时截断丢弃。"
+msgstr ""
+"Crash tolerance: crash window = submitted-but-unwritten tail records "
+"(normally milliseconds); a loss within the window corresponds to at most "
+"the last modification, semantically equivalent to a power cut. A residual "
+"tail line of the file (the torn product of an in-place rewrite) is "
+"truncated and discarded during replay."
+
+#: flowing.persistence.StateView:48 of
+msgid ""
+"恢复一致性：重放后视图的逻辑内容与崩溃前一致（同键后写的值覆盖先写 的值，delete 删除该键）；唯一例外是崩溃点尾部残行对应的至多最后一 "
+"次修改。"
+msgstr ""
+"Recovery consistency: after replay, the view's logical content matches "
+"that before the crash (a later-written value for the same key overrides "
+"the earlier one, and delete removes the key); the sole exception is at "
+"most the last modification corresponding to the torn tail line at the "
+"crash point."
+
+#: flowing.persistence.StateView:51 of
+msgid "顺序性：同一视图的写操作按调用顺序生效；单线程语义，跨视图（跨 Agent / 跨命名空间）无顺序承诺。"
+msgstr ""
+"Ordering: write operations on the same view take effect in call order; "
+"single-threaded semantics, with no ordering guarantee across views "
+"(across Agents / namespaces)."
+
+#: flowing.persistence.StateView:53 of
+msgid "维护透明：末行合并与压缩不改变任何逻辑内容——视图观察到的字典永远 等于「全部操作的顺序重放结果」。"
+msgstr ""
+"Maintenance transparency: last-line merge and compaction change no "
+"logical content — the dict observed by the view always equals \"the "
+"in-order replay result of all operations\"."
+
+#: flowing.persistence.StateView:55 of
+msgid "自动压缩：追加行数达到阈值（默认 256）或属主收尾 / 恢复重放后，视图 把当前全部持久值经 ``sync`` 提交整文件原子重写；逻辑内容不变。"
+msgstr ""
+"Automatic compaction: when the number of appended lines reaches the "
+"threshold (default 256), or after owner finalization / recovery replay, "
+"the view submits all current persisted values via ``sync`` for a "
+"whole-file atomic rewrite; logical content is unchanged."
+
+#: flowing.persistence.StateView:57 of
+msgid ""
+"fail fast：不可 JSON 序列化的值在写入时报错；读从未写入且未 register 的键 → ``KeyError`` （字典式）/ "
+"``AttributeError`` （属性式）。"
+msgstr ""
+"fail fast: a non-JSON-serializable value errors at write time; reading a "
+"key that was never written and never registered → ``KeyError`` "
+"(dict-style) / ``AttributeError`` (attribute-style)."
+
+#: flowing.persistence.StateView:59 of
+msgid ""
+"watch 不察觉 state：状态写透不触发 watcher 通道——watcher 只管普通 "
+"实例属性（``Agent.__setattr__`` 通道）。"
+msgstr ""
+"watch does not observe state: state write-through does not trigger the "
+"watcher channel — watchers only cover plain instance attributes (the "
+"``Agent.__setattr__`` channel)."
+
+#: flowing.persistence.StateView:61 of
+msgid ""
+"建议：只放恢复真正需要的状态；高频遥测数据属插件内存。插件键名按 约定带插件名前缀（如 cron 插件的 "
+"``cron_jobs``）；框架核心键在 core 袋（框架私有，不对外暴露）。"
+msgstr ""
+"Recommendation: only store state that recovery genuinely needs; "
+"high-frequency telemetry belongs in plugin memory. Plugin key names carry "
+"the plugin-name prefix by convention (e.g. the cron plugin's "
+"``cron_jobs``); framework-core keys live in the core bag (framework-"
+"private, not exposed)."
+
+#: flowing.persistence.StateView:67 of
+msgid ""
+":attr:`flowing.agent.Agent.state` "
+":meth:`flowing.agent.Agent.register_state` "
+":meth:`flowing.runtime.Runtime.register_state` :class:`RecordStore` / "
+":class:`FileRecordStore`"
+msgstr ""
+":attr:`flowing.agent.Agent.state` "
+":meth:`flowing.agent.Agent.register_state` "
+":meth:`flowing.runtime.Runtime.register_state` :class:`RecordStore` / "
+":class:`FileRecordStore`"
+
+#: flowing.persistence.StateView.register:1 of
+msgid "登记一个状态键并返回当前真正存在的值。"
+msgstr "Register a state key and return the value that actually exists now."
+
+#: flowing.persistence.StateView.register:3 of
+msgid ""
+"缺省即写：键未持久化时把 ``default`` 写落盘并返回 ``default``；键已 "
+"持久化时跳过（幂等，重复登记无副作用、不报错）并返回当前持久值。 首次登记把默认值写落盘，之后该键的值以持久值为准，不再随代码里默认 "
+"参数的变化而变化。"
+msgstr ""
+"Write-on-default: when the key is not yet persisted, ``default`` is "
+"written to disk and returned; when the key is already persisted, it is "
+"skipped (idempotent — repeated registration has no side effects and no "
+"error) and the current persisted value is returned. The first "
+"registration writes the default to disk; afterwards the key's value is "
+"governed by the persisted value and no longer changes with the default "
+"parameter in the code."
+
+#: flowing.persistence.StateView.register:8 of
+msgid "状态键名。"
+msgstr "The state key name."
+
+#: flowing.persistence.StateView.register:9 of
+msgid "键未持久化时的初值（缺省 ``None``）。"
+msgstr "The initial value when the key is not yet persisted (default ``None``)."
+
+#: flowing.persistence.StateView.register:10 of
+msgid "当前真正存在的值（已持久值，或本次写入的 ``default``）。"
+msgstr ""
+"The value that actually exists now (the persisted value, or the "
+"``default`` written by this call)."
+
+#: flowing.persistence.StateView.get:1 of
+msgid "``__getitem__`` 的不抛错形式：键无持久值时返回 ``default``。"
+msgstr ""
+"The non-raising form of ``__getitem__``: returns ``default`` when the key "
+"has no persisted value."
+
+#: ../../api/flowing.rst:129
+msgid "flowing.provide module"
+msgstr "flowing.provide module"
+
+#: flowing.provide:1 of
+msgid "flowing.provide —— provide-inject 依赖注入链的节点协议与统一上溯查找算法。"
+msgstr ""
+"flowing.provide — the node protocol of the provide-inject dependency "
+"injection chain and the unified upward lookup algorithm."
+
+#: flowing.provide:5 of
+msgid ""
+"本模块定义框架依赖注入（provide / inject）机制的两个基础符号： :class:`ProvideNode` "
+"是链上节点的协议，:func:`inject_from` 是从任一节点 沿亲代链向根查找注入值的统一算法。框架内 "
+"Runtime（链终点）、Workflow、 Agent 三类节点都实现 :class:`ProvideNode`；使用者一般经节点方法提供与 "
+"取值（``node.provide(key, value)`` / ``node.inject(key)``），不需要直接 调用 "
+":func:`inject_from`。"
+msgstr ""
+"This module defines the two foundational symbols of the framework's "
+"dependency-injection (provide / inject) mechanism: :class:`ProvideNode` "
+"is the protocol for nodes on the chain, and :func:`inject_from` is the "
+"unified algorithm that looks up an injected value from any node along the "
+"parent chain toward the root. Within the framework, the three node kinds "
+"Runtime (the chain endpoint), Workflow, and Agent all implement "
+":class:`ProvideNode`; users normally provide and retrieve values via node "
+"methods (``node.provide(key, value)`` / ``node.inject(key)``) and do not "
+"need to call :func:`inject_from` directly."
+
+#: flowing.provide:14 of
+msgid ""
+"查找顺序：从当前节点沿亲代链逐级向根查找，先近后远，本节点命中即 返回；查找到根（Runtime）仍未命中抛 "
+":exc:`flowing.errors.MissingProvideError`。"
+msgstr ""
+"Lookup order: search level by level from the current node along the "
+"parent chain toward the root, nearest first; return immediately upon a "
+"hit at the current node; if no hit is found even at the root (Runtime), "
+"raise :exc:`flowing.errors.MissingProvideError`."
+
+#: flowing.provide:17 of
+msgid "同 key 重复 ``provide`` 是覆盖更新：查找实时进行、不缓存，更新 即刻对后续 ``inject`` 可见。"
+msgstr ""
+"Repeated ``provide`` of the same key is an overwriting update: lookups "
+"happen in real time with no caching, so updates are immediately visible "
+"to subsequent ``inject`` calls."
+
+#: flowing.provide:19 of
+msgid "安全边界：API key、凭证等敏感信息禁止放进节点的注入存储——注入值 沿链对后代节点可见。"
+msgstr ""
+"Security boundary: sensitive information such as API keys and credentials "
+"must not be placed into a node's injection store — injected values are "
+"visible to descendant nodes along the chain."
+
+#: flowing.provide:22 of
+msgid ""
+":class:`ProvideNode`、:func:`inject_from`、 "
+":mod:`flowing.runtime`、:class:`flowing.params.InjectionKey`"
+msgstr ""
+":class:`ProvideNode`, :func:`inject_from`, :mod:`flowing.runtime`, "
+":class:`flowing.params.InjectionKey`"
+
+#: flowing.provide.inject_from:1 of
+msgid "从 ``node`` 开始沿亲代链向根查找注入值，找到即返回。"
+msgstr ""
+"Look up an injected value from ``node`` along the parent chain toward the "
+"root, returning as soon as it is found."
+
+#: flowing.provide.inject_from:5 of
+msgid ""
+"统一的链式查找算法，供 :class:`ProvideNode` 的实现类共用：从 ``node`` "
+"出发逐级沿亲代链检查每个节点的注入存储，本节点命中即返回； Runtime 是链终点，查找到终点仍未命中则抛 "
+":exc:`flowing.errors.MissingProvideError`。框架内 ``Agent.inject`` / "
+"``Workflow.inject`` / ``Runtime.inject`` 都委托本函数实现；应用代码 一般直接调用 "
+"``node.inject(key)``，不需要直接使用本函数。"
+msgstr ""
+"The unified chain-lookup algorithm shared by :class:`ProvideNode` "
+"implementations: starting from ``node``, check each node's injection "
+"store level by level along the parent chain, returning immediately upon a "
+"hit at the current node; Runtime is the chain endpoint, and if no hit is "
+"found even at the endpoint, raise "
+":exc:`flowing.errors.MissingProvideError`. Within the framework, "
+"``Agent.inject`` / ``Workflow.inject`` / ``Runtime.inject`` all delegate "
+"to this function; application code normally calls ``node.inject(key)`` "
+"directly and does not need this function."
+
+#: flowing.provide.inject_from:12 of
+msgid "链终点所在的 Runtime，提供按节点 ID 查找节点的能力。"
+msgstr ""
+"The Runtime where the chain endpoint lives, providing the ability to look "
+"up nodes by node ID."
+
+#: flowing.provide.inject_from:13 of
+msgid "查找起点节点。"
+msgstr "The node from which the lookup starts."
+
+#: flowing.provide.inject_from:16 of
+msgid "沿链查找到终点仍未命中时。"
+msgstr "Raised when no hit is found along the chain up to the endpoint."
+
+#: flowing.provide.inject_from:20 of
+msgid "先近后远：本节点命中即返回，不再上溯；同一 key 在近处与根都有 值时，取近处的值。"
+msgstr ""
+"Nearest first: return immediately upon a hit at the current node without "
+"ascending further; when the same key has values both nearby and at the "
+"root, the nearby value wins."
+
+#: flowing.provide.inject_from:22 of
+msgid "查找实时进行、不做缓存：``provide`` 更新后，下一次查找立即可见。"
+msgstr ""
+"Lookups happen in real time with no caching: after a ``provide`` update, "
+"the next lookup sees it immediately."
+
+#: flowing.provide.inject_from:23 of
+msgid ""
+"亲代链断裂按未命中处理：中间节点的亲节点已销毁、无法继续上溯时， 最终抛 "
+":exc:`flowing.errors.MissingProvideError`；即使上方链断裂， 本节点自身已注册的值仍可命中。"
+msgstr ""
+"A broken parent chain is treated as a miss: when an intermediate node's "
+"parent has been destroyed and the ascent cannot continue, "
+":exc:`flowing.errors.MissingProvideError` is ultimately raised; even if "
+"the chain above is broken, values registered on the current node itself "
+"can still hit."
+
+#: flowing.provide.inject_from:27 of
+msgid ""
+":class:`ProvideNode`、 :exc:`flowing.errors.MissingProvideError`、 "
+":meth:`flowing.runtime.Runtime.get_node`"
+msgstr ""
+":class:`ProvideNode`, :exc:`flowing.errors.MissingProvideError`, "
+":meth:`flowing.runtime.Runtime.get_node`"
+
+#: ../../api/flowing.rst:137
+msgid "flowing.runtime module"
+msgstr "flowing.runtime module"
+
+#: flowing.runtime:1 of
+msgid ""
+"``flowing.runtime`` —— Runtime 对象图根、唯一入口 ``launch``、``@`` 上下文与 provide-"
+"inject 链终点。"
+msgstr ""
+"``flowing.runtime`` — the Runtime object-graph root, the sole entry "
+"point ``launch``, the ``@`` context, and the provide-inject chain "
+"endpoint."
+
+#: flowing.runtime:5 of
+msgid "本模块是 Flowing 框架的对象图根模块，承载："
+msgstr ""
+"This module is the object-graph root module of the Flowing framework, "
+"hosting:"
+
+#: flowing.runtime:7 of
+msgid ""
+":class:`Runtime`：一个运行中的 flowing 子项目对应一个 Runtime 实例——它持有 全部 Agent / "
+"Workflow 节点、已安装插件、全局工具注册表与 agent 池，并对外提供扩展注册（``use`` / ``register_tool`` "
+"等）、配置读取 （``get_config`` 等）、节点管理（``create_agent`` / ``recover_agent`` / "
+"``get_agent`` / ``archive_agent``）与观测（``snapshot``）API。"
+msgstr ""
+":class:`Runtime`: one running flowing sub-project corresponds to one "
+"Runtime instance — it holds all Agent / Workflow nodes, installed "
+"plugins, the global tool registry, and the agent pool, and exposes "
+"extension registration (``use`` / ``register_tool`` etc.), configuration "
+"reading (``get_config`` etc.), node management (``create_agent`` / "
+"``recover_agent`` / ``get_agent`` / ``archive_agent``), and observation "
+"(``snapshot``) APIs."
+
+#: flowing.runtime:12 of
+msgid ":func:`launch`：Runtime 的唯一创建入口，同时登记 ``@`` 项目根上下文。"
+msgstr ""
+":func:`launch`: the sole creation entry point for Runtime, which also "
+"registers the ``@`` project-root context."
+
+#: flowing.runtime:13 of
+msgid ":func:`resolve`：模块级 ``@/`` 路径解析。"
+msgstr ":func:`resolve`: module-level ``@/`` path resolution."
+
+#: flowing.runtime:14 of
+msgid ""
+":class:`flowing.provide.ProvideNode` 协议与 "
+":func:`flowing.provide.inject_from` 的再导出（定义见 "
+":mod:`flowing.provide`；``__all__`` 同时保留本模块出口）。"
+msgstr ""
+"Re-exports of the :class:`flowing.provide.ProvideNode` protocol and "
+":func:`flowing.provide.inject_from` (defined in :mod:`flowing.provide`; "
+"``__all__`` also keeps them as this module's exports)."
+
+#: flowing.runtime:17 of
+msgid ""
+"``launch(path, **kwargs)`` 是创建 Runtime 的唯一途径：它登记 ``@`` 上下文 （模块级 "
+"``ContextVar``，按 asyncio Task 隔离——一个进程可同时运行多个 Runtime，并发 ``launch`` "
+"互不串扰）、import 子项目入口 ``main.py`` 并 ``await main(**kwargs)``。子项目 ``main()`` "
+"在函数体内构造 Runtime（可任意 子类，``@`` 自动绑定）、``use`` 插件、``provide`` 注入、``mount`` "
+"根节点， 并返回它。绕过 ``launch`` 直接 ``Runtime()`` 会因 ``@`` 上下文未登记而抛 "
+"``RuntimeError``。"
+msgstr ""
+"``launch(path, **kwargs)`` is the only way to create a Runtime: it "
+"registers the ``@`` context (a module-level ``ContextVar``, isolated per "
+"asyncio Task — one process can run multiple Runtimes, and concurrent "
+"``launch`` calls do not interfere), imports the sub-project entry "
+"``main.py``, and awaits ``main(**kwargs)``. The sub-project's ``main()`` "
+"constructs the Runtime in its body (any subclass, with ``@`` bound "
+"automatically), ``use``s plugins, ``provide``s injections, ``mount``s the "
+"root node, and returns it. Bypassing ``launch`` and calling ``Runtime()`` "
+"directly raises ``RuntimeError`` because the ``@`` context is not "
+"registered."
+
+#: flowing.runtime:25 of
+msgid ""
+"``launch`` 只负责把子项目拉起为 Runtime：不解析配置（配置读取经 :meth:`Runtime.get_config` "
+"与宿主启动层（``flowing.interfaces`` 各入口））、不认识插件（插件经 :meth:`Runtime.install` "
+"显式启用）、不决定新建还是恢复（那是子项目 ``main()`` 的策略，如 ``main(resume: str | None = "
+"None)``）、不启动任何服务端口（暴露 方式由调用方决定，CLI / HTTP / Web / 测试 / 嵌入五种入口共用本函数）。 "
+"子项目入口永远是 Python ``main()`` 函数，没有声明式入口文件。"
+msgstr ""
+"``launch`` is only responsible for bringing the sub-project up as a "
+"Runtime: it does not parse configuration (configuration reading goes "
+"through :meth:`Runtime.get_config` and the host startup layer — the "
+"``flowing.interfaces`` entry points), does not know plugins (plugins are "
+"explicitly enabled via :meth:`Runtime.install`), does not decide between "
+"fresh creation and recovery (that is the sub-project ``main()``'s policy, "
+"e.g. ``main(resume: str | None = None)``), and does not start any service "
+"port (the exposure method is the caller's decision; the five entry kinds "
+"— CLI / HTTP / Web / test / embedding — share this function). The "
+"sub-project entry is always a Python ``main()`` function; there is no "
+"declarative entry file."
+
+#: flowing.runtime:34 of
+msgid ""
+"async 方法约定：会触发钩子或触发异步管线的公开方法都是协程，调用时用 ``await``——``launch`` / ``mount`` /"
+" ``create_agent`` / ``recover_agent`` / ``get_agent`` / ``archive_agent``"
+" / ``archive_orphans`` / ``shutdown``。 不触发钩子的方法保持同步：``use`` / "
+"``get_plugin`` / ``get_node`` / ``provide`` / ``inject`` / ``get_config``"
+" / ``set_config`` / ``register_*`` / ``set_model_tags`` 等。"
+msgstr ""
+"async method convention: public methods that trigger hooks or async "
+"pipelines are coroutines and must be called with ``await`` — ``launch`` / "
+"``mount`` / ``create_agent`` / ``recover_agent`` / ``get_agent`` / "
+"``archive_agent`` / ``archive_orphans`` / ``shutdown``. Methods that "
+"trigger no hooks stay synchronous: ``use`` / ``get_plugin`` / "
+"``get_node`` / ``provide`` / ``inject`` / ``get_config`` / "
+"``set_config`` / ``register_*`` / ``set_model_tags`` etc."
+
+#: flowing.runtime:41 of
+msgid ""
+"``@`` 上下文：``launch`` 登记的项目根在 asyncio 中按 Task 隔离——一个进程 可同时运行多个 Runtime，各自 "
+"``@`` 解析与 ``project_root`` 互不串扰； ``launch`` 返回后复位上下文不影响已 spawn 的子 "
+"Task（它们已继承正确值）。 ``resolve(\"@/...\")`` 在 ``launch`` 登记后即可用（``main()`` 内构造"
+" Runtime 之前也行）。``@`` 指向 flowing 子项目目录；宿主大工程自己的根是应用层 概念，经 ``provide`` "
+"注入，不进 ``@/``。真正的进程级强隔离（多租户、 A/B 测试）用子进程，不靠多 Runtime。"
+msgstr ""
+"The ``@`` context: the project root registered by ``launch`` is isolated "
+"per Task in asyncio — one process can run multiple Runtimes at once, each "
+"with its own ``@`` resolution and ``project_root``, without "
+"cross-interference; resetting the context after ``launch`` returns does "
+"not affect already-spawned child Tasks (they have inherited the correct "
+"value). ``resolve(\"@/...\")`` works as soon as ``launch`` has registered "
+"(even before ``main()`` constructs the Runtime). ``@`` points at the "
+"flowing sub-project directory; the host project's own root is an "
+"application-layer concept, injected via ``provide``, and does not enter "
+"``@/``. True process-level strong isolation (multi-tenancy, A/B testing) "
+"uses subprocesses, not multiple Runtimes."
+
+#: flowing.runtime:49 of
+msgid ""
+"provide-inject 链：Runtime 是链终点。``Runtime.provide(key, value)`` 注册 "
+"的值对全树所有节点可见（上溯终点）；同 key 重复 provide 是覆盖更新， ``inject`` "
+"实时沿链查找、更新即刻可见。敏感信息（API key / 凭证）禁止经 ``provide`` "
+"传递——注入值沿链对后代节点可见。通用查找算法与节点协议见 :mod:`flowing.provide`。"
+msgstr ""
+"The provide-inject chain: Runtime is the chain endpoint. A value "
+"registered via ``Runtime.provide(key, value)`` is visible to every node "
+"in the tree (the ascent endpoint); repeated provide of the same key is an "
+"overwriting update, and ``inject`` looks up the chain in real time so "
+"updates are immediately visible. Sensitive information (API keys / "
+"credentials) must not be passed via ``provide`` — injected values are "
+"visible to descendant nodes along the chain. For the general lookup "
+"algorithm and node protocol, see :mod:`flowing.provide`."
+
+#: flowing.runtime:55 of
+msgid ""
+"配置读取：``get_config`` 的读取顺序是——``set_config`` 运行期覆盖层最 优先，其次为构造期浅合并结果（用户级 "
+"``$FLOWING_CONFIG_HOME/config.yaml`` > 项目级 ``@/config.yaml`` > "
+"框架推荐默认值）。环境变量与命令行参数不 直接进入本链：``FLOWING_*`` 环境变量由各自消费点直读，命令行参数经 "
+"``set_config`` 表达。浅合并在 ``Runtime()`` 构造时完成——合并完成后 任何时机均可调用 "
+":meth:`Runtime.get_config`；合并前（典型即模块顶层 import 期）调用抛 "
+":class:`flowing.errors.ConfigNotReadyError`。 ``get_config`` "
+"不做命名空间访问控制：任何代码可读任何命名空间，注册 只是「谁负责校验」的声明。"
+msgstr ""
+"Configuration reading: the read order of ``get_config`` is — the "
+"``set_config`` runtime override layer first, then the construction-time "
+"shallow-merge result (user-level "
+"``$FLOWING_CONFIG_HOME/config.yaml`` > project-level ``@/config.yaml`` > "
+"framework-recommended defaults). Environment variables and command-line "
+"arguments do not enter this chain directly: ``FLOWING_*`` environment "
+"variables are read directly by their respective consumers, and "
+"command-line arguments are expressed via ``set_config``. The shallow "
+"merge completes at ``Runtime()`` construction — after the merge, "
+":meth:`Runtime.get_config` may be called at any time; calling before the "
+"merge (typically at module top-level import time) raises "
+":class:`flowing.errors.ConfigNotReadyError`. ``get_config`` does no "
+"namespace access control: any code can read any namespace; registration "
+"is merely a declaration of \"who is responsible for validation\"."
+
+#: flowing.runtime:65 of
+msgid ""
+"插件启用：``Runtime.install(plugin)`` 是插件启用入口（阶段一），按实参顺序 执行各插件的 "
+"``install(runtime)``；插件在 install 中注册全局能力（工具 / provide 值 / 配置命名空间 / Agent "
+"类型 / Resource / 全局状态命名空间）， 各 Agent 再在 ``setup()`` 中经 ``use_xxx(self)`` "
+"做实例级启用（阶段二）。 依赖校验随 ``install()`` 增量执行：已装插件依赖图成环抛 "
+":class:`flowing.errors.DependencyError` （报错现场即引入环的那次 ``install()``）； "
+"依赖缺失只 ``warnings.warn`` 警告、不抛错（``install()`` 可分批）。未启用的 扩展对 Agent 零开销（不是被 "
+"skip）。"
+msgstr ""
+"Plugin enablement: ``Runtime.install(plugin)`` is the plugin-enablement "
+"entry point (phase one), executing each plugin's ``install(runtime)`` in "
+"argument order; a plugin registers global capabilities in install (tools "
+"/ provide values / configuration namespaces / Agent types / Resources / "
+"global state namespaces), and each Agent then performs instance-level "
+"enablement via ``use_xxx(self)`` in ``setup()`` (phase two). Dependency "
+"validation runs incrementally with each ``install()``: a cycle in the "
+"installed-plugin dependency graph raises "
+":class:`flowing.errors.DependencyError` (the error site is the "
+"``install()`` call that introduced the cycle); a missing dependency only "
+"warns via ``warnings.warn`` without raising (``install()`` may be "
+"batched). Extensions that are not enabled cost Agents nothing (they are "
+"not skipped)."
+
+#: flowing.runtime:74 of
+msgid ""
+"创建 / 恢复管线：``create_agent`` 与 ``recover_agent`` 是两个独立方法， 共用同一管线结构。两条管线 "
+"dispatch 四个生命周期钩子点—— ``before_create`` / ``after_create`` （仅创建管线触发）与 "
+"``before_recover`` / ``after_recover`` （仅恢复管线触发）。恢复管线时序：``_restore()`` "
+"（重放 session 目录日志）→ ``before_recover`` → ``setup`` → PENDING 检查 → "
+"``_nodes`` 注册 → ``after_recover`` → 常驻工作循环 Task 启动。两条管线在 各自的一个新建实例上执行一次 "
+"``setup()``——装配语义与执行它的实例 无关。钩子点全集与触发时机见 :mod:`flowing.hooks`。"
+msgstr ""
+"Creation / recovery pipelines: ``create_agent`` and ``recover_agent`` are "
+"two independent methods sharing the same pipeline structure. The two "
+"pipelines dispatch four lifecycle hook points — ``before_create`` / "
+"``after_create`` (triggered only by the creation pipeline) and "
+"``before_recover`` / ``after_recover`` (triggered only by the recovery "
+"pipeline). Recovery pipeline timing: ``_restore()`` (replay the session "
+"directory logs) → ``before_recover`` → ``setup`` → PENDING check → "
+"``_nodes`` registration → ``after_recover`` → resident work-loop Task "
+"starts. Each pipeline runs ``setup()`` once on its own freshly-created "
+"instance — the assembly semantics are independent of the instance "
+"executing them. For the full set of hook points and their trigger timing, "
+"see :mod:`flowing.hooks`."
+
+#: flowing.runtime:83 of
+msgid ""
+"观测：``Runtime.snapshot()`` 返回一致性只读快照（拉取通道；推送通道由 钩子系统承载）——节点表、agent "
+"池、插件清单等一次性只读视图，全部字段 JSON 可序列化；``_provided`` 的值内容（凭证等敏感值）绝不进入快照。 完整字段契约见 "
+":mod:`flowing.snapshot`。"
+msgstr ""
+"Observation: ``Runtime.snapshot()`` returns a consistent read-only "
+"snapshot (the pull channel; the push channel is carried by the hook "
+"system) — a one-shot read-only view of the node table, agent pool, plugin "
+"manifest, etc., with all fields JSON-serializable; the value content of "
+"``_provided`` (sensitive values such as credentials) never enters the "
+"snapshot. For the complete field contract, see :mod:`flowing.snapshot`."
+
+#: flowing.runtime:88 of
+msgid ""
+"关闭：``shutdown()`` 是「请求关闭」——递归 destroy 全部节点、插件收尾、 "
+"关闭全局状态视图、置位退出事件后返回；``await runtime`` 在事件置位后解除 阻塞，此时全部善后已完成。空 Runtime（未 "
+"mount）同样可 await / shutdown。 推荐调用顺序见 :func:`launch` 与各方法 docstring。"
+msgstr ""
+"Shutdown: ``shutdown()`` is a \"request to shut down\" — it recursively "
+"destroys all nodes, finalizes plugins, closes global state views, sets "
+"the exit event, and returns; ``await runtime`` unblocks once the event is "
+"set, by which time all cleanup has completed. An empty Runtime (nothing "
+"mounted) can likewise be awaited / shut down. For the recommended call "
+"order, see :func:`launch` and each method's docstring."
+
+#: flowing.runtime:116 of
+msgid ""
+":mod:`flowing.agent` —— ``Agent`` 基类与创建 / 恢复管线的另一半 （``setup`` / 常驻工作循环）。 "
+":mod:`flowing.provide` —— provide-inject 链的节点协议与查找算法。 "
+":mod:`flowing.errors` —— 本模块抛出的异常层次。 :mod:`flowing.plugins` —— ``Plugin``"
+" 基类与扩展层约定。"
+msgstr ""
+":mod:`flowing.agent` — the ``Agent`` base class and the other half of the "
+"creation / recovery pipelines (``setup`` / the resident work loop). "
+":mod:`flowing.provide` — the node protocol and lookup algorithm of the "
+"provide-inject chain. :mod:`flowing.errors` — the exception hierarchy "
+"raised by this module. :mod:`flowing.plugins` — the ``Plugin`` base class "
+"and extension-layer conventions."
+
+#: flowing.runtime.AGENT_NAMING:1 of
+msgid "Agent 资源的路径形态身份名推断规则表（:class:`flowing.paths.NamingRules`）。"
+msgstr ""
+"The identity-name inference rule table for the Agent resource's path form "
+"(:class:`flowing.paths.NamingRules`)."
+
+#: flowing.runtime.AGENT_NAMING:3 of
+msgid ""
+"紧邻候选链声明（:meth:`Runtime.get_agent_class`）：命中通用名候选 （``agent.fya`` / "
+"``AGENT.fya``）→ 身份名取目录名；否则文件名去首个 匹配后缀、snake→kebab。供 agent 装配层调 "
+":func:`flowing.parser.parse_fya` 时传入 ``naming=AGENT_NAMING``，以及 name "
+"断言的推断侧。"
+msgstr ""
+"Declared right next to the candidate chain "
+"(:meth:`Runtime.get_agent_class`): hitting a generic-name candidate "
+"(``agent.fya`` / ``AGENT.fya``) → the identity name takes the directory "
+"name; otherwise strip the file name's first matching suffix and convert "
+"snake→kebab. Passed as ``naming=AGENT_NAMING`` when the agent assembly "
+"layer calls :func:`flowing.parser.parse_fya`, and also used as the "
+"inference side of the name assertion."
+
+#: ../../api/flowing.rst:145
+msgid "flowing.snapshot module"
+msgstr "flowing.snapshot module"
+
+#: flowing.snapshot:1 of
+msgid "``flowing.snapshot`` —— 观测面：Runtime / Agent 状态的一致性只读快照与 Info 视图。"
+msgstr ""
+"``flowing.snapshot`` — the observation surface: consistent read-only "
+"snapshots of Runtime / Agent state, and Info views."
+
+#: flowing.snapshot:5 of
+msgid ""
+"本模块定义 Flowing 框架的只读观测面：两个一致性快照结构 （:class:`RuntimeSnapshot` / "
+":class:`AgentSnapshot`）与一组 Info 只读视图 （:class:`NodeInfo` / "
+":class:`AgentInfo` / :class:`ExecutionInfo` / :class:`EntryInfo` / "
+":class:`ModelInfo` / :class:`TurnContextInfo` / :class:`MessageTreeInfo` "
+"/ :class:`MessageQueueInfo`）。它们回答一个问题： 不侵入框架核心执行流的前提下，外部（UI、监控、测试、运维）如何知道"
+" Runtime / Agent 此刻是什么状态。"
+msgstr ""
+"This module defines the Flowing framework's read-only observation "
+"surface: two consistent snapshot structures (:class:`RuntimeSnapshot` / "
+":class:`AgentSnapshot`) and a set of Info read-only views "
+"(:class:`NodeInfo` / :class:`AgentInfo` / :class:`ExecutionInfo` / "
+":class:`EntryInfo` / :class:`ModelInfo` / :class:`TurnContextInfo` / "
+":class:`MessageTreeInfo` / :class:`MessageQueueInfo`). They answer one "
+"question: without intruding into the framework's core execution flow, how "
+"does the outside world (UI, monitoring, tests, operations) learn what "
+"state the Runtime / Agent is in right now."
+
+#: flowing.snapshot:13 of
+msgid "观测面由两条互补的机制通道组成，本模块承载「拉取」这一条（「推送」由 钩子系统承载）："
+msgstr ""
+"The observation surface consists of two complementary mechanism channels; "
+"this module carries the \"pull\" one (the \"push\" one is carried by the "
+"hook system):"
+
+#: flowing.snapshot:20 of
+msgid "通道"
+msgstr "Channel"
+
+#: flowing.snapshot:21 of
+msgid "触发方式"
+msgstr "Trigger"
+
+#: flowing.snapshot:22 of
+msgid "方向"
+msgstr "Direction"
+
+#: flowing.snapshot:23 of
+msgid "机制归属"
+msgstr "Mechanism owner"
+
+#: flowing.snapshot:24 of
+msgid "``snapshot()``"
+msgstr "``snapshot()``"
+
+#: flowing.snapshot:25 of
+msgid "观察者主动调用"
+msgstr "Actively called by the observer"
+
+#: flowing.snapshot:26 of
+msgid "拉取"
+msgstr "Pull"
+
+#: flowing.snapshot:27 of
+msgid "本模块（返回结构）+ ``flowing.runtime.Runtime`` / ``flowing.agent.Agent`` （入口方法）"
+msgstr ""
+"This module (return structures) + ``flowing.runtime.Runtime`` / "
+"``flowing.agent.Agent`` (entry methods)"
+
+#: flowing.snapshot:28 of
+msgid "钩子订阅"
+msgstr "Hook subscription"
+
+#: flowing.snapshot:29 of
+msgid "框架在关键时点 dispatch"
+msgstr "Dispatched by the framework at key moments"
+
+#: flowing.snapshot:30 of
+msgid "推送"
+msgstr "Push"
+
+#: flowing.snapshot:31 of
+msgid "``flowing.hooks.HookRegistry`` （既有钩子系统）"
+msgstr "``flowing.hooks.HookRegistry`` (the existing hook system)"
+
+#: flowing.snapshot:33 of
+msgid "两条通道不互斥：钩子 handler 内部可再调用 ``snapshot()`` 拿事件发生后的 完整状态；快照也可独立于钩子被调用。"
+msgstr ""
+"The two channels are not mutually exclusive: inside a hook handler you "
+"can call ``snapshot()`` again to get the complete post-event state; the "
+"snapshot can also be called independently of hooks."
+
+#: flowing.snapshot:36 of
+msgid ""
+"快照是观测量，不是持久化格式：持久化侧由 ``tree.jsonl`` （消息树操作 日志）与 ``state.jsonl`` "
+"（``flowing.persistence.StateView`` 写透存储） 承载，恢复 = "
+"重放日志现场重建对象。不存在「拍全量状态照存档、下次整张 加载」的快照文件；观测字段与持久化格式无转换关系、不保证字段兼容 "
+"（观测字段由「当下想看什么」驱动，持久化格式由兼容性驱动）。"
+msgstr ""
+"A snapshot is an observation quantity, not a persistence format: the "
+"persistence side is carried by ``tree.jsonl`` (message-tree operation "
+"log) and ``state.jsonl`` (write-through storage of "
+"``flowing.persistence.StateView``), and recovery = replaying the logs to "
+"rebuild objects on site. There is no snapshot file that \"photographs the "
+"full state for archiving and loads it wholesale next time\"; observation "
+"fields and the persistence format have no conversion relationship and no "
+"field-compatibility guarantee (observation fields are driven by \"what "
+"one wants to see right now\", while the persistence format is driven by "
+"compatibility)."
+
+#: flowing.snapshot:42 of
+msgid ""
+"快照不包含插件状态：框架不为插件提供快照命名空间挂载机制。插件要暴露 自身状态，走自己的只读查询 API——观察者经 "
+"``runtime.get_plugin(...)`` 拿到插件对象后调用其公开方法。"
+msgstr ""
+"Snapshots do not include plugin state: the framework provides no "
+"snapshot-namespace mounting mechanism for plugins. A plugin that wants to "
+"expose its own state offers its own read-only query API — the observer "
+"gets the plugin object via ``runtime.get_plugin(...)`` and calls its "
+"public methods."
+
+#: flowing.snapshot:75 of
+msgid ""
+"两个入口都是同步方法：``runtime.snapshot()`` 与 ``agent.snapshot()`` 不是协程，调用时不需要 "
+"``await``。快照收集在同一事件循环 task 内同步 完成，不等待任何长操作。"
+msgstr ""
+"Both entry points are synchronous methods: ``runtime.snapshot()`` and "
+"``agent.snapshot()`` are not coroutines and need no ``await``. Snapshot "
+"collection completes synchronously within the same event-loop task and "
+"waits on no long operation."
+
+#: flowing.snapshot:78 of
+#, python-brace-format
+msgid ""
+"单时刻一致性：一次调用内部各字段取自同一时刻的框架状态，不出现 「``messages.count`` 取自 t1、``executions`` "
+"取自 t2」的撕裂。一致性 承诺以一次调用为单位：需要多个切面在同一时刻一致，必须在同一次调用 中传入全部所需 "
+"key（``keys={\"tool_entries\", \"executions\"}``）；拆成 "
+"两次调用各取一个切面，两次之间框架可能已变化，跨切面比对失效。"
+msgstr ""
+"Single-moment consistency: within one call, all fields are taken from the "
+"framework state at the same moment, with no tearing like \"``messages.count`` "
+"from t1, ``executions`` from t2\". The consistency promise is per call: "
+"to have multiple facets consistent at the same moment, you must pass all "
+"needed keys in the same call (``keys={\"tool_entries\", \"executions\"}``); "
+"splitting into two calls, one facet each, lets the framework change "
+"between them and invalidates cross-facet comparison."
+
+#: flowing.snapshot:83 of
+msgid ""
+"按需收集（``keys`` 参数）：``keys=None`` （默认）收集全部切面； 指定 ``keys`` 时只收集指定切面，未收集的字段为 "
+"``None``——高频轮询 单切面时不付无关切面的收集成本（典型即 ``context_usage`` 的锚点扫描 与工具 schema "
+"估算）。key 集合 = 快照字段名。"
+msgstr ""
+"On-demand collection (the ``keys`` parameter): ``keys=None`` (default) "
+"collects all facets; when ``keys`` is given, only the specified facets "
+"are collected and uncollected fields are ``None`` — high-frequency "
+"polling of a single facet does not pay the collection cost of unrelated "
+"facets (typically the anchor scanning and tool-schema estimation of "
+"``context_usage``). The key set = snapshot field names."
+
+#: flowing.snapshot:87 of
+msgid "不承诺跨快照原子：两次调用之间框架可能发生任意变化；观察者不得 缓存旧快照做控制决策——快照是观察通道，不是控制依据。"
+msgstr ""
+"No cross-snapshot atomicity promise: the framework may change arbitrarily "
+"between two calls; observers must not cache old snapshots for control "
+"decisions — a snapshot is an observation channel, not a basis for "
+"control."
+
+#: flowing.snapshot:89 of
+msgid ""
+"只读隔离：快照返回副本 / 不可变视图，与内部存储隔离；修改快照 不影响框架状态。快照永不暴露内部可变对象（dict 引用、``cancel`` "
+"/ ``pause`` 等控制信号 Event、队列内部 deque、``_provided`` dict）。 修改框架状态必须走正式 "
+"API（``provide()`` / ``Agent.register_state()`` 等）。"
+msgstr ""
+"Read-only isolation: a snapshot returns copies / immutable views, "
+"isolated from internal storage; modifying a snapshot does not affect "
+"framework state. A snapshot never exposes internal mutable objects (dict "
+"references, control-signal Events such as ``cancel`` / ``pause``, a "
+"queue's internal deque, the ``_provided`` dict). Modifying framework "
+"state must go through the formal APIs (``provide()`` / "
+"``Agent.register_state()`` etc.)."
+
+#: flowing.snapshot:94 of
+msgid ""
+"不抛异常：快照收集对内部状态做防御性读取；正常路径（含 Agent 已销毁、Runtime shutdown "
+"进行中）不抛异常，返回当前可得的一致切片。"
+msgstr ""
+"No exceptions: snapshot collection reads internal state defensively; the "
+"normal paths (including an already-destroyed Agent, a Runtime shutdown in "
+"progress) raise no exceptions and return the consistent slice currently "
+"available."
+
+#: flowing.snapshot:96 of
+msgid ""
+"可序列化：快照全部字段（含 Info 视图嵌套）只由 JSON 可序列化 标量 / ``datetime`` / list / dict / "
+"Info 视图组成——不引入任何类实例、 可调用对象或对内部结构的引用。``serve`` 的 ``GET /snapshot`` 直接 JSON"
+" 序列化即本不变量的消费点；新增字段必须满足此约束。"
+msgstr ""
+"Serializable: all snapshot fields (including nested Info views) consist "
+"only of JSON-serializable scalars / ``datetime`` / list / dict / Info "
+"views — no class instances, callables, or references to internal "
+"structures are introduced. ``serve``'s ``GET /snapshot`` serializing "
+"directly to JSON is the consumption point of this invariant; newly added "
+"fields must satisfy this constraint."
+
+#: flowing.snapshot:100 of
+msgid "观测不进核心执行流：快照调用不改变任何框架状态，观测者存在与否 不影响框架行为；观测 handler 只是钩子消费者，快照只是只读投影。"
+msgstr ""
+"Observation stays out of the core execution flow: snapshot calls change "
+"no framework state, and whether an observer exists does not affect "
+"framework behavior; observation handlers are merely hook consumers, and "
+"snapshots are merely read-only projections."
+
+#: flowing.snapshot:105 of
+msgid ""
+"``flowing.runtime.Runtime.snapshot`` ``flowing.agent.Agent.snapshot`` "
+"``flowing.agent.TurnContext`` （逻辑 turn 执行期对象，``TurnContextInfo`` 的被投影对象） "
+"``flowing.agent.Execution`` （执行条目，``ExecutionInfo`` 的被投影对象） "
+"``flowing.hooks.HookRegistry`` （推送通道的机制基座） ``flowing.agent.Agent.state`` "
+"（持久化状态袋，与观测正交） ``flowing.runtime.Runtime.get_plugin`` （插件状态的只读查询入口）"
+msgstr ""
+"``flowing.runtime.Runtime.snapshot`` ``flowing.agent.Agent.snapshot`` "
+"``flowing.agent.TurnContext`` (the logical-turn execution-period object, "
+"projected by ``TurnContextInfo``) ``flowing.agent.Execution`` (execution "
+"entry, projected by ``ExecutionInfo``) ``flowing.hooks.HookRegistry`` "
+"(the mechanism base of the push channel) ``flowing.agent.Agent.state`` "
+"(persisted state bag, orthogonal to observation) "
+"``flowing.runtime.Runtime.get_plugin`` (read-only query entry point for "
+"plugin state)"
+
+#: flowing.snapshot.NodeInfo:1 of
+msgid "Runtime 对象图中单个节点的只读元信息视图。"
+msgstr ""
+"Read-only metadata view of a single node in the Runtime object graph."
+
+#: flowing.snapshot.NodeInfo:5 of
+msgid ""
+"``RuntimeSnapshot.nodes`` 的值类型：一个节点在共享 ID 空间 （``runtime-*`` / "
+"``workflow-*`` / ``agent-*``）中的类型与亲节点指针。快照 "
+"只投影节点身份的两个标量，不暴露节点对象本身（节点实例是可变内部对象， 经快照暴露会破坏只读隔离）。"
+msgstr ""
+"The value type of ``RuntimeSnapshot.nodes``: a node's type and parent "
+"pointer within the shared ID space (``runtime-*`` / ``workflow-*`` / "
+"``agent-*``). The snapshot projects only the two scalars of the node "
+"identity and does not expose the node object itself (a node instance is a "
+"mutable internal object; exposing it via a snapshot would break read-only "
+"isolation)."
+
+#: flowing.snapshot.NodeInfo:12 of
+msgid "两个字段均为创建后不变的标量拷贝；修改本视图不影响框架。"
+msgstr ""
+"Both fields are scalar copies that are immutable after creation; "
+"modifying this view does not affect the framework."
+
+#: flowing.snapshot.NodeInfo:13 of
+msgid ""
+"``parent_id`` 为 ``None`` 当且仅当该条目是 Runtime 自身（链终点无 亲节点）；Agent / Workflow "
+"的根条目亲节点指针指向其 Runtime 的 ``node_id`` ——「根」由「亲节点是 Runtime」表达，不由 ``None`` 表达。"
+msgstr ""
+"``parent_id`` is ``None`` if and only if the entry is the Runtime itself "
+"(the chain endpoint has no parent); the root entries of Agent / Workflow "
+"have their parent pointer set to their Runtime's ``node_id`` — being a "
+"\"root\" is expressed by \"the parent is the Runtime\", not by ``None``."
+
+#: flowing.snapshot.NodeInfo:16 of
+msgid "不暴露节点的 hooks / provided / children 等任何可变结构。"
+msgstr ""
+"Exposes none of the node's mutable structures such as hooks / provided / "
+"children."
+
+#: flowing.snapshot.NodeInfo:17 of
+msgid ""
+"节点在快照生成后被 ``destroy()``，本视图仍保留生成时刻的值（快照不 追踪后续变化；需要新鲜状态请重新调用 "
+"``snapshot()``）。"
+msgstr ""
+"If the node is ``destroy()``ed after the snapshot is generated, this view "
+"still holds the values from generation time (a snapshot does not track "
+"subsequent changes; call ``snapshot()`` again for fresh state)."
+
+#: flowing.snapshot.NodeInfo:22 of
+msgid "``flowing.runtime.ProvideNode`` ``flowing.snapshot.RuntimeSnapshot.nodes``"
+msgstr "``flowing.runtime.ProvideNode`` ``flowing.snapshot.RuntimeSnapshot.nodes``"
+
+#: flowing.snapshot.NodeInfo.type:1 of
+msgid ""
+"节点类型名（``\"runtime\"`` / ``\"agent\"`` / ``\"workflow\"``），取自节点 id "
+"的前缀；快照生成时刻固定。"
+msgstr ""
+"The node type name (``\"runtime\"`` / ``\"agent\"`` / ``\"workflow\"``), taken "
+"from the node id's prefix; fixed at snapshot generation time."
+
+#: flowing.snapshot.NodeInfo.parent_id:1 of
+msgid ""
+"亲节点 id；Runtime 自身（链终点）为 ``None``。仅作标识用，不可经它 反查对象（反查走 "
+"``Runtime.get_agent`` 等正式 API）。"
+msgstr ""
+"The parent node's id; ``None`` for the Runtime itself (the chain "
+"endpoint). Identification only — it cannot be used to look the object "
+"back up (use formal APIs such as ``Runtime.get_agent`` for reverse "
+"lookup)."
+
+#: flowing.snapshot.AgentInfo:1 of
+msgid "agent 池注册表单条元数据的只读视图。"
+msgstr ""
+"Read-only view of a single metadata entry in the agent-pool registry."
+
+#: flowing.snapshot.AgentInfo:5 of
+msgid ""
+"``RuntimeSnapshot.agents`` 的值类型：agent 池注册表（``agent_id`` → "
+"元数据）中一个条目的投影。池持久化的是注册表而非实例——实例懒创建， 因此 ``loaded`` 区分「有 key 有 value」与「有 key"
+" 无 value」两种状态。"
+msgstr ""
+"The value type of ``RuntimeSnapshot.agents``: a projection of one entry "
+"of the agent-pool registry (``agent_id`` → metadata). What the pool "
+"persists is the registry, not instances — instances are lazily created, "
+"so ``loaded`` distinguishes the two states \"key with value\" and \"key "
+"without value\"."
+
+#: flowing.snapshot.AgentInfo:11 of
+msgid ""
+"``loaded=False`` 不表示异常：它表示实例尚未创建（懒加载）或已 ``destroy()`` "
+"（记录保留，可现场恢复）；``Runtime.get_agent(agent_id)`` 触发「有 key 无 value → 现场恢复」。"
+msgstr ""
+"``loaded=False`` does not indicate an error: it means the instance has "
+"not been created yet (lazy loading) or has been ``destroy()``ed (the "
+"record is kept and can be recovered on the spot); "
+"``Runtime.get_agent(agent_id)`` triggers \"key without value → on-the-spot "
+"recovery\"."
+
+#: flowing.snapshot.AgentInfo:14 of
+msgid "``agent_type`` 为字符串类型名（恢复重建实例的依据），非类对象。"
+msgstr ""
+"``agent_type`` is a string type name (the basis for rebuilding the "
+"instance at recovery), not a class object."
+
+#: flowing.snapshot.AgentInfo:15 of
+msgid ""
+"``created_at`` 取自注册表元数据，恢复后保持原值（身份连续、可重现， ``node_id == "
+"agent_id``），不是「本次加载时间」。"
+msgstr ""
+"``created_at`` comes from the registry metadata and keeps its original "
+"value after recovery (identity continuity, reproducible, ``node_id == "
+"agent_id``); it is not \"the time of this load\"."
+
+#: flowing.snapshot.AgentInfo:17 of
+msgid "显式删除 session（删持久化目录）后条目从注册表移除，下一张快照中 该 key 消失。"
+msgstr ""
+"After a session is explicitly deleted (the persistence directory "
+"removed), the entry is removed from the registry, and that key disappears "
+"from the next snapshot."
+
+#: flowing.snapshot.AgentInfo:22 of
+msgid ""
+"``flowing.runtime.Runtime.get_agent`` "
+"``flowing.runtime.Runtime.create_agent`` / "
+"``flowing.runtime.Runtime.recover_agent`` ``flowing.agent.Agent.destroy``"
+" （销毁实例但保留 session）"
+msgstr ""
+"``flowing.runtime.Runtime.get_agent`` "
+"``flowing.runtime.Runtime.create_agent`` / "
+"``flowing.runtime.Runtime.recover_agent`` ``flowing.agent.Agent.destroy`` "
+"(destroys the instance but keeps the session)"
+
+#: flowing.snapshot.AgentInfo.agent_type:1 of
+msgid "字符串类型名（恢复重建实例的依据）；非类对象、非模块路径。"
+msgstr ""
+"String type name (the basis for rebuilding the instance at recovery); "
+"neither a class object nor a module path."
+
+#: flowing.snapshot.AgentInfo.parent_agent_id:1 of
+msgid ""
+"亲代 Agent 的 id；根 Agent 的值为其 Runtime 的 ``node_id``。类型为 ``str``，不会出现 "
+"``None``。亲子在持久化目录上平级，亲子关系仅逻辑记录。"
+msgstr ""
+"The parent Agent's id; a root Agent's value is its Runtime's ``node_id``. "
+"Typed ``str``, never ``None``. Parent and child are peers at the "
+"persistence-directory level; the parent-child relationship is only "
+"logically recorded."
+
+#: flowing.snapshot.AgentInfo.created_at:1 of
+msgid "创建时间戳（注册表元数据原值，恢复后不改变）。"
+msgstr ""
+"Creation timestamp (the original registry-metadata value, unchanged after "
+"recovery)."
+
+#: flowing.snapshot.AgentInfo.loaded:1 of
+msgid ""
+"实例是否已在内存中：``True`` = 已创建的活实例；``False`` = 有 key 无 value（懒加载未触发或已 "
+"destroy），可经 ``Runtime.get_agent`` 现场 恢复。"
+msgstr ""
+"Whether the instance is in memory: ``True`` = a live created instance; "
+"``False`` = key without value (lazy loading not yet triggered, or already "
+"destroyed), recoverable on the spot via ``Runtime.get_agent``."
+
+#: flowing.snapshot.ExecutionInfo:1 of
+msgid "单个活跃执行条目的只读视图。"
+msgstr "Read-only view of a single active execution entry."
+
+#: flowing.snapshot.ExecutionInfo:5 of
+msgid ""
+"``AgentSnapshot.executions`` 的值类型：Agent 执行注册表中一个条目的 "
+"投影——观测者能看到「有哪些执行在飞、打了什么标签、跑了多久」。"
+msgstr ""
+"The value type of ``AgentSnapshot.executions``: a projection of one entry "
+"in the Agent execution registry — the observer can see \"which executions "
+"are in flight, what tags they carry, and how long they have been "
+"running\"."
+
+#: flowing.snapshot.ExecutionInfo:10 of
+msgid ""
+"``kind`` 为开放字符串：内置 ``\"tool\"`` / ``\"agent\"`` / ``\"request\"`` / "
+"``\"side_query\"``，扩展可引入新值（如 ``\"workflow\"`` / ``\"cron\"``）； "
+"快照不做枚举校验，原样投影。"
+msgstr ""
+"``kind`` is an open string: builtins are ``\"tool\"`` / ``\"agent\"`` / "
+"``\"request\"`` / ``\"side_query\"``; extensions may introduce new values "
+"(e.g. ``\"workflow\"`` / ``\"cron\"``); the snapshot does no enumeration "
+"validation and projects it verbatim."
+
+#: flowing.snapshot.ExecutionInfo:13 of
+msgid "``tags`` 为拷贝：快照后执行条目的 tag 变化不影响本视图。"
+msgstr ""
+"``tags`` is a copy: tag changes on the execution entry after the snapshot "
+"do not affect this view."
+
+#: flowing.snapshot.ExecutionInfo:14 of
+msgid "执行条目只在其存活期间出现于快照（清理在 ``finally`` 中保证，快照 里不会出现已结束的「幽灵条目」）。"
+msgstr ""
+"An execution entry appears in snapshots only while it is alive (cleanup "
+"is guaranteed in ``finally``, so no finished \"ghost entries\" appear in "
+"snapshots)."
+
+#: flowing.snapshot.ExecutionInfo:16 of
+msgid "快照生成后执行完成，本视图仍保留生成时刻的值——不得据此做「它还在 跑」的控制决策（快照是观察通道，不是控制依据）。"
+msgstr ""
+"If the execution finishes after the snapshot is generated, this view "
+"still holds the values from generation time — do not base control "
+"decisions like \"it is still running\" on it (a snapshot is an "
+"observation channel, not a basis for control)."
+
+#: flowing.snapshot.ExecutionInfo:18 of
+msgid "不提供经过时间与进度字段：「跑了多久」由观察者用 ``started_at`` 与 当前时间自行计算。"
+msgstr ""
+"No elapsed-time or progress fields are provided: \"how long it has been "
+"running\" is computed by the observer from ``started_at`` and the current "
+"time."
+
+#: flowing.snapshot.ExecutionInfo:20 of
+msgid ""
+"不暴露 ``cancel`` / ``pause`` 两个控制信号 Event——取消 / 暂停是正式 控制 "
+"API（``Agent.cancel()`` / ``Agent.pause()`` 族），不是观测面能力。"
+msgstr ""
+"The two control-signal Events ``cancel`` / ``pause`` are not exposed — "
+"cancellation / pausing are formal control APIs (the ``Agent.cancel()`` / "
+"``Agent.pause()`` family), not observation-surface capabilities."
+
+#: flowing.snapshot.ExecutionInfo:25 of
+msgid ""
+"``flowing.agent.Execution`` （被投影对象，含控制信号，不进快照） "
+"``flowing.agent.Agent.cancel`` / ``flowing.agent.Agent.cancel_by_tag`` "
+"``flowing.snapshot.AgentSnapshot.executions``"
+msgstr ""
+"``flowing.agent.Execution`` (the projected object; contains control "
+"signals, not part of the snapshot) ``flowing.agent.Agent.cancel`` / "
+"``flowing.agent.Agent.cancel_by_tag`` "
+"``flowing.snapshot.AgentSnapshot.executions``"
+
+#: flowing.snapshot.ExecutionInfo.kind:1 of
+msgid ""
+"执行种类（开放字符串，内置 ``tool`` / ``agent`` / ``request`` / "
+"``side_query``）；只描述类型，不参与控制分发。"
+msgstr ""
+"Execution kind (open string; builtins ``tool`` / ``agent`` / ``request`` "
+"/ ``side_query``); describes the type only and takes no part in control "
+"dispatch."
+
+#: flowing.snapshot.ExecutionInfo.tags:1 of
+msgid "自由标签的拷贝，用于分组观察（与 ``cancel_by_tag`` 的分组语义对应）； 快照后源条目 tag 变化不影响本视图。"
+msgstr ""
+"A copy of the free-form tags, for grouped observation (corresponding to "
+"the grouping semantics of ``cancel_by_tag``); tag changes on the source "
+"entry after the snapshot do not affect this view."
+
+#: flowing.snapshot.ExecutionInfo.started_at:1 of
+msgid "启动时间戳；供监控 / 日志 / 「跑了多久」类计算使用。"
+msgstr ""
+"Start timestamp; for monitoring / logging / \"how long it has been "
+"running\" calculations."
+
+#: flowing.snapshot.EntryInfo:1 of
+msgid "能力绑定条目（ToolEntry / SubagentEntry）的只读视图。"
+msgstr "Read-only view of a capability-binding entry (ToolEntry / SubagentEntry)."
+
+#: flowing.snapshot.EntryInfo:5 of
+msgid ""
+"``AgentSnapshot.tool_entries`` 与 ``AgentSnapshot.subagent_entries`` "
+"的元素类型：能力三正交中「Agent 级绑定」层的投影——同一个可执行对象在 不同 Agent 上可经 entry "
+"覆写别名与启用状态，快照呈现的是本 Agent 上的 绑定结果，而非全局注册表。"
+msgstr ""
+"The element type of ``AgentSnapshot.tool_entries`` and "
+"``AgentSnapshot.subagent_entries``: a projection of the \"Agent-level "
+"binding\" layer among the three orthogonal capability axes — the same "
+"executable object can have its alias and enabled state overridden per "
+"entry on different Agents, and the snapshot presents the binding result "
+"on this Agent, not the global registry."
+
+#: flowing.snapshot.EntryInfo:12 of
+msgid "``alias`` 是 Agent 内查找键（``tool_call()`` 仅按别名查找）；同一工具 在不同 Agent 快照中可有不同别名。"
+msgstr ""
+"``alias`` is the in-Agent lookup key (``tool_call()`` looks up by alias "
+"only); the same tool may have different aliases in different Agents' "
+"snapshots."
+
+#: flowing.snapshot.EntryInfo:14 of
+msgid "``enabled=False`` 表示绑定存在但当前对 LLM 不可见、不可调用；条目 本身仍在（可被重新启用）。"
+msgstr ""
+"``enabled=False`` means the binding exists but is currently invisible and "
+"uncallable to the LLM; the entry itself remains (and can be re-enabled)."
+
+#: flowing.snapshot.EntryInfo:16 of
+msgid "``agent_type`` 仅子 Agent 条目有值；工具条目恒为 ``None``。"
+msgstr ""
+"``agent_type`` has a value only for subagent entries; tool entries always "
+"have ``None``."
+
+#: flowing.snapshot.EntryInfo:17 of
+msgid ""
+"不投影 entry 的 schema 覆写内容（specified / inject 参数等）——观测 面只给「绑没绑、叫什么、开没开」；LLM "
+"可见声明请经 ``ToolEntry.llm_definition()`` 获取。"
+msgstr ""
+"The entry's schema-override content (specified / inject parameters etc.) "
+"is not projected — the observation surface only answers \"bound or not, "
+"called what, enabled or not\"; for the LLM-visible declaration, get it "
+"via ``ToolEntry.llm_definition()``."
+
+#: flowing.snapshot.EntryInfo:20 of
+msgid "条目在快照生成后被移除 / 停用，本视图保留生成时刻的值。"
+msgstr ""
+"If the entry is removed / disabled after the snapshot is generated, this "
+"view keeps the values from generation time."
+
+#: flowing.snapshot.EntryInfo:24 of
+msgid ""
+"``flowing.tool.ToolEntry`` ``flowing.agent.Agent.tool_call`` "
+"``flowing.snapshot.AgentSnapshot.tool_entries`` / "
+"``flowing.snapshot.AgentSnapshot.subagent_entries``"
+msgstr ""
+"``flowing.tool.ToolEntry`` ``flowing.agent.Agent.tool_call`` "
+"``flowing.snapshot.AgentSnapshot.tool_entries`` / "
+"``flowing.snapshot.AgentSnapshot.subagent_entries``"
+
+#: flowing.snapshot.EntryInfo.alias:1 of
+msgid "Agent 内别名（查找键）；可能与全局注册名不同（per-Agent 覆写）。"
+msgstr ""
+"In-Agent alias (the lookup key); may differ from the global registered "
+"name (per-Agent override)."
+
+#: flowing.snapshot.EntryInfo.enabled:1 of
+msgid ""
+"启用状态：``False`` 时对 LLM 不可见、不可调用，但绑定仍保留。语义 呼应 ``flowing.lists.Togglable`` "
+"的元素契约（开关语义一致，但 Tool/Subagent 条目的容器是别名键 dict，不经 ``ManagedList`` 管理——两 "
+"家族分界见 ``flowing.lists`` 模块 docstring）。"
+msgstr ""
+"Enabled state: when ``False`` the entry is invisible and uncallable to "
+"the LLM, but the binding remains. The semantics echo the element contract "
+"of ``flowing.lists.Togglable`` (same toggle semantics, but the container "
+"of Tool/Subagent entries is an alias-keyed dict, not managed via "
+"``ManagedList`` — for the boundary between the two families, see the "
+"``flowing.lists`` module docstring)."
+
+#: flowing.snapshot.EntryInfo.agent_type:1 of
+msgid "子 Agent 条目的目标类型名；工具条目恒为 ``None``。"
+msgstr ""
+"The target type name of a subagent entry; tool entries always have "
+"``None``."

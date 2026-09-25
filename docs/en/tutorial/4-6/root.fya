@@ -1,0 +1,7 @@
+description: "Errors-and-control demo assistant: equipped with bash for the cancellation experiment."
+model_tag: default
+tools:
+  - bash
+---
+$system_prompt:
+You are a concise demo assistant; keep answers to one sentence.

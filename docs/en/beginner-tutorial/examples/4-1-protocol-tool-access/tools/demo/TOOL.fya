@@ -1,0 +1,8 @@
+# MCP tool declaration (stdio local-subprocess form): one declaration = a group proxy for a set of server-side tools.
+name: demo
+type: mcp
+description: A GitHub-style demo tool group.
+command: uv
+# The stdio subprocess uses the Agent process's working directory as cwd (i.e. this project root); a relative path suffices.
+args: ["run", "python", "tools/demo_server.py"]
+tools: [list-prs, create-issue]   # Subset of server-side tools (demo_server happens to expose exactly these two)

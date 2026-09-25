@@ -1,0 +1,15 @@
+== ① 双 Runtime 共存与 @ 隔离 ==
+   A.project_root = 4-8（外层工程）
+   B.project_root = other-project（嵌套目录内）
+   B 的 @/root.fya 解析到 B 自己的根：True
+== ② 模块级 resolve() 的可用域 ==
+   launch 返回后调用 flowing.resolve() → RuntimeError: @ context not registered via flowing.launch; resolve() unavailable
+== ③ provide 终点 / Resource（树外直引）==
+   根 inject('app_name') = 'demo-a'（链终点 = Runtime）
+   get_resource('db').dsn = 'sqlite:///demo.db'（不走注入链，直引共享实例）
+== ④ 池注册表 / provider 懒加载 ==
+   池条目: ['agent-main']
+   provider 候选 1 个 / 已实例化 0 个
+== ⑤ snapshot（拉取通道）==
+   runtime.snapshot: nodes=['agent-main', 'runtime-0'] plugins=[]
+   agent.snapshot: node_id=agent-main model=deepseek-v4-flash queue=MessageQueueInfo(size=0, pending=0) tree=MessageTreeInfo（消息树视图）

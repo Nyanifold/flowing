@@ -1,0 +1,4 @@
+# Project-level config (@/config.yaml): higher priority than framework
+# defaults, lower than user-level config and set_config
+agent:
+  timeout: 45

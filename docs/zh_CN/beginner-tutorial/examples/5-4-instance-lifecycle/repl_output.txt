@@ -1,0 +1,9 @@
+(agent-main)>>>I'll have the assistant memorize that.
+[tool_call] subagent-invoke {"agent_type": "assistant", "name": "memo", "prompt": "请记住这个数字：42。记住后请复述确认。"}
+[tool:completed] subagent-invoke -> 
+assistant 已记住数字 42，并复述确认：「我记住了：这个数字是42。」
+(agent-main)>>>[thinking] Resume the memo instance.
+[tool_call] subagent-invoke {"resume": "memo", "prompt": "我之前让你记的数字是几？"}
+[tool:completed] subagent-invoke -> 
+memo 回答：「你之前让我记的数字是42。」
+(agent-main)>>>

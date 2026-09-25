@@ -1,0 +1,1334 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C)
+# This file is distributed under the same license as the flowing-agent
+# package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: flowing-agent \n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-09-11 07:02+0800\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: en\n"
+"Language-Team: en <LL@li.org>\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: ../../api/flowing.composables.rst:2
+msgid "flowing.composables package"
+msgstr "flowing.composables package"
+
+#: flowing.composables:1 of
+msgid "flowing.composables —— 应用层 Composable：纯函数式能力注入。"
+msgstr "flowing.composables —— application-layer Composables: pure function-style capability injection."
+
+#: flowing.composables:4 flowing.composables.compact:4
+#: flowing.composables.compact.use_auto_compact:4
+#: flowing.composables.compact.use_compact:4 flowing.composables.reminder:4
+#: flowing.composables.reminder.use_system_reminder:4
+#: flowing.composables.retry:4 flowing.composables.retry.use_retry:4 of
+msgid "功能介绍"
+msgstr "Overview"
+
+#: flowing.composables:5 of
+msgid ""
+"Composable 是三层架构中的应用层：普通 Python 函数（命名约定 ``use_xxx(agent, ...)``），在 Agent "
+"的 ``setup()`` 中被调用，为这一个 Agent 实例注册钩子 handler 或绑定实例属性。内置四个： "
+":func:`use_retry` （:mod:`flowing.composables.retry`，LLM 调用失败退避 "
+"重试）、:func:`use_compact` 与 :func:`use_auto_compact` "
+"（:mod:`flowing.composables.compact`，上下文占用超阈值自动压缩—— "
+"前者请求后全量换链，后者请求前头尾保留，二选一）与 :func:`use_system_reminder` "
+"（:mod:`flowing.composables.reminder`，每回合注入系统提醒）。场景类 "
+"Composable（``use_logging`` / ``use_guardrail`` 等）属应用代码，框架 不预留符号。"
+msgstr ""
+"Composables are the application layer of the three-tier architecture: plain Python functions (naming "
+"convention ``use_xxx(agent, ...)``) called inside an Agent's ``setup()`` to register hook handlers or bind "
+"instance attributes for that one Agent instance. Four are builtin: :func:`use_retry` "
+"(:mod:`flowing.composables.retry`, backoff retry on LLM call failure), :func:`use_compact` and "
+":func:`use_auto_compact` (:mod:`flowing.composables.compact`, automatic compaction when context usage "
+"exceeds a threshold — the former swaps in a full new chain after a request, the latter preserves head and "
+"tail before a request; choose one) and :func:`use_system_reminder` "
+"(:mod:`flowing.composables.reminder`, injects a system reminder each turn). Scenario-oriented "
+"Composables (``use_logging`` / ``use_guardrail``, etc.) belong to application code; the framework "
+"reserves no symbols for them."
+
+#: flowing.composables:17 of
+msgid ""
+"Composable 只做「挂载」：注册钩子 handler、绑定实例属性；不修改框架 "
+"核心状态。本包不提供插件（阶段一）能力：不做全局注册、不经过 ``runtime.install()``、自身也没有 "
+"``install()``——调用即生效，作用域严格 限于传入的那一个 Agent 实例。"
+msgstr ""
+"A Composable only \"mounts\": it registers hook handlers and binds instance attributes; it does not modify "
+"framework core state. This package provides no plugin (stage one) capability: no global registration, no "
+"``runtime.install()``, and no ``install()`` of its own — calling takes effect immediately, and the scope "
+"is strictly limited to the one Agent instance passed in."
+
+#: flowing.composables:23 flowing.composables.compact:59
+#: flowing.composables.compact.use_auto_compact:19
+#: flowing.composables.compact.use_compact:21 flowing.composables.reminder:36
+#: flowing.composables.reminder.use_system_reminder:16
+#: flowing.composables.retry:44 flowing.composables.retry.use_retry:17 of
+msgid "使用示例"
+msgstr "Examples"
+
+#: flowing.composables:24 of
+msgid "典型组合（手写 Agent 子类的 ``setup()`` 中按需启用）："
+msgstr "A typical combination (enable as needed in a hand-written Agent subclass's ``setup()``):"
+
+#: flowing.composables:40 flowing.composables.compact:70
+#: flowing.composables.compact.use_auto_compact:29
+#: flowing.composables.compact.use_compact:39 flowing.composables.reminder:47
+#: flowing.composables.reminder.use_system_reminder:31
+#: flowing.composables.retry:55 flowing.composables.retry.use_retry:42 of
+msgid "行为要点"
+msgstr "Key Behaviors"
+
+#: flowing.composables:41 of
+msgid ""
+"启用方式：双层启用的阶段二——``use_xxx(self)`` 在 ``setup()`` 中按 实例启用（恢复时 ``setup()`` "
+"在新实例上执行，钩子注册表随实例重建， 天然不叠加）；未调用 ``use_xxx`` 的 Agent 不持有任何相关 handler 与 "
+"状态——「没启用」是「代码路径从没存在过」，不是「被跳过」，零开销。"
+msgstr ""
+"How to enable: stage two of two-layer enabling — ``use_xxx(self)`` is called in ``setup()`` to enable "
+"per instance (on recovery ``setup()`` runs on the new instance and the hook registry is rebuilt with it, "
+"so nothing stacks up naturally); an Agent that never calls ``use_xxx`` holds no related handlers or state "
+"— \"not enabled\" means \"the code path never existed\", not \"skipped\", with zero overhead."
+
+#: flowing.composables:45 of
+msgid ""
+"同步 / async 形态：由内部是否确需 ``await`` 决定——纯注册型 Composable 写成同步 ``def`` "
+"（本包三个均为同步），调用点不需要 ``await``；需要真实等待（退避 sleep、副线查询）的 handler 才是异步 函数。"
+msgstr ""
+"Sync / async form: decided by whether the internals genuinely need ``await`` — pure registration-type "
+"Composables are written as synchronous ``def`` (all three in this package are synchronous), so call sites "
+"need no ``await``; only handlers that truly wait (backoff sleep, side-channel queries) are async functions."
+
+#: flowing.composables:49 of
+msgid "无排序约束：``setup()`` 中调用顺序决定最终结果，后注册的 handler 排在链尾执行。"
+msgstr "No ordering constraint: call order in ``setup()`` determines the final result; handlers registered later run at the tail of the chain."
+
+#: flowing.composables:51 of
+msgid ""
+"本包三个 Composable 均不做幂等去重：重复调用按注册语义各自叠加一组 handler（允许以不同参数多次启用）；整组替换用 "
+"``remove_by_owner()`` （参数取各子模块注册面清单中的 ``by`` 值） 移除默认 handler 后自注册。"
+msgstr ""
+"None of the three Composables in this package does idempotent deduplication: repeated calls each stack "
+"their own set of handlers per registration semantics (enabling multiple times with different parameters is "
+"allowed); to replace a whole set, use ``remove_by_owner()`` (the argument is the ``by`` value from each "
+"submodule's registration inventory) to remove the default handlers, then register your own."
+
+#: flowing.composables:55 of
+msgid "注册的资源、声明的钩子点与挂载的钩子：见各子模块 docstring 的 「注册面清单」。"
+msgstr "Registered resources, declared hook points, and mounted hooks: see the \"Registration Inventory\" in each submodule's docstring."
+
+#: flowing.composables:60 of
+msgid ""
+":mod:`flowing.plugins` —— 阶段一插件层（跨 Agent / 进程级能力）。 "
+":class:`flowing.hooks.HookRegistry` —— Composable 的主要挂载面。"
+msgstr ""
+":mod:`flowing.plugins` —— the stage-one plugin layer (cross-Agent / process-level capabilities). "
+":class:`flowing.hooks.HookRegistry` —— the main mounting surface for Composables."
+
+#: flowing.composables.retry.use_retry:1 of
+msgid "为单个 Agent 实例启用 LLM 调用失败的重试策略（可选、非默认）。"
+msgstr "Enable a retry policy for LLM call failures on a single Agent instance (optional, non-default)."
+
+#: flowing.composables.retry.use_retry:5 of
+msgid ""
+"在 ``agent.hooks.on_provider_error`` 上注册一个重试决策 handler "
+"（``by=\"retry\"``），并配套注册一个 ``before_turn`` 归零 handler 用于在每个逻辑 Turn "
+"开始时重置重试计数。启用后，该 Agent 的 LLM 调用抛出可重试类异常时，决策 handler 按参数指定的退避模型等待一段 "
+"时间（期间不调用 LLM），再在同一回合内重发调用，直至成功或达到 ``max_retries`` 上限；抛出不可重试类异常或未知异常时不做重试，"
+" 本回合以错误结局终止（Agent 存活）。"
+msgstr ""
+"Registers a retry-decision handler (``by=\"retry\"``) on ``agent.hooks.on_provider_error``, together "
+"with a ``before_turn`` reset handler that resets the retry counter at the start of each logical Turn. Once "
+"enabled, when this Agent's LLM call raises a retryable exception, the decision handler waits according to "
+"the backoff model given by the parameters (no LLM call during the wait), then re-issues the call within "
+"the same turn, until success or the ``max_retries`` limit; for non-retryable or unknown exceptions it does "
+"not retry, and the turn terminates with an error outcome (the Agent survives)."
+
+#: flowing.composables.compact.use_compact:17
+#: flowing.composables.reminder.use_system_reminder:12
+#: flowing.composables.retry.use_retry:13 of
+msgid "本函数是双层启用的阶段二入口，只能在 ``setup()`` （或实例存活期内 的任意代码）中对已完成初始化的实例调用。"
+msgstr "This function is the stage-two entry point of two-layer enabling; it may only be called in ``setup()`` (or any code during the instance's lifetime) on a fully initialized instance."
+
+#: flowing.composables.retry.use_retry:43 of
+msgid "注册的两个 handler（都经 ``by=\"retry\"`` 定位与移除）："
+msgstr "The two registered handlers (both located and removed via ``by=\"retry\"``):"
+
+#: flowing.composables.retry.use_retry:45 of
+msgid "``before_turn`` 归零 handler：每个逻辑 Turn 开始时把重试计数重置 为 0（value 原样透传，纯观察不干预）。"
+msgstr "``before_turn`` reset handler: resets the retry counter to 0 at the start of each logical Turn (the value passes through unchanged; pure observation, no intervention)."
+
+#: flowing.composables.retry.use_retry:47 of
+msgid "``on_provider_error`` 决策 handler：见下「重试决策」。"
+msgstr "``on_provider_error`` decision handler: see \"Retry Decision\" below."
+
+#: flowing.composables.compact.use_compact:64
+#: flowing.composables.retry.use_retry:49 of
+msgid "参数语义："
+msgstr "Parameter semantics:"
+
+#: flowing.composables.retry.use_retry:51 of
+msgid ""
+"``max_retries``：单个逻辑 Turn 内允许的最大重试次数，``>= 0``。 计数从 1 起：首次失败为第 1 次尝试，只有 "
+"``attempt <= max_retries`` 才放行重试，因此默认值 3 表示「初始调用 + 至多 3 次重试」至多 4 次 LLM "
+"调用。``max_retries=0`` 合法：首次失败即放弃，等价于不 重试（与不调用的差别仅在于多了一次空分发）。"
+msgstr ""
+"``max_retries``: the maximum number of retries allowed within a single logical Turn, ``>= 0``. Counting "
+"starts at 1: the first failure is attempt 1, and a retry is only allowed when ``attempt <= max_retries``, "
+"so the default 3 means \"initial call + at most 3 retries\", i.e. at most 4 LLM calls. ``max_retries=0`` "
+"is valid: give up on the first failure, equivalent to not retrying (the only difference from not calling "
+"this function is one extra empty dispatch)."
+
+#: flowing.composables.retry.use_retry:56 of
+msgid ""
+"``base_delay``：退避基准秒数，``>= 0``；为 0 时不等待直接重试。 ``backoff=\"fixed\"`` "
+"时即每次的等待时长。"
+msgstr ""
+"``base_delay``: the base backoff delay in seconds, ``>= 0``; when 0, retry immediately without waiting. "
+"With ``backoff=\"fixed\"`` this is the wait duration for every retry."
+
+#: flowing.composables.retry.use_retry:58 of
+msgid "``backoff``：退避模型，仅接受 ``\"exponential\"`` （默认）或 ``\"fixed\"``。"
+msgstr "``backoff``: the backoff model; accepts only ``\"exponential\"`` (default) or ``\"fixed\"``."
+
+#: flowing.composables.retry.use_retry:61 of
+msgid "重试决策（决策 handler 收到 ``ProviderErrorContext`` 时）："
+msgstr "Retry decision (when the decision handler receives a ``ProviderErrorContext``):"
+
+#: flowing.composables.retry.use_retry:63 of
+msgid ""
+"``ctx.error`` 属于 :data:`NON_RETRYABLE_ERRORS`，或不在 "
+":data:`RETRYABLE_ERRORS` 中（含一切未知异常）：原样返回，不等待、 不计数，``can_continue`` 保持 "
+"``False``——保守原则，只对明确已知 的可重试类型放行。"
+msgstr ""
+"``ctx.error`` belongs to :data:`NON_RETRYABLE_ERRORS`, or is not in :data:`RETRYABLE_ERRORS` (including "
+"all unknown exceptions): returned unchanged — no wait, no counting, ``can_continue`` stays ``False``. "
+"Conservative principle: only explicitly known retryable types are allowed through."
+
+#: flowing.composables.retry.use_retry:67 of
+msgid ""
+"``ctx.error`` 属于 :data:`RETRYABLE_ERRORS`：计数加 1；若计数已 超过 ``max_retries`` "
+"则放弃（原样返回，不发观测信号）；否则先置 ``ctx.can_continue = True``，等待 ``delay`` "
+"秒，回合层面随后在同一 回合内重发调用。"
+msgstr ""
+"``ctx.error`` belongs to :data:`RETRYABLE_ERRORS`: increment the counter by 1; if the counter already "
+"exceeds ``max_retries``, give up (returned unchanged, no observation signal emitted); otherwise set "
+"``ctx.can_continue = True`` first, wait ``delay`` seconds, and the turn layer then re-issues the call "
+"within the same turn."
+
+#: flowing.composables.retry.use_retry:71 of
+msgid ""
+"延迟计算：``backoff=\"exponential\"`` 时， "
+":class:`flowing.errors.RateLimitedError` 的等待时长为 ``min(base_delay * 2 ** "
+"(attempt - 1), MAX_RETRY_DELAY)``，其余 三类基础设施错误（``ServerError`` / "
+"``NetworkError`` / ``ProviderTimeoutError``）恒为 ``base_delay`` （瞬时基础设施故障 "
+"不需要幂增长）；``backoff=\"fixed\"`` 时所有可重试错误的等待时长恒 为 "
+"``base_delay``。不引入随机抖动——单机小工具定位下不存在多客户 端同步重试打爆服务端的场景，等待时长可预测、可测试；需要抖动的 "
+"应用自行注册 handler。"
+msgstr ""
+"Delay computation: with ``backoff=\"exponential\"``, the wait for "
+":class:`flowing.errors.RateLimitedError` is ``min(base_delay * 2 ** (attempt - 1), MAX_RETRY_DELAY)``, "
+"while the other three infrastructure errors (``ServerError`` / ``NetworkError`` / "
+"``ProviderTimeoutError``) always wait ``base_delay`` (transient infrastructure failures need no "
+"exponential growth); with ``backoff=\"fixed\"`` every retryable error waits ``base_delay``. No random "
+"jitter is introduced — in the single-machine small-tool positioning there is no scenario where many "
+"clients retry in sync and crush the server, so wait times are predictable and testable; applications that "
+"need jitter register their own handler."
+
+#: flowing.composables.retry.use_retry:81 of
+msgid ""
+"重试计数：计数是 handler 闭包的内部状态，不是框架字段——回合 层面不存在重试计数状态机。计数随逻辑 Turn 边界归零（经 "
+"``before_turn`` 归零 handler），同一 Turn 内的多次 ``provider_gen()`` 共享计数 "
+"（失败预算不区分是哪一次调用消耗的）；不落盘、不进快照、崩溃后不 恢复。"
+msgstr ""
+"Retry counting: the counter is internal state of the handler closure, not a framework field — there is no "
+"retry-counter state machine at the turn layer. The counter resets at logical Turn boundaries (via the "
+"``before_turn`` reset handler); multiple ``provider_gen()`` calls within the same Turn share the counter "
+"(the failure budget does not distinguish which call consumed it); it is not persisted, not part of "
+"snapshots, and not recovered after a crash."
+
+#: flowing.composables.retry.use_retry:87 of
+msgid ""
+"重试观测信号（``on_retry`` 钩子点）：每次放行重试时，在置 ``can_continue`` 之后、等待之前，以 fire-and-"
+"forget 方式向 ``on_retry`` 派发一份含四个键的快照：``attempt`` / ``max_retries`` / "
+"``delay`` / ``error`` （``error`` 的值是本次失败的原始异常），供 UI "
+"显示「retrying...(1/10)」之类的进行态。快照发出后订阅者的返回值 "
+"被忽略（观测语义，不参与决策链）；达到上限放弃重试的路径不发信号； 订阅者 异常被记录为警告，不影响重试决策。"
+msgstr ""
+"Retry observation signal (the ``on_retry`` hook point): each time a retry is allowed, after setting "
+"``can_continue`` and before waiting, a snapshot with four keys is dispatched to ``on_retry`` in "
+"fire-and-forget fashion: ``attempt`` / ``max_retries`` / ``delay`` / ``error`` (the value of ``error`` is "
+"the original exception of this failure), so a UI can show progress like \"retrying...(1/10)\". Subscriber "
+"return values are ignored after the snapshot is sent (observation semantics; they do not participate in "
+"the decision chain); no signal is emitted on the path that gives up after reaching the limit; subscriber "
+"exceptions are logged as warnings and do not affect the retry decision."
+
+#: flowing.composables.retry.use_retry:96 of
+msgid ""
+"重复调用：不做幂等去重——每次调用按注册语义各自叠加一组独立的 handler（各自持有独立的计数闭包），允许以不同参数多次启用。恢复时 "
+"``setup()`` 在新实例上执行，钩子注册表随实例重建，天然不叠加。"
+msgstr ""
+"Repeated calls: no idempotent deduplication — each call stacks its own independent set of handlers per "
+"registration semantics (each holding its own counting closure); enabling multiple times with different "
+"parameters is allowed. On recovery ``setup()`` runs on the new instance and the hook registry is rebuilt "
+"with it, so nothing stacks up naturally."
+
+#: flowing.composables.retry.use_retry:99 of
+msgid ""
+"回合中止：等待期间用户 ``cancel()`` 当前执行——等待本身不可 中断，本次等待结束后 ``can_continue=True`` "
+"放行，回合层面在下一次 ``provider_gen()`` 前的检查点正常中止。取消的生效粒度是「当前这次 退避等待结束」。"
+msgstr ""
+"Turn cancellation: the user ``cancel()``s the current execution during the wait — the wait itself cannot "
+"be interrupted; once this wait ends, ``can_continue=True`` lets it through, and the turn layer aborts "
+"normally at the checkpoint before the next ``provider_gen()``. The granularity of cancellation is \"the "
+"current backoff wait finishes\"."
+
+#: flowing.composables.retry.use_retry:104 of
+msgid ""
+"不做什么：不修改 ``agent.model`` / ``agent.model_tag`` （「改模型 后重试」是用户自定义 handler "
+"的合法写法，默认实现不做）；不产生任何 消息、不写消息级树；不做跨错误联动（如「连续限流 3 次后换策略」）。"
+msgstr ""
+"What it does not do: it does not modify ``agent.model`` / ``agent.model_tag`` (\"switch model then retry\" "
+"is a legitimate user-defined handler pattern, but the default implementation does not do it); it produces "
+"no messages and writes nothing to the message tree; it does no cross-error coordination (such as \"switch "
+"strategy after 3 consecutive rate limits\")."
+
+#: ../../api/flowing.composables.rst
+msgid "参数"
+msgstr "Parameters"
+
+#: flowing.composables.compact.use_auto_compact:71
+#: flowing.composables.compact.use_compact:81
+#: flowing.composables.reminder.use_system_reminder:51
+#: flowing.composables.retry.use_retry:108 of
+msgid "目标 Agent 实例；标准用法是在 ``setup()`` 中传 ``self``。"
+msgstr "The target Agent instance; the standard usage is to pass ``self`` in ``setup()``."
+
+#: flowing.composables.retry.use_retry:109 of
+msgid "单个逻辑 Turn 内的最大重试次数，``>= 0``。"
+msgstr "The maximum number of retries within a single logical Turn, ``>= 0``."
+
+#: flowing.composables.retry.use_retry:110 of
+msgid "退避基准秒数，``>= 0``；为 0 时不等待直接重试。"
+msgstr "The base backoff delay in seconds, ``>= 0``; when 0, retry immediately without waiting."
+
+#: flowing.composables.retry.use_retry:111 of
+msgid "退避模型，``\"exponential\"`` （默认）或 ``\"fixed\"``。"
+msgstr "The backoff model, ``\"exponential\"`` (default) or ``\"fixed\"``."
+
+#: ../../api/flowing.composables.rst
+msgid "抛出"
+msgstr "Raises"
+
+#: flowing.composables.retry.use_retry:112 of
+#, python-brace-format
+msgid ""
+"``max_retries < 0``、``base_delay < 0`` 或 ``backoff`` 不在 "
+"``{\"exponential\", \"fixed\"}`` 中时，于注册任何 handler 之前抛出。"
+msgstr ""
+"Raised before any handler is registered when ``max_retries < 0``, ``base_delay < 0``, or ``backoff`` is "
+"not in ``{\"exponential\", \"fixed\"}``."
+
+#: ../../api/flowing.composables.rst
+msgid "返回类型"
+msgstr "Return type"
+
+#: flowing.composables.retry.use_retry:118 of
+msgid ":class:`flowing.agent.ProviderErrorContext` —— 决策 handler 的"
+msgstr ":class:`flowing.agent.ProviderErrorContext` —— the value type of the"
+
+#: flowing.composables.retry.use_retry:119 of
+msgid "value 类型与 ``can_continue`` 决策字段。"
+msgstr "decision handler and the ``can_continue`` decision field."
+
+#: flowing.composables.retry.use_retry:120 of
+msgid ":meth:`flowing.lists.ManagedList.remove_by_owner` —— 整组替换"
+msgstr ":meth:`flowing.lists.ManagedList.remove_by_owner` —— the entry point"
+
+#: flowing.composables.retry.use_retry:121 of
+msgid "默认策略的入口。"
+msgstr "for replacing the default policy as a whole."
+
+#: flowing.composables.retry.use_retry:122 of
+msgid ":data:`RETRYABLE_ERRORS` / :data:`NON_RETRYABLE_ERRORS` ——"
+msgstr ":data:`RETRYABLE_ERRORS` / :data:`NON_RETRYABLE_ERRORS` ——"
+
+#: flowing.composables.retry.use_retry:123 of
+msgid "默认策略的错误分类清单。"
+msgstr "the default policy's error classification lists."
+
+#: flowing.composables.compact.use_compact:1 of
+msgid "为单个 Agent 实例启用「上下文超阈值自动压缩」策略（可选、非默认）。"
+msgstr "Enable the \"auto-compact when context exceeds a threshold\" policy on a single Agent instance (optional, non-default)."
+
+#: flowing.composables.compact.use_compact:5 of
+msgid "依次完成三件事（都经 ``by=\"compact\"`` 定位与移除）："
+msgstr "Does three things in sequence (all located and removed via ``by=\"compact\"``):"
+
+#: flowing.composables.compact.use_compact:7 of
+msgid ""
+"声明 ``on_compact`` 钩子点（同名同 ``by`` 幂等）——压缩观测 / 拦截点，value 为 "
+":class:`flowing.context.ContextUsageEstimate`， handler 可 ``raise "
+"Intercepted`` 取消本次压缩；"
+msgstr ""
+"declares the ``on_compact`` hook point (idempotent for the same name and ``by``) — the compaction "
+"observation / interception point, whose value is :class:`flowing.context.ContextUsageEstimate`; a handler "
+"may ``raise Intercepted`` to cancel this compaction;"
+
+#: flowing.composables.compact.use_compact:10 of
+msgid ""
+"``compact_prompt`` 缺省绑定——Agent 上尚无该属性（含类属性）时， 把 "
+"``Parsable(DEFAULT_COMPACT_PROMPT)`` 绑为实例属性；开发者已 定义的优先，不覆盖；"
+msgstr ""
+"default binding of ``compact_prompt`` — when the Agent does not yet have that attribute (including as a "
+"class attribute), binds ``Parsable(DEFAULT_COMPACT_PROMPT)`` as an instance attribute; a developer-defined "
+"value takes precedence and is not overwritten;"
+
+#: flowing.composables.compact.use_compact:13 of
+msgid ""
+"在 ``agent.hooks.after_provider_gen[\"_turn\"]`` 上注册检测与换链 "
+"handler（``by=\"compact\"``，pattern 注册：``match_on=\"by\"``， 字面量 "
+"``\"_turn\"`` 精确匹配主回合来源）。"
+msgstr ""
+"registers the detection-and-chain-swap handler on ``agent.hooks.after_provider_gen[\"_turn\"]`` "
+"(``by=\"compact\"``, pattern registration: ``match_on=\"by\"``, the literal ``\"_turn\"`` exactly matches "
+"the main-turn source)."
+
+#: flowing.composables.compact.use_compact:40 of
+msgid "检测与压缩序列（主回合响应经 ``after_provider_gen`` 到达后，handler 一次调用内完成）："
+msgstr "Detection and compaction sequence (after the main-turn response arrives via ``after_provider_gen``, completed within one handler call):"
+
+#: flowing.composables.compact.use_compact:43 of
+msgid ""
+"检测：调用 ``estimate_context_tokens()`` 取 ``usage_ratio``；比率 ``> threshold`` "
+"才进入压缩序列（严格大于）。``usage_ratio is None`` （模型未声明 "
+"``context_window``）时不动作、永不触发。"
+msgstr ""
+"Detection: call ``estimate_context_tokens()`` to get ``usage_ratio``; the compaction sequence is entered "
+"only when the ratio is ``> threshold`` (strictly greater). When ``usage_ratio is None`` (the model does "
+"not declare ``context_window``), nothing happens and it never triggers."
+
+#: flowing.composables.compact.use_compact:46 of
+msgid ""
+"拦截：先向 ``on_compact`` 派发本次估计值；任一 handler ``raise Intercepted`` 则本次压缩取消——不调"
+" ``side_query``、不建 新根、不换链，本回合照常继续。"
+msgstr ""
+"Interception: first dispatch this estimate to ``on_compact``; if any handler does ``raise Intercepted``, "
+"this compaction is cancelled — no ``side_query``, no new root, no chain swap; the turn continues normally."
+
+#: flowing.composables.compact.use_compact:49 of
+msgid ""
+"摘要：经 ``side_query`` 让模型基于当前完整上下文产出交接摘要 （指令为 ``compact_prompt`` 经 Parsable"
+" 模板求值（resolve）后的 文本；副线调用不挂树、不落盘，来源标记为 ``by=\"_side\"``）。"
+msgstr ""
+"Summarization: via ``side_query``, the model produces a handoff summary based on the current full context "
+"(the instruction is the text of ``compact_prompt`` after Parsable template resolution; the side-channel "
+"call is not attached to the tree and not persisted, with source marked ``by=\"_side\"``)."
+
+#: flowing.composables.compact.use_compact:52 of
+msgid ""
+"换链：摘要非空时把它作为新根挂树（``parent_id is None``、 "
+"``kind=SYSTEM``、``source=\"compact\"``），再 ``fork`` 到新根。旧链 物理完整保留。"
+msgstr ""
+"Chain swap: when the summary is non-empty, attach it to the tree as a new root (``parent_id is None``, "
+"``kind=SYSTEM``, ``source=\"compact\"``), then ``fork`` to the new root. The old chain is physically kept "
+"intact."
+
+#: flowing.composables.compact.use_compact:55 of
+msgid ""
+"摘要失败（``side_query`` 抛异常或返回空文本）→ 不换链、异常不外 抛、本回合正常收尾；下一次超阈值的主回合 "
+"``provider_gen`` 后再试 ——两次尝试之间至少隔着一次主循环调用，不会热循环。"
+msgstr ""
+"Summary failure (``side_query`` raises or returns empty text) → no chain swap, the exception is not "
+"re-raised, and the turn finishes normally; retry after the next main-turn ``provider_gen`` that exceeds "
+"the threshold — two attempts are separated by at least one main-loop call, so there is no hot loop."
+
+#: flowing.composables.compact.use_compact:58 of
+msgid "``before_fork`` 被拦截 → 新根已落盘而 head 未切：本次压缩白做 一次（安全，下次超阈值重来）。"
+msgstr "``before_fork`` intercepted → the new root is persisted but head is not switched: this compaction is wasted (safe; it retries the next time the threshold is exceeded)."
+
+#: flowing.composables.compact.use_compact:61 of
+msgid "检测口径：handler 运行时本轮响应尚未挂树，估计值不含它——比率按 上一锚点口径，略滞后一条消息。"
+msgstr "Detection basis: when the handler runs, this turn's response has not yet been attached to the tree and the estimate does not include it — the ratio follows the previous anchor's basis, lagging by one message."
+
+#: flowing.composables.compact.use_compact:66 of
+msgid ""
+"``threshold``：触发阈值，``usage_ratio`` 严格大于它时启动压缩； 合法区间 ``0 < threshold <= "
+"1.0`` （``usage_ratio`` 不做上限截断， ``> 1.0`` 是合法的溢出信号，``threshold=1.0`` "
+"即「只在溢出后压 缩」）。区间外的值抛 ``ValueError``。"
+msgstr ""
+"``threshold``: the trigger threshold; compaction starts when ``usage_ratio`` is strictly greater than it; "
+"the valid range is ``0 < threshold <= 1.0`` (``usage_ratio`` is not clamped above; ``> 1.0`` is a "
+"legitimate overflow signal, and ``threshold=1.0`` means \"compact only after overflow\"). Values outside "
+"the range raise ``ValueError``."
+
+#: flowing.composables.compact.use_compact:71 of
+msgid ""
+"重复调用：不做幂等去重——每次调用按注册语义各自叠加一个检测 handler （各自闭包持有独立的 "
+"``threshold``），允许以不同参数多次启用。恢复 时 ``setup()`` 在新实例上执行，钩子注册表随实例重建，天然不叠加。"
+msgstr ""
+"Repeated calls: no idempotent deduplication — each call stacks its own detection handler per registration "
+"semantics (each closure holds its own ``threshold``); enabling multiple times with different parameters is "
+"allowed. On recovery ``setup()`` runs on the new instance and the hook registry is rebuilt with it, so "
+"nothing stacks up naturally."
+
+#: flowing.composables.compact.use_compact:75 of
+msgid "并发：同一 Agent 的回合串行执行（单工作循环 Task），handler 在回合 内同步段执行，无并发读写。"
+msgstr "Concurrency: turns of the same Agent execute serially (a single work-loop Task); the handler runs in the synchronous segment within a turn, with no concurrent reads or writes."
+
+#: flowing.composables.compact.use_compact:78 of
+msgid "不做什么：不修改 ``agent.model``、不动消息队列、不 abort 回合、不 注册工具、不 provide 值、不持久化任何状态。"
+msgstr "What it does not do: it does not modify ``agent.model``, does not touch the message queue, does not abort the turn, does not register tools, does not provide values, and does not persist any state."
+
+#: flowing.composables.compact.use_auto_compact:72
+#: flowing.composables.compact.use_compact:82 of
+msgid "触发阈值（``usage_ratio`` 严格大于它时启动压缩）， ``0 < threshold <= 1.0``，默认 ``0.8``。"
+msgstr "The trigger threshold (compaction starts when ``usage_ratio`` is strictly greater than it), ``0 < threshold <= 1.0``, default ``0.8``."
+
+#: flowing.composables.compact.use_compact:84 of
+msgid "``threshold`` 不在 ``(0, 1.0]`` 区间（于注册任何 handler 之前抛出）。"
+msgstr "``threshold`` is not in the ``(0, 1.0]`` range (raised before any handler is registered)."
+
+#: flowing.composables.compact.use_compact:89 of
+msgid ""
+":data:`DEFAULT_COMPACT_PROMPT` —— 缺省压缩指令。 "
+":meth:`flowing.agent.Agent.side_query` —— 摘要取用的副线通道。 "
+":meth:`flowing.agent.Agent.fork` —— 换链的视角切换通道。"
+msgstr ""
+":data:`DEFAULT_COMPACT_PROMPT` —— the default compaction instruction. "
+":meth:`flowing.agent.Agent.side_query` —— the side-channel used for summarization. "
+":meth:`flowing.agent.Agent.fork` —— the view-switching channel for the chain swap."
+
+#: flowing.composables.compact.use_auto_compact:1 of
+msgid "为单个 Agent 实例启用「请求前头尾保留式自动压缩」策略（可选、非默认）。"
+msgstr "Enable the \"pre-request head-and-tail preserving auto-compaction\" policy on a single Agent instance (optional, non-default)."
+
+#: flowing.composables.compact.use_auto_compact:5 of
+msgid ""
+"在 ``before_provider_gen`` 上注册检测与压缩 handler "
+"（``by=\"auto_compact\"``）：每次主回合 LLM 请求发出**之前**检查上下文 占用，超过 ``threshold`` "
+"时在同一 handler 调用内完成压缩——保留链 头部（≤ ``head_tokens``）与尾部（≤ "
+"``tail_tokens``）的原始消息， 中段压缩为一条「用户指令汇编 + 交接摘要」消息，从前缀末条开分支、 后缀深拷贝拼接，再 "
+"``fork`` 换链；本次请求直接携带压缩后的上下文 发出（handler 整体改写 ``Context``）。"
+msgstr ""
+"Registers a detection-and-compaction handler on ``before_provider_gen`` (``by=\"auto_compact\"``): "
+"**before** each main-turn LLM request is sent, it checks context usage; when it exceeds ``threshold``, "
+"compaction completes within the same handler call — the original messages at the chain head "
+"(≤ ``head_tokens``) and tail (≤ ``tail_tokens``) are preserved, the middle section is compacted into one "
+"\"user-instruction digest + handoff summary\" message, branched off the last message of the prefix with the "
+"suffix deep-copied and appended, then ``fork`` swaps the chain; this request is sent directly carrying the "
+"compacted context (the handler rewrites the whole ``Context``)."
+
+#: flowing.composables.compact.use_auto_compact:13 of
+msgid ""
+"与 :func:`use_compact` 的区别：use_compact 在请求**后**触发、全量 "
+"摘要换新根（工作现场丢失）；本函数在请求**前**触发、头尾保留（开场 指令与最近的工具调用现场原样留在上下文里）。两者并存但应二选一—— "
+"同时启用会在不同触发点各自动作。"
+msgstr ""
+"Difference from :func:`use_compact`: use_compact triggers **after** the request and swaps in a full new "
+"root from a summary (the working scene is lost); this function triggers **before** the request and "
+"preserves head and tail (the opening instructions and the latest tool-call scene stay in the context as "
+"they are). The two can coexist but you should choose one — enabling both makes each act at its own "
+"trigger point."
+
+#: flowing.composables.compact.use_auto_compact:30 of
+msgid ""
+"主回合判定：handler 入口读 ``context.messages`` 末条消息——主回合 请求的末条消息必在消息树内（入队 / "
+"挂树时已铸自增 id）；副线 ``side_query`` 自组装散装 Context（不进树），据此放行。递归防护 零状态（压缩自身的 "
+"side_query 也被同一规则放行）。"
+msgstr ""
+"Main-turn determination: on entry the handler reads the last message of ``context.messages`` — the last "
+"message of a main-turn request is necessarily inside the message tree (an auto-increment id is minted at "
+"enqueue / attach time); a side-channel ``side_query`` assembles a loose Context itself (not in the tree) "
+"and is let through accordingly. Recursion protection is stateless (the compaction's own side_query is also "
+"let through by the same rule)."
+
+#: flowing.composables.compact.use_auto_compact:34 of
+msgid ""
+"触发条件：``estimate_context_tokens().usage_ratio > threshold`` "
+"（严格大于）；``usage_ratio is None``（模型未声明 context_window） 时永不触发。"
+msgstr ""
+"Trigger condition: ``estimate_context_tokens().usage_ratio > threshold`` (strictly greater); it never "
+"triggers when ``usage_ratio is None`` (the model does not declare context_window)."
+
+#: flowing.composables.compact.use_auto_compact:37 of
+msgid ""
+"拦截：压缩前 dispatch ``on_compact``（value 为 "
+":class:`flowing.context.ContextUsageEstimate`）；任一 handler ``raise "
+"Intercepted`` 则本次取消。"
+msgstr ""
+"Interception: dispatch ``on_compact`` before compacting (value is "
+":class:`flowing.context.ContextUsageEstimate`); if any handler does ``raise Intercepted``, this compaction "
+"is cancelled."
+
+#: flowing.composables.compact.use_auto_compact:40 of
+msgid ""
+"切割规则：前缀从链头累计 token 取 ≤ ``head_tokens`` 的最长前缀， 切割点只允许落在 PROVIDER "
+"消息的**上边界**（ToolCallBlock/TOOL 配对天然完整）；后缀从链尾同规则取 ≤ ``tail_tokens``，切割点同样 在"
+" PROVIDER 上边界——链尾的非 PROVIDER 连续段（本轮新指令 / 刚落盘 的 TOOL 结果）始终保留，含 TOOL 时连同其 "
+"PROVIDER 配对锚一起保留 （配对完整优先于预算）；与前缀重叠时收缩后缀（前缀优先）。触发点在请求 之前，上一轮的工具配对均已闭合挂树。"
+msgstr ""
+"Cutting rules: the prefix takes the longest prefix from the chain head whose cumulative tokens are "
+"≤ ``head_tokens``, and the cut point may only land on the **upper boundary** of a PROVIDER message "
+"(ToolCallBlock/TOOL pairs stay naturally intact); the suffix takes ≤ ``tail_tokens`` from the chain tail "
+"under the same rule, with the cut point likewise on a PROVIDER upper boundary — the non-PROVIDER "
+"contiguous segment at the chain tail (this turn's new instruction / freshly persisted TOOL results) is "
+"always preserved, and when it contains TOOL, its PROVIDER pairing anchor is preserved with it (pair "
+"integrity takes priority over budget); when it overlaps the prefix, the suffix shrinks (prefix takes "
+"priority). The trigger point is before the request, so the previous turn's tool pairs are already closed "
+"and attached to the tree."
+
+#: flowing.composables.compact.use_auto_compact:47 of
+msgid ""
+"中段处理：前后缀之间从前数累计 ≤ ``user_instruction_tokens`` 的 USER 消息，紧凑格式化（一个小标题 + 各条 "
+"``---`` 分隔），与 ``side_query`` 产出的交接摘要合并为一条 ``SYSTEM`` 消息 "
+"（``source=\"auto_compact\"``），经 ``chain.branch`` 挂到前缀末条 之下。内置 prompt "
+"与格式化文本一律英文。"
+msgstr ""
+"Middle-section handling: among the messages between prefix and suffix, the USER messages whose cumulative "
+"count from the front is ≤ ``user_instruction_tokens`` are compactly formatted (one small heading + each "
+"entry separated by ``---``) and merged with the handoff summary produced by ``side_query`` into a single "
+"``SYSTEM`` message (``source=\"auto_compact\"``), attached below the last message of the prefix via "
+"``chain.branch``. The builtin prompt and formatting text are always in English."
+
+#: flowing.composables.compact.use_auto_compact:52 of
+msgid ""
+"后缀拼接：逐条 ``copy.deepcopy`` 后置 ``id=None`` / ``parent_id=None``，链式 "
+"``branch`` 拼接（挂树自动铸新 id，与旧 节点无冲突）；旧链物理完整保留（append-only）。"
+msgstr ""
+"Suffix splicing: each message is ``copy.deepcopy``-ed, then ``id=None`` / ``parent_id=None`` are set, and "
+"they are spliced via chained ``branch`` calls (attaching to the tree automatically mints new ids, with no "
+"conflict against old nodes); the old chain is physically kept intact (append-only)."
+
+#: flowing.composables.compact.use_auto_compact:55 of
+msgid ""
+"换链：``fork`` 到后缀末条新 id（无后缀则到压缩消息）； ``before_fork`` 被拦截 → 新分支已落盘而 head "
+"未切（白压一次， 安全），本次请求携原上下文发出。"
+msgstr ""
+"Chain swap: ``fork`` to the new id of the last suffix message (or to the compaction message if there is no "
+"suffix); if ``before_fork`` is intercepted → the new branch is persisted but head is not switched (one "
+"wasted compaction, safe), and this request is sent with the original context."
+
+#: flowing.composables.compact.use_auto_compact:58 of
+msgid "摘要失败（``side_query`` 异常或返回空文本）→ 不换链、异常不外 抛、本次请求照常发出；下一次请求前再试，不会热循环。"
+msgstr "Summary failure (``side_query`` raises or returns empty text) → no chain swap, the exception is not re-raised, and this request is sent as usual; it retries before the next request, with no hot loop."
+
+#: flowing.composables.compact.use_auto_compact:60 of
+msgid ""
+"边界情形：链太短（前缀 + 后缀已覆盖全链、无中段）→ 跳过；压缩后 仍超窗 → 本次请求照常发出，由 "
+":class:`flowing.errors.ContextLengthError` 通道兜底。"
+msgstr ""
+"Edge cases: chain too short (prefix + suffix already cover the whole chain, no middle section) → skip; "
+"still over the window after compaction → this request is sent as usual, with the "
+":class:`flowing.errors.ContextLengthError` channel as the fallback."
+
+#: flowing.composables.compact.use_auto_compact:64 of
+msgid ""
+"重复调用：不做幂等去重——每次调用各自叠加一个 handler（闭包持有 独立参数）。恢复时 ``setup()`` "
+"在新实例上执行，钩子注册表随实例 重建，天然不叠加。``remove_by_owner(\"auto_compact\")`` 可整组移除。"
+msgstr ""
+"Repeated calls: no idempotent deduplication — each call stacks its own handler (the closure holds "
+"independent parameters). On recovery ``setup()`` runs on the new instance and the hook registry is rebuilt "
+"with it, so nothing stacks up naturally. ``remove_by_owner(\"auto_compact\")`` removes the whole set."
+
+#: flowing.composables.compact.use_auto_compact:68 of
+msgid ""
+"不做什么：不修改 ``agent.model``、不动消息队列、不 abort 回合、不 "
+"注册工具、不持久化任何压缩状态（消息树变更本身是常规落盘）。"
+msgstr ""
+"What it does not do: it does not modify ``agent.model``, does not touch the message queue, does not abort "
+"the turn, does not register tools, and does not persist any compaction state (message-tree changes are "
+"themselves normal persistence)."
+
+#: flowing.composables.compact.use_auto_compact:74 of
+msgid "尾部保留的 token 上限，``>= 0``，默认 ``20_000``。"
+msgstr "The token cap for the preserved tail, ``>= 0``, default ``20_000``."
+
+#: flowing.composables.compact.use_auto_compact:75 of
+msgid "头部保留的 token 上限，``>= 0``，默认 ``10_000``。"
+msgstr "The token cap for the preserved head, ``>= 0``, default ``10_000``."
+
+#: flowing.composables.compact.use_auto_compact:76 of
+msgid "中段用户指令汇编的 token 上限， ``>= 0``，默认 ``2_000``。"
+msgstr "The token cap for the middle-section user-instruction digest, ``>= 0``, default ``2_000``."
+
+#: flowing.composables.compact.use_auto_compact:78 of
+msgid "参数越界（于注册任何 handler 之前抛出）。"
+msgstr "Parameter out of range (raised before any handler is registered)."
+
+#: flowing.composables.compact.use_auto_compact:82 of
+msgid ""
+":func:`use_compact` —— 请求后全量换链的同族策略（二选一）。 "
+":meth:`flowing.agent.Agent.estimate_context_tokens` —— 阈值检测的"
+msgstr ""
+":func:`use_compact` —— the sibling policy that fully swaps the chain after a request (choose one). "
+":meth:`flowing.agent.Agent.estimate_context_tokens` —— the data source"
+
+#: flowing.composables.compact.use_auto_compact:84 of
+msgid "数据源。"
+msgstr "for threshold detection."
+
+#: flowing.composables.compact.use_auto_compact:85 of
+msgid ":meth:`flowing.message.estimate_message_tokens` —— 单条消息的"
+msgstr ":meth:`flowing.message.estimate_message_tokens` —— the estimation"
+
+#: flowing.composables.compact.use_auto_compact:86 of
+msgid "估算口径。"
+msgstr "basis for a single message."
+
+#: flowing.composables.reminder.use_system_reminder:1 of
+msgid "为单个 Agent 实例启用「每回合注入系统提醒」策略（可选、非默认）。"
+msgstr "Enable the \"inject a system reminder each turn\" policy on a single Agent instance (optional, non-default)."
+
+#: flowing.composables.reminder.use_system_reminder:5 of
+msgid ""
+"注册 ``by=\"system-reminder\"`` 的 ``before_turn`` 注入 handler：每个 逻辑 Turn "
+"开始时，把当前可见的提醒内容压缩为一条 ``Message(kind=EVENT, source=\"system-reminder\", "
+"...)`` 附加进 ``pending_messages`` 末尾（排在触发消息之后），随批次挂树并持久化。 ``clean=True`` "
+"时再注册 ``after_turn`` 清理 handler（同 ``by``）， 每回合收尾按 ``tags`` 擦除本回合注入的提醒。"
+msgstr ""
+"Registers a ``before_turn`` injection handler with ``by=\"system-reminder\"``: at the start of each "
+"logical Turn, it compresses the currently visible reminder contents into one ``Message(kind=EVENT, "
+"source=\"system-reminder\", ...)`` and appends it to the end of ``pending_messages`` (after the triggering "
+"message), attaching to the tree and persisting along with the batch. With ``clean=True`` it additionally "
+"registers an ``after_turn`` cleanup handler (same ``by``) that erases this turn's injected reminders by "
+"``tags`` at the end of each turn."
+
+#: flowing.composables.reminder.use_system_reminder:32 of
+msgid ""
+"``contents``：提醒内容清单，各项为 ``(agent) -> str`` 回调或静态 "
+"字符串，每次注入现场求值；空字符串条目剔除；清单为空（含缺省 ``None``）或全部条目为空串时本回合不注入。"
+msgstr ""
+"``contents``: the list of reminder contents; each item is an ``(agent) -> str`` callback or a static "
+"string, evaluated on the spot at each injection; empty-string entries are dropped; when the list is empty "
+"(including the default ``None``) or all entries are empty strings, nothing is injected this turn."
+
+#: flowing.composables.reminder.use_system_reminder:35 of
+msgid ""
+"注入条件：距上次注入后新增消息数 ``>= message_interval`` 且距上次 注入的墙钟间隔 ``>= "
+"time_interval`` （秒）——两者是与关系，任一不 满足即跳过；两者均为 0（默认）时每回合都注入；首次注入不受间隔 "
+"限制。间隔判定状态是闭包内部状态，纯运行期，不落盘、不进状态袋。"
+msgstr ""
+"Injection condition: the number of new messages since the last injection is ``>= message_interval`` AND "
+"the wall-clock interval since the last injection is ``>= time_interval`` (seconds) — the two are "
+"conjunctive; if either is unmet, injection is skipped; when both are 0 (default), injection happens every "
+"turn; the first injection is not subject to the interval limits. The interval-decision state is closure-"
+"internal state, purely runtime — not persisted, not in the state bag."
+
+#: flowing.composables.reminder.use_system_reminder:39 of
+msgid ""
+"消息计数口径：以消息级树的总结点数（``len(agent._messages)``）为 水位——``before_turn`` 触发时 "
+"``turn.message_ids`` 恒为空（本回合 批次尚未挂树），无法用回合消息列表计数。"
+msgstr ""
+"Message counting basis: the watermark is the total node count of the message tree "
+"(``len(agent._messages)``) — when ``before_turn`` fires, ``turn.message_ids`` is always empty (this "
+"turn's batch has not been attached to the tree yet), so the turn's message list cannot be used for "
+"counting."
+
+#: flowing.composables.reminder.use_system_reminder:42 of
+msgid "``clean=True`` 的代价与边界：每回合收尾擦除（写盘量约翻倍）； 清理后历史回放中该信息丢失（崩溃恢复后那条提醒已被删除）。"
+msgstr "The cost and boundary of ``clean=True``: erasure at the end of each turn (write volume roughly doubles); after cleanup the information is lost from history replay (after crash recovery that reminder has been deleted)."
+
+#: flowing.composables.reminder.use_system_reminder:44 of
+msgid "与批次同生共死：``before_turn`` 被 ``Intercepted`` 阻断时整个批次 丢弃、不落盘，提醒随之不注入。"
+msgstr "Living and dying with the batch: when ``before_turn`` is blocked by ``Intercepted``, the whole batch is discarded without persistence, and the reminder is not injected along with it."
+
+#: flowing.composables.reminder.use_system_reminder:46 of
+msgid ""
+"重复调用：不做幂等去重——每次调用各叠加一组独立的 handler（各自 持有独立的间隔状态闭包），允许以不同参数多次启用。恢复时 "
+"``setup()`` 在新实例上执行，钩子注册表随实例重建，天然不叠加。"
+msgstr ""
+"Repeated calls: no idempotent deduplication — each call stacks its own independent set of handlers (each "
+"holding its own interval-state closure); enabling multiple times with different parameters is allowed. On "
+"recovery ``setup()`` runs on the new instance and the hook registry is rebuilt with it, so nothing stacks "
+"up naturally."
+
+#: flowing.composables.reminder.use_system_reminder:48 of
+msgid "不做什么：不注册模板全局函数、不改 prompt 块、不修改 ``agent.model``、不持久化任何状态。"
+msgstr "What it does not do: it does not register template global functions, does not change prompt blocks, does not modify ``agent.model``, and does not persist any state."
+
+#: flowing.composables.reminder.use_system_reminder:52 of
+msgid "提醒内容清单（``(agent) -> str`` 回调或静态字符串）； 缺省 ``None`` 视为空清单。"
+msgstr "The list of reminder contents (``(agent) -> str`` callbacks or static strings); the default ``None`` is treated as an empty list."
+
+#: flowing.composables.reminder.use_system_reminder:54 of
+msgid ""
+"为 ``True`` 时每回合收尾按 ``tags`` 擦除本回合注入的 提醒；为 ``False`` "
+"（默认）时提醒留在树上（持久化、崩溃可恢复）。"
+msgstr ""
+"When ``True``, this turn's injected reminders are erased by ``tags`` at the end of each turn; when "
+"``False`` (default), the reminders stay on the tree (persisted, recoverable after a crash)."
+
+#: flowing.composables.reminder.use_system_reminder:56 of
+msgid "距上次注入后新增消息数达到该值才再次注入， ``>= 0``，默认 ``0`` （每回合都注入）。"
+msgstr "Inject again only when the number of new messages since the last injection reaches this value, ``>= 0``, default ``0`` (inject every turn)."
+
+#: flowing.composables.reminder.use_system_reminder:58 of
+msgid "距上次注入的墙钟间隔（秒）达到该值才再次注入， ``>= 0``，默认 ``0`` （不限）。"
+msgstr "Inject again only when the wall-clock interval (seconds) since the last injection reaches this value, ``>= 0``, default ``0`` (unlimited)."
+
+#: flowing.composables.reminder.use_system_reminder:63 of
+msgid ":class:`flowing.agent.TurnContext` —— ``pending_messages`` 附加式 注入的载体。"
+msgstr ":class:`flowing.agent.TurnContext` —— the carrier of ``pending_messages`` append-style injection."
+
+#: ../../api/flowing.composables.rst:10
+msgid "Submodules"
+msgstr "Submodules"
+
+#: ../../api/flowing.composables.rst:13
+msgid "flowing.composables.compact module"
+msgstr "flowing.composables.compact module"
+
+#: flowing.composables.compact:1 of
+msgid "flowing.composables.compact —— 内置上下文压缩 Composable（可选、非默认）。"
+msgstr "flowing.composables.compact —— builtin context-compaction Composables (optional, non-default)."
+
+#: flowing.composables.compact:5 of
+msgid "本模块提供两个内置上下文压缩 Composable（可选、非默认；二选一）："
+msgstr "This module provides two builtin context-compaction Composables (optional, non-default; choose one):"
+
+#: flowing.composables.compact:7 of
+msgid ""
+"``use_compact()`` —— 请求**后**触发（``after_provider_gen[\"_turn\"]``）， "
+"全量摘要换新根：让模型把当前对话压缩为交接摘要，摘要作为新根开新链， 旧链整体成为历史。"
+msgstr ""
+"``use_compact()`` —— triggers **after** the request (``after_provider_gen[\"_turn\"]``), full-summary "
+"swap to a new root: the model compresses the current conversation into a handoff summary, the summary "
+"starts a new chain as the new root, and the old chain becomes history as a whole."
+
+#: flowing.composables.compact:10 of
+msgid ""
+"``use_auto_compact()`` —— 请求**前**触发（``before_provider_gen``）， "
+"头尾保留式压缩：保留链头（≤ ``head_tokens``）与链尾（≤ ``tail_tokens``） 的原始消息，中段压缩为「用户指令汇编 "
+"+ 交接摘要」一条消息，开分支 换链后本次请求直接携压缩后上下文发出。"
+msgstr ""
+"``use_auto_compact()`` —— triggers **before** the request (``before_provider_gen``), head-and-tail "
+"preserving compaction: the original messages at the chain head (≤ ``head_tokens``) and tail "
+"(≤ ``tail_tokens``) are preserved, the middle section is compacted into one \"user-instruction digest + "
+"handoff summary\" message, and after branching and swapping the chain, this request is sent directly "
+"carrying the compacted context."
+
+#: flowing.composables.compact:15 of
+msgid ""
+"``use_compact()`` 的压缩序列：主回合 LLM 调用成功返回后检查 "
+"``estimate_context_tokens().usage_ratio``，超阈值时在同一 handler 调用内 依次——经 "
+"``side_query`` 副线让模型基于当前完整上下文产出交接摘要 （不挂树、不落盘）→ 摘要作为新的 ``SYSTEM`` 根消息挂树 "
+"（``MessageChain.branch(None, ...)``）→ ``Agent.fork()`` 把 "
+"``current_head_id`` 切到新根。旧链完整保留在消息树与 ``tree.jsonl`` "
+"中成为历史，新链从摘要开始，当前回合无缝继续。"
+msgstr ""
+"The compaction sequence of ``use_compact()``: after the main-turn LLM call returns successfully, it checks "
+"``estimate_context_tokens().usage_ratio``; when the threshold is exceeded, within the same handler call it "
+"in sequence — via the ``side_query`` side channel has the model produce a handoff summary based on the "
+"current full context (not attached to the tree, not persisted) → attaches the summary as a new ``SYSTEM`` "
+"root message (``MessageChain.branch(None, ...)``) → ``Agent.fork()`` switches ``current_head_id`` to the "
+"new root. The old chain is kept intact in the message tree and ``tree.jsonl`` as history; the new chain "
+"starts from the summary, and the current turn continues seamlessly."
+
+#: flowing.composables.compact:23 of
+msgid ""
+"``use_auto_compact()`` 的注册面同构：handler 挂 ``before_provider_gen`` "
+"（``by=\"auto_compact\"``，普通注册——主回合/副线区分由 handler 读 ``context.messages`` "
+"末条消息是否在树内完成，零状态递归防护），详见 :func:`use_auto_compact`。"
+msgstr ""
+"``use_auto_compact()`` has an isomorphic registration surface: the handler mounts on "
+"``before_provider_gen`` (``by=\"auto_compact\"``, plain registration — the main-turn/side-channel "
+"distinction is made by the handler reading whether the last message of ``context.messages`` is in the "
+"tree, stateless recursion protection); see :func:`use_auto_compact` for details."
+
+#: flowing.composables.compact:28 of
+msgid ""
+"本模块属应用层 / 内置 Composable：随 ``flowing`` 包发布但不自动启用， 必须由 Agent 开发者在 "
+"``setup()`` 中显式调用。不调用的 Agent 不持有任何 压缩相关 handler 与状态——行为与不调用时逐字节等价。"
+msgstr ""
+"This module belongs to the application layer / builtin Composables: it ships with the ``flowing`` package "
+"but is not enabled automatically; the Agent developer must call it explicitly in ``setup()``. An Agent "
+"that never calls it holds no compaction-related handlers or state — its behavior is byte-for-byte "
+"equivalent to not calling it."
+
+#: flowing.composables.compact:32 of
+msgid ""
+"「何时压、压成什么样」没有唯一正确答案：阈值与摘要指令都应可整体替换， 框架核心只提供占用估计、``side_query`` "
+"副线、开新根（``branch``）与 ``fork`` 四个机制，本模块提供一份可整体替换的默认策略。替换方式同 "
+"``use_retry``：``remove_by_owner(\"compact\")`` 移除默认 handler 后自注册。"
+msgstr ""
+"There is no single correct answer to \"when to compact and into what\": both the threshold and the summary "
+"instruction should be replaceable as a whole. The framework core provides only four mechanisms — usage "
+"estimation, the ``side_query`` side channel, opening a new root (``branch``), and ``fork`` — and this "
+"module provides one default policy replaceable as a whole. The replacement method is the same as "
+"``use_retry``: remove the default handlers with ``remove_by_owner(\"compact\")`` and register your own."
+
+#: flowing.composables.compact:38 flowing.composables.reminder:20
+#: flowing.composables.retry:26 of
+msgid "注册面清单"
+msgstr "Registration Inventory"
+
+#: flowing.composables.compact:39 of
+msgid ""
+"启用方式：仅阶段二——``setup()`` 中调用 ``use_compact(self)`` （恢复 时 ``setup()`` "
+"在新实例上执行，天然不叠加）。未启用时零开销： ``after_provider_gen`` 链上无任何 ``by=\"compact\"`` "
+"handler， ``use_compact`` 不会为 Agent 绑定 ``compact_prompt`` 属性， "
+"``on_compact`` 钩子点不存在（访问抛 :class:`flowing.errors.UnknownHookPointError`）。"
+msgstr ""
+"How to enable: stage two only — call ``use_compact(self)`` in ``setup()`` (on recovery ``setup()`` runs "
+"on the new instance, so nothing stacks up naturally). Zero overhead when not enabled: no "
+"``by=\"compact\"`` handler on the ``after_provider_gen`` chain, ``use_compact`` does not bind a "
+"``compact_prompt`` attribute on the Agent, and the ``on_compact`` hook point does not exist (access raises "
+":class:`flowing.errors.UnknownHookPointError`)."
+
+#: flowing.composables.compact:45 of
+msgid ""
+"注册的资源：Agent 侧 ``compact_prompt`` 属性（缺省绑定 "
+":data:`DEFAULT_COMPACT_PROMPT`，开发者已定义时保留开发者的，见 :func:`use_compact`）；副线查询 "
+"``side_query`` （``by=\"_side\"``，框架 机制，非本模块注册）。无 provide key、无工具注册、无 "
+"Agent 状态键。"
+msgstr ""
+"Registered resources: the Agent-side ``compact_prompt`` attribute (bound by default to "
+":data:`DEFAULT_COMPACT_PROMPT`; a developer-defined value is kept, see :func:`use_compact`); the "
+"side-channel query ``side_query`` (``by=\"_side\"``, a framework mechanism, not registered by this "
+"module). No provide keys, no tool registrations, no Agent state keys."
+
+#: flowing.composables.compact:49 of
+msgid ""
+"声明的钩子点：``on_compact`` （``by=\"compact\"``，无 ``match_on``）—— 压缩观测 / "
+"拦截点，由本模块在使用处 dispatch（谁声明谁 dispatch）。"
+msgstr ""
+"Declared hook points: ``on_compact`` (``by=\"compact\"``, no ``match_on``) — the compaction observation / "
+"interception point, dispatched by this module at the use site (whoever declares it dispatches it)."
+
+#: flowing.composables.compact:51 of
+msgid ""
+"挂载的钩子：``after_provider_gen[\"_turn\"]`` 检测与换链 handler "
+"（``by=\"compact\"``，pattern 注册：``match_on=\"by\"``，字面量 ``\"_turn\"`` "
+"精确匹配主回合来源）。``remove_by_owner(\"compact\")`` 可 整组移除（``on_compact`` "
+"钩子点属声明而非 handler，不受移除影响）。"
+msgstr ""
+"Mounted hooks: the ``after_provider_gen[\"_turn\"]`` detection-and-chain-swap handler "
+"(``by=\"compact\"``, pattern registration: ``match_on=\"by\"``, the literal ``\"_turn\"`` exactly matches "
+"the main-turn source). ``remove_by_owner(\"compact\")`` removes the whole set (the ``on_compact`` hook "
+"point is a declaration, not a handler, and is unaffected by removal)."
+
+#: flowing.composables.compact:55 of
+msgid "作用域：只影响调用它的那一个 Agent 实例；不修改 ``agent.model``、 不动消息队列、不 abort 回合、不持久化任何压缩状态。"
+msgstr "Scope: only affects the one Agent instance that calls it; does not modify ``agent.model``, does not touch the message queue, does not abort the turn, and does not persist any compaction state."
+
+#: flowing.composables.compact:71 of
+msgid ""
+"递归防护：检测 handler 经 ``after_provider_gen[\"_turn\"]`` pattern 注册，副线（含压缩自身的 "
+"``side_query``）与其余来源在 dispatch 层被 过滤、根本不分发到本 handler——防护不依赖任何状态。"
+msgstr ""
+"Recursion protection: the detection handler is registered via the ``after_provider_gen[\"_turn\"]`` "
+"pattern; side channels (including the compaction's own ``side_query``) and other sources are filtered at "
+"the dispatch layer and never reach this handler — the protection depends on no state."
+
+#: flowing.composables.compact:74 of
+msgid ""
+"触发条件：``usage_ratio > threshold`` （严格大于）；模型未声明 ``context_window`` "
+"（``usage_ratio is None``）时永不触发——不可测则 不动作。"
+msgstr ""
+"Trigger condition: ``usage_ratio > threshold`` (strictly greater); it never triggers when the model does "
+"not declare ``context_window`` (``usage_ratio is None``) — no action when it cannot be measured."
+
+#: flowing.composables.compact:77 of
+msgid "压缩对回合透明：不 abort、不占用消息队列、不在旧链追加任何压缩相关 消息；被压缩的任务不感知压缩发生。"
+msgstr "Compaction is transparent to the turn: no abort, no occupation of the message queue, no compaction-related messages appended to the old chain; the compacted task does not perceive the compaction."
+
+#: flowing.composables.compact:79 of
+msgid ""
+"旧链物理完整保留（append-only：压缩不写删除标记、不做树手术）；新根 ``parent_id is "
+"None``、``kind=SYSTEM``、``source=\"compact\"``。"
+msgstr ""
+"The old chain is physically kept intact (append-only: compaction writes no deletion markers and performs "
+"no tree surgery); the new root has ``parent_id is None``, ``kind=SYSTEM``, ``source=\"compact\"``."
+
+#: flowing.composables.compact:84 of
+msgid ""
+":func:`flowing.composables.retry.use_retry` —— 另一个内置 Composable（同构形态）。 "
+":meth:`flowing.agent.Agent.estimate_context_tokens` —— 阈值检测的 数据源。 "
+":meth:`flowing.agent.Agent.side_query` —— 摘要的副线调用通道。 "
+":meth:`flowing.agent.Agent.fork` —— 换链的视角切换通道。 "
+":meth:`flowing.message.MessageChain.branch` —— ``None`` 开新根的 持久化入口。"
+msgstr ""
+":func:`flowing.composables.retry.use_retry` —— another builtin Composable (isomorphic form). "
+":meth:`flowing.agent.Agent.estimate_context_tokens` —— the data source for threshold detection. "
+":meth:`flowing.agent.Agent.side_query` —— the side-channel call used for summarization. "
+":meth:`flowing.agent.Agent.fork` —— the view-switching channel for the chain swap. "
+":meth:`flowing.message.MessageChain.branch` —— the persistence entry point for opening a new root with ``None``."
+
+#: flowing.composables.compact.DEFAULT_COMPACT_PROMPT:1 of
+msgid "默认压缩指令（``compact_prompt`` 的缺省值）。"
+msgstr "The default compaction instruction (the default value of ``compact_prompt``)."
+
+#: flowing.composables.compact.DEFAULT_COMPACT_PROMPT:3 of
+msgid "要求模型把当前对话压缩为一份结构化交接摘要（目标 / 进展 / 关键决策 / 后续步骤 / 关键上下文五节），供上下文被清空后无缝继续当前任务。"
+msgstr "Asks the model to compress the current conversation into a structured handoff summary (five sections: goal / progress / key decisions / next steps / key context), so the current task can continue seamlessly after the context is cleared."
+
+#: flowing.composables.compact.DEFAULT_COMPACT_PROMPT:6 of
+msgid ""
+"行为边界：仅在 Agent 上尚无 ``compact_prompt`` 属性时由 ``use_compact`` "
+"绑定为实例属性（开发者已定义的优先，不覆盖）；这是策略的一部分，随 ``use_compact`` 整体可被替换。"
+msgstr ""
+"Behavioral boundary: bound as an instance attribute by ``use_compact`` only when the Agent does not yet "
+"have a ``compact_prompt`` attribute (a developer-defined value takes precedence and is not overwritten); "
+"this is part of the policy and is replaceable together with ``use_compact`` as a whole."
+
+#: ../../api/flowing.composables.rst:21
+msgid "flowing.composables.reminder module"
+msgstr "flowing.composables.reminder module"
+
+#: flowing.composables.reminder:1 of
+msgid "flowing.composables.reminder —— 内置系统提醒 Composable（可选、非默认）。"
+msgstr "flowing.composables.reminder —— the builtin system-reminder Composable (optional, non-default)."
+
+#: flowing.composables.reminder:5 of
+msgid ""
+"本模块提供 ``use_system_reminder()``：为单个 Agent 实例启用「每个逻辑 Turn "
+"开始前注入系统提醒」策略。启用后，每个逻辑 Turn 开始时，默认策略 把当前可见的提醒内容清单压缩为一条 "
+"``Message(kind=EVENT, ...)`` （多个 内容块合并成一条消息），经 ``before_turn`` "
+"钩子附加进本回合的待挂树 批次——提醒随批次挂树并持久化，排在触发消息之后。"
+msgstr ""
+"This module provides ``use_system_reminder()``: it enables the \"inject a system reminder before each "
+"logical Turn starts\" policy on a single Agent instance. Once enabled, at the start of each logical Turn "
+"the default policy compresses the currently visible reminder contents into one ``Message(kind=EVENT, "
+"...)`` (multiple content blocks merged into one message), appended via the ``before_turn`` hook into this "
+"turn's pending batch — the reminder is attached to the tree and persisted along with the batch, after the "
+"triggering message."
+
+#: flowing.composables.reminder:11 of
+msgid ""
+"典型内容：当前时间、当前目录、任务状态等高频率更新的值。它们不应进 prompt 块（破坏 Provider 前缀缓存，见 "
+"``flowing.context`` 模块 docstring）；消息通道（历史尾部追加）是正确位置。"
+msgstr ""
+"Typical contents: frequently updated values such as the current time, current directory, and task status. "
+"They should not go into prompt blocks (which would break the Provider prefix cache; see the "
+"``flowing.context`` module docstring); the message channel (appended at the history tail) is the right "
+"place."
+
+#: flowing.composables.reminder:15 of
+msgid ""
+"本模块属应用层 / 内置 Composable：随 ``flowing`` 包发布但不自动启用， 必须由 Agent 开发者在 "
+"``setup()`` 中显式调用。不调用的 Agent 不持有 任何提醒相关 handler 与状态。"
+msgstr ""
+"This module belongs to the application layer / builtin Composables: it ships with the ``flowing`` package "
+"but is not enabled automatically; the Agent developer must call it explicitly in ``setup()``. An Agent "
+"that never calls it holds no reminder-related handlers or state."
+
+#: flowing.composables.reminder:21 of
+msgid ""
+"启用方式：仅阶段二——``setup()`` 中调用 ``use_system_reminder(self)`` （恢复时 ``setup()``"
+" 在新实例上执行，天然不叠加）。未启用时零开销： ``before_turn`` / ``after_turn`` 链上无任何 ``by"
+"=\"system-reminder\"`` handler。"
+msgstr ""
+"How to enable: stage two only — call ``use_system_reminder(self)`` in ``setup()`` (on recovery "
+"``setup()`` runs on the new instance, so nothing stacks up naturally). Zero overhead when not enabled: no "
+"``by=\"system-reminder\"`` handler on the ``before_turn`` / ``after_turn`` chains."
+
+#: flowing.composables.reminder:25 of
+msgid "注册的资源：无 provide key、无工具注册、无 Agent 状态键、不改 prompt 块。"
+msgstr "Registered resources: no provide keys, no tool registrations, no Agent state keys, no prompt-block changes."
+
+#: flowing.composables.reminder:27 of
+msgid "声明的钩子点：无（本模块只往核心已有的钩子点挂 handler，纯挂载）。"
+msgstr "Declared hook points: none (this module only mounts handlers onto existing core hook points — pure mounting)."
+
+#: flowing.composables.reminder:28 of
+msgid ""
+"挂载的钩子：``before_turn`` 注入 handler（``by=\"system-reminder\"``， 见 "
+":func:`use_system_reminder`）+ ``clean=True`` 时的 ``after_turn`` 清理 "
+"handler（``by=\"system-reminder\"``）。两者共用 ``by``， ``remove_by_owner"
+"(\"system-reminder\")`` 可整组移除。"
+msgstr ""
+"Mounted hooks: the ``before_turn`` injection handler (``by=\"system-reminder\"``, see "
+":func:`use_system_reminder`) + the ``after_turn`` cleanup handler when ``clean=True`` "
+"(``by=\"system-reminder\"``). The two share the same ``by``; ``remove_by_owner(\"system-reminder\")`` "
+"removes the whole set."
+
+#: flowing.composables.reminder:32 of
+msgid "作用域：只影响调用它的那一个 Agent 实例；注入的提醒随批次落盘 （``clean=False`` 时持久化、崩溃可恢复），间隔判定状态不落盘。"
+msgstr "Scope: only affects the one Agent instance that calls it; injected reminders are persisted with the batch (with ``clean=False`` they are persisted and recoverable after a crash); the interval-decision state is not persisted."
+
+#: flowing.composables.reminder:48 of
+msgid ""
+"注入形态：每个满足注入条件的逻辑 Turn 压缩为一条 ``Message``—— ``kind=EVENT``、``source"
+"=\"system-reminder\"``、 ``tags=[\"system-reminder\"]``，内容为多个 "
+"``TextBlock`` 合并——附加到 ``pending_messages`` 末尾（排在触发消息之后），随批次挂树并持久化。"
+msgstr ""
+"Injection form: each logical Turn that meets the injection condition gets one ``Message`` — "
+"``kind=EVENT``, ``source=\"system-reminder\"``, ``tags=[\"system-reminder\"]``, whose content is multiple "
+"merged ``TextBlock``s — appended to the end of ``pending_messages`` (after the triggering message), "
+"attached to the tree and persisted along with the batch."
+
+#: flowing.composables.reminder:52 of
+msgid ""
+"内容求值：``contents`` 各项为 ``(agent) -> str`` 回调或静态字符串， "
+"每次注入现场求值；空字符串条目剔除；清单为空（含缺省 ``None``）或 全部条目为空串时本回合不注入。"
+msgstr ""
+"Content evaluation: each item of ``contents`` is an ``(agent) -> str`` callback or a static string, "
+"evaluated on the spot at each injection; empty-string entries are dropped; when the list is empty "
+"(including the default ``None``) or all entries are empty strings, nothing is injected this turn."
+
+#: flowing.composables.reminder:55 of
+msgid ""
+"间隔判定：``message_interval`` 与 ``time_interval`` 是与关系——任一 不满足即跳过（默认两者均为 "
+"0：每回合都注入）；首次注入不受间隔限制。"
+msgstr ""
+"Interval decision: ``message_interval`` and ``time_interval`` are conjunctive — if either is unmet, "
+"injection is skipped (by default both are 0: inject every turn); the first injection is not subject to the "
+"interval limits."
+
+#: flowing.composables.reminder:57 of
+msgid ""
+"清理语义：``clean=True`` 时每回合收尾按 ``tags`` 擦除本回合注入的 提醒（head 回退由 Agent "
+"层处理）——代价是每回合收尾都擦除一次（写 盘量约翻倍），且清理后历史回放中该信息丢失（崩溃恢复后那条提醒 "
+"已被删除）。``clean=False`` （默认）时提醒留在树上。"
+msgstr ""
+"Cleanup semantics: with ``clean=True``, this turn's injected reminders are erased by ``tags`` at the end "
+"of each turn (the head rollback is handled by the Agent layer) — the cost is one erasure at every turn end "
+"(write volume roughly doubles), and after cleanup the information is lost from history replay (after crash "
+"recovery that reminder has been deleted). With ``clean=False`` (default), the reminders stay on the tree."
+
+#: flowing.composables.reminder:61 of
+msgid "与批次同生共死：``before_turn`` 被 ``Intercepted`` 阻断时整个批次 丢弃、不落盘，提醒随之不注入（同批次语义）。"
+msgstr "Living and dying with the batch: when ``before_turn`` is blocked by ``Intercepted``, the whole batch is discarded without persistence, and the reminder is not injected along with it (same-batch semantics)."
+
+#: flowing.composables.reminder:66 of
+msgid ""
+":class:`flowing.agent.TurnContext` —— ``pending_messages`` 附加式 注入的载体。 "
+":func:`flowing.composables.retry.use_retry` —— 同构的安装模式。"
+msgstr ""
+":class:`flowing.agent.TurnContext` —— the carrier of ``pending_messages`` append-style injection. "
+":func:`flowing.composables.retry.use_retry` —— an isomorphic installation pattern."
+
+#: ../../api/flowing.composables.rst:29
+msgid "flowing.composables.retry module"
+msgstr "flowing.composables.retry module"
+
+#: flowing.composables.retry:1 of
+msgid "flowing.composables.retry —— 内置重试 Composable（可选、非默认）。"
+msgstr "flowing.composables.retry —— the builtin retry Composable (optional, non-default)."
+
+#: flowing.composables.retry:5 of
+msgid ""
+"本模块提供 ``use_retry()``：为单个 Agent 实例启用「LLM 调用失败退避 重试」策略。启用后，该 Agent 的 LLM "
+"调用抛出可重试类异常时，默认策略 按参数指定的退避模型等待一段时间（期间不调用 LLM），再在同一回合内 "
+"重发调用，直至成功或达到次数上限；抛出不可重试类错误与未知错误时不做 重试，本回合以错误结局终止。"
+msgstr ""
+"This module provides ``use_retry()``: it enables the \"backoff retry on LLM call failure\" policy on a "
+"single Agent instance. Once enabled, when this Agent's LLM call raises a retryable exception, the default "
+"policy waits according to the backoff model given by the parameters (no LLM call during the wait), then "
+"re-issues the call within the same turn, until success or the retry limit; non-retryable and unknown "
+"errors are not retried, and the turn terminates with an error outcome."
+
+#: flowing.composables.retry:11 of
+msgid ""
+"本模块属应用层 / 内置 Composable：随 ``flowing`` 包发布但不自动启用， 必须由 Agent 开发者在 "
+"``setup()`` 中显式调用 ``use_retry(self)``。不 调用的 Agent 不持有任何重试相关状态、不注册任何 "
+"handler——错误路径与 不调用时逐字节等价（LLM 异常 → ``on_provider_error`` 空链分发 → "
+"``can_continue`` 保持 ``False`` → 本回合以 ``\"error\"`` 结局终止， Agent 存活）。"
+msgstr ""
+"This module belongs to the application layer / builtin Composables: it ships with the ``flowing`` package "
+"but is not enabled automatically; the Agent developer must call ``use_retry(self)`` explicitly in "
+"``setup()``. An Agent that never calls it holds no retry-related state and registers no handlers — the "
+"error path is byte-for-byte equivalent to not calling it (LLM exception → empty-chain dispatch of "
+"``on_provider_error`` → ``can_continue`` stays ``False`` → the turn terminates with a ``\"error\"`` "
+"outcome, the Agent survives)."
+
+#: flowing.composables.retry:18 of
+msgid ""
+"「重试」是策略不是机制：框架核心只提供错误分类（哪些类型可重试、 哪些不可重试，见 "
+"``flowing.errors``）、``on_provider_error`` 钩子点的 分发与 ``can_continue`` "
+"决策通道；「重试几次、等多久、对哪些错误重试」 全部由本模块提供一份可整体替换的默认实现。替换方式： "
+"``remove_by_owner(\"retry\")`` 移除默认 handler 后自注册（见 :func:`use_retry` "
+"使用示例）。"
+msgstr ""
+"\"Retry\" is a policy, not a mechanism: the framework core provides only error classification (which types "
+"are retryable and which are not, see ``flowing.errors``), the dispatch of the ``on_provider_error`` hook "
+"point, and the ``can_continue`` decision channel; \"how many times to retry, how long to wait, and which "
+"errors to retry\" are all provided by this module as one default implementation replaceable as a whole. "
+"Replacement method: remove the default handlers with ``remove_by_owner(\"retry\")`` and register your own "
+"(see the :func:`use_retry` examples)."
+
+#: flowing.composables.retry:27 of
+msgid ""
+"启用方式：仅阶段二——``setup()`` 中调用 ``use_retry(self)`` （恢复 时 ``setup()`` "
+"在新实例上执行，天然不叠加）。未启用时零开销： ``on_provider_error`` / ``before_turn`` 链上无任何 "
+"``by=\"retry\"`` handler，``on_retry`` 钩子点不存在（访问抛 "
+":class:`flowing.errors.UnknownHookPointError`）。"
+msgstr ""
+"How to enable: stage two only — call ``use_retry(self)`` in ``setup()`` (on recovery ``setup()`` runs on "
+"the new instance, so nothing stacks up naturally). Zero overhead when not enabled: no ``by=\"retry\"`` "
+"handler on the ``on_provider_error`` / ``before_turn`` chains, and the ``on_retry`` hook point does not "
+"exist (access raises :class:`flowing.errors.UnknownHookPointError`)."
+
+#: flowing.composables.retry:32 of
+msgid "注册的资源：无 provide key、无工具注册、无 Agent 状态键。"
+msgstr "Registered resources: no provide keys, no tool registrations, no Agent state keys."
+
+#: flowing.composables.retry:33 of
+msgid ""
+"声明的钩子点：``on_retry`` （``by=\"retry\"``，无 ``match_on``）——重试 观测点，由本模块在使用处 "
+"dispatch（谁声明谁 dispatch）。"
+msgstr ""
+"Declared hook points: ``on_retry`` (``by=\"retry\"``, no ``match_on``) — the retry observation point, "
+"dispatched by this module at the use site (whoever declares it dispatches it)."
+
+#: flowing.composables.retry:35 of
+msgid ""
+"挂载的钩子：``before_turn`` 归零 handler（``by=\"retry\"``，每个逻辑 Turn 开始重置重试计数）+ "
+"``on_provider_error`` 重试决策 handler （``by=\"retry\"``）。两者共用 "
+"``by=\"retry\"``， ``remove_by_owner(\"retry\")`` 可整组移除（``on_retry`` "
+"钩子点属声明 而非 handler，不受移除影响）。"
+msgstr ""
+"Mounted hooks: the ``before_turn`` reset handler (``by=\"retry\"``, resets the retry counter at the start "
+"of each logical Turn) + the ``on_provider_error`` retry-decision handler (``by=\"retry\"``). The two share "
+"``by=\"retry\"``; ``remove_by_owner(\"retry\")`` removes the whole set (the ``on_retry`` hook point is a "
+"declaration, not a handler, and is unaffected by removal)."
+
+#: flowing.composables.retry:40 of
+msgid "作用域：只影响调用它的那一个 Agent 实例；不修改 ``agent.model``、 不产生任何消息、不持久化任何状态。"
+msgstr "Scope: only affects the one Agent instance that calls it; does not modify ``agent.model``, produces no messages, and persists no state."
+
+#: flowing.composables.retry:56 of
+msgid ""
+"错误分类：默认策略只对 :data:`RETRYABLE_ERRORS` 中列出的四种异常 "
+"重试；:data:`NON_RETRYABLE_ERRORS` 中列出的异常与一切未知异常一律 "
+"不重试（凭证错误不会因等待而变对，请求体不会因等待而合法）。"
+msgstr ""
+"Error classification: the default policy retries only the four exception types listed in "
+":data:`RETRYABLE_ERRORS`; exceptions listed in :data:`NON_RETRYABLE_ERRORS` and all unknown exceptions are "
+"never retried (a credential error does not become right by waiting, and a request body does not become "
+"valid by waiting)."
+
+#: flowing.composables.retry:59 of
+msgid ""
+":class:`flowing.errors.ContextLengthError` 与其它调用期异常一样经 "
+"``on_provider_error`` 分发；默认策略对它不重试（原样重发必然重现）， 压缩历史 / 换模型由用户 handler 自行实现。"
+msgstr ""
+":class:`flowing.errors.ContextLengthError` is dispatched via ``on_provider_error`` like other call-time "
+"exceptions; the default policy does not retry it (re-sending as-is would necessarily reproduce it); "
+"compacting history / switching models is left to user handlers."
+
+#: flowing.composables.retry:62 of
+msgid "重试发生在逻辑 Turn 内部：不产生任何消息、不写消息级树；重试计数 随 Turn 边界归零、不落盘、崩溃后不恢复。"
+msgstr "Retries happen inside a logical Turn: they produce no messages and write nothing to the message tree; the retry counter resets at Turn boundaries, is not persisted, and is not recovered after a crash."
+
+#: flowing.composables.retry:64 of
+msgid "同一 Turn 内的多次 ``provider_gen()`` 共享同一重试预算（失败预算不 区分是哪一次调用消耗的）。"
+msgstr "Multiple ``provider_gen()`` calls within the same Turn share the same retry budget (the failure budget does not distinguish which call consumed it)."
+
+#: flowing.composables.retry:69 of
+msgid ""
+":func:`flowing.composables.compact.use_compact` —— 另一个内置 "
+"Composable（同构形态）。 :class:`flowing.agent.ProviderErrorContext` —— 决策 "
+"handler 的 value 类型与 ``can_continue`` 决策字段。 "
+":class:`flowing.hooks.HookRegistry` —— ``on_provider_error`` / "
+"``before_turn`` 钩子点的容器。 :class:`flowing.agent.TurnContext` —— 逻辑 Turn "
+"的执行期载体。"
+msgstr ""
+":func:`flowing.composables.compact.use_compact` —— another builtin Composable (isomorphic form). "
+":class:`flowing.agent.ProviderErrorContext` —— the value type of the decision handler and the "
+"``can_continue`` decision field. :class:`flowing.hooks.HookRegistry` —— the container of the "
+"``on_provider_error`` / ``before_turn`` hook points. :class:`flowing.agent.TurnContext` —— the "
+"execution-time carrier of a logical Turn."
+
+#: flowing.composables.retry.MAX_RETRY_DELAY:1 of
+msgid "单次退避等待的时长上限（秒）。"
+msgstr "The upper bound (in seconds) of a single backoff wait."
+
+#: flowing.composables.retry.MAX_RETRY_DELAY:3 of
+msgid ""
+"默认策略计算出的任意一次等待时长（``asyncio.sleep`` 的参数）都不超过 该值——指数退避按 2 "
+"的幂增长时尤其如此：超过一分钟的等待对单机小工具 定位没有价值，反而让回合看起来像挂起。"
+msgstr ""
+"No wait duration computed by the default policy (the argument to ``asyncio.sleep``) exceeds this value — "
+"especially when exponential backoff grows by powers of 2: waits longer than a minute have no value for the "
+"single-machine small-tool positioning and only make the turn look hung."
+
+#: flowing.composables.retry.MAX_RETRY_DELAY:7 of
+msgid ""
+"这是策略的一部分，随 ``use_retry`` 整体可被替换，不属框架核心机制； 只约束默认 handler，用户自注册的 "
+"``on_provider_error`` handler 不受此 值限制。"
+msgstr ""
+"This is part of the policy, replaceable together with ``use_retry`` as a whole, and not a framework core "
+"mechanism; it constrains only the default handler — user-registered ``on_provider_error`` handlers are not "
+"bound by this value."
+
+#: flowing.composables.retry.MAX_RETRY_DELAY:11 of
+msgid ":func:`flowing.composables.retry.use_retry`"
+msgstr ":func:`flowing.composables.retry.use_retry`"
+
+#: flowing.composables.retry.RETRYABLE_ERRORS:1 of
+msgid "默认策略视为可重试的异常类型元组（「限流 + 基础设施瞬时故障」四类）。"
+msgstr "The tuple of exception types the default policy treats as retryable (four kinds: \"rate limiting + transient infrastructure failures\")."
+
+#: flowing.composables.retry.RETRYABLE_ERRORS:3 of
+msgid ""
+"分别是 :class:`flowing.errors.RateLimitedError` （限流）、 "
+":class:`flowing.errors.ServerError` （服务端错误）、 "
+":class:`flowing.errors.NetworkError` （网络故障）与 "
+":class:`flowing.errors.ProviderTimeoutError` （Provider 超时）。"
+msgstr ""
+"They are :class:`flowing.errors.RateLimitedError` (rate limiting), :class:`flowing.errors.ServerError` "
+"(server error), :class:`flowing.errors.NetworkError` (network failure), and "
+":class:`flowing.errors.ProviderTimeoutError` (Provider timeout)."
+
+#: flowing.composables.retry.RETRYABLE_ERRORS:8 of
+msgid ""
+"这是策略清单而非机制清单：机制只保证这些类型在对应故障时被 Provider adapter 抛出、且会经过 "
+"``on_provider_error`` 分发；「对它们重试」是 ``use_retry`` 的选择，用户 handler "
+"可自由采用不同清单。不在此元组中的 异常类型（含一切未知异常）默认策略一律不重试。"
+msgstr ""
+"This is a policy list, not a mechanism list: the mechanism only guarantees that these types are raised by "
+"the Provider adapter on the corresponding failures and pass through ``on_provider_error`` dispatch; "
+"\"retrying them\" is ``use_retry``'s choice, and user handlers are free to adopt different lists. "
+"Exception types not in this tuple (including all unknown exceptions) are never retried by the default "
+"policy."
+
+#: flowing.composables.retry.RETRYABLE_ERRORS:13 of
+msgid ":data:`flowing.composables.retry.NON_RETRYABLE_ERRORS`"
+msgstr ":data:`flowing.composables.retry.NON_RETRYABLE_ERRORS`"
+
+#: flowing.composables.retry.NON_RETRYABLE_ERRORS:1 of
+msgid "默认策略显式不重试的异常类型元组（凭证类、请求类、配额类与长度类错误）。"
+msgstr "The tuple of exception types the default policy explicitly does not retry (credential, request, quota, and length errors)."
+
+#: flowing.composables.retry.NON_RETRYABLE_ERRORS:3 of
+msgid ""
+"分别是 :class:`flowing.errors.AuthenticationError`、 "
+":class:`flowing.errors.ContextLengthError`、 "
+":class:`flowing.errors.ContentPolicyError`、 "
+":class:`flowing.errors.InvalidRequestError`、 "
+":class:`flowing.errors.QuotaExhaustedError` 与 "
+":class:`flowing.errors.RequestTooLargeError`。"
+msgstr ""
+"They are :class:`flowing.errors.AuthenticationError`, :class:`flowing.errors.ContextLengthError`, "
+":class:`flowing.errors.ContentPolicyError`, :class:`flowing.errors.InvalidRequestError`, "
+":class:`flowing.errors.QuotaExhaustedError`, and :class:`flowing.errors.RequestTooLargeError`."
+
+#: flowing.composables.retry.NON_RETRYABLE_ERRORS:10 of
+msgid ""
+"这些异常到达默认 handler 时被原样放行：不等待、不计数、不改写任何 字段，``can_continue`` 保持 "
+"``False``，本回合以错误结局终止——重试 它们不改变结果（凭证不会因等待而变对，请求体不会因等待而合法，余额 "
+"不会因等待而变多，上下文不会因等待而变短）。``ContextLengthError`` 的 恢复（压缩历史 / 换大窗模型）由用户 "
+"handler 自行实现，默认策略不涵盖。"
+msgstr ""
+"When these exceptions reach the default handler they pass through unchanged: no wait, no counting, no "
+"field rewriting, ``can_continue`` stays ``False``, and the turn terminates with an error outcome — "
+"retrying them does not change the result (credentials do not become right by waiting, a request body does "
+"not become valid by waiting, balance does not grow by waiting, and context does not shrink by waiting). "
+"Recovery from ``ContextLengthError`` (compacting history / switching to a larger-window model) is left to "
+"user handlers and is not covered by the default policy."
+
+#: flowing.composables.retry.NON_RETRYABLE_ERRORS:16 of
+msgid ":data:`flowing.composables.retry.RETRYABLE_ERRORS`"
+msgstr ":data:`flowing.composables.retry.RETRYABLE_ERRORS`"

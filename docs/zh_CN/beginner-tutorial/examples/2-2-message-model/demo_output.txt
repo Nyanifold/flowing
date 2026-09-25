@@ -1,0 +1,28 @@
+── ① 用户消息：USER ──
+kind=user  source='chat_input'  tags=['order']  priority=NORMAL
+  content[0] text      text='帮我查订单 4521'
+
+── ② 模型响应：PROVIDER（多模态块交错） ──
+kind=provider  source=''  tags=[]  priority=NORMAL
+  content[0] thinking  thinking='用户要查订单，先调查询工具。' signature='sig-abc'
+  content[1] text      text='我来查询订单。'
+  content[2] tool_call id='call_9' name='query-order' args={'order_id': '4521'}
+
+── ③ 工具结果：TOOL（配对锚 + 结构块） ──
+kind=tool  source=''  tags=[]  priority=NORMAL
+  content[0] struct    data={'status': 'shipped', 'eta': '明天'}
+tool_call_id=call_9  tool_status=completed
+
+── ④ 事件消息：EVENT（source 说明来路） ──
+kind=event  source='tool_result'  tags=[]  priority=NORMAL
+  content[0] text      text='[后台任务 build #7 完成]'
+  content[1] struct    data={'exit_code': 0}
+
+── ⑤ 用户多模态消息：媒体块 base64 内联 ──
+kind=user  source=''  tags=[]  priority=NORMAL
+  content[0] text      text='这张图里是什么？'
+  content[1] image     name='像素.png' mime_type=image/png data(base64 前 24 字符)=iVBORw0KGgoAAAANSUhEUgAA…
+
+── ⑥ 配对锚强制 ──
+构造孤儿 TOOL 消息 → ValueError: kind=TOOL messages must carry both tool_call_id and tool_status
+非 TOOL 消息携带配对字段 → ValueError: tool_call_id / tool_status may only be carried by kind=TOOL messages

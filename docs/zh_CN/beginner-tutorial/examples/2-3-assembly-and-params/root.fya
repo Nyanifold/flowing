@@ -1,0 +1,20 @@
+description: 参数演示助手：args 声明 + setup() 典型写法。
+model_tag: default
+args:
+  user_name: str        # 糖：裸类型字符串 → 必填参数
+  locale:               # 完整写法：JSON Schema 关键字多行展开
+    type: string
+    default: zh
+    description: 回复语言（zh / en）
+---
+$system_prompt:
+你是简洁的问答助手。当前用户：{{ user_name }}；回复语言：{{ locale }}；
+时区：{{ timezone }}。回答控制在一句话以内。
+---
+$script:
+async def setup(self, user_name: str, locale: str = "zh"):
+    self.user_name = user_name               # ① 参数存 self（模板 {{ user_name }} 的取值来源）
+    self.locale = locale                     # ② 参数存 self（模板 {{ locale }} 的取值来源）
+    self.ask_count = 0                       # ③ 计数器初始化（实例状态随创建就位）
+    self.provide("locale", locale)           # ④ 把值挂上 provide 链（子组件可沿链取用）
+    self.timezone = self.inject("timezone")  # ⑤ 取上层 provide 的值（main() 在挂载前提供）

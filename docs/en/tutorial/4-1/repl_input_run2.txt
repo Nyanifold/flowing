@@ -1,0 +1,2 @@
+What are the number and the color I asked you to remember?
+/exit

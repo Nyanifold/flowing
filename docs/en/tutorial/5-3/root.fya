@@ -1,0 +1,7 @@
+description: "Composable demo assistant: echo tool + self-written policy injection."
+model_tag: default
+tools:
+  - ./tools/echo.py
+---
+$system_prompt:
+You are a demo assistant. Answer in one sentence.

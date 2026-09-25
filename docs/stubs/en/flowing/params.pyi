@@ -1,0 +1,423 @@
+"""``flowing.params`` — parameter schemas and typed lookup keys.
+
+.. rubric:: Overview
+
+This module provides the parameter-schema path used by tools and subagents, as
+well as :class:`InjectionKey` and :class:`ConfigKey`. Python APIs can declare
+parameters with Pydantic models. Declarative ``.fya`` files use an expanded
+``args:`` mapping, which :func:`expand_args_schema` normalizes and
+:func:`schema_to_model` converts into a Pydantic model. The same schema is used
+for the LLM-facing declaration and execution-time validation.
+
+In Python, ``model_json_schema()`` derives the LLM schema and
+``model_validate()`` uses the model for execution validation. In ``.fya``,
+parameters are listed individually without a top-level ``type: object``
+wrapper or a ``required`` list; the presence of ``default`` determines
+requiredness.
+
+For an ``args:`` entry, a bare type name such as ``str`` or ``list`` means a
+required parameter. A YAML scalar or list literal infers a type and becomes an
+optional parameter whose default is that literal. A mapping is treated as a
+property schema. An empty mapping describes an unconstrained ``Any`` field;
+because it has no ``default``, that field is still required. These shorthands
+apply only while normalizing declarations, not to parameter overrides. A
+property mapping is a full schema; ``{}`` means an unconstrained ``Any`` field
+that remains required.
+
+The schema bridge accepts the keywords ``type``, ``description``, ``default``,
+``enum``, ``minimum``, ``maximum``, ``minLength``, ``maxLength``, ``pattern``,
+``items``, and ``properties``. Numeric and string constraints, descriptions,
+and enumerations become Pydantic field metadata or validation constraints.
+Supported type expressions include nullable unions and generic forms such as
+``list[str]`` and ``dict[str, int]``. A nullable type with one non-null member
+maps to ``T | None``. A union with multiple non-null members maps to ``Any``.
+Unknown schema keywords and unparseable type expressions raise
+:class:`flowing.errors.FormatError` during model construction rather than
+silently degrading. The accepted keyword set is a subset of JSON Schema; it
+does not include composition keywords such as ``oneOf``, ``anyOf``, ``$ref``,
+or ``allOf``.
+
+:func:`apply_param_overrides` applies sparse property patches. Unmentioned
+properties and keywords retain their base values, an unknown parameter name
+adds a parameter, and a patch cannot remove an existing default. Parameter
+values are JSON data, not a channel for runtime objects such as clients,
+functions, or generators. Pass a serializable identifier and look up the
+object during execution, or obtain it from the calling Agent. The ``specified``
+field is not an alternate channel for complex objects; it supplies values for
+LLM-invisible scalar parameters, either as fixed values or injection
+expressions. Use Pydantic parameter validation for runtime type checking;
+provide-inject keys do not validate values against their generic type.
+
+The type parameter on :class:`InjectionKey` and :class:`ConfigKey` is a static
+typing aid only. At runtime, both keys are matched by their string ``name``;
+the framework does not validate the provided or configured value against the
+generic type.
+
+The stable public API consists of :data:`ARG_SHORTHAND`, :data:`TYPE_ALIASES`,
+:data:`SCHEMA_KEYWORDS`, :func:`expand_args_schema`, :func:`schema_to_model`,
+:func:`apply_param_overrides`, :class:`InjectionKey`, and :class:`ConfigKey`.
+:func:`bridge_properties` is an internal adapter for machine-generated
+schemas; underscore-prefixed names are implementation details.
+
+.. seealso::
+
+    :mod:`flowing.parsable`
+        Lazy values used by parameter overrides and model configuration.
+    :class:`flowing.tool.ToolDefinition` and :class:`flowing.tool.ToolEntry`
+        Tool parameter declarations and bindings.
+    :class:`flowing.runtime.Runtime`
+        Configuration access and dependency injection.
+"""
+from collections.abc import Mapping
+from typing import Any, Generic, TypeVar
+from pydantic import BaseModel
+
+T = TypeVar("T")
+
+ARG_SHORTHAND: dict[str, str]
+"""Map bare declaration types such as ``str`` and ``list`` to JSON Schema
+type names. This shorthand is used by :func:`expand_args_schema`, not by
+parameter-override patches.
+"""
+
+TYPE_ALIASES: dict[str, str]
+"""Map Python-style type names such as ``str`` and ``int`` to their JSON
+Schema equivalents. Both declarations and overrides accept these aliases.
+"""
+
+SCHEMA_KEYWORDS: frozenset[str]
+"""The set of property keywords accepted by :func:`schema_to_model` and
+:func:`apply_param_overrides`. It is a supported-keyword allowlist, not a
+validator for every JSON Schema rule.
+"""
+
+def bridge_properties(props: Mapping[str, Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Filter machine-generated property mappings to the supported schema subset.
+
+    This internal helper is intended for schemas generated by Pydantic or another tool:
+    it drops unsupported presentation metadata such as ``title`` while
+    preserving supported values. Hand-written declarations and overrides
+    should use :func:`expand_args_schema` and :func:`apply_param_overrides`
+    instead, so unsupported user-supplied keywords are rejected by the bridge.
+
+    :param props: Parameter name to property mapping.
+    :return: A new mapping; dictionary-valued properties contain only supported
+        keywords. A malformed property value that is not a dictionary is
+        passed through for downstream handling.
+
+    .. seealso:: :data:`SCHEMA_KEYWORDS`, :func:`schema_to_model`.
+    """
+    ...
+
+def expand_args_schema(args: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+    """Normalize an ``.fya`` ``args:`` mapping into JSON Schema properties.
+
+    A recognized bare type string becomes a required ``{"type": ...}``
+    property. A mapping is copied as a property schema, with keyword
+    validation deferred to :func:`schema_to_model`. Any other supported YAML
+    scalar or list becomes a property with an inferred type and that value as
+    its default. A ``None`` value is ambiguous and raises
+    :class:`flowing.errors.FormatError`.
+
+    Requiredness is not stored separately: a property without ``default`` is
+    required when it is converted to a Pydantic model.
+
+    :param args: Raw parameter-name-to-value mapping from an ``args:`` block.
+    :return: A newly constructed property mapping. The input is not modified.
+    :raises flowing.errors.FormatError: A parameter value is ``None``.
+
+    .. seealso:: :func:`schema_to_model`.
+    """
+    ...
+
+def schema_to_model(name: str, properties: Mapping[str, dict[str, Any]]) -> type[BaseModel]:
+    """Build a Pydantic model from the supported property-schema subset.
+
+    ``type`` names map to ``str``, ``int``, ``float``, ``bool``, ``list``, or
+    ``dict``. Python-style names are accepted alongside JSON Schema names.
+    Compound expressions such as ``list[str]`` and ``int | None`` are parsed;
+    generic element and value types are not retained as nested Pydantic
+    validation. A type list with one non-null member and ``null`` becomes an
+    optional type. A list with several non-null members becomes ``Any``.
+    ``enum`` becomes a ``Literal`` constraint. ``minimum`` / ``maximum`` map
+    to inclusive numeric bounds, ``minLength`` / ``maxLength`` map to string
+    length constraints, and ``pattern`` / ``description`` are passed to
+    Pydantic field metadata. ``items`` and ``properties`` are accepted
+    keywords but do not add nested validation.
+
+    A property without ``default`` is required; a property with ``default``
+    uses that value, including ``None``. An empty property has type ``Any``
+    and remains required. The function creates a new model class on every
+    call and does not mutate ``properties``.
+
+    :param name: Name assigned to the generated model class.
+    :param properties: Parameter names mapped to property-schema dictionaries.
+    :return: A newly created Pydantic model class.
+    :raises flowing.errors.FormatError: A property contains a keyword outside
+        :data:`SCHEMA_KEYWORDS`, or a compound type expression / nullable type
+        list contains an unrecognized type name.
+
+    .. seealso:: :func:`expand_args_schema`, :func:`apply_param_overrides`.
+    """
+    ...
+
+def apply_param_overrides(params_schema: Mapping[str, dict[str, Any]], overrides: Mapping[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Apply sparse patches to JSON Schema properties without mutating the inputs.
+
+    This is the only application point for parameter-declaration overrides
+    from the binding layer (``ToolEntry`` and ``SubagentEntry``).
+    ``override_params`` is a sparse mirror of the base schema: it specifies
+    only parameters and keywords to change, and unspecified values are
+    restored by deep merge. Tool LLM-view generation and subagent-catalog
+    ``<params>`` generation both use this function.
+
+    .. rubric:: Behavior notes
+
+    - Overrides have no declaration shorthand: every nested field is a JSON
+      Schema keyword, and types must be written as ``type:``. The override
+      layer does not infer a type from a bare type string or literal; bare
+      values are classified as ``specified`` by the parser and never reach
+      this function. For example, ``id: str`` in an override becomes the
+      specified string value ``"str"``, not a type declaration. To change the
+      type, use ``id: {type: string}``.
+    - Sparse merge preserves every omitted parameter and keyword from the
+      base schema.
+    - If an override omits ``default``, the base default or requiredness is
+      retained. Supplying ``default`` makes the property optional. Existing
+      defaults cannot be deleted because sparse patches have no deletion
+      semantics.
+    - An override for a parameter absent from ``params_schema`` adds that
+      property. ``FinishTool`` relies on this for dynamic output fields.
+
+    :param params_schema: Base parameter-name-to-property mapping.
+    :param overrides: Sparse parameter-name-to-property-keyword mapping.
+    :return: A new mapping. Base property mappings are not modified.
+    :raises flowing.errors.FormatError: An override contains a keyword outside
+        :data:`SCHEMA_KEYWORDS`.
+
+    .. rubric:: Example
+
+    .. code-block:: python
+
+        updated = apply_param_overrides(
+            {"amount": {"type": "number", "minimum": 0.01}},
+            {"amount": {"description": "Payment amount."}},
+        )
+        # updated["amount"] == {"type": "number", "minimum": 0.01,
+        #                        "description": "Payment amount."}
+
+    .. seealso:: :func:`schema_to_model` for the model-building bridge after
+        patching, and :class:`flowing.tool.ToolDefinition` for the Tool-side
+        wrapper (which also handles aliases, descriptions, and hidden
+        ``specified`` parameters).
+    """
+    ...
+
+class InjectionKey(Generic[T]):
+    """A dependency-injection key with a static value-type annotation.
+
+    ``InjectionKey[T]`` associates a key name with the type expected by
+    callers and static type checkers. The generic parameter is erased at
+    runtime: injection storage uses the string name, and the framework does
+    not check that a provided value has type ``T``. Use a shared key object
+    when several components need the same key; a plain string key addresses
+    the same slot but provides no generic type inference.
+
+    Equality and hashing use ``name``, and the key compares equal to a plain
+    string with that value. The key name is immutable after construction.
+
+    .. rubric:: Behavior notes
+
+    - An ``InjectionKey`` and a plain string with the same name address the
+      same injection slot; they compare equal and have the same hash.
+    - ``__str__`` returns ``name`` and ``__repr__`` returns a debugging form
+      such as ``InjectionKey(...)``.
+    - The framework does not validate values against ``T`` at runtime. A
+      parent may provide an ``int`` while a child injects the same slot through
+      ``InjectionKey[str]`` without a framework error. Keys with the same name
+      but different generic parameters are still equal and address the same
+      slot, so using the same name with different types in one scope is a
+      static error that the framework does not detect.
+    - Providing the same key more than once replaces the previous value. That
+      overwrite behavior belongs to ``provide``, not to the key class.
+
+    .. rubric:: Example
+
+    .. code-block:: python
+
+        locale_key: InjectionKey[str] = InjectionKey("locale")
+        self.provide(locale_key, "en")
+        locale: str = self.inject(locale_key)
+
+        # A plain string addresses the same runtime slot.
+        self.provide("locale", "en")
+
+    .. seealso:: :class:`ConfigKey`, :func:`flowing.runtime.inject_from`.
+    """
+    name: str
+    """The immutable-after-construction name used for equality, hashing, and lookup."""
+
+    def __init__(self, name: str) -> None:
+        """Create a key from its string name.
+
+        Construction only stores ``name``; the generic parameter is used by
+        static type checkers and does not participate at runtime. A name
+        should be non-empty; behavior for an empty name is unspecified. Two
+        objects with the same name compare equal, though sharing one key
+        declaration is easier to maintain.
+
+        :param name: String used as the runtime injection key.
+        """
+        ...
+
+    def __hash__(self) -> int:
+        """Return ``hash(self.name)``, matching the same string key.
+
+        This allows the key to be used for dictionary lookup and mixed with a
+        same-named string key in the same slot. The method is pure and has no
+        side effects.
+
+        .. seealso:: :meth:`__eq__`, :attr:`name`.
+        """
+        ...
+
+    def __eq__(self, other: object) -> bool:
+        """Compare names with another ``InjectionKey`` or a plain string.
+
+        :param other: Object to compare.
+        :return: For another ``InjectionKey``, compare the two ``name`` values
+            and ignore generic parameters. For a string, compare
+            ``self.name == other``. For other types, return ``NotImplemented``;
+            Python then applies its normal comparison behavior, usually
+            resulting in ``False``.
+
+        Keys compare equal to same-named strings, so they can look up the same
+        entry in a string-keyed dictionary. The generic parameter ``T`` is not
+        available at runtime and does not take part in equality.
+
+        .. seealso:: :meth:`__hash__`.
+        """
+        ...
+
+    def __str__(self) -> str:
+        """Return the key name, matching the plain-string key form.
+
+        Converting the key to a string yields the same slot name as using the
+        equivalent plain string. Debug output is handled by :meth:`__repr__`.
+        This method is pure and has no side effects.
+
+        .. seealso:: :attr:`name`, :meth:`__repr__`.
+        """
+        ...
+
+    def __repr__(self) -> str:
+        """Return a debugging form such as ``InjectionKey('locale')``.
+
+        The representation shows the name, not the static generic parameter.
+        It has no side effects.
+
+        .. seealso:: :attr:`name`.
+        """
+        ...
+
+class ConfigKey(Generic[T]):
+    """A configuration key with a static value-type annotation.
+
+    ``ConfigKey[T]`` describes the expected configuration value type to static
+    type checkers. At runtime the key is identified only by ``name``; the
+    framework does not validate the loaded value against ``T``. A plain string
+    can be used to access the same configuration entry, but does not carry a
+    generic type.
+
+    Names commonly use a dotted namespace such as
+    ``"retry.max_attempts"`` or ``"i18n.locale"``; this naming convention is
+    not enforced by the key class. Namespace registration belongs to
+    ``Runtime.register_config_namespace()``, but ``get_config()`` does not
+    enforce namespace access control: any code can read any namespace.
+    Equality and hashing use ``name``, which is immutable after construction.
+    The generic parameter is static only, and
+    ``get_config(key, default=...)`` statically expects a default of type ``T``.
+    A plain-string key returns ``Any`` to static callers. Calling
+    ``Runtime.get_config`` before configuration is ready raises
+    ``ConfigNotReadyError``; once ready, it may be called from ``setup()``,
+    hooks, tool callables, or later application code. This timing constraint
+    belongs to the Runtime method, not to the key object.
+
+    At runtime, two ``ConfigKey`` objects with the same name compare equal
+    even if their generic parameters differ. The framework cannot detect this
+    kind of static type mismatch.
+
+    .. rubric:: Example
+
+    .. code-block:: python
+
+        locale_key: ConfigKey[str] = ConfigKey("i18n.locale")
+        locale = runtime.get_config(locale_key, default="en")
+
+    .. seealso:: :class:`InjectionKey`, :meth:`flowing.runtime.Runtime.get_config`.
+    """
+    name: str
+    """The immutable-after-construction configuration name used for equality,
+    hashing, and lookup.
+    """
+
+    def __init__(self, name: str) -> None:
+        """Create a configuration key from its dotted name.
+
+        Construction only stores ``name``; the generic parameter is static
+        and does not participate at runtime. A name should be non-empty;
+        behavior for an empty name is unspecified.
+
+        :param name: Configuration key name, conventionally namespace-qualified.
+        """
+        ...
+
+    def __hash__(self) -> int:
+        """Return ``hash(self.name)``, matching the same string key.
+
+        This method is pure and has no side effects. A ConfigKey and a
+        same-named string key can be used in the same dictionary slot.
+
+        .. seealso:: :meth:`__eq__`, :attr:`name`.
+        """
+        ...
+
+    def __eq__(self, other: object) -> bool:
+        """Compare names with another ``ConfigKey`` or a plain string.
+
+        :param other: Object to compare.
+        :return: For another ``ConfigKey``, compare the two ``name`` values
+            and ignore generic parameters. For a string, compare
+            ``self.name == other``. For other types, return ``NotImplemented``;
+            Python then applies its normal comparison behavior, usually
+            resulting in ``False``.
+
+        The generic parameter ``T`` is not available at runtime and does not
+        take part in equality.
+
+        .. seealso:: :meth:`InjectionKey.__eq__` has the same semantics;
+            see also :meth:`__hash__`.
+        """
+        ...
+
+    def __str__(self) -> str:
+        """Return the key name, matching the plain-string key form.
+
+        This has the same semantics as :meth:`InjectionKey.__str__`: converting
+        the key to a string yields its slot name, while :meth:`__repr__` is
+        used for debugging. The method is pure and has no side effects.
+
+        .. seealso:: :attr:`name`, :meth:`__repr__`,
+            :meth:`InjectionKey.__str__`.
+        """
+        ...
+
+    def __repr__(self) -> str:
+        """Return a debugging form such as ``ConfigKey('retry.max_attempts')``.
+
+        The representation shows the name, not the generic parameter, which
+        is unavailable at runtime. It has no side effects.
+
+        .. seealso:: :attr:`name`.
+        """
+        ...

@@ -1,0 +1,17 @@
+① First yield → receipt: status=pending background_task_id=1
+   Turn not blocked: tool_call has returned, the background task keeps running
+② on_tool_yields per production (production metadata):
+   receipt   name=build  output=dict
+   segment   name=build  output=str
+   segment   name=build  output=str
+   segment   name=build  output=str
+   segment   name=build  output=dict
+③ Background result delivery: 8 EVENT messages enqueued into the tree
+   source='tool_result' async tool build: async tool build: 
+   source='tool_result' async tool build: async tool build: 
+   source='tool_result' async tool build: async tool build: 
+   source='tool_result' async tool build: async tool build: 
+   source='tool_result' async tool build: async tool build: 
+   source='tool_result' async tool build: async tool build: 
+   source='tool_result' async tool build: async tool build: 
+   source='tool_result' async tool build: async tool build: 

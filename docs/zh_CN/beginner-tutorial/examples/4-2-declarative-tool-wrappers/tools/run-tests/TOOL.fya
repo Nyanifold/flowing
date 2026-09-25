@@ -1,0 +1,8 @@
+# cli 型工具：Jinja2 命令模板；插入值自动 shlex 转义；非零退出码是正常输出。
+name: run-tests
+type: cli
+description: 运行项目测试套件，返回退出码与输出。
+command: cd {{ working_dir }} && python -m pytest {{ test_path }}
+args:
+  working_dir: {type: string, description: 项目根目录的绝对路径}
+  test_path: {type: string, default: sample/, description: 测试路径（相对工作目录）}

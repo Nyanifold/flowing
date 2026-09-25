@@ -1,0 +1,10 @@
+== ① 自定义 _dequeue：drain 合并 ==
+   [_dequeue] drain 合并：本批 3 条消息进一个回合
+== ② 回合收尾：TurnResult 构建 ==
+   [_dequeue] drain 合并：本批 1 条消息进一个回合
+   status=completed turn.message_ids=['5', '6']
+   token_usage 聚合=164 （TurnContext.usages 逐字段求和）
+== ③ watch 属性联动 ==
+   watch(locale) 收到赋值事件: [(None, 'zh'), ('zh', 'en')]
+== ④ side_query 副线 ==
+   side_query 返回='ok'；树节点数 6 → 6（不变 = 副线零痕迹）

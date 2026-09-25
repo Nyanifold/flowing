@@ -1,0 +1,11 @@
+== ① Dependency declaration: cycle fails fast ==
+   p1 ↔ p2 depend on each other -> DependencyError
+== ② Late install (install after mount) -> creation-time failure ==
+   late-install launch failed: ToolNotFoundError (tool bodies/registries a plugin registers are phase-one products; install must precede the first mount)
+== ③ cron real-time trigger (programmatic schedule, wait up to 70s) ==
+   every-minute job scheduled, waiting for the trigger...
+   on_cron_trigger fired 1 time(s); content=['[Reminder] Time to get up and move around.']
+   EVENT messages in tree: 1 (delivery source: 'cron' or custom)
+== ④ Stage-one artifacts check ==
+   skill-load in global registry: True
+   prompt block contains skills catalog: True

@@ -1,0 +1,9 @@
+(agent-main)>>>[thinking] The user wants a greeting. I should call subagent-invoke with agent_type "greeter", no extra parameters. But the greeter greets in the language matching the locale provided on the chain. Hmm, the instructions say "call subagent-invoke to dispatch it to the greeter (no extra parameters)". So just dispatch with the prompt.
+
+The instruction says no extra parameters — but the prompt is required. So pass a prompt like "Greet the user."
+
+Let me do that.
+[tool_call] subagent-invoke {"agent_type": "greeter", "prompt": "Greet the user."}
+[tool:completed] subagent-invoke -> 
+Hello! How can I help you today?
+(agent-main)>>>

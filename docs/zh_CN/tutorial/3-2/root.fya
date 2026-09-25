@@ -1,0 +1,27 @@
+description: 模式化回答助手：prompt 块分层 + 模式切换。
+model_tag: default
+tools:
+  - ./tools/switch_mode.py
+---
+$system_prompt:
+你是模式化回答助手。当前模式：{{ current_mode }}。
+用户要求切换模式时，用 switch-mode 工具完成切换，然后按新模式回答。
+---
+$script:
+from flowing import Parsable
+
+
+async def setup(self):
+    self.current_mode = "讲解"
+    # prompt 分层：两套模式块，按 tag 启停（注册两套、按 tag 切换 = 正规手法）
+    self.prompt_blocks.append(
+        "mode-explain",
+        Parsable("【讲解模式】请用条理清晰的要点式回答，控制在三点以内。"),
+        cache="static", by="mode-switcher", tags=["mode", "explain"],
+    )
+    self.prompt_blocks.append(
+        "mode-poem",
+        Parsable("【诗歌模式】请用现代诗的形式回答，四行以内。"),
+        cache="static", by="mode-switcher", tags=["mode", "poem"],
+    )
+    self.prompt_blocks.disable_by_tag("poem")   # 初始只启用讲解模式

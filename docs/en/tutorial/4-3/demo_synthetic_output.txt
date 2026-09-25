@@ -1,0 +1,5 @@
+Torn session constructed: provider(id=2) carries an orphan tool_call(call_7); no result message.
+All messages after recovery (id ascending):
+  synthetic-call_7 tool      synthetic=True tool_status=error tool call call_7 result 
+                 1 user      synthetic=False tool_status=None List the directory
+                 2 provider  synthetic=False tool_status=None 

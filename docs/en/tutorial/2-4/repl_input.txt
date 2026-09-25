@@ -1,0 +1,2 @@
+First dispatch explore to survey the code structure of the target directory and report back, then use todo to break down "write a README.md for this project" into a task list.
+/exit

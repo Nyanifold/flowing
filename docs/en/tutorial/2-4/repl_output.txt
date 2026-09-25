@@ -1,0 +1,88 @@
+(agent-main)>>>I'll start by dispatching the explore-agent to survey the target directory.
+[thinking] I need to dispatch explore-agent first to survey the target directory, then use todo to break down the task.
+
+Let me dispatch explore-agent.
+[tool_call] subagent-invoke {"agent_type": "explore-agent", "name": "explore-target", "prompt": "Survey the code structure of the target directory and report back.\n\nAbsolute path to inspect: <repo-root>/dev-docs/tutorial-en/2-4/target\n\nPlease report:\n1. The full directory tree (files and subdirectories), with file sizes where useful.\n2. For each significant source file, its purpose, main classes/functions/exports, and key dependencies.\n3. Any existing documentation files (README, docs/, comments) and config/build files (package.json, pyproject.toml, Makefile, etc.), and their contents/summary.\n4. The apparent tech stack, entry points, and how the project is meant to be built/run.\n5. Anything notable a README author should know: license, project name, usage examples, environment variables, tests.\n\nDo not write or modify any files. Report findings as text."}
+[tool:completed] subagent-invoke -> 
+The explore-agent has reported back. Now I'll break down the README task into a structured task list.
+[thinking] Now use todo to break down "write a README.md for this project" into a task list.
+[tool_call] todo {"tasks_text": "Gather README content requirements from explore-agent findings (project purpose, tech stack, usage)\nDraft README.md at <repo-root>/dev-docs/tutorial-en/2-4/target/README.md with sections: Project Title & Overview, Requirements, Installation/Setup, Usage examples for add() and div(), Project Structure, Notes\nDocument the add(a, b) and div(a, b) API including divide-by-zero ValueError behavior\nClarify in README that \"adder\"/\"divider\" in notes/ are informal names, not real components\nInclude note that pkg/ has no __init__.py and there are no tests\nWrite README.md to disk and verify contents\n"}
+[tool:completed] todo -> 
+## Exploration complete
+
+**Target:** `<repo-root>/dev-docs/tutorial-en/2-4/target`
+
+**Structure** — a deliberately minimal scaffolding project (3 files, no README, no config):
+
+```
+target/
+├── notes/
+│   ├── adder.md      (~0.4 KB)
+│   └── divider.md    (~0.6 KB)
+└── pkg/
+    └── calc.py       (~170 bytes, 11 lines)
+```
+
+**Key findings**
+- **`pkg/calc.py`** is the only source: docstring `"""Example project: a calculator."""`, no imports.
+  - `add(a: float, b: float) -> float` → `a + b`
+  - `div(a: float, b: float) -> float` → raises `ValueError("divisor must not be 0")` when `b == 0`, else `a / b`
+- **Stack:** plain Python 3, no dependencies, no entry point/CLI, no packaging (`pkg/` has no `__init__.py`).
+- **`notes/*.md`:** meta-commentary clarifying that `adder`/`divider` are NOT real components — just informal labels for `add`/`div`.
+- **Missing:** no license, no tests, no env vars, no build/run docs, no usage examples beyond `add(1, 2)` → `3` in a note.
+
+## Task breakdown
+
+| # | Task | Status |
+|---|------|--------|
+| 1 | Gather README content requirements from explore findings | open |
+| 2 | Draft README.md with sections: Title/Overview, Requirements, Setup, Usage (`add`/`div`), Project Structure, Notes | open |
+| 3 | Document the `add(a, b)` / `div(a, b)` API incl. divide-by-zero `ValueError` | open |
+| 4 | Clarify that "adder"/"divider" in `notes/` are informal names, not real components | open |
+| 5 | Note that `pkg/` has no `__init__.py` and there are no tests | open |
+| 6 | Write README.md to disk and verify contents | open |
+
+*(6 tasks total, 0 done.)*
+
+Shall I proceed with step 3 of the process — dispatching the **coder** to write `README.md` to the target directory per this task list?
+[thinking] The task from the user is just: dispatch explore, then use todo to break down the task list. That's done. Should I summarize to the user. The process discipline says dispatch code/file writing tasks to coder, then summarize. But the user's explicit request was just explore + todo. I'll report back and ask/offer to proceed. Given the process discipline mentions dispatching to coder after todo, but the user only asked for explore + todo. However to be helpful, I could offer. But the instruction says "Do not read or write files yourself." I think it's fine to present the todo and ask whether to proceed with coder dispatch. Actually the process discipline step 3 is about implementation tasks. The user requested the breakdown. Let me present findings, the todo list, and note next step.
+
+I'll keep it concise and ask for confirmation to dispatch coder.
+## Exploration complete
+
+**Target:** `<repo-root>/dev-docs/tutorial-en/2-4/target`
+
+**Structure** — a deliberately minimal scaffolding project (3 files, no README, no config):
+
+```
+target/
+├── notes/
+│   ├── adder.md      (~0.4 KB)
+│   └── divider.md    (~0.6 KB)
+└── pkg/
+    └── calc.py       (~170 bytes, 11 lines)
+```
+
+**Key findings**
+- **`pkg/calc.py`** is the only source: docstring `"""Example project: a calculator."""`, no imports.
+  - `add(a: float, b: float) -> float` → `a + b`
+  - `div(a: float, b: float) -> float` → raises `ValueError("divisor must not be 0")` when `b == 0`, else `a / b`
+- **Stack:** plain Python 3, no dependencies, no entry point/CLI, no packaging (`pkg/` has no `__init__.py`).
+- **`notes/*.md`:** meta-commentary clarifying that `adder`/`divider` are NOT real components — just informal labels for `add`/`div`.
+- **Missing:** no license, no tests, no env vars, no build/run docs, no usage examples beyond `add(1, 2)` → `3` in a note.
+
+## Task breakdown
+
+| # | Task | Status |
+|---|------|--------|
+| 1 | Gather README content requirements from explore findings | open |
+| 2 | Draft README.md with sections: Title/Overview, Requirements, Setup, Usage (`add`/`div`), Project Structure, Notes | open |
+| 3 | Document the `add(a, b)` / `div(a, b)` API incl. divide-by-zero `ValueError` | open |
+| 4 | Clarify that "adder"/"divider" in `notes/` are informal names, not real components | open |
+| 5 | Note that `pkg/` has no `__init__.py` and there are no tests | open |
+| 6 | Write README.md to disk and verify contents | open |
+
+*(6 tasks total, 0 done.)*
+
+Shall I proceed with step 3 of the process — dispatching the **coder** to write `README.md` to the target directory per this task list?
+(agent-main)>>>

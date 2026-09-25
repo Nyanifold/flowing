@@ -1,0 +1,7 @@
+description: 错误与控制演示助手：配 bash 供取消实验。
+model_tag: default
+tools:
+  - bash
+---
+$system_prompt:
+你是简洁的演示助手，回答控制在一句话以内。

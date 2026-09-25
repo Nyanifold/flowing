@@ -1,0 +1,4 @@
+$ curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8411/
+200
+$ curl -s -X POST http://127.0.0.1:8411/agents/agent-main/message -H "Content-Type: application/json" -d "{\"text\": \"Introduce yourself in one sentence.\"}"
+{"message_id": "7", "final_text": "I'm a concise AI assistant that answers questions clearly and helpfully in no more than three sentences."}

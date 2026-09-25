@@ -1,0 +1,5 @@
+description: Demo assistant for model configuration and budget.
+model_tag: default
+---
+$system_prompt:
+You are a concise English assistant. Keep answers within one sentence.
