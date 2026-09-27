@@ -129,17 +129,14 @@ needed to understand the data flow.
 from flowing import Runtime
 
 
-async def main(locale: str = "zh", resume: str | None = None) -> Runtime:
+async def main(locale: str = "zh") -> Runtime:
     runtime = Runtime(persist_dir="@/.flowing")
     # runtime.set_providers("@/providers.yaml")
     # runtime.set_models("@/models.yaml")
     runtime.set_model_tags("@/model-tags.yaml")
     runtime.provide("timezone", "Asia/Shanghai")
-    if resume is not None:
-        await runtime.recover_agent(resume)
-    else:
-        kwargs = {"locale": locale} if locale != "zh" else {}
-        await runtime.mount("@/root.fya", agent_id="agent-main", **kwargs)
+    kwargs = {"locale": locale} if locale != "zh" else {}
+    await runtime.mount("@/root.fya", agent_id="agent-main", **kwargs)
     return runtime
 ```
 

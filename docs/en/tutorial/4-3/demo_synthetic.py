@@ -49,8 +49,9 @@ async def main() -> None:
     #     orphan tool_call and no result message
     build_torn_session()
     print("Torn session constructed: provider(id=2) carries an orphan tool_call(call_7); no result message.")
-    # (3) Replay through the recovery pipeline
-    runtime = await launch(".", resume="agent-main")
+    # (3) Replay through the recovery pipeline (idempotent mount with a fixed
+    #     agent_id — the second launch goes through recovery)
+    runtime = await launch(".")
     agent = await runtime.get_agent("agent-main")
     print("All messages after recovery (id ascending):")
     for mid in sorted(agent._messages, key=lambda k: int(k) if k.isdigit() else -1):

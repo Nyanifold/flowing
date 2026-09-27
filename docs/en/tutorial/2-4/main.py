@@ -3,7 +3,7 @@
 from flowing import Runtime
 
 
-async def main(cwd: str | None = None, resume: str | None = None) -> Runtime:
+async def main(cwd: str | None = None) -> Runtime:
     runtime = Runtime(persist_dir="@/.flowing")
     runtime.set_providers("@/providers.yaml")
     runtime.set_models("@/models.yaml")
@@ -13,8 +13,5 @@ async def main(cwd: str | None = None, resume: str | None = None) -> Runtime:
         # consumes it as {{ cwd }} (deliberately stopped at system_prompt —
         # declaration-site injection is the divergence surface covered in 4-4)
         runtime.provide("cwd", cwd)
-    if resume is not None:
-        await runtime.recover_agent(resume)   # recovery entry point: kept at the policy layer; mechanics in 4-1
-    else:
-        await runtime.mount("@/root.fya", agent_id="agent-main")
+    await runtime.mount("@/root.fya", agent_id="agent-main")
     return runtime

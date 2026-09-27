@@ -89,15 +89,12 @@ explore-agent 确认其能力；如果它只有只读工具，不要声称已经
 from flowing import Runtime
 
 
-async def main(resume: str | None = None) -> Runtime:
+async def main() -> Runtime:
     runtime = Runtime(persist_dir="@/.flowing")
     # runtime.set_providers("@/providers.yaml")
     # runtime.set_models("@/models.yaml")
     runtime.set_model_tags("@/model-tags.yaml")
-    if resume is not None:
-        await runtime.recover_agent(resume)
-    else:
-        await runtime.mount("@/root.fya", agent_id="agent-main")
+    await runtime.mount("@/root.fya", agent_id="agent-main")
     return runtime
 ```
 

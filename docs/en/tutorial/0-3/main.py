@@ -3,15 +3,12 @@
 from flowing import Runtime
 
 
-async def main(resume: str | None = None) -> Runtime:
+async def main() -> Runtime:
     runtime = Runtime(persist_dir="@/.flowing")
     runtime.set_providers("@/providers.yaml")
     runtime.set_models("@/models.yaml")
     runtime.set_model_tags("@/model-tags.yaml")
-    if resume is not None:
-        await runtime.recover_agent(resume)   # recover an existing agent
-    else:
-        # fixed agent_id -> idempotent mount: the second launch goes through recovery,
-        # so "the same root comes back"
-        await runtime.mount("@/root.fya", agent_id="agent-main")
+    # fixed agent_id -> idempotent mount: the second launch goes through recovery,
+    # so "the same root comes back"
+    await runtime.mount("@/root.fya", agent_id="agent-main")
     return runtime

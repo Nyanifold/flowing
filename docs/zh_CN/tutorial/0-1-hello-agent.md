@@ -55,18 +55,15 @@ $system_prompt:
 from flowing import Runtime
 
 
-async def main(user_name: str | None = None, resume: str | None = None) -> Runtime:
+async def main(user_name: str | None = None) -> Runtime:
     runtime = Runtime(persist_dir="@/.flowing")
     # runtime.set_providers("@/providers.yaml")
     # runtime.set_models("@/models.yaml")
     runtime.set_model_tags("@/model-tags.yaml")
-    if resume is not None:
-        await runtime.recover_agent(resume)   # 恢复既有 agent
-    else:
-        # 固定 agent_id → 幂等挂载：第二次启动走恢复，“同一个根回来了”
-        root = await runtime.mount("@/root.fya", agent_id="agent-main")
-        if user_name is not None:
-            root.user_name = user_name
+    # 固定 agent_id → 幂等挂载：第二次启动走恢复，“同一个根回来了”
+    root = await runtime.mount("@/root.fya", agent_id="agent-main")
+    if user_name is not None:
+        root.user_name = user_name
     return runtime
 ```
 
@@ -76,9 +73,8 @@ async def main(user_name: str | None = None, resume: str | None = None) -> Runti
 `set_model_tags()`。若选择项目级 `providers.yaml` / `models.yaml`，则取消前两行
 注释，并将对应文件放在项目根目录。
 
-注意：**新建还是恢复，是 `main()` 的策略，不是框架的参数**。框架不认识
-`--resume`；你的 `main()` 自行决定（这里用 `resume` 参数表达）。根 Agent
-用 `mount()` 挂载，`agent_id` 固定时第二次启动自动走恢复管线（幂等挂载）。
+注意：根 Agent 用 `mount()` 挂载，`agent_id` 固定时是幂等挂载——首次
+启动新建，此后每次启动同一 id 已在池中，自动走恢复管线，“同一个根回来了”。
 
 ### 模型接入：三个 yaml 与 model_tag 两跳解析
 

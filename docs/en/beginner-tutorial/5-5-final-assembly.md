@@ -63,21 +63,18 @@ tags:
 from flowing import Runtime
 
 
-async def main(cwd: str | None = None, resume: str | None = None) -> Runtime:
+async def main(cwd: str | None = None) -> Runtime:
     runtime = Runtime(persist_dir="@/.flowing")
     # runtime.set_providers("@/providers.yaml")
     # runtime.set_models("@/models.yaml")
     runtime.set_model_tags("@/model-tags.yaml")
     if cwd:
         runtime.provide("cwd", cwd)
-    if resume is not None:
-        await runtime.recover_agent(resume)
-    else:
-        await runtime.mount("@/root.fya", agent_id="agent-main")
+    await runtime.mount("@/root.fya", agent_id="agent-main")
     return runtime
 ```
 
-The composition root performs assembly only and contains no business logic. It explicitly expresses the application's choice between a fresh start and recovery.
+The composition root performs assembly only and contains no business logic. The idempotent mount with a fixed `agent_id` makes the second launch go through the recovery pipeline automatically, so the composition root does not need to distinguish a fresh start from a resumption.
 
 ### The two forms of orchestration drive
 
@@ -294,9 +291,9 @@ The assembled workflow uses explore for inspection, `todo` for planning, and cod
 2. Is the orchestrator's tool table minimal, without taking over the workers' tasks?
 3. Are workers named for multi-round collaboration and resumed when needed?
 4. Does every runtime value follow the explicit `provide → inject → template` chain?
-5. Does the composition root explicitly distinguish fresh creation from recovery?
+5. Is the root agent mounted idempotently with a fixed `agent_id`, so that a second launch goes through the recovery pipeline automatically?
 
-In this example, the root agent only invokes subagents and plans tasks; the coder is created on demand and resumed by name; `--cwd` travels through the injection chain; and `main.py` distinguishes fresh creation from recovery.
+In this example, the root agent only invokes subagents and plans tasks; the coder is created on demand and resumed by name; `--cwd` travels through the injection chain; and `main.py` mounts the root agent idempotently with a fixed `agent_id`.
 
 ## Running the example
 
@@ -329,7 +326,7 @@ The value `sk-your-key-here` is a placeholder. Replace it with your own provider
 
 ## Summary
 
-1. The composition root performs pure assembly and explicitly chooses fresh creation or recovery.
+1. The composition root performs pure assembly; the fixed `agent_id` makes mounting idempotent, so a second launch recovers the same root automatically.
 2. Choose the orchestration drive based on task-structure stability: model routing is flexible, programmatic drive is deterministic, and a mixed design is common.
 3. The configuration injection chain is `provide → inject → template`, with one responsibility at each hop.
-4. The final-assembly checklist covers catalog descriptions, the orchestrator's tool table, named resume, an explicit injection chain, and the recovery branch.
+4. The final-assembly checklist covers catalog descriptions, the orchestrator's tool table, named resume, and an explicit injection chain.

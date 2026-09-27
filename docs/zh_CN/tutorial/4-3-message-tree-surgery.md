@@ -129,22 +129,18 @@ $ uv run python demo_synthetic.py
 from flowing import Runtime
 
 
-async def main(user_name: str | None = None, locale: str = "zh",
-               resume: str | None = None) -> Runtime:
+async def main(user_name: str | None = None, locale: str = "zh") -> Runtime:
     runtime = Runtime(persist_dir="@/.flowing")
     # runtime.set_providers("@/providers.yaml")
     # runtime.set_models("@/models.yaml")
     runtime.set_model_tags("@/model-tags.yaml")
     runtime.provide("timezone", "Asia/Shanghai")
-    if resume is not None:
-        await runtime.recover_agent(resume)
-    else:
-        kwargs: dict = {}
-        if user_name is not None:
-            kwargs["user_name"] = user_name
-        if locale != "zh":
-            kwargs["locale"] = locale
-        await runtime.mount("@/root.fya", agent_id="agent-main", **kwargs)
+    kwargs: dict = {}
+    if user_name is not None:
+        kwargs["user_name"] = user_name
+    if locale != "zh":
+        kwargs["locale"] = locale
+    await runtime.mount("@/root.fya", agent_id="agent-main", **kwargs)
     return runtime
 ```
 
@@ -290,7 +286,7 @@ async def main() -> None:
     build_torn_session()
     print("已构造撕裂 session：provider(id=2) 带孤儿 tool_call(call_7)，无结果消息。")
 
-    runtime = await launch(".", resume="agent-main")
+    runtime = await launch(".")   # 固定 agent_id 幂等挂载：第二次启动即走恢复管线
     agent = await runtime.get_agent("agent-main")
     print("恢复后的全部消息（id 升序）：")
     for mid in sorted(agent._messages,

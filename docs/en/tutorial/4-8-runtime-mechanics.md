@@ -151,15 +151,12 @@ def write_project(root: Path) -> None:
     files = {
         "main.py": '''from flowing import Runtime
 
-async def main(resume=None):
+async def main():
     runtime = Runtime(persist_dir="@/.flowing")
     # runtime.set_providers("@/providers.yaml")
     # runtime.set_models("@/models.yaml")
     runtime.set_model_tags("@/model-tags.yaml")
-    if resume is not None:
-        await runtime.recover_agent(resume)
-    else:
-        await runtime.mount("@/root.fya", agent_id="agent-main")
+    await runtime.mount("@/root.fya", agent_id="agent-main")
     return runtime
 ''',
         "root.fya": '''description: "Runtime mechanics demo assistant: minimal Q&A."

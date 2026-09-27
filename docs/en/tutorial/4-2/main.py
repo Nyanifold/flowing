@@ -3,7 +3,7 @@
 from flowing import Runtime
 
 
-async def main(resume: str | None = None) -> Runtime:
+async def main() -> Runtime:
     runtime = Runtime(persist_dir="@/.flowing")
     runtime.set_providers("@/providers.yaml")
     runtime.set_models("@/models.yaml")
@@ -11,8 +11,5 @@ async def main(resume: str | None = None) -> Runtime:
     # Runtime-global named bag: persistent state shared across Agents (backed by app.jsonl)
     app = runtime.register_state("app")
     app["boots"] = app.get("boots", 0) + 1   # +1 on every process launch (recovery semantics: persisted value wins)
-    if resume is not None:
-        await runtime.recover_agent(resume)
-    else:
-        await runtime.mount("@/root.fya", agent_id="agent-main")
+    await runtime.mount("@/root.fya", agent_id="agent-main")
     return runtime

@@ -63,21 +63,18 @@ tags:
 from flowing import Runtime
 
 
-async def main(cwd: str | None = None, resume: str | None = None) -> Runtime:
+async def main(cwd: str | None = None) -> Runtime:
     runtime = Runtime(persist_dir="@/.flowing")
     # runtime.set_providers("@/providers.yaml")
     # runtime.set_models("@/models.yaml")
     runtime.set_model_tags("@/model-tags.yaml")
     if cwd:
         runtime.provide("cwd", cwd)
-    if resume is not None:
-        await runtime.recover_agent(resume)
-    else:
-        await runtime.mount("@/root.fya", agent_id="agent-main")
+    await runtime.mount("@/root.fya", agent_id="agent-main")
     return runtime
 ```
 
-组合根只负责装配，不包含业务逻辑。新建与恢复是应用的策略选择：“这一次启动是新建还是续接”由组合根明确表达。
+组合根只负责装配，不包含业务逻辑。固定 `agent_id` 的幂等挂载让第二次启动自动走恢复管线，无需在组合根里区分新建与续接。
 
 ### 编排驱动的两种形态
 
@@ -294,9 +291,9 @@ print(div(8, 2))  # 4.0
 2. 编排者的工具表是否最小化，没有代替工作者执行任务？
 3. 多轮协作的工作者是否命名，并按需续接？
 4. 每个运行期值是否经过显式的 `provide → inject → 模板` 链？
-5. 新建与恢复分支是否由组合根显式表达？
+5. 根 Agent 是否以固定 `agent_id` 幂等挂载，使第二次启动自动走恢复管线？
 
-本例中，根 Agent 只负责唤起子智能体和拆解任务；coder 按需创建并命名续接；`--cwd` 经注入链传递；`main.py` 明确区分新建与恢复。
+本例中，根 Agent 只负责唤起子智能体和拆解任务；coder 按需创建并命名续接；`--cwd` 经注入链传递；`main.py` 以固定 `agent_id` 幂等挂载根 Agent。
 
 ## 运行本例
 
@@ -329,7 +326,7 @@ FLOWING_INPUT
 
 ## 小结
 
-1. 组合根负责纯装配，并显式选择新建或恢复。
+1. 组合根负责纯装配；固定 `agent_id` 的幂等挂载使第二次启动自动恢复同一个根。
 2. 编排驱动应依据任务结构稳定性选择：模型路由灵活，程序化驱动确定，混合使用很常见。
 3. 配置注入链是 `provide → inject → 模板`，每一跳职责单一。
-4. 总装检查清单涵盖目录描述、编排者工具表、命名续接、注入链与恢复分支。
+4. 总装检查清单涵盖目录描述、编排者工具表、命名续接与注入链。

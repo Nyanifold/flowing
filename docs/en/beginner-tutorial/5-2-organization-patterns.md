@@ -189,17 +189,14 @@ tags:
 from flowing import Runtime
 
 
-async def main(cwd: str | None = None, resume: str | None = None) -> Runtime:
+async def main(cwd: str | None = None) -> Runtime:
     runtime = Runtime(persist_dir="@/.flowing")
     # runtime.set_providers("@/providers.yaml")
     # runtime.set_models("@/models.yaml")
     runtime.set_model_tags("@/model-tags.yaml")
     if cwd:
         runtime.provide("cwd", cwd)
-    if resume is not None:
-        await runtime.recover_agent(resume)
-    else:
-        await runtime.mount("@/root.fya", agent_id="agent-main")
+    await runtime.mount("@/root.fya", agent_id="agent-main")
     return runtime
 ```
 

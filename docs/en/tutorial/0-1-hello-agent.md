@@ -61,18 +61,15 @@ mounts the root agent.
 from flowing import Runtime
 
 
-async def main(user_name: str | None = None, resume: str | None = None) -> Runtime:
+async def main(user_name: str | None = None) -> Runtime:
     runtime = Runtime(persist_dir="@/.flowing")
     # runtime.set_providers("@/providers.yaml")
     # runtime.set_models("@/models.yaml")
     runtime.set_model_tags("@/model-tags.yaml")
-    if resume is not None:
-        await runtime.recover_agent(resume)   # Recover an existing agent.
-    else:
-        # A fixed agent_id makes mounting idempotent, so a second launch recovers the same root.
-        root = await runtime.mount("@/root.fya", agent_id="agent-main")
-        if user_name is not None:
-            root.user_name = user_name
+    # A fixed agent_id makes mounting idempotent, so a second launch recovers the same root.
+    root = await runtime.mount("@/root.fya", agent_id="agent-main")
+    if user_name is not None:
+        root.user_name = user_name
     return runtime
 ```
 
@@ -82,11 +79,10 @@ example reads `model-tags.yaml` from the project root. If you put that file in
 `~/.flowing` too, comment out `set_model_tags()` as well. To use project-level provider
 and model files, uncomment the first two calls and place those files in the project root.
 
-Note: **whether to create or to recover is a policy of `main()`, not a parameter of
-the framework**. The framework does not know `--resume`; your `main()` decides on
-its own (here expressed with the `resume` parameter). The root agent is mounted with
-`mount()`; with a fixed `agent_id`, the second launch automatically goes through the
-recovery pipeline (idempotent mount).
+Note: the root agent is mounted with `mount()`; with a fixed `agent_id` the mount
+is idempotent — the first launch creates the root, and every later launch finds the
+same id already in the pool and automatically goes through the recovery pipeline,
+so "the same root comes back".
 
 ### Model access: the three YAML files and the two-hop resolution of model_tag
 

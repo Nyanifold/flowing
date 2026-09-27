@@ -87,23 +87,19 @@ async-generator `execute` 把首个 yield 作为收据，后续 yield 作为后�
 from flowing import Runtime
 
 
-async def main(user_name: str | None = None, locale: str = "zh",
-               resume: str | None = None) -> Runtime:
+async def main(user_name: str | None = None, locale: str = "zh") -> Runtime:
     runtime = Runtime(persist_dir="@/.flowing")
     # runtime.set_providers("@/providers.yaml")
     # runtime.set_models("@/models.yaml")
     runtime.set_model_tags("@/model-tags.yaml")
     # 挂载 Agent 之前提供影响装配的输入。
     runtime.provide("timezone", "Asia/Shanghai")
-    if resume is not None:
-        await runtime.recover_agent(resume)
-    else:
-        kwargs: dict = {}
-        if user_name is not None:
-            kwargs["user_name"] = user_name
-        if locale != "zh":
-            kwargs["locale"] = locale
-        await runtime.mount("@/root.fya", agent_id="agent-main", **kwargs)
+    kwargs: dict = {}
+    if user_name is not None:
+        kwargs["user_name"] = user_name
+    if locale != "zh":
+        kwargs["locale"] = locale
+    await runtime.mount("@/root.fya", agent_id="agent-main", **kwargs)
     return runtime
 ```
 

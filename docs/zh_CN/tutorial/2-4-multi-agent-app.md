@@ -46,7 +46,7 @@ todo 拆解任务，最后把写作工作派给 coder。cwd 通过 provide-injec
 
 ## 本篇不覆盖
 
-- 持久化与恢复的完整语义由 4-1 说明；本篇只保留 resume 入口。
+- 持久化与恢复的完整语义由 4-1 说明。
 - finish 结构化载荷的消费方式由 4-4 说明。
 - Workflow 与消息层协作等其他编排形态由 4-6、5-2 说明。
 
@@ -328,17 +328,14 @@ coder-b: status=completed
 from flowing import Runtime
 
 
-async def main(cwd: str | None = None, resume: str | None = None) -> Runtime:
+async def main(cwd: str | None = None) -> Runtime:
     runtime = Runtime(persist_dir="@/.flowing")
     # runtime.set_providers("@/providers.yaml")
     # runtime.set_models("@/models.yaml")
     runtime.set_model_tags("@/model-tags.yaml")
     if cwd:
         runtime.provide("cwd", cwd)
-    if resume is not None:
-        await runtime.recover_agent(resume)
-    else:
-        await runtime.mount("@/root.fya", agent_id="agent-main")
+    await runtime.mount("@/root.fya", agent_id="agent-main")
     return runtime
 ```
 

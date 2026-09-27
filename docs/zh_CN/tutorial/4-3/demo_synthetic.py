@@ -46,8 +46,8 @@ async def main() -> None:
     # ② 用撕裂的 tree.jsonl 覆盖：provider(id=2) 带孤儿 tool_call、无结果消息
     build_torn_session()
     print("已构造撕裂 session：provider(id=2) 带孤儿 tool_call(call_7)，无结果消息。")
-    # ③ 恢复管线重放
-    runtime = await launch(".", resume="agent-main")
+    # ③ 恢复管线重放（固定 agent_id 的幂等挂载，第二次启动即恢复）
+    runtime = await launch(".")
     agent = await runtime.get_agent("agent-main")
     print("恢复后的全部消息（id 升序）：")
     for mid in sorted(agent._messages, key=lambda k: int(k) if k.isdigit() else -1):

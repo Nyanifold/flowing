@@ -69,24 +69,20 @@ The complete runtime entry point and provider configuration follow. The provider
 from flowing import Runtime
 
 
-async def main(user_name: str | None = None, locale: str = "en",
-               resume: str | None = None) -> Runtime:
+async def main(user_name: str | None = None, locale: str = "en") -> Runtime:
     runtime = Runtime(persist_dir="@/.flowing")
     # runtime.set_providers("@/providers.yaml")
     # runtime.set_models("@/models.yaml")
     runtime.set_model_tags("@/model-tags.yaml")
     # Provide values needed during assembly before mounting the agent.
     runtime.provide("timezone", "Asia/Shanghai")
-    if resume is not None:
-        await runtime.recover_agent(resume)
-    else:
-        # Pass only explicitly supplied setup parameters to the agent.
-        kwargs: dict = {}
-        if user_name is not None:
-            kwargs["user_name"] = user_name
-        if locale != "en":
-            kwargs["locale"] = locale
-        await runtime.mount("@/root.fya", agent_id="agent-main", **kwargs)
+    # Pass only explicitly supplied setup parameters to the agent.
+    kwargs: dict = {}
+    if user_name is not None:
+        kwargs["user_name"] = user_name
+    if locale != "en":
+        kwargs["locale"] = locale
+    await runtime.mount("@/root.fya", agent_id="agent-main", **kwargs)
     return runtime
 ~~~
 

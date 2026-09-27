@@ -54,8 +54,7 @@ in each Agent's creation arguments.
 
 ## Out of scope
 
-- Chapter 4-1 explains persistence and recovery in full; this chapter only keeps
-  the resume entry point.
+- Chapter 4-1 explains persistence and recovery in full.
 - Chapter 4-4 explains how to consume the structured payload returned by finish.
 - Chapters 4-6 and 5-2 cover other orchestration forms, including Workflow and
   message-layer collaboration.
@@ -354,17 +353,14 @@ placeholder is included here.
 from flowing import Runtime
 
 
-async def main(cwd: str | None = None, resume: str | None = None) -> Runtime:
+async def main(cwd: str | None = None) -> Runtime:
     runtime = Runtime(persist_dir="@/.flowing")
     # runtime.set_providers("@/providers.yaml")
     # runtime.set_models("@/models.yaml")
     runtime.set_model_tags("@/model-tags.yaml")
     if cwd:
         runtime.provide("cwd", cwd)
-    if resume is not None:
-        await runtime.recover_agent(resume)
-    else:
-        await runtime.mount("@/root.fya", agent_id="agent-main")
+    await runtime.mount("@/root.fya", agent_id="agent-main")
     return runtime
 ```
 
