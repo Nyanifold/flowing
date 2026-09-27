@@ -119,7 +119,7 @@ SLASH_COMMANDS: tuple[str, ...] = (
   ``pause`` / ``resume``）经 ``slash_lines`` 执行，语义见
   :mod:`flowing.interfaces.controls`。
 
-未识别的 ``/xxx`` 输入：打印「未知命令，/help 查看可用命令」，
+未识别的 ``/xxx`` 输入：打印“未知命令，/help 查看可用命令”，
 不报错、不退出、不进消息流。带参命令按第一个空格分流参数。
 
 .. seealso:: :func:`cmd_repl`、:meth:`flowing.runtime.Runtime.snapshot`
@@ -351,7 +351,7 @@ async def cmd_repl(
     _prev_sigint = _install_repl_signal_handlers(runtime, flags)
     # 行编辑（方向键 / 历史）与顶层 slash 命令 Tab 补全（readline 可用时）
     _prev_completer = _install_readline()
-    # 思考按「灰显增量」上屏（纯增量、不与最终/折叠摘要重复）；非 tty
+    # 思考按“灰显增量”上屏（纯增量、不与最终/折叠摘要重复）；非 tty
     # （管道/重定向）时不回填思考，保持 stdout 答案是干净正文，思考留给
     # 折叠摘要兜底显示。
     _TTY = sys.stdout.isatty()
@@ -542,7 +542,7 @@ async def cmd_repl(
                 # 未绑定收到消息 → 先创建新 Agent：agent_type 取池中根条目
                 # created_at 最新者（共享辅助 _default_agent_type，与 serve
                 # POST /agents 缺省类型同口径）；池无根条目 → 打印
-                # 「无法确定 Agent 类型」，不创建
+                # “无法确定 Agent 类型”，不创建
                 agent_type = _default_agent_type(runtime)
                 if agent_type is None:
                     print("cannot determine agent type (no root record in the pool); "

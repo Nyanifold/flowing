@@ -25,7 +25,7 @@ msgid "flowing.providers package"
 msgstr ""
 
 #: flowing.providers:1 of
-msgid "``flowing.providers`` —— 「怎么和大模型 API 说话」的契约包。"
+msgid "``flowing.providers`` —— “怎么和大模型 API 说话”的契约包。"
 msgstr ""
 
 #: flowing.providers:4 flowing.providers.anthropic:4
@@ -66,7 +66,7 @@ msgstr ""
 
 #: flowing.providers:14 of
 msgid ""
-"Agent 对模型只做「持有 + 机械传递」：持有 ``self.model: ModelConfig``， 每次 "
+"Agent 对模型只做“持有 + 机械传递”：持有 ``self.model: ModelConfig``， 每次 "
 "``provider_gen()`` 前现场 ``resolve()`` 求值，再连同 "
 ":class:`flowing.context.Context` 一起传给 ``Provider.generate()``。 "
 "字段含义（``thinking_budget`` 等）只有 Provider adapter 解释，框架 核心不解释任何模型字段。"
@@ -101,8 +101,8 @@ msgid ""
 ":class:`ProviderResponse`。流式 只影响三处：``provider_gen()`` "
 "内部、``on_provider_delta`` 钩子 （value 为 "
 ":class:`ProviderDelta`，易失不落盘）、``Message.partial`` "
-"字段。非流式路径（``stream=False``）同样合成一条全量 delta 触发 钩子——订阅者永远可以依赖「每次 "
-"``provider_gen()`` 至少一条 delta」，且两种路径的 delta 数据格式完全一致。副线查询 "
+"字段。非流式路径（``stream=False``）同样合成一条全量 delta 触发 钩子——订阅者永远可以依赖“每次 "
+"``provider_gen()`` 至少一条 delta”，且两种路径的 delta 数据格式完全一致。副线查询 "
 "（``side_query``）固定 ``stream=False``，以 ``by=\"_side\"`` 标记 来源（delta 与响应均透写"
 " ``by``，钩子可按来源过滤）。"
 msgstr ""
@@ -118,20 +118,20 @@ msgid "术语：adapter 类 vs provider 条目"
 msgstr ""
 
 #: flowing.providers:50 of
-msgid "本包有两层「provider」概念，务必区分："
+msgid "本包有两层“provider”概念，务必区分："
 msgstr ""
 
 #: flowing.providers:52 of
 msgid ""
-"adapter 类（类型层）：:class:`Provider` 的具体子类，如 ``DeepSeekProvider``。它回答「怎么和这种 "
-"API 说话」——请求/响应 格式、字段解释、错误归类。以类属性 ``name`` （如 ``\"deepseek\"``） 经 "
+"adapter 类（类型层）：:class:`Provider` 的具体子类，如 ``DeepSeekProvider``。它回答“怎么和这种 "
+"API 说话”——请求/响应 格式、字段解释、错误归类。以类属性 ``name`` （如 ``\"deepseek\"``） 经 "
 ":func:`register_provider` 注册进进程级全局注册表；adapter 名是 类型标识，全局唯一。"
 msgstr ""
 
 #: flowing.providers:57 of
 msgid ""
 "provider 条目（实例层）：``providers.yaml`` 里的一个 key，如 ``deepseek-"
-"team``。它回答「用哪个身份说话」——绑定唯一 API key / base_url。Runtime 按条目的 ``adapter`` "
+"team``。它回答“用哪个身份说话”——绑定唯一 API key / base_url。Runtime 按条目的 ``adapter`` "
 "字段查注册表选类，首次按 条目名获取才懒创建实例并缓存（一条目一实例）；条目名是身份标识， 同一 adapter 类的多个 key 写成多个条目。"
 msgstr ""
 
@@ -139,7 +139,7 @@ msgstr ""
 msgid ""
 "映射关系：条目名 →（adapter 名 → adapter 类）→ 实例。因此 ``ModelConfig.provider`` "
 "引用的是条目名（身份），``providers.yaml`` 条目的 ``adapter`` 字段引用的是 adapter "
-"名（类型），``Provider.name`` 是后者——两个「name」分属两层，不混用。"
+"名（类型），``Provider.name`` 是后者——两个“name”分属两层，不混用。"
 msgstr ""
 
 #: flowing.providers:69 of
@@ -290,7 +290,7 @@ msgstr ""
 msgid ""
 "空 content 兜底：返回 Task 路径的 pending 收据（``output=None`` → ``content=[]``）等空 "
 "TOOL 消息，其 API 层兜底形态（各家对空 tool_result 的接受度不同）属各 adapter 职责；async gen 路径的 "
-"pending 收据带内容（首 yield + 「后台任务 ID」块），按正常 tool_result 映射。"
+"pending 收据带内容（首 yield + “后台任务 ID”块），按正常 tool_result 映射。"
 msgstr ""
 
 #: flowing.providers:152 of
@@ -643,7 +643,7 @@ msgid "凭证优先级：config 显式 ``aws_session_token`` > 基类 ``api_key`
 msgstr ""
 
 #: flowing.providers.anthropic.BedrockProvider:24 of
-msgid "凭证同样遵守「不进消息 / ``_provided`` / 落盘」的安全边界。"
+msgid "凭证同样遵守“不进消息 / ``_provided`` / 落盘”的安全边界。"
 msgstr ""
 
 #: flowing.providers.anthropic.BedrockProvider:25 of
@@ -760,7 +760,7 @@ msgstr ""
 msgid ""
 "注入点做成实例属性而非构造参数：测试的 arrange 阶段可以先创建替身 挂进 "
 "Runtime，再按用例逐步换绑函数（同一实例服务多个断言阶段）。 带领域逻辑的测试替身推荐子类化 :class:`Provider` 并注册（见"
-" :class:`Provider`「测试替身建议」）。"
+" :class:`Provider`“测试替身建议”）。"
 msgstr ""
 
 #: flowing.providers.provider.FakeProvider:41 of
@@ -951,7 +951,7 @@ msgstr ""
 
 #: flowing.providers.openai.OpenAICompletionsProvider.generate_stream:3 of
 msgid ""
-"替代基类「一次 generate() 包成单条 text delta」的回退——OpenAI / DeepSeek 家族的 "
+"替代基类“一次 generate() 包成单条 text delta”的回退——OpenAI / DeepSeek 家族的 "
 "chat/completions ``stream=true`` 响应在此逐 chunk 解析。chunk 形态（``data: "
 "<json>``，``[DONE]`` 收尾）："
 msgstr ""
@@ -985,7 +985,7 @@ msgstr ""
 
 #: flowing.providers.openai.OpenAICompletionsProvider.generate_stream:21 of
 msgid ""
-"块 content_index 按「首现顺序」动态分配（pi 同款），与文本分块 单一化一致——同一逻辑块的所有 delta 共享同一 "
+"块 content_index 按“首现顺序”动态分配（pi 同款），与文本分块 单一化一致——同一逻辑块的所有 delta 共享同一 "
 "index，agent 累积时 依此归位。非 2xx / chunk 内 ``error`` 按 :meth:`_classify_error` "
 "归类上抛；超时 / 传输层失败同 :meth:`generate`。"
 msgstr ""
@@ -1315,7 +1315,7 @@ msgid "不做 schema 校验；``adapter`` 键只由加载器用于选类。"
 msgstr ""
 
 #: flowing.providers.provider.ProviderConfig:36 of
-msgid "安全边界：本配置含凭证，禁止写入消息、``_provided`` 与任何落盘 文件（详见包 docstring「安全边界」）。"
+msgid "安全边界：本配置含凭证，禁止写入消息、``_provided`` 与任何落盘 文件（详见包 docstring“安全边界”）。"
 msgstr ""
 
 #: flowing.providers.provider.ProviderConfig:41 of
@@ -1336,8 +1336,8 @@ msgstr ""
 #: flowing.providers.provider.ProviderDelta:10 of
 msgid ""
 "非流式路径同样产生一条：``stream=False`` 时 ``provider_gen()`` 在 拿到完整响应后合成一条全量 delta "
-"分发（从空到全量即一个增量）， 两种路径的 delta 数据格式完全一致。订阅者因此永远可以依赖「每次 ``provider_gen()`` "
-"至少收到一条 delta」。"
+"分发（从空到全量即一个增量）， 两种路径的 delta 数据格式完全一致。订阅者因此永远可以依赖“每次 ``provider_gen()`` "
+"至少收到一条 delta”。"
 msgstr ""
 
 #: flowing.providers.provider.ProviderDelta:15 of
@@ -1499,7 +1499,7 @@ msgstr ""
 #: flowing.providers.provider.ProviderRegistry:29 of
 msgid ""
 "``get(name)``：已缓存 → 返回缓存实例；未缓存 → 现场实例化并缓存 后返回；条目名不在候选清单 → ``KeyError`` "
-"（dict 语义快速失败）。 注意本方法的 ``get`` 是「取或建」语义，不是 ``dict.get`` 的返回 ``None`` 语义。"
+"（dict 语义快速失败）。 注意本方法的 ``get`` 是“取或建”语义，不是 ``dict.get`` 的返回 ``None`` 语义。"
 msgstr ""
 
 #: flowing.providers.provider.ProviderRegistry:33 of
@@ -1561,7 +1561,7 @@ msgstr ""
 #: flowing.providers.provider.ProviderResponse:5 of
 msgid ""
 "``Provider.generate()`` 的返回类型，也是 ``Agent.provider_gen()`` "
-"的返回类型。无论底层是否流式，Turn 循环只见完整的本结构—— 「``provider_gen()`` 返回完整响应」是把流式挡在逻辑 Turn"
+"的返回类型。无论底层是否流式，Turn 循环只见完整的本结构—— “``provider_gen()`` 返回完整响应”是把流式挡在逻辑 Turn"
 " 循环外的 契约。"
 msgstr ""
 
@@ -1590,7 +1590,7 @@ msgstr ""
 
 #: flowing.providers.provider.ProviderResponse:51 of
 msgid ""
-"``finish``：provider 层概念——「provider 完成了本次响应（无待 执行 tool_call）」。turn 是否关闭由 "
+"``finish``：provider 层概念——“provider 完成了本次响应（无待 执行 tool_call）”。turn 是否关闭由 "
 "agent 层判断 （``finish or cancelled`` → ``Message.turn_end``），本字段不直接 "
 "承担。得出方式框架不强制，adapter 可覆写；推荐默认准则：响应含 ``tool_call`` block → "
 "``False``，其它（stop / length / error） → ``True``。"
@@ -1678,7 +1678,7 @@ msgstr ""
 #: flowing.providers.provider.Usage:24 of
 msgid ""
 "七个计数字段为非负 ``int``；provider 无某概念（如无 cache、不 报告推理 "
-"token）时对应字段零填充。「未上报」信号只存在于整体层 （``message.usage is None``），不做逐字段 ``None`` "
+"token）时对应字段零填充。“未上报”信号只存在于整体层 （``message.usage is None``），不做逐字段 ``None`` "
 "区分。"
 msgstr ""
 
@@ -1690,7 +1690,7 @@ msgstr ""
 
 #: flowing.providers.provider.Usage:30 of
 msgid ""
-"``reasoning`` 是 ``output`` 的子集标注，不是正交桶——参与聚合 （「本 turn 累计推理 token」），但不重复计入"
+"``reasoning`` 是 ``output`` 的子集标注，不是正交桶——参与聚合 （“本 turn 累计推理 token”），但不重复计入"
 " ``total_tokens``。"
 msgstr ""
 
@@ -1746,7 +1746,7 @@ msgstr ""
 #: flowing.providers.provider.Usage.reasoning:1 of
 msgid ""
 "推理 token——``output`` 的子集标注，不重复计入 ``total_tokens``； provider "
-"不报告时零填充。聚合语义为「本 turn 累计推理 token」。"
+"不报告时零填充。聚合语义为“本 turn 累计推理 token”。"
 msgstr ""
 
 #: flowing.providers.Usage.total_tokens:1
@@ -1775,7 +1775,7 @@ msgstr ""
 #: flowing.providers.provider.load_provider_candidates:11 of
 msgid ""
 "本函数不碰环境变量与默认路径（``FLOWING_PROVIDERS_PATH`` / ``$FLOWING_CONFIG_HOME`` "
-"的解析在调用方 Runtime 侧）——保持纯 「路径 → 候选清单」，测试与 CI 诊断可直接调用。"
+"的解析在调用方 Runtime 侧）——保持纯 “路径 → 候选清单”，测试与 CI 诊断可直接调用。"
 msgstr ""
 
 #: flowing.providers.provider.load_provider_candidates:15 of
@@ -1823,7 +1823,7 @@ msgid ""
 msgstr ""
 
 #: flowing.providers.provider.register_provider:11 of
-msgid "注册全局（进程级）：与「一个进程可有多个 Runtime」兼容——adapter 类是类型层资产，条目实例才属于 Runtime。"
+msgid "注册全局（进程级）：与“一个进程可有多个 Runtime”兼容——adapter 类是类型层资产，条目实例才属于 Runtime。"
 msgstr ""
 
 #: flowing.providers.provider.register_provider:13 of
@@ -1833,7 +1833,7 @@ msgid ""
 msgstr ""
 
 #: flowing.providers.provider.register_provider:16 of
-msgid "同名唯一，显式覆盖：「同名不同类」无需求；确需替换内置 adapter 时用 ``override=True``，语义明确且可告警。"
+msgid "同名唯一，显式覆盖：“同名不同类”无需求；确需替换内置 adapter 时用 ``override=True``，语义明确且可告警。"
 msgstr ""
 
 #: flowing.providers.provider.register_provider:35 of

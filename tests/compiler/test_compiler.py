@@ -127,7 +127,7 @@ def _copy_payment(tmp_path: Path) -> Path:
 @pytest.fixture
 def write_spy(monkeypatch):
     """``Path.write_text`` 写盘间谍：本环境文件系统 mtime 粒度粗（同刻写入
-    mtime_ns 不可区分），「no-op = 未重写」一律以写盘调用计数断言。"""
+    mtime_ns 不可区分），“no-op = 未重写”一律以写盘调用计数断言。"""
     writes: list[Path] = []
     orig = Path.write_text
 

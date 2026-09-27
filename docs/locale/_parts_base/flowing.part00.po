@@ -188,7 +188,7 @@ msgid "功能介绍"
 msgstr ""
 
 #: flowing:5 of
-msgid "Flowing 的核心立场是「框架只提供机制，不提供策略」。包结构三层："
+msgid "Flowing 的核心立场是“框架只提供机制，不提供策略”。包结构三层："
 msgstr ""
 
 #: flowing:7 of
@@ -224,7 +224,7 @@ msgstr ""
 
 #: flowing:25 of
 msgid ""
-"顶层导出收敛到「写一个 Agent 项目一定会 import」的最小集合；其余符号 "
+"顶层导出收敛到“写一个 Agent 项目一定会 import”的最小集合；其余符号 "
 "（异常明细、快照视图、内部容器）经子模块显式导入，保持顶层命名空间 可读、可记忆。"
 msgstr ""
 
@@ -728,7 +728,7 @@ msgstr ""
 #: flowing.Agent.model:1 flowing.agent.Agent.model:1 of
 msgid ""
 "模型结构体（运行时成员，可解析、可变）；实例化时由 ``model_tag`` 解析填充初始值。两条动态修改路径：① 改 "
-"``model_tag`` （只能指向配置 已定义模型）；② 直接赋 ``ModelConfig(...)`` （任意模型）。「换模型」 = "
+"``model_tag`` （只能指向配置 已定义模型）；② 直接赋 ``ModelConfig(...)`` （任意模型）。“换模型” = "
 "换一份完整规格，无中间态。"
 msgstr ""
 
@@ -782,7 +782,7 @@ msgstr ""
 
 #: flowing.Agent.current_head_id:1 flowing.agent.Agent.current_head_id:1 of
 msgid ""
-"消息级树游标——指向某条消息的 id，即「添加节点的位置」：新消息 链到它并随即将它前移；fork 即切换它。空树（新 Agent）为 "
+"消息级树游标——指向某条消息的 id，即“添加节点的位置”：新消息 链到它并随即将它前移；fork 即切换它。空树（新 Agent）为 "
 "``None``。"
 msgstr ""
 
@@ -1031,8 +1031,8 @@ msgstr ""
 
 #: flowing.agent.Agent.destroy:20 of
 msgid ""
-"destroy ≠ 删除：只丢实例；session（tree.jsonl + state.jsonl） 与池 key 保留到显式删除目录——「有 "
-"key 无 value → 现场恢复」 （``Runtime.get_agent`` 触发）。"
+"destroy ≠ 删除：只丢实例；session（tree.jsonl + state.jsonl） 与池 key 保留到显式删除目录——“有 "
+"key 无 value → 现场恢复” （``Runtime.get_agent`` 触发）。"
 msgstr ""
 
 #: flowing.agent.Agent.destroy:23 of
@@ -1068,7 +1068,7 @@ msgid ":meth:`flowing.runtime.Runtime.shutdown` —— 进程级收尾。"
 msgstr ""
 
 #: flowing.agent.Agent.query:1 of
-msgid "统一入口：打包 + 入队 + 等待「包含我这条消息的回合」产物。"
+msgid "统一入口：打包 + 入队 + 等待“包含我这条消息的回合”产物。"
 msgstr ""
 
 #: flowing.agent.Agent.query:5 of
@@ -1080,7 +1080,7 @@ msgid ""
 msgstr ""
 
 #: flowing.agent.Agent.query:21 of
-msgid "等待语义：等「包含我这条消息」的逻辑回合完成；空闲时可能被 出队合并（一次取出多条消息，共享同一产物），活跃回合中排队等 当前回合完成。"
+msgid "等待语义：等“包含我这条消息”的逻辑回合完成；空闲时可能被 出队合并（一次取出多条消息，共享同一产物），活跃回合中排队等 当前回合完成。"
 msgstr ""
 
 #: flowing.agent.Agent.query:24 of
@@ -1222,7 +1222,7 @@ msgid ""
 msgstr ""
 
 #: flowing.agent.Agent.enqueue_message:24 of
-msgid "消费保证：入队即会被消费（常驻工作循环），无需「入队触发」逻辑。"
+msgid "消费保证：入队即会被消费（常驻工作循环），无需“入队触发”逻辑。"
 msgstr ""
 
 #: flowing.agent.Agent.enqueue_message:25 of
@@ -1389,8 +1389,8 @@ msgstr ""
 #: flowing.agent.Agent.set_queued_priority:5 of
 msgid ""
 ":meth:`flowing.message.MessageQueue.set_priority` 的 Agent 层入口： 把排队中的消息提升 "
-"/ 降低优先级，影响下一轮出队的消费顺序。与 :meth:`cancel_queued` 对称——那个管「反悔撤回」，这个管「催办 / "
-"降级」。重排保留原入队序号：被改优先级的消息插入新优先级带时按 原入队早晚定位，如同它入队时就带着新优先级。"
+"/ 降低优先级，影响下一轮出队的消费顺序。与 :meth:`cancel_queued` 对称——那个管“反悔撤回”，这个管“催办 / "
+"降级”。重排保留原入队序号：被改优先级的消息插入新优先级带时按 原入队早晚定位，如同它入队时就带着新优先级。"
 msgstr ""
 
 #: flowing.agent.Agent.set_queued_priority:19 of
@@ -1415,7 +1415,7 @@ msgstr ""
 
 #: flowing.agent.Agent.estimate_context_tokens:5 of
 msgid ""
-"回答「现在把上下文发给 LLM 大约多大」：沿 ``current_head_id`` 上溯 的当前路径上，找最近一条有效锚点（``kind =="
+"回答“现在把上下文发给 LLM 大约多大”：沿 ``current_head_id`` 上溯 的当前路径上，找最近一条有效锚点（``kind =="
 " PROVIDER`` 且 ``usage`` 非 ``None`` 且 ``usage.total_tokens > 0`` 的消息）， "
 "锚点覆盖部分用实测值（``measured``），之后的新内容用 "
 ":func:`flowing.message.estimate_message_tokens` 逐条估算 "
@@ -1434,7 +1434,7 @@ msgstr ""
 #: flowing.agent.Agent.estimate_context_tokens:25 of
 msgid ""
 "锚点命中时：``measured = 锚点.usage.total_tokens`` （含 cache_read——缓存读的 token "
-"也占窗口）；``estimated`` 追加 「当前启用工具中不在 ``_measured_tool_names`` 的 schema 估算」 "
+"也占窗口）；``estimated`` 追加 “当前启用工具中不在 ``_measured_tool_names`` 的 schema 估算” "
 "——锚点后新增工具的补估规则。"
 msgstr ""
 
@@ -1487,7 +1487,7 @@ msgid ""
 "``on_provider_delta`` dispatch （纯观察：累积只认 Provider 原始 delta，dispatch 的返回值被"
 " 丢弃、不回写——改写单条 delta 无意义，需改写走 ``after_provider_gen`` 改整条消息；delta 本身不落盘）； "
 "``stream=False``：非流式一次性请求，拿到完整响应后合成一条 全量 delta 同样 dispatch——两种路径的 delta "
-"数据格式完全一致， 订阅者永远可以依赖「每次 ``provider_gen`` 至少一条 delta」。"
+"数据格式完全一致， 订阅者永远可以依赖“每次 ``provider_gen`` 至少一条 delta”。"
 msgstr ""
 
 #: flowing.agent.Agent.provider_gen:30 of
@@ -1577,7 +1577,7 @@ msgstr ""
 
 #: flowing.agent.Agent.side_query:34 of
 msgid ""
-"空文本二义性：abort 与「响应无 TextBlock」（如 thinking 烧光 预算、模型只想调工具）都返回 "
+"空文本二义性：abort 与“响应无 TextBlock”（如 thinking 烧光 预算、模型只想调工具）都返回 "
 "``\"\"``，不区分——调用方对空值做 幂等兜底。"
 msgstr ""
 
@@ -1753,7 +1753,7 @@ msgstr ""
 msgid ""
 "fork 是纯上下文操作，不碰执行：正在运行的工具 / 子 Agent 继续 运行、结果照常交付；执行追踪、生命周期子树、prompt "
 "块、provide 存储、工具条目、消息队列均不被触碰（共享同一实例，不拷贝、不 冻结）。全时合法、无守卫：head "
-"即「添加节点的位置」（每条消息挂树 即前移），回合内 fork 的语义即 seek——本回合后续 append 与 "
+"即“添加节点的位置”（每条消息挂树 即前移），回合内 fork 的语义即 seek——本回合后续 append 与 "
 "``provider_gen`` 改在新基址上继续。"
 msgstr ""
 
@@ -1761,8 +1761,8 @@ msgstr ""
 msgid ""
 "回合内 fork（seek 语义）合法、无 ``RuntimeError`` 守卫，但调用方 须自知三件事：① 嫁接——fork "
 "后的产物挂在目标所在链上， ``turn.message_ids`` 可能跨链（消费者均按 id 取消息，无机械 故障）；② "
-"上下文瞬移——下一轮上下文组装从新 head 上溯；③ 配对断裂——仅当 fork 落在「tool_call 已挂树、结果未 append」的 "
-"工具执行相位，下一轮组装出「有 result 无 call」，provider 会 显式报错（响亮、可恢复，append-only "
+"上下文瞬移——下一轮上下文组装从新 head 上溯；③ 配对断裂——仅当 fork 落在“tool_call 已挂树、结果未 append”的 "
+"工具执行相位，下一轮组装出“有 result 无 call”，provider 会 显式报错（响亮、可恢复，append-only "
 "保证数据完好）。这是可预想 的操作语义而非损坏，框架不做家长式禁止。"
 msgstr ""
 
@@ -1872,7 +1872,7 @@ msgstr ""
 #: flowing.agent.Agent.pause_recursive:5 of
 msgid ""
 "``self.pause()`` 后对 ``_children`` 中每个活子 Agent 递归调用 ``pause_recursive()`` "
-"（深度优先）。典型场景：UI 的「暂停整个工作 流」按钮。"
+"（深度优先）。典型场景：UI 的“暂停整个工作 流”按钮。"
 msgstr ""
 
 #: flowing.agent.Agent.pause_recursive:11 of
@@ -1951,14 +1951,14 @@ msgstr ""
 msgid ""
 "时序：dispatch ``before_cancel`` （value 为 :class:`CancelContext`， handler "
 "``raise Intercepted`` 阻止取消）→ 置位 ``_executions`` 全部 abort + 置位回合退出信号 → "
-"dispatch ``after_cancel`` （信号 置位后立即触发——「取消请求已被接受」的事实事件；纯观察，日志 / 通知 / "
+"dispatch ``after_cancel`` （信号 置位后立即触发——“取消请求已被接受”的事实事件；纯观察，日志 / 通知 / "
 "审计）。无状态值迁移（Agent 无生命周期状态机）。"
 msgstr ""
 
 #: flowing.agent.Agent.cancel:11 of
 msgid ""
-"观察点分工：``after_cancel`` 表达的是「取消已被接受、信号已置 位」，dispatch "
-"点在本方法体内——协作式取消禁止本方法等待回合退出 （回合内的代码调 ``cancel()`` 时等待即自死锁）。「回合真正退出」 的观察归 "
+"观察点分工：``after_cancel`` 表达的是“取消已被接受、信号已置 位”，dispatch "
+"点在本方法体内——协作式取消禁止本方法等待回合退出 （回合内的代码调 ``cancel()`` 时等待即自死锁）。“回合真正退出” 的观察归 "
 "``after_turn`` （全路径，handler 读 ``turn.aborted`` 区分 取消与正常结束）。空闲 "
 "Agent（无回合在跑）被 cancel 时 ``after_cancel`` 照常触发：信号置位是事实，与有无回合无关。"
 msgstr ""
@@ -2102,8 +2102,8 @@ msgstr ""
 #: flowing.agent.Agent.create_subagent:5 of
 msgid ""
 "直接委托 ``runtime.create_agent``，把 ``agent_type`` 与 ``**kwargs`` "
-"原样透传、``parent_id`` 固定为 ``self.node_id`` ——不提供别的，只提供「自己 的 ``node_id`` 作为 "
-"``parent_id``」。可选 ``name`` 为子代起语义 名（登记进 ``child_ids``，供 "
+"原样透传、``parent_id`` 固定为 ``self.node_id`` ——不提供别的，只提供“自己 的 ``node_id`` 作为 "
+"``parent_id``”。可选 ``name`` 为子代起语义 名（登记进 ``child_ids``，供 "
 "``invoke_subagent(resume=...)`` 按名 续接；语义名只存在亲代侧表中，子实例不自持名字）。"
 msgstr ""
 
@@ -2111,8 +2111,8 @@ msgstr ""
 msgid ""
 "与 :meth:`invoke_subagent` 的分工：本方法不做 ``SubagentEntry.resolve()``、不经过 "
 "``before_subagent_invoke`` / ``after_subagent_invoke`` 钩子（仅走创建管线的 "
-"``before_create`` / ``after_create``）、不支持 ``resume`` 续接——适合「创建并持有 "
-"实例」的钩子回调 / 外部代码 / 回合内工具。"
+"``before_create`` / ``after_create``）、不支持 ``resume`` 续接——适合“创建并持有 "
+"实例”的钩子回调 / 外部代码 / 回合内工具。"
 msgstr ""
 
 #: flowing.agent.Agent.create_subagent:27 of
@@ -2227,7 +2227,7 @@ msgid "无论是否入队，``after_subagent_invoke`` 都先于交付 dispatch�
 msgstr ""
 
 #: flowing.agent.Agent.invoke_subagent:69 of
-msgid "不做 keep_alive 语义——生命周期由 agent 池「默认存续 + 显式 销毁」管理。"
+msgid "不做 keep_alive 语义——生命周期由 agent 池“默认存续 + 显式 销毁”管理。"
 msgstr ""
 
 #: flowing.agent.Agent.invoke_subagent:74 of
@@ -2288,7 +2288,7 @@ msgid ""
 "本方法没有同步 / 异步开关：同步还是异步由工具的 ``execute`` 实现决定。``execute`` 是普通 ``async def`` "
 "→ ``Tool.__call__`` await 到底，本方法返回最终 ``ToolResult``，不 enqueue； "
 "``execute`` 返回 ``asyncio.Task`` → 走异步工具透明化的固定 enqueue "
-"路径。因此「是否入队」只取决于工具实现形态。"
+"路径。因此“是否入队”只取决于工具实现形态。"
 msgstr ""
 
 #: flowing.agent.Agent.tool_call:36 of
@@ -2323,7 +2323,7 @@ msgid ""
 "``source_file`` 是 ``@/`` 格式字符串，经 ``runtime.resolve_path`` 落地为绝对路径后取 "
 "``.parent``；``source_file`` 为 ``None`` → 返回 ``None`` "
 "（无文件上下文，下游裸名解析退化为纯注册表查询； FILE_REF 用 ``./`` 相对路径时由 ``resolve_path`` "
-"报错）。「文件 → 所在目录」换算的唯一承担者：``get_tool`` / ``get_agent_class``、 插件挂载的技能工具、以及 "
+"报错）。“文件 → 所在目录”换算的唯一承担者：``get_tool`` / ``get_agent_class``、 插件挂载的技能工具、以及 "
 "Parsable 的 FILE_REF 求值一律经本方法， 不允许调用方自行对 ``source_file`` 取 parent。"
 msgstr ""
 
@@ -2412,5 +2412,5 @@ msgid ""
 "同 alias 重复添加 → :class:`flowing.errors.EntryNameConflictError`。 "
 "每次生命周期（create / recover）都从 ``__init__`` 的空 ``_tool_entries`` 开始重放 "
 "``setup()``；同一生命周期内重复添加 同 alias 是笔误，快速失败（tool / skill / subagent 绑定层统一 "
-"语义，「都报错不覆盖」）。"
+"语义，“都报错不覆盖”）。"
 msgstr ""

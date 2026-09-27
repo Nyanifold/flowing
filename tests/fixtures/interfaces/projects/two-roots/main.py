@@ -3,7 +3,7 @@
 与 ``projects/ok`` 同构（FakeProvider 注入通道与场景 kwarg 见该项目的
 模块 docstring）；root-a 走 provider ``fake-a``（回复 ``alpha-reply``），
 root-b 走 ``fake-b``（回复 ``beta-reply``），便于断言绑定迁移后
-「旧 Agent 的 delta 不再打印、新 Agent 的打印」。
+“旧 Agent 的 delta 不再打印、新 Agent 的打印”。
 """
 
 from __future__ import annotations

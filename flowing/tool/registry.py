@@ -63,7 +63,7 @@ _TOOL_FYA_RESERVED = frozenset({
     "expected_status", "timeout", "env", "tools", "overrides", "background",
 })
 """TOOL.fya 保留字段集——其余字段原样落为 tool 实例的普通属性（如
-``requires_approval``，见 `Tool` 行为要点「实例属性开放」；框架不解析、
+``requires_approval``，见 `Tool` 行为要点“实例属性开放”；框架不解析、
 不据此做任何自动行为）。``background`` 仅 script 型合法；cli / request /
 mcp 声明 → ``FormatError`` （见 `_tool_from_fya`）。内部 API。"""
 
@@ -290,7 +290,7 @@ class ToolRegistry:
     """
 
     def __init__(self, *, project_root: "Path | None" = None) -> None:
-        # spec 骨架无显式构造段：空注册表（无启动扫描——「无默认扫描目录」基调）
+        # spec 骨架无显式构造段：空注册表（无启动扫描——“无默认扫描目录”基调）
         self._tools = {}
         # @/ 引用的解析基准：Runtime 构造时传入固化值（project_root），
         # 终身有效；裸注册表（测试）为 None——@/ 引用报错、其余形态退化
@@ -407,8 +407,8 @@ class ToolRegistry:
         # 精确键短路（先于形态判别）：文件派生限定键的命名空间含路径特征
         # （目录派生，如 "@/order-agent::payment" / 绝对路径形态），过不了
         # classify_ref 的限定名判别（左段含 / 会判成路径形态）——注册表在场
-        # 证据优先于词法分流，docstring 承诺的「llm_definition / 审批路径
-        # 必命中注册表快路径」靠此成立
+        # 证据优先于词法分流，docstring 承诺的“llm_definition / 审批路径
+        # 必命中注册表快路径”靠此成立
         if name_or_path in self._tools:
             return self._tools[name_or_path]
         form = classify_ref(name_or_path)

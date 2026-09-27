@@ -26,7 +26,7 @@ msgstr "flowing-agent Documentation"
 
 #: ../../index.rst:4
 msgid ""
-"Flowing 是一个单机小型 Agent 框架，核心立场是 **「框架只提供机制，不提供策略」**——重试、压缩、审批等策略全部放在 扩展 / "
+"Flowing 是一个单机小型 Agent 框架，核心立场是 **“框架只提供机制，不提供策略”**——重试、压缩、审批等策略全部放在 扩展 / "
 "Composable / 应用层，核心只做错误分类、钩子点与消息流转。"
 msgstr ""
 "Flowing is a small single-machine agent framework whose core stance is that **the framework provides mechanisms, not "

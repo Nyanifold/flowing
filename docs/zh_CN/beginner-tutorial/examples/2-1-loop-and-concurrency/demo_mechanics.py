@@ -1,6 +1,6 @@
 """队列与循环机制实验：steer / INTERRUPT / pause-resume / cancel。
 
-每个实验打印「机制行为 + 树上痕迹」。运行：uv run python demo_mechanics.py
+每个实验打印“机制行为 + 树上痕迹”。运行：uv run python demo_mechanics.py
 """
 import asyncio
 
@@ -31,7 +31,7 @@ async def main() -> None:
     t = asyncio.create_task(agent.query("请数一数 1 到 5，每个数字一行。"))
     while agent.current_turn is None:
         await asyncio.sleep(0.1)
-    await agent.steer("补充：数完请附一句「（收到导向）」。")
+    await agent.steer("补充：数完请附一句“（收到导向）”。")
     r = await t
     print(f"回合 status={r.status}（completed=未被打破）")
     await asyncio.sleep(0.3)   # 等 steer 消息随批次挂树

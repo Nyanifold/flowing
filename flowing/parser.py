@@ -110,8 +110,8 @@ class EntryRef:
 
     body: Mapping[str, Any] = field(default_factory=dict)
     """单键映射项的值（如 ``{args: [...]}``）；字符串项
-    为空映射。内容对本模块不透明——命名取中性的「映射体」，不预设
-    「覆写」语义（语义解释归各资源装配层 / ``Agent.add_tool`` 等消费方）。"""
+    为空映射。内容对本模块不透明——命名取中性的“映射体”，不预设
+    “覆写”语义（语义解释归各资源装配层 / ``Agent.add_tool`` 等消费方）。"""
 
 
 @dataclass(frozen=True)

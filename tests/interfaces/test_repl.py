@@ -1,7 +1,7 @@
 """T14–T27：``repl.py``（cmd_repl / _default_agent / SLASH_COMMANDS）。
 
 输入一律经 ``fixtures/interfaces/repl-scripts/*.txt`` 脚本驱动
-（``support.drive_input``），输出断言为「期望片段序列」口径（R4：终端
+（``support.drive_input``），输出断言为“期望片段序列”口径（R4：终端
 交错不做逐字节比对）。
 """
 
@@ -74,7 +74,7 @@ async def test_t15_two_roots_unbound(project_two_roots, persist_dir, monkeypatch
 
 
 async def test_t16_empty_pool_no_create(project_empty, persist_dir, monkeypatch, capsys):
-    """全新项目（池空）输入 "你好" → 打印「无法确定 Agent 类型」，
+    """全新项目（池空）输入 "你好" → 打印“无法确定 Agent 类型”，
     不创建、不退出。"""
     drive_input(monkeypatch, ["你好", "/exit"])
     rc = await cmd_repl(str(project_empty), persist=str(persist_dir))
@@ -343,7 +343,7 @@ class _EchoTool(Tool):
 
 async def test_context_verbose_with_tool_messages(tmp_path):
     """回归：链上含 TOOL 消息时 /context v 正常输出分类表（此前 breakdown
-    用「单块临时 Message 保留原 kind」复用逐块估算，kind=TOOL 触发
+    用“单块临时 Message 保留原 kind”复用逐块估算，kind=TOOL 触发
     __post_init__ 双字段不变量 ValueError；提取 estimate_block_tokens
     后不再需要临时消息）。"""
     rt = make_runtime(tmp_path)

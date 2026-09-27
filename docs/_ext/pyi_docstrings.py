@@ -6,7 +6,7 @@ autodoc 通过导入真实模块读取 ``__doc__``，而 ``.pyi`` 桩文件不�
 导入，Sphinx 原生看不见桩里的 docstring。本扩展在构建期补上这一环：
 
 1. 扫描 ``pyi_docstring_roots`` 下的每个 ``*.pyi``，用 :mod:`ast` 解析出
-   「autodoc 对象全名 -> docstring」映射（模块 / 类 / 函数 / 方法 / 属性）；
+   “autodoc 对象全名 -> docstring”映射（模块 / 类 / 函数 / 方法 / 属性）；
 2. 挂在 ``autodoc-process-docstring`` 事件上，把 autodoc 取到的 docstring
    整体替换为桩中对应条目；桩里没有的条目维持源语言原样（优雅降级）。
 
@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from sphinx.application import Sphinx
 
-# 「autodoc 对象全名 -> 桩 docstring」，每次 builder-inited 时重建。
+# “autodoc 对象全名 -> 桩 docstring”，每次 builder-inited 时重建。
 _MAPS: dict[str, str] = {}
 
 
@@ -91,7 +91,7 @@ def _module_docstring(tree: ast.Module) -> str | None:
 
 
 def load_stub_docstrings(root: Path) -> dict[str, str]:
-    """扫描 ``root`` 下所有 ``*.pyi``，返回「对象全名 -> docstring」映射。"""
+    """扫描 ``root`` 下所有 ``*.pyi``，返回“对象全名 -> docstring”映射。"""
     out: dict[str, str] = {}
     for pyi in sorted(root.rglob("*.pyi")):
         module = _module_name(pyi, root)

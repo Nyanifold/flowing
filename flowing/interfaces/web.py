@@ -205,8 +205,8 @@ def get_frontend_assets() -> FrontendAssets:
 
 
 WEB_EXTRA_ENDPOINTS: tuple[str, ...] = ("GET /", "GET /assets/*")
-"""``web`` 相对 ``serve`` 的增量端点封闭集：``web`` 就是「serve + 一个
-策略性前端」，前端不进入框架核心——替换或移除前端不影响
+"""``web`` 相对 ``serve`` 的增量端点封闭集：``web`` 就是“serve + 一个
+策略性前端”，前端不进入框架核心——替换或移除前端不影响
 :data:`SERVE_ENDPOINTS` 中的任何 HTTP API。
 
 - ``GET /``：返回 ``get_frontend_assets().index_html`` （前端入口页）。

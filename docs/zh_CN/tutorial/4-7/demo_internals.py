@@ -30,7 +30,7 @@ async def main() -> None:
     while agent.current_turn is not None:
         await asyncio.sleep(0.2)
     await asyncio.sleep(0.3)
-    # 注意：restore 不撤回「已在途的出队调用」——工作循环正阻塞在旧方法
+    # 注意：restore 不撤回“已在途的出队调用”——工作循环正阻塞在旧方法
     # 的 wait_not_empty 里；② 的那次出队仍走 drain 合并（本批 1 条）。
 
     # ── ② 回合收尾结构：TurnResult 的聚合口径 ──

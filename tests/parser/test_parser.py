@@ -1,6 +1,6 @@
 """Fya 解析器测试：测试清单 1–15。
 
-fixtures「目录即契约」：``fya/agents/order-agent/agent.fya``（目录形态正例，
+fixtures“目录即契约”：``fya/agents/order-agent/agent.fya``（目录形态正例，
 多模块共用）、``fya/agents/bad-syntax.fya``（负例集合，按切片使用）。
 """
 
@@ -45,7 +45,7 @@ class TestParseFya:
         """清单 1：别名落定；具名块原样持有、未填回 fields。
 
         注：fixture 多模块共用（含深层块与 $script），故 blocks 断言
-        为「包含 system_prompt 原文且 script 不进 blocks」而非整表相等。
+        为“包含 system_prompt 原文且 script 不进 blocks”而非整表相等。
         """
         doc = parse_fya(order_agent_text, entry_fields={"tools"})
         entry = doc.fields["tools"][0]

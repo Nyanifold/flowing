@@ -239,7 +239,7 @@ class PromptBlock:
     """
 
     by: str = ""
-    """来源标识：ManagedList「按属主管理」的操作目标。默认空串 ``""`` （不标
+    """来源标识：ManagedList“按属主管理”的操作目标。默认空串 ``""`` （不标
     来源）；约定值 ``"core"`` （框架骨架——框架内部 append 时显式传入，非
     默认值）/ ``"skill"`` （SkillPlugin）/ 应用自定义值。
 

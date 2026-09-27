@@ -159,7 +159,7 @@ def _load_workflow_class(file_path: Path) -> type[Workflow]:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)   # 顶层语句执行一次；原生 import 异常直接上抛
     # 只数本文件定义的子类（__module__ 判别——import 进来的他文件子类不算，
-    # 否则「复用 import」会被误判为歧义）
+    # 否则“复用 import”会被误判为歧义）
     classes = [
         obj for obj in vars(module).values()
         if isinstance(obj, type) and issubclass(obj, Workflow)

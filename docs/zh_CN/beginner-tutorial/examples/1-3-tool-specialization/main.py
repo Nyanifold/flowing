@@ -11,6 +11,6 @@ async def main(resume: str | None = None) -> Runtime:
     if resume is not None:
         await runtime.recover_agent(resume)   # 恢复既有 agent
     else:
-        # 固定 agent_id → 幂等挂载：第二次启动走恢复，「同一个根回来了」
+        # 固定 agent_id → 幂等挂载：第二次启动走恢复，“同一个根回来了”
         await runtime.mount("@/root.fya", agent_id="agent-main")
     return runtime

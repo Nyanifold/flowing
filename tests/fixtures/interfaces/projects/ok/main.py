@@ -1,9 +1,9 @@
 """接口层测试夹具项目：单根 Agent（id 定点 ``root``），FakeProvider 驱动。
 
 测试 Provider 的注入通道：``cmd_* → launch → main(**kwargs)`` 是接口层
-「不解析配置」边界下唯一的参数通道——``--scenario`` / ``--persist`` 经
+“不解析配置”边界下唯一的参数通道——``--scenario`` / ``--persist`` 经
 kwargs 进来，由项目 ``main`` 自己的策略把 FakeProvider 预置进
-``provider_registry._instances``（与其他测试「直挂 FakeProvider」
+``provider_registry._instances``（与其他测试“直挂 FakeProvider”
 同一 hook）。接口层自始至终不感知这些语义。
 
 场景一览（``scenario`` kwarg）：
@@ -16,7 +16,7 @@ kwargs 进来，由项目 ``main`` 自己的策略把 FakeProvider 预置进
 - ``debug``：``ok`` 之上加 ``current_mode`` / ``fragile()`` 可观察字段，
   首个回合后经 ``after_turn`` handler 翻转（repl-debug 的 /watch 回归用）。
 
-身份连续策略（项目级「新建 vs 恢复」策略归 main，不归框架）：池名录为空
+身份连续策略（项目级“新建 vs 恢复”策略归 main，不归框架）：池名录为空
 才建根；有盘上记录时不重复创建，留给 repl 启动绑定的池回退恢复。
 """
 

@@ -1,6 +1,6 @@
 """Agent 池 / 归档 / 关闭与观测测试（T114–T123）。
 
-覆盖：get_node/get_agent 的 strict 双形态与「有 key 无 value → 现场恢复」
+覆盖：get_node/get_agent 的 strict 双形态与“有 key 无 value → 现场恢复”
 （T114/T115）、mount 幂等（T116）、archive_agent 三档遗忘与亲代侧 _child_ids
 清理（T117/T118）、archive_orphans 孤儿清理（T119）、shutdown/__await__
 （T120/T121）、Runtime/Agent 快照（T122/T123）。
@@ -56,7 +56,7 @@ async def test_t115_get_agent_lazy_recover(tmp_path):
     child_id = child.node_id
     await child.destroy()
     assert child_id not in runtime._nodes
-    # 「有 key 无 value → 现场恢复」
+    # “有 key 无 value → 现场恢复”
     got = await runtime.get_agent(child_id)
     assert got.node_id == child_id
     assert len(got._messages) == 2   # 历史消息可见（USER + PROVIDER）

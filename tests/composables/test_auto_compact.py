@@ -2,8 +2,8 @@
 
 驱动方式同 test_compact.py（FakeProvider 脚本回放），但触发用小
 ``context_window`` + 真实文本长度（``estimate_message_tokens`` 字符启发式，
-CJK 约 1 字符/token）使 ``usage_ratio`` 超阈值；脚本顺序为「side_query
-摘要响应 → 主请求响应」。
+CJK 约 1 字符/token）使 ``usage_ratio`` 超阈值；脚本顺序为“side_query
+摘要响应 → 主请求响应”。
 """
 
 from __future__ import annotations

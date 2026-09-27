@@ -149,7 +149,7 @@ _DRIVE_RE = re.compile(r"^[A-Za-z]:/")
 """Windows 盘符绝对路径判定（分隔符归一后的形态，如 ``C:/x``）。
 
 POSIX 上 ``pathlib`` 不把盘符 / UNC 识别为绝对路径；按
-:data:`PATH_PREFIXES` docstring「Windows 盘符 / UNC 均算绝对路径」的
+:data:`PATH_PREFIXES` docstring“Windows 盘符 / UNC 均算绝对路径”的
 跨平台约定，实现侧在归一化后用本正则显式判定（UNC 归一后为 ``//``
 前缀，由前导 ``/`` 判定覆盖）。
 """

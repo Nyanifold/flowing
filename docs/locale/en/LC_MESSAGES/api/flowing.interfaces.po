@@ -39,7 +39,7 @@ msgstr "Overview"
 #: flowing.interfaces:5 of
 msgid ""
 "本子包是 Flowing 的暴露层：为 ``flowing`` 命令行工具提供进程入口与 "
-"各子命令实现。暴露层的唯一职责是「``launch(path, **kwargs)`` 拿 Runtime」——所有子命令拿到 Runtime "
+"各子命令实现。暴露层的唯一职责是“``launch(path, **kwargs)`` 拿 Runtime”——所有子命令拿到 Runtime "
 "之后做什么，是本包各模块的全部 差异。"
 msgstr ""
 "This subpackage is Flowing's interface layer: it provides the process entry point and the "
@@ -59,7 +59,7 @@ msgstr ""
 ":func:`flowing.runtime.launch`."
 
 #: flowing.interfaces:16 of
-msgid "边界（暴露层只做「拉起」这一件事）："
+msgid "边界（暴露层只做“拉起”这一件事）："
 msgstr "Boundaries (the interface layer only does one thing: \"launching\"):"
 
 #: flowing.interfaces:18 of
@@ -196,8 +196,8 @@ msgid ""
 "/ SIGTERM → ``runtime.shutdown()`` 的优雅关闭桥；``repl`` 装交互语义：回合进行中 SIGINT "
 "取消当前回合 （``abort_turn``），提示符空闲时中断当前输入行（Ctrl-D 或 ``/exit`` 退出）。优雅关闭桥只发起 "
 "``shutdown()``（非阻塞，立即返回）； ``shutdown()`` 完成递归 destroy 全部节点与插件收尾后置位退出事件， "
-"``await runtime`` 处随即唤醒，进程以退出码 ``0`` 退出。框架不实现 「二次信号强制 "
-"kill」——关闭卡死时的兜底是应用层职责。"
+"``await runtime`` 处随即唤醒，进程以退出码 ``0`` 退出。框架不实现 “二次信号强制 "
+"kill”——关闭卡死时的兜底是应用层职责。"
 msgstr ""
 "Signal handling: each subcommand installs its own signal handlers (no shared installer) — ``run`` / ``serve`` / ``web`` install a graceful-shutdown bridge from SIGINT "
 "/ SIGTERM to ``runtime.shutdown()``; ``repl`` installs interactive semantics: SIGINT during a turn "
@@ -209,7 +209,7 @@ msgstr ""
 #: flowing.interfaces:78 of
 msgid ""
 "封闭观察窗口：默认 ``repl`` 的 slash-command 集合与默认 ``serve`` 的 HTTP "
-"端点集合都是封闭的，不接受运行时注册新命令 / 新端点——它们是 「刚启动项目、想快速发条消息看看、查个快照」的最小观察窗口，不是可 "
+"端点集合都是封闭的，不接受运行时注册新命令 / 新端点——它们是 “刚启动项目、想快速发条消息看看、查个快照”的最小观察窗口，不是可 "
 "扩展的交互框架。需要自定义命令或端点时，继承内置实现扩展（``repl-debug`` 对 ``repl`` "
 "的扩展方式即内置注入点的用法），或自己实现一个 repl / HTTP server（经 ``query()`` / "
 "``enqueue_message()`` / ``snapshot()`` 等公开 API）。"
@@ -418,7 +418,7 @@ msgstr "CLI process entry point: parses the subcommand and dispatches, returning
 msgid ""
 "``flowing`` 可执行脚本的入口函数。解析 ``argv`` 的第一个位置参数 为子命令名（``cli`` 归一化为 "
 "``repl``），第二个位置参数为子项目 路径 ``<path>`` （缺省 ``.``）；剥离 flowing 级单横线参数 （``-h`` "
-"/ ``--help`` / ``-m`` / ``-a`` / ``-p``，归属见包 docstring「参数分层」），其余 ``--key "
+"/ ``--help`` / ``-m`` / ``-a`` / ``-p``，归属见包 docstring“参数分层”），其余 ``--key "
 "value`` 参数经 :func:`parse_kv_args` 收集，然后分发到对应的 ``cmd_*`` 协程并以 "
 "``asyncio.run`` 驱动（``compile`` 除外，它是同步函数，直接调用）。"
 msgstr ""
@@ -563,7 +563,7 @@ msgid "不删除无对应 ``.fya`` 的孤儿 ``.py`` （编译只覆盖 ``.fya``
 msgstr "Orphan ``.py`` files without a corresponding ``.fya`` are not deleted (compilation only covers the ``.fya`` side and never cleans the artifact directory)."
 
 #: flowing.interfaces.cli.cmd_compile:33 of
-msgid "项目内无 ``*.fya`` → 打印「无可编译文件」，返回 :data:`EXIT_OK`。"
+msgid "项目内无 ``*.fya`` → 打印“无可编译文件”，返回 :data:`EXIT_OK`。"
 msgstr "No ``*.fya`` in the project → print \"no compilable files\" and return :data:`EXIT_OK`."
 
 #: flowing.interfaces.cli.cmd_compile:35 of
@@ -630,7 +630,7 @@ msgstr "export / rewind / cancel / pause / resume``."
 
 #: flowing.interfaces.controls:17 of
 msgid ""
-"约定：本目录只含「作用于显式目标并返回文本」的命令；前台绑定切换（``agent``/ ``new``）与进程退出（``exit / "
+"约定：本目录只含“作用于显式目标并返回文本”的命令；前台绑定切换（``agent``/ ``new``）与进程退出（``exit / "
 "quit``）是交互壳自身行为，不在此列。"
 msgstr ""
 "Convention: this catalog only contains commands that \"act on an explicit target and return text\"; foreground binding switching (``agent`` / ``new``) and process exit (``exit / "
@@ -726,7 +726,7 @@ msgstr ""
 "``resume``) are executed via ``slash_lines``; see :mod:`flowing.interfaces.controls` for their semantics."
 
 #: flowing.interfaces.repl.SLASH_COMMANDS:24 of
-msgid "未识别的 ``/xxx`` 输入：打印「未知命令，/help 查看可用命令」， 不报错、不退出、不进消息流。带参命令按第一个空格分流参数。"
+msgid "未识别的 ``/xxx`` 输入：打印“未知命令，/help 查看可用命令”， 不报错、不退出、不进消息流。带参命令按第一个空格分流参数。"
 msgstr "Unrecognized ``/xxx`` input: prints \"unknown command, use /help to see available commands\" — no error, no exit, and it never enters the message stream. For commands with arguments, the argument is split off at the first space."
 
 #: flowing.interfaces.repl.SLASH_COMMANDS:27 of
@@ -795,7 +795,7 @@ msgstr "The line-reading loop. Prompt: ``(<agent_id>)>>>`` when bound, ``(new ag
 msgid ""
 "非 ``/`` 开头：未绑定则先创建新 Agent——``agent_type`` 取 池中根条目里 ``created_at`` 最新者的 "
 "``agent_type`` （:func:`_default_agent_type`，与 serve ``POST /agents`` "
-"缺省类型同口径）；池无根条目 → 打印「无法确定 Agent 类型」 提示，不创建。创建经 "
+"缺省类型同口径）；池无根条目 → 打印“无法确定 Agent 类型” 提示，不创建。创建经 "
 "``runtime.create_agent(agent_type)`` （``parent_id=None`` 缺省即根）并绑定。然后以 "
 "``str`` 调 :meth:`flowing.agent.Agent.query` （打包 USER 消息在其内部 "
 "完成），等待回合结果（``TurnResult``），打印最终文本，再 显示下一个提示符。"
@@ -907,11 +907,11 @@ msgstr ""
 "slash commands (only the ``/``-prefixed word at line start — arguments are not completed)."
 
 #: flowing.interfaces.repl.cmd_repl:95 of
-msgid "未绑定时收到非 ``/`` 输入且池无根条目：打印「无法确定 Agent 类型」提示，名录保持为空，不退出。"
+msgid "未绑定时收到非 ``/`` 输入且池无根条目：打印“无法确定 Agent 类型”提示，名录保持为空，不退出。"
 msgstr "Receiving non-``/`` input while unbound with no root entries in the pool: print the \"cannot determine the Agent type\" hint, keep the registry empty, and do not exit."
 
 #: flowing.interfaces.repl.cmd_repl:97 of
-msgid "未识别的 ``/xxx``：打印「未知命令，/help 查看可用命令」， 继续循环。"
+msgid "未识别的 ``/xxx``：打印“未知命令，/help 查看可用命令”， 继续循环。"
 msgstr "Unrecognized ``/xxx``: print \"unknown command, use /help to see available commands\" and continue the loop."
 
 #: flowing.interfaces.repl.cmd_repl:99 of
@@ -1103,7 +1103,7 @@ msgid "Agent 上下文（``/eval``、``/watch``）："
 msgstr "Agent context (``/eval``, ``/watch``):"
 
 #: flowing.interfaces.repl_debug:47 of
-msgid "必须存在当前绑定 Agent；未绑定（提示符 ``(new agent)>>>``）时打印 「未绑定 Agent：无法解析表达式」。"
+msgid "必须存在当前绑定 Agent；未绑定（提示符 ``(new agent)>>>``）时打印 “未绑定 Agent：无法解析表达式”。"
 msgstr "A currently bound Agent must exist; when unbound (prompt ``(new agent)>>>``), it prints \"no bound Agent: cannot resolve the expression\"."
 
 #: flowing.interfaces.repl_debug:49 of
@@ -1323,9 +1323,9 @@ msgstr ""
 
 #: flowing.interfaces.run.cmd_test:12 of
 msgid ""
-"「拿 Runtime 做断言后停」中断言什么（项目级行为断言）是子项目的 策略，不是框架机制：由用户经嵌入 API 自行编写（``launch``"
+"“拿 Runtime 做断言后停”中断言什么（项目级行为断言）是子项目的 策略，不是框架机制：由用户经嵌入 API 自行编写（``launch``"
 " + ``query()`` + ``snapshot()``，放进 pytest 等任意测试框架）。 ``test`` "
-"子命令只提供零配置的「项目能否拉起」冒烟检查。"
+"子命令只提供零配置的“项目能否拉起”冒烟检查。"
 msgstr ""
 "What to assert in \"get the Runtime, assert, then stop\" (project-level behavior assertions) is the subproject's policy, not a framework mechanism: users write it themselves via the embedding API (``launch``"
 " + ``query()`` + ``snapshot()``, inside any test framework such as pytest). The ``test`` "
@@ -1473,8 +1473,8 @@ msgstr ""
 
 #: flowing.interfaces.serve.SERVE_ENDPOINTS:31 of
 msgid ""
-"根选取无状态：API 层没有「默认主 Agent」或「当前选中」概念——一切 目标选择由客户端基于 ``GET /agents`` / ``GET"
-" /snapshot`` 自行完成， 「切换 Agent」是纯客户端动作（改自己请求里的 id），无服务端对应 端点。"
+"根选取无状态：API 层没有“默认主 Agent”或“当前选中”概念——一切 目标选择由客户端基于 ``GET /agents`` / ``GET"
+" /snapshot`` 自行完成， “切换 Agent”是纯客户端动作（改自己请求里的 id），无服务端对应 端点。"
 msgstr ""
 "Root selection is stateless: the API layer has no concept of a \"default primary Agent\" or a \"current selection\" — all target selection is done by the client itself based on ``GET /agents`` / ``GET"
 " /snapshot``; \"switching Agents\" is a purely client-side action (changing the id in its own requests) with no corresponding server-side endpoint."
@@ -1550,7 +1550,7 @@ msgid ""
 "``POST /agents/<agent-id>/message``：请求体 ``{\"text\": str}`` → 以 ``str`` 调"
 " :meth:`flowing.agent.Agent.query` （打包 USER 消息、 入队、等待回合结果在其内部完成）→ ``200 "
 "{\"message_id\": str, \"final_text\": str}``。休眠 / 已销毁但有记录的 id 经 "
-"``get_agent`` 现场恢复后投递。API 层没有「默认主 Agent」概念， 目标必须显式指定。"
+"``get_agent`` 现场恢复后投递。API 层没有“默认主 Agent”概念， 目标必须显式指定。"
 msgstr ""
 "``POST /agents/<agent-id>/message``: request body ``{\"text\": str}`` → calls :meth:`flowing.agent.Agent.query`"
 " with a ``str`` (packing the USER message, enqueueing, and awaiting the turn result all happen inside it) → ``200 "
@@ -1698,7 +1698,7 @@ msgstr "flowing.interfaces.web module"
 #: flowing.interfaces.web:5 of
 msgid ""
 "本模块定义 ``web`` 子命令与 Web 暴露层的唯一交接点： :func:`get_frontend_assets`。在 flowing "
-"的架构里，UI 是几个「下游 应用」的例子——``flowing.interfaces.web`` 承载的只是 ``web`` 子命令 "
+"的架构里，UI 是几个“下游 应用”的例子——``flowing.interfaces.web`` 承载的只是 ``web`` 子命令 "
 "所需的（内置默认）前端资产：一个用公开 API 拼出的可对话页面（发消息、 流式显示、查快照、选择 / 切换 / 新建 Agent）。"
 msgstr ""
 "This module defines the sole handoff point between the ``web`` subcommand and the Web interface layer: :func:`get_frontend_assets`. In flowing's "
@@ -1707,10 +1707,10 @@ msgstr ""
 
 #: flowing.interfaces.web:11 of
 msgid ""
-"框架核心只提供「HTTP API」这个机制（``flowing serve`` 已完整）； "
-"「给不给前端、前端长什么样」是暴露层的策略，由本模块承载。替换或 移除前端不影响 "
+"框架核心只提供“HTTP API”这个机制（``flowing serve`` 已完整）； "
+"“给不给前端、前端长什么样”是暴露层的策略，由本模块承载。替换或 移除前端不影响 "
 ":data:`flowing.interfaces.serve.SERVE_ENDPOINTS` 中的 任何一条。``web`` "
-"命令只是「serve + 加载本模块前端资产」的便捷组合。"
+"命令只是“serve + 加载本模块前端资产”的便捷组合。"
 msgstr ""
 "The framework core only provides the \"HTTP API\" mechanism (already complete in ``flowing serve\"); "
 "\"whether to ship a frontend and what it looks like\" is an interface-layer policy carried by this module. Replacing or removing the frontend does not affect "
@@ -1737,7 +1737,7 @@ msgstr ""
 msgid ""
 "根选取行为（serve 端点对根选取无状态，选取全在客户端）：页面加载时 ``GET /agents`` 列出根 Agent（id + "
 "最后回复前缀 + 最后修改时间，口径 同 REPL ``/agents``）；多根默认选中最后修改时间最新的根，页面常显 当前目标 "
-"id，下拉可切换；零根显示空态页并提供「新建 Agent」入口 （经 ``POST /agents``）。"
+"id，下拉可切换；零根显示空态页并提供“新建 Agent”入口 （经 ``POST /agents``）。"
 msgstr ""
 "Root selection behavior (serve's endpoints are stateless about root selection — selection is entirely client-side): on page load, ``GET /agents`` lists the root Agents (id + "
 "last-reply prefix + last-modified time, same criteria as REPL ``/agents``); with multiple roots the one with the newest last-modified time is selected by default, the page always shows the current target "
@@ -1750,7 +1750,7 @@ msgstr "Boundaries:"
 #: flowing.interfaces.web:32 of
 msgid ""
 "前端页面与 Runtime 的交互只有 serve 的封闭 HTTP 端点一条通道 （消息投递 / 观察流 / 控制与读取端点）；前端不绕过 "
-"serve API 另开 消息通道（例如直连 Agent 的内部方法）。这保证「HTTP 请求与 CLI 输入等价」的不变量在 web "
+"serve API 另开 消息通道（例如直连 Agent 的内部方法）。这保证“HTTP 请求与 CLI 输入等价”的不变量在 web "
 "形态下同样成立。"
 msgstr ""
 "The frontend page interacts with the Runtime through exactly one channel: serve's closed HTTP endpoints (message delivery / observation streams / control and read endpoints); the frontend never bypasses the "
@@ -1849,7 +1849,7 @@ msgstr "Returns the frontend asset bundle."
 msgid ""
 "``web`` 子命令获取前端资产的唯一入口。资产本体是 仓库根 ``webui/`` 的构建产物（单文件 ``webui-"
 "dist/index.html``，全部 JS/CSS 内联）：亮色聊天界面（样式变量 借用 kimi-code web "
-"界面亮色主题）：agent 侧栏（含最近回复预览）+ 「记录 / 树」双子页（记录视图渲染消息树——仅分叉处缩进、分叉首条 "
+"界面亮色主题）：agent 侧栏（含最近回复预览）+ “记录 / 树”双子页（记录视图渲染消息树——仅分叉处缩进、分叉首条 "
 "消息可开合、每条消息带预览，树子页可点节点切换分支），消息正文 Markdown 渲染（react-markdown + "
 "GFM）、思考折叠、工具调用/返回折叠卡 （展开为 JSON 高亮）、输入框上方上下文占用进度条、头部模型选择； 输入框支持消息与 repl "
 "指令（经 serve 的观察 / 控制端点）。"
@@ -1911,8 +1911,8 @@ msgstr "The closed set of incremental endpoints web adds relative to serve."
 
 #: flowing.interfaces.web.WEB_EXTRA_ENDPOINTS:1 of
 msgid ""
-"``web`` 相对 ``serve`` 的增量端点封闭集：``web`` 就是「serve + 一个 "
-"策略性前端」，前端不进入框架核心——替换或移除前端不影响 :data:`SERVE_ENDPOINTS` 中的任何 HTTP API。"
+"``web`` 相对 ``serve`` 的增量端点封闭集：``web`` 就是“serve + 一个 "
+"策略性前端”，前端不进入框架核心——替换或移除前端不影响 :data:`SERVE_ENDPOINTS` 中的任何 HTTP API。"
 msgstr ""
 "The closed set of incremental endpoints ``web`` adds relative to ``serve``: ``web`` is simply \"serve + one policy "
 "frontend\", and the frontend never enters the framework core — replacing or removing the frontend does not affect any HTTP API in :data:`SERVE_ENDPOINTS`."
@@ -1959,7 +1959,7 @@ msgstr ""
 
 #: flowing.interfaces.web.cmd_web:11 of
 msgid ""
-"``web`` 只是「serve + 加载前端资产」的便捷组合——替换或移除 前端不影响任何 HTTP API，前端也只有 ``POST "
+"``web`` 只是“serve + 加载前端资产”的便捷组合——替换或移除 前端不影响任何 HTTP API，前端也只有 ``POST "
 "/agents/<agent-id>/message`` 一条消息入口。"
 msgstr ""
 "``web`` is just a convenient combination of \"serve + loading frontend assets\" — replacing or removing the frontend affects no HTTP API, and the frontend also has only ``POST "

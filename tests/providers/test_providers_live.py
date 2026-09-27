@@ -287,7 +287,7 @@ async def _nonce_recall_roundtrip(provider, model: ModelConfig) -> None:
     """两轮 nonce recall 公共体：编号 uuid 随机，防服务端前缀缓存复用响应。
 
     第一轮要求模型原样复述编号（编号经助手自己的输出进入对话，
-    思考重的模型对「记住暗号」式指令可能过度谨慎拒答）；第二轮验证
+    思考重的模型对“记住暗号”式指令可能过度谨慎拒答）；第二轮验证
     完整历史（含 assistant 消息回放）被对方收到。
     """
     nonce = uuid.uuid4().hex[:6]
@@ -366,7 +366,7 @@ async def test_t160_responses_reasoning_multiturn():
 
 async def test_t161_responses_stream_deltas():
     """T161：deepseek-chat（responses）generate_stream 真 SSE——text
-    delta 拼接含「2」、content_index 单调不减、末帧携带 usage 与
+    delta 拼接含“2”、content_index 单调不减、末帧携带 usage 与
     stop_reason。"""
     provider = _ds_responses()
     deltas = [d async for d in provider.generate_stream(

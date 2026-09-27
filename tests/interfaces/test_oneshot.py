@@ -1,6 +1,6 @@
 """``oneshot.py``（cmd_cli 一次性对话子命令）。
 
-口径：stdout 断言用「期望片段序列」（过程显示不逐字节比对）；错误与
+口径：stdout 断言用“期望片段序列”（过程显示不逐字节比对）；错误与
 诊断一律走 stderr。项目 fixtures 与 repl 测试同源（scenario kwarg 经
 launch → 项目 main 预置 FakeProvider）。cmd_cli 的 flowing 级选项经
 ``opts`` 字典传入（不占 main kwargs 名）。
@@ -81,7 +81,7 @@ async def test_explicit_agent_selects_target(project_two_roots, persist_dir,
 
 
 async def test_unknown_agent_id(project_ok, persist_dir, capsys):
-    """-t 未知 id → stderr「unknown agent」+ EXIT_RUNTIME_ERROR。"""
+    """-t 未知 id → stderr“unknown agent”+ EXIT_RUNTIME_ERROR。"""
     rc = await cmd_cli(str(project_ok), persist=str(persist_dir),
                        opts={"input": "你好", "agent_id": "ghost"})
     assert rc == EXIT_RUNTIME_ERROR

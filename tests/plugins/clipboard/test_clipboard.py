@@ -113,7 +113,7 @@ async def test_t95_copy_keeps_source(tmp_path):
 
 async def test_t96_paste_once_semantics(tmp_path):
     """T96：缓冲含 3 行、目标 5 行 → paste(pos=3) 内容插入为新第 3-5 行、
-    缓冲清空；再次 paste → 「剪贴板为空」error；paste(pos="2,4") →
+    缓冲清空；再次 paste → “剪贴板为空”error；paste(pos="2,4") →
     插入第 2 行 offset 4 处、行数不变。"""
     runtime = make_clipboard_harness(tmp_path)
     agent = await _make_agent(runtime)
@@ -216,7 +216,7 @@ async def test_t98_use_clipboard_state_and_recover(tmp_path):
 
 async def test_t99_validation_and_disabled_agent(tmp_path):
     """T99：use_clipboard(agent, max_lines=0) → ValueError 且无注册副作用
-    （先校验后注册）；未启用 Agent 调用三件工具 → 「剪贴板未启用」
+    （先校验后注册）；未启用 Agent 调用三件工具 → “剪贴板未启用”
     error 结果。"""
     runtime = make_clipboard_harness(tmp_path)
     plain = await _make_agent(runtime, cls=SimpleAgent)   # 未 use_clipboard

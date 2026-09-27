@@ -98,7 +98,7 @@ def make_composables_harness(
 class sleep_spy:
     """``asyncio.sleep`` 的记录桩（上下文管理器形态）。
 
-    进入时替换全局 ``asyncio.sleep`` 为「记录时长、立即返回」的协程
+    进入时替换全局 ``asyncio.sleep`` 为“记录时长、立即返回”的协程
     函数；退出还原。延迟公式断言全部经 ``recorded`` 读取，不做真实
     等待（composables 测试基座约定）。
     """

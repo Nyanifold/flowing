@@ -82,7 +82,7 @@ async def _drain_until(predicate, *, attempts: int = 200) -> bool:
 
 
 async def _noop() -> None:
-    """立即完成的空协程（组 7「命中已完成任务」用）。"""
+    """立即完成的空协程（组 7“命中已完成任务”用）。"""
     return None
 
 
@@ -260,7 +260,7 @@ async def test_g5_receipt_registration_key():
     r = await tool({"text": "hi"}, caller=caller)
     assert r.status == "pending"
     assert r.background_task_id in caller._background_tasks
-    # as_message 塑形：content 在作者数据块之后附加「后台任务 ID」块（B10）
+    # as_message 塑形：content 在作者数据块之后附加“后台任务 ID”块（B10）
     msg = r.as_message("tc-1")
     assert msg.kind is MessageKind.TOOL and msg.tool_status == "pending"
     assert any(b.data.get("text") == "hi"
@@ -347,9 +347,9 @@ async def test_g7_cancel_api_and_destroy(tmp_path):
         # 未命中 → False 幂等
         assert agent.cancel_background_task("nope") is False
         # 等驱动任务越过首步再取消——取消早于任务首步时（ensure_future 只是
-        # 排程）CancelledError 在任务体运行前抛出，无「已取消」投递（B4 边界）
+        # 排程）CancelledError 在任务体运行前抛出，无“已取消”投递（B4 边界）
         assert await _drain_until(gen_started.is_set)
-        # 命中 → 任务取消 + 「已取消」EVENT 投递 + 注册表移除
+        # 命中 → 任务取消 + “已取消”EVENT 投递 + 注册表移除
         assert agent.cancel_background_task(tid) is True
         assert await _drain_until(
             lambda: tid not in agent._background_tasks)
@@ -360,9 +360,9 @@ async def test_g7_cancel_api_and_destroy(tmp_path):
         assert agent.cancel_all_background_tasks() is None
         assert await _drain_until(
             lambda: r2.background_task_id not in agent._background_tasks)
-        # 命中已完成任务 → 仍返回 True（B9：返回「是否命中注册表」，与
+        # 命中已完成任务 → 仍返回 True（B9：返回“是否命中注册表”，与
         # task.cancel() 返回值无关——已完成任务的 cancel() 返回 False）。
-        # 该状态仅存在于「完成与 done_callback 移除之间」的同 tick 窗口：
+        # 该状态仅存在于“完成与 done_callback 移除之间”的同 tick 窗口：
         # 先注册已完成任务、不 await 立即取消（确定性构造）
         done_task = asyncio.create_task(_noop())
         await done_task
@@ -620,7 +620,7 @@ async def test_g11_subagent_invoke_background_failure(tmp_path):
 
 
 async def test_provider_pending_receipt_mapping():
-    """§2.5 验证项：async gen pending 收据（带首 yield 内容 + 「后台任务 ID」
+    """§2.5 验证项：async gen pending 收据（带首 yield 内容 + “后台任务 ID”
     块）经各家 adapter 映射为 tool_result——LLM 立即可见的承诺链路（零代码
     改动，仅验证）。"""
     from flowing.message import Message, MessageKind as _MK

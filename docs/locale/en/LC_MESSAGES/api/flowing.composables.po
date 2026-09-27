@@ -60,7 +60,7 @@ msgstr ""
 
 #: flowing.composables:17 of
 msgid ""
-"Composable 只做「挂载」：注册钩子 handler、绑定实例属性；不修改框架 "
+"Composable 只做“挂载”：注册钩子 handler、绑定实例属性；不修改框架 "
 "核心状态。本包不提供插件（阶段一）能力：不做全局注册、不经过 ``runtime.install()``、自身也没有 "
 "``install()``——调用即生效，作用域严格 限于传入的那一个 Agent 实例。"
 msgstr ""
@@ -93,7 +93,7 @@ msgstr "Key Behaviors"
 msgid ""
 "启用方式：双层启用的阶段二——``use_xxx(self)`` 在 ``setup()`` 中按 实例启用（恢复时 ``setup()`` "
 "在新实例上执行，钩子注册表随实例重建， 天然不叠加）；未调用 ``use_xxx`` 的 Agent 不持有任何相关 handler 与 "
-"状态——「没启用」是「代码路径从没存在过」，不是「被跳过」，零开销。"
+"状态——“没启用”是“代码路径从没存在过”，不是“被跳过”，零开销。"
 msgstr ""
 "How to enable: stage two of two-layer enabling — ``use_xxx(self)`` is called in ``setup()`` to enable "
 "per instance (on recovery ``setup()`` runs on the new instance and the hook registry is rebuilt with it, "
@@ -124,7 +124,7 @@ msgstr ""
 "submodule's registration inventory) to remove the default handlers, then register your own."
 
 #: flowing.composables:55 of
-msgid "注册的资源、声明的钩子点与挂载的钩子：见各子模块 docstring 的 「注册面清单」。"
+msgid "注册的资源、声明的钩子点与挂载的钩子：见各子模块 docstring 的 “注册面清单”。"
 msgstr "Registered resources, declared hook points, and mounted hooks: see the \"Registration Inventory\" in each submodule's docstring."
 
 #: flowing.composables:60 of
@@ -169,7 +169,7 @@ msgid "``before_turn`` 归零 handler：每个逻辑 Turn 开始时把重试计�
 msgstr "``before_turn`` reset handler: resets the retry counter to 0 at the start of each logical Turn (the value passes through unchanged; pure observation, no intervention)."
 
 #: flowing.composables.retry.use_retry:47 of
-msgid "``on_provider_error`` 决策 handler：见下「重试决策」。"
+msgid "``on_provider_error`` 决策 handler：见下“重试决策”。"
 msgstr "``on_provider_error`` decision handler: see \"Retry Decision\" below."
 
 #: flowing.composables.compact.use_compact:64
@@ -180,7 +180,7 @@ msgstr "Parameter semantics:"
 #: flowing.composables.retry.use_retry:51 of
 msgid ""
 "``max_retries``：单个逻辑 Turn 内允许的最大重试次数，``>= 0``。 计数从 1 起：首次失败为第 1 次尝试，只有 "
-"``attempt <= max_retries`` 才放行重试，因此默认值 3 表示「初始调用 + 至多 3 次重试」至多 4 次 LLM "
+"``attempt <= max_retries`` 才放行重试，因此默认值 3 表示“初始调用 + 至多 3 次重试”至多 4 次 LLM "
 "调用。``max_retries=0`` 合法：首次失败即放弃，等价于不 重试（与不调用的差别仅在于多了一次空分发）。"
 msgstr ""
 "``max_retries``: the maximum number of retries allowed within a single logical Turn, ``>= 0``. Counting "
@@ -262,7 +262,7 @@ msgid ""
 "重试观测信号（``on_retry`` 钩子点）：每次放行重试时，在置 ``can_continue`` 之后、等待之前，以 fire-and-"
 "forget 方式向 ``on_retry`` 派发一份含四个键的快照：``attempt`` / ``max_retries`` / "
 "``delay`` / ``error`` （``error`` 的值是本次失败的原始异常），供 UI "
-"显示「retrying...(1/10)」之类的进行态。快照发出后订阅者的返回值 "
+"显示“retrying...(1/10)”之类的进行态。快照发出后订阅者的返回值 "
 "被忽略（观测语义，不参与决策链）；达到上限放弃重试的路径不发信号； 订阅者 异常被记录为警告，不影响重试决策。"
 msgstr ""
 "Retry observation signal (the ``on_retry`` hook point): each time a retry is allowed, after setting "
@@ -286,7 +286,7 @@ msgstr ""
 #: flowing.composables.retry.use_retry:99 of
 msgid ""
 "回合中止：等待期间用户 ``cancel()`` 当前执行——等待本身不可 中断，本次等待结束后 ``can_continue=True`` "
-"放行，回合层面在下一次 ``provider_gen()`` 前的检查点正常中止。取消的生效粒度是「当前这次 退避等待结束」。"
+"放行，回合层面在下一次 ``provider_gen()`` 前的检查点正常中止。取消的生效粒度是“当前这次 退避等待结束”。"
 msgstr ""
 "Turn cancellation: the user ``cancel()``s the current execution during the wait — the wait itself cannot "
 "be interrupted; once this wait ends, ``can_continue=True`` lets it through, and the turn layer aborts "
@@ -295,8 +295,8 @@ msgstr ""
 
 #: flowing.composables.retry.use_retry:104 of
 msgid ""
-"不做什么：不修改 ``agent.model`` / ``agent.model_tag`` （「改模型 后重试」是用户自定义 handler "
-"的合法写法，默认实现不做）；不产生任何 消息、不写消息级树；不做跨错误联动（如「连续限流 3 次后换策略」）。"
+"不做什么：不修改 ``agent.model`` / ``agent.model_tag`` （“改模型 后重试”是用户自定义 handler "
+"的合法写法，默认实现不做）；不产生任何 消息、不写消息级树；不做跨错误联动（如“连续限流 3 次后换策略”）。"
 msgstr ""
 "What it does not do: it does not modify ``agent.model`` / ``agent.model_tag`` (\"switch model then retry\" "
 "is a legitimate user-defined handler pattern, but the default implementation does not do it); it produces "
@@ -368,7 +368,7 @@ msgid "默认策略的错误分类清单。"
 msgstr "the default policy's error classification lists."
 
 #: flowing.composables.compact.use_compact:1 of
-msgid "为单个 Agent 实例启用「上下文超阈值自动压缩」策略（可选、非默认）。"
+msgid "为单个 Agent 实例启用“上下文超阈值自动压缩”策略（可选、非默认）。"
 msgstr "Enable the \"auto-compact when context exceeds a threshold\" policy on a single Agent instance (optional, non-default)."
 
 #: flowing.composables.compact.use_compact:5 of
@@ -465,7 +465,7 @@ msgstr "Detection basis: when the handler runs, this turn's response has not yet
 msgid ""
 "``threshold``：触发阈值，``usage_ratio`` 严格大于它时启动压缩； 合法区间 ``0 < threshold <= "
 "1.0`` （``usage_ratio`` 不做上限截断， ``> 1.0`` 是合法的溢出信号，``threshold=1.0`` "
-"即「只在溢出后压 缩」）。区间外的值抛 ``ValueError``。"
+"即“只在溢出后压 缩”）。区间外的值抛 ``ValueError``。"
 msgstr ""
 "``threshold``: the trigger threshold; compaction starts when ``usage_ratio`` is strictly greater than it; "
 "the valid range is ``0 < threshold <= 1.0`` (``usage_ratio`` is not clamped above; ``> 1.0`` is a "
@@ -510,7 +510,7 @@ msgstr ""
 ":meth:`flowing.agent.Agent.fork` —— the view-switching channel for the chain swap."
 
 #: flowing.composables.compact.use_auto_compact:1 of
-msgid "为单个 Agent 实例启用「请求前头尾保留式自动压缩」策略（可选、非默认）。"
+msgid "为单个 Agent 实例启用“请求前头尾保留式自动压缩”策略（可选、非默认）。"
 msgstr "Enable the \"pre-request head-and-tail preserving auto-compaction\" policy on a single Agent instance (optional, non-default)."
 
 #: flowing.composables.compact.use_auto_compact:5 of
@@ -518,7 +518,7 @@ msgid ""
 "在 ``before_provider_gen`` 上注册检测与压缩 handler "
 "（``by=\"auto_compact\"``）：每次主回合 LLM 请求发出**之前**检查上下文 占用，超过 ``threshold`` "
 "时在同一 handler 调用内完成压缩——保留链 头部（≤ ``head_tokens``）与尾部（≤ "
-"``tail_tokens``）的原始消息， 中段压缩为一条「用户指令汇编 + 交接摘要」消息，从前缀末条开分支、 后缀深拷贝拼接，再 "
+"``tail_tokens``）的原始消息， 中段压缩为一条“用户指令汇编 + 交接摘要”消息，从前缀末条开分支、 后缀深拷贝拼接，再 "
 "``fork`` 换链；本次请求直接携带压缩后的上下文 发出（handler 整体改写 ``Context``）。"
 msgstr ""
 "Registers a detection-and-compaction handler on ``before_provider_gen`` (``by=\"auto_compact\"``): "
@@ -687,7 +687,7 @@ msgid "估算口径。"
 msgstr "basis for a single message."
 
 #: flowing.composables.reminder.use_system_reminder:1 of
-msgid "为单个 Agent 实例启用「每回合注入系统提醒」策略（可选、非默认）。"
+msgid "为单个 Agent 实例启用“每回合注入系统提醒”策略（可选、非默认）。"
 msgstr "Enable the \"inject a system reminder each turn\" policy on a single Agent instance (optional, non-default)."
 
 #: flowing.composables.reminder.use_system_reminder:5 of
@@ -809,8 +809,8 @@ msgstr ""
 #: flowing.composables.compact:10 of
 msgid ""
 "``use_auto_compact()`` —— 请求**前**触发（``before_provider_gen``）， "
-"头尾保留式压缩：保留链头（≤ ``head_tokens``）与链尾（≤ ``tail_tokens``） 的原始消息，中段压缩为「用户指令汇编 "
-"+ 交接摘要」一条消息，开分支 换链后本次请求直接携压缩后上下文发出。"
+"头尾保留式压缩：保留链头（≤ ``head_tokens``）与链尾（≤ ``tail_tokens``） 的原始消息，中段压缩为“用户指令汇编 "
+"+ 交接摘要”一条消息，开分支 换链后本次请求直接携压缩后上下文发出。"
 msgstr ""
 "``use_auto_compact()`` —— triggers **before** the request (``before_provider_gen``), head-and-tail "
 "preserving compaction: the original messages at the chain head (≤ ``head_tokens``) and tail "
@@ -858,7 +858,7 @@ msgstr ""
 
 #: flowing.composables.compact:32 of
 msgid ""
-"「何时压、压成什么样」没有唯一正确答案：阈值与摘要指令都应可整体替换， 框架核心只提供占用估计、``side_query`` "
+"“何时压、压成什么样”没有唯一正确答案：阈值与摘要指令都应可整体替换， 框架核心只提供占用估计、``side_query`` "
 "副线、开新根（``branch``）与 ``fork`` 四个机制，本模块提供一份可整体替换的默认策略。替换方式同 "
 "``use_retry``：``remove_by_owner(\"compact\")`` 移除默认 handler 后自注册。"
 msgstr ""
@@ -992,8 +992,8 @@ msgstr "flowing.composables.reminder —— the builtin system-reminder Composab
 
 #: flowing.composables.reminder:5 of
 msgid ""
-"本模块提供 ``use_system_reminder()``：为单个 Agent 实例启用「每个逻辑 Turn "
-"开始前注入系统提醒」策略。启用后，每个逻辑 Turn 开始时，默认策略 把当前可见的提醒内容清单压缩为一条 "
+"本模块提供 ``use_system_reminder()``：为单个 Agent 实例启用“每个逻辑 Turn "
+"开始前注入系统提醒”策略。启用后，每个逻辑 Turn 开始时，默认策略 把当前可见的提醒内容清单压缩为一条 "
 "``Message(kind=EVENT, ...)`` （多个 内容块合并成一条消息），经 ``before_turn`` "
 "钩子附加进本回合的待挂树 批次——提醒随批次挂树并持久化，排在触发消息之后。"
 msgstr ""
@@ -1119,7 +1119,7 @@ msgstr "flowing.composables.retry —— the builtin retry Composable (optional,
 
 #: flowing.composables.retry:5 of
 msgid ""
-"本模块提供 ``use_retry()``：为单个 Agent 实例启用「LLM 调用失败退避 重试」策略。启用后，该 Agent 的 LLM "
+"本模块提供 ``use_retry()``：为单个 Agent 实例启用“LLM 调用失败退避 重试”策略。启用后，该 Agent 的 LLM "
 "调用抛出可重试类异常时，默认策略 按参数指定的退避模型等待一段时间（期间不调用 LLM），再在同一回合内 "
 "重发调用，直至成功或达到次数上限；抛出不可重试类错误与未知错误时不做 重试，本回合以错误结局终止。"
 msgstr ""
@@ -1145,9 +1145,9 @@ msgstr ""
 
 #: flowing.composables.retry:18 of
 msgid ""
-"「重试」是策略不是机制：框架核心只提供错误分类（哪些类型可重试、 哪些不可重试，见 "
+"“重试”是策略不是机制：框架核心只提供错误分类（哪些类型可重试、 哪些不可重试，见 "
 "``flowing.errors``）、``on_provider_error`` 钩子点的 分发与 ``can_continue`` "
-"决策通道；「重试几次、等多久、对哪些错误重试」 全部由本模块提供一份可整体替换的默认实现。替换方式： "
+"决策通道；“重试几次、等多久、对哪些错误重试” 全部由本模块提供一份可整体替换的默认实现。替换方式： "
 "``remove_by_owner(\"retry\")`` 移除默认 handler 后自注册（见 :func:`use_retry` "
 "使用示例）。"
 msgstr ""
@@ -1268,7 +1268,7 @@ msgid ":func:`flowing.composables.retry.use_retry`"
 msgstr ":func:`flowing.composables.retry.use_retry`"
 
 #: flowing.composables.retry.RETRYABLE_ERRORS:1 of
-msgid "默认策略视为可重试的异常类型元组（「限流 + 基础设施瞬时故障」四类）。"
+msgid "默认策略视为可重试的异常类型元组（“限流 + 基础设施瞬时故障”四类）。"
 msgstr "The tuple of exception types the default policy treats as retryable (four kinds: \"rate limiting + transient infrastructure failures\")."
 
 #: flowing.composables.retry.RETRYABLE_ERRORS:3 of
@@ -1285,7 +1285,7 @@ msgstr ""
 #: flowing.composables.retry.RETRYABLE_ERRORS:8 of
 msgid ""
 "这是策略清单而非机制清单：机制只保证这些类型在对应故障时被 Provider adapter 抛出、且会经过 "
-"``on_provider_error`` 分发；「对它们重试」是 ``use_retry`` 的选择，用户 handler "
+"``on_provider_error`` 分发；“对它们重试”是 ``use_retry`` 的选择，用户 handler "
 "可自由采用不同清单。不在此元组中的 异常类型（含一切未知异常）默认策略一律不重试。"
 msgstr ""
 "This is a policy list, not a mechanism list: the mechanism only guarantees that these types are raised by "

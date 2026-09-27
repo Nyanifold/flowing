@@ -207,7 +207,7 @@ class ToolCall:
     的映射、specified 聚合在 ``_normalize()`` 中发生，不在本对象上。
     """
     shortcut: "ToolResult | None" = None
-    """钩子短路字段：初值 ``None``，钩子链以「非 ``None`` 即短路」门控。
+    """钩子短路字段：初值 ``None``，钩子链以“非 ``None`` 即短路”门控。
     handler 把一个 `ToolResult` 放进本字段后返回——钩子链停止、工具默认
     执行被替代（该 `ToolResult` 直接作为本次调用的结果，典型场景：缓存
     命中跳过工具执行），``after_tool_call`` 照常触发。与 ``raise
@@ -348,7 +348,7 @@ class ToolResult:
     终止通知——异常 / 取消）。``"final"`` 仅覆盖可明确判定的流终止
     事件：async generator 正常耗尽不产生 ``"final"`` （最后一个
     yield 只能在耗尽后追认，已作为 ``"segment"`` 投递），handler 不得
-    依赖「每个异步工具都有 final」做收尾；需要收尾标记的工具由作者
+    依赖“每个异步工具都有 final”做收尾；需要收尾标记的工具由作者
     自行 yield 终态标记。
     """
 
@@ -438,7 +438,7 @@ class ToolResult:
         # tool_status）在消息字段，content 只含纯内容块
         blocks = output_to_blocks(self.output, error=self.error)  # error 仅 error 态非 None，直接透传
         if self.status == "pending" and self.background_task_id:
-            # pending 收据附加「后台任务 ID」块（不动作者 yield 的内容——
+            # pending 收据附加“后台任务 ID”块（不动作者 yield 的内容——
             # 附加块而非并入，避免污染作者数据；LLM/调用方可据此按 id 引用）
             blocks = [*blocks,
                       TextBlock(text=f"background task ID: {self.background_task_id}")]
@@ -532,7 +532,7 @@ class ToolDefinition:
     键进 LLM 视图的参数表），不落本字段。
     """
     strict: bool = True
-    """是否在工具层严格约束 LLM 入参；``False`` 用于「参数由下游自行校验」
+    """是否在工具层严格约束 LLM 入参；``False`` 用于“参数由下游自行校验”
     的工具。
     """
 
@@ -1134,7 +1134,7 @@ class Tool:
                     # 行为）：在途等待与取消信号竞速——信号先置位则中断在途
                     # 执行（CancelledError 注入 execute 的 await 点，工具的
                     # try/finally 照常跑），产出 cancelled 结果（LLM 可见
-                    # 「被取消」，不走 error 通道）；后台形态（background
+                    # “被取消”，不走 error 通道）；后台形态（background
                     # 标记 / Task 返回 / async gen）不包竞速——它们的取消经
                     # Execution 注册表置位（cancel_children 通道）
                     sig_events = []
@@ -1169,7 +1169,7 @@ class Tool:
         except Intercepted as exc:
             # execute 内抛出的硬阻断信号（如工具内部下游扩展钩子的拦截）：语义
             # 即 blocked——与 before_tool_call 拦截同一出口、同一 reason 塑形，
-            # 不当业务异常吞成 error（「有意拒绝」与「意外故障」不进同一通道）
+            # 不当业务异常吞成 error（“有意拒绝”与“意外故障”不进同一通道）
             return ToolResult.blocked(reason=str(exc))
         except Exception as exc:
             # 异常路径：包装为 error 结果，不触发错误钩子（LLM 可见的正常产物）

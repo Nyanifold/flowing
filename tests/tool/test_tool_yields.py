@@ -412,7 +412,7 @@ async def test_terminal_notifications_pass_hook(agent):
 
 
 async def test_cancel_notice_delivered(agent):
-    """取消驱动任务：「async task cancelled」通知实际入队（production='final'）。"""
+    """取消驱动任务：“async task cancelled”通知实际入队（production='final'）。"""
     caller = _FakeCaller()
     seen = []
     caller.hooks.on_tool_yields(lambda a, r: seen.append(r) or r, by="test")

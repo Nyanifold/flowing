@@ -209,7 +209,7 @@ class Workflow(ABC):
     caller: Agent | None
     """发起本 workflow 的 Agent；根节点 workflow（``caller=None``）为
     ``None``。可经 ``caller.query(...)`` 反向驱动发起方（见模块 docstring
-    「反向驱动 caller 与异步防死锁」），或调用 caller 的其它公开方法。
+    “反向驱动 caller 与异步防死锁”），或调用 caller 的其它公开方法。
     """
     runtime: Runtime
     """所属 Runtime（对象图根）。创建子 Agent、查工具注册表都经它；与

@@ -1,4 +1,4 @@
-"""探针工具（4-4）：strict=False 的「参数门禁放行」形态。
+"""探针工具（4-4）：strict=False 的“参数门禁放行”形态。
 
 strict 只存在于 ToolDefinition 层：ScriptTool 的类属性通道不读它，
 须显式声明 definition（与 args_model 类属性互斥，definition 胜）。

@@ -55,10 +55,10 @@ content 内可含任意花括号与 ``{{current_time}}`` 占位符，不受转�
 - ``{count}`` —— 错过次数（十进制）
 - ``{cron}`` —— 任务 cron 表达式原文
 - ``{last_fired_at}`` —— 上次成功交付时刻（本地 ``%Y-%m-%d %H:%M``；
-  从未交付渲染「从未交付」）
+  从未交付渲染“从未交付”）
 - ``{content}`` —— 本次推送内容（已做 ``{{current_time}}`` 替换）
 
-模板不提单一应触发时刻：多次错过没有「某一个本应触发时刻」。
+模板不提单一应触发时刻：多次错过没有“某一个本应触发时刻”。
 """
 
 _CURRENT_TIME_PATTERN = re.compile(r"\{\{ *current_time(?::([^}]*))? *\}\}")
@@ -74,8 +74,8 @@ _STRFTIME_DIRECTIVES = frozenset(
     "aAwdbBmYHIpMSfzZjUWcxXGuV%")   # %a/%A/... 标准指令集 + %% 转义
 """``{{current_time}}`` 格式串允许的指令集（Python strftime 标准指令 +
 ``%%``）。白名单校验的原因：glibc 的 ``strftime`` 对未知指令（如
-``%Q``）不报错、原样输出——只有白名单能可靠区分「合法格式」与
-「笔误」。
+``%Q``）不报错、原样输出——只有白名单能可靠区分“合法格式”与
+“笔误”。
 """
 
 _COALESCE_GUARD = 100_000

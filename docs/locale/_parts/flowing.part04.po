@@ -90,7 +90,7 @@ msgstr ""
 #: flowing.subagents.SubagentResult:12 of
 msgid ""
 "``subagent_id``：子 Agent 的 ``node_id``。调用方需要活实例时， 经 "
-"``runtime.get_agent(subagent_id)`` 按「有记录无实例 → 现场 恢复」语义获取；不要在本对象上保留实例引用。"
+"``runtime.get_agent(subagent_id)`` 按“有记录无实例 → 现场 恢复”语义获取；不要在本对象上保留实例引用。"
 msgstr ""
 "``subagent_id``: the sub-Agent's ``node_id``. When the caller needs a live instance, obtain it via "
 "``runtime.get_agent(subagent_id)`` under the \"record exists but no instance → recover on the spot\" semantics; do not keep instance references on this object."
@@ -164,7 +164,7 @@ msgstr ""
 msgid ""
 "子 Agent 该回合的结局，透传 ``TurnResult.status`` （``\"completed\"`` / "
 "``\"blocked\"`` / ``\"error\"`` / ``\"cancelled\"``）。 取消 / 异常信息的载体：被 "
-"cancel 时已置位的 finish 载荷或已产出 文本仍经 ``result`` 照返，「子 Agent 取消」这一事实由本字段承载， 不污染"
+"cancel 时已置位的 finish 载荷或已产出 文本仍经 ``result`` 照返，“子 Agent 取消”这一事实由本字段承载， 不污染"
 " ``result`` 的内容契约（结构化 dict 不塞标注、文本不拼后缀）。"
 msgstr ""
 "The outcome of the sub-Agent's turn, passed through from ``TurnResult.status`` (``\"completed\"`` / "
@@ -260,7 +260,7 @@ msgid "Provider 签发的完整性签名（如 Anthropic）；无签名机制时
 msgstr "The integrity signature issued by the Provider (e.g. Anthropic); ``None`` when there is no signature mechanism."
 
 #: flowing.tool.Tool:1 of
-msgid "可执行对象基类——三正交中的「执行」层。"
+msgid "可执行对象基类——三正交中的“执行”层。"
 msgstr "Base class for executable objects — the \"execution\" leg of the three orthogonal capabilities."
 
 #: flowing.tool.Tool:5 of
@@ -268,7 +268,7 @@ msgid ""
 "`Tool` 只对执行负责：持有一份默认 `ToolDefinition`，暴露 ``execute()``；框架调度层经 "
 "``__call__`` 统一调用。四种工具类型 （script / mcp / cli / request）均以本类（或其子类）为最终产物。 "
 "调度职责（awaitable / async generator 检测、Task 包装、caller 注入、 返回值包装）集中在 "
-"``__call__``，让 ``execute()`` 保持「零散参数进、 普通值出」的最简单签名——工具作者不需要知道 "
+"``__call__``，让 ``execute()`` 保持“零散参数进、 普通值出”的最简单签名——工具作者不需要知道 "
 "`ToolResult` 的存在。"
 msgstr ""
 "`Tool` is responsible only for execution: it holds a default `ToolDefinition` and exposes ``execute()``; the framework's dispatch layer invokes it uniformly via "
@@ -381,7 +381,7 @@ msgstr "A single tool call issued by the LLM — the value type of the ``before_
 
 #: flowing.tool.ToolCall:5 of
 msgid ""
-"`ToolCall` 是「LLM 想调什么」的纯数据载体：从 PROVIDER 消息的工具调用 "
+"`ToolCall` 是“LLM 想调什么”的纯数据载体：从 PROVIDER 消息的工具调用 "
 "块（``ToolCallBlock``）解析而来，经 ``before_tool_call`` 钩子链传递， 最终被解包为零散参数喂给 "
 "``Tool.execute()``。`ToolCall` 只是调用意图， 不是可执行对象；``execute()`` 不接收 "
 "`ToolCall` 整体入参。"
@@ -465,7 +465,7 @@ msgstr ""
 
 #: flowing.ToolCall.shortcut:1 flowing.tool.ToolCall.shortcut:1 of
 msgid ""
-"钩子短路字段：初值 ``None``，钩子链以「非 ``None`` 即短路」门控。 handler 把一个 `ToolResult` "
+"钩子短路字段：初值 ``None``，钩子链以“非 ``None`` 即短路”门控。 handler 把一个 `ToolResult` "
 "放进本字段后返回——钩子链停止、工具默认 执行被替代（该 `ToolResult` 直接作为本次调用的结果，典型场景：缓存 "
 "命中跳过工具执行），``after_tool_call`` 照常触发。与 ``raise Intercepted`` 的区别：shortcut "
 "是正常收场、结果由 handler 提供， Intercepted 是硬阻断、结果为 "
@@ -526,7 +526,7 @@ msgstr ""
 #: flowing.message.ToolCallBlock:10 of
 msgid ""
 "block 形式是消息层的权威表示（持久化、上下文组装都用它）； :class:`flowing.tool.ToolCall` "
-"是它的「解析后」形式——剥离通用字段， 只保留 ``id`` / ``name`` / ``args`` （+ 通用短路字段 "
+"是它的“解析后”形式——剥离通用字段， 只保留 ``id`` / ``name`` / ``args`` （+ 通用短路字段 "
 "``shortcut``）， 供 ``Agent.tool_call()`` 与工具钩子使用。两者经 "
 ":meth:`flowing.tool.ToolCall.from_block` 单向转换（模块依赖保持 单向：``flowing.tool`` "
 "认识 ``flowing.message``，反之不认识）。"

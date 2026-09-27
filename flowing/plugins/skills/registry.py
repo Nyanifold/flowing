@@ -108,7 +108,7 @@ class SkillRegistry:
     catalog_template: CatalogTemplate | None = None
     """Runtime 级默认渲染模板（``SkillPlugin.install()`` 构造注册表时
     注入，即 ``SkillPlugin`` 构造参数的透传落点——三级解析链
-    「``use_skill()`` 参数 > 本属性 > 内置 :data:`DEFAULT_CATALOG_TEMPLATE`」
+    “``use_skill()`` 参数 > 本属性 > 内置 :data:`DEFAULT_CATALOG_TEMPLATE`”
     的中段通道；``None`` 表示未设 Runtime 级默认）。运行期只读。
     """
 
@@ -212,8 +212,8 @@ class SkillRegistry:
         """
         # 精确键短路（先于形态判别）：文件派生限定键的命名空间含路径特征
         # （目录派生，如 "@/skills::sum"），过不了 classify_ref 的限定名判别
-        # ——注册表在场证据优先于词法分流，「catalog 渲染 / skill_load 热路径
-        # 必命中缓存」的 docstring 承诺靠此成立（与 ToolRegistry.get 同口径）
+        # ——注册表在场证据优先于词法分流，“catalog 渲染 / skill_load 热路径
+        # 必命中缓存”的 docstring 承诺靠此成立（与 ToolRegistry.get 同口径）
         if name in self._skills:
             return self._skills[name]
         if "::" in name:  # 限定名:只查注册表精确键(插件注册通道),不走文件查找链
@@ -376,7 +376,7 @@ def _parse_skill_file(name: str, source_dir: Path, *,
     identity = infer_name(hit, naming=SKILL_NAMING)   # 通用名命中 -> 规范名取目录名
     if hit.name.endswith(".fya"):
         # .fya 系与同名 .md 并存 -> 告警且 .fya 系优先（链上顺序已保证优先，
-        # 此处只补告警——与 Tool 的「.fya 优先于同名 .py 并告警」同口径）
+        # 此处只补告警——与 Tool 的“.fya 优先于同名 .py 并告警”同口径）
         coexisting = [c for c in candidates
                       if c.endswith(".md") and (base_dir / c).exists()]
         if coexisting:
@@ -420,7 +420,7 @@ def _parse_skill_md(path: Path, identity: str) -> Skill:
         raise NameMismatchError(explicit_name, identity, str(path))
     description = fields.get("description")
     if description is None or description is PENDING:
-        # MissingFieldError 的第二参按契约是「所属 Agent 类型名」；Skill 无
+        # MissingFieldError 的第二参按契约是“所属 Agent 类型名”；Skill 无
         # Agent 类型语境，以定义文件路径充当场定位（spec 未规定 skill 语境的取值）
         raise MissingFieldError("description", str(path))
     extra = {k: v for k, v in fields.items() if k not in ("name", "description")}

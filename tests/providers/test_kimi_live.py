@@ -97,7 +97,7 @@ async def _recall_roundtrip(provider, model: ModelConfig,
 
     编号按用例随机生成，避免服务端前缀缓存把不同用例的响应复用成
     同一份而导致 recall 断言失真。第一轮要求模型原样复述编号——
-    编号经助手自己的输出进入对话（思考重的模型对「记住暗号」式
+    编号经助手自己的输出进入对话（思考重的模型对“记住暗号”式
     指令可能过度谨慎拒答，复述式 opener 无此问题），第二轮验证
     完整历史（含 assistant 消息回放）被对方收到。
     """
@@ -122,7 +122,7 @@ async def _image_recall_roundtrip(provider, model: ModelConfig,
     """图片两轮往返公共体：第一轮识图，第二轮凭完整历史回忆图内容。
 
     第一轮用 ``keywords`` 断言识图命中；第二轮是开放式回忆，模型常给
-    同义转述（不一定复用第一轮措辞），故用「实质内容候选集」
+    同义转述（不一定复用第一轮措辞），故用“实质内容候选集”
     ``recall_keywords`` 断言，缺省时回退为 ``keywords``。
     """
     opener = _image_ctx(image, "识别这张图片的内容，简短回答。")

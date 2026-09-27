@@ -90,7 +90,7 @@ def _accumulate(deltas):
     """复刻 provider_gen 的累积规则：按 content_index 归位成最终 content 列表。
 
     用与 ``flowing.agent.Agent.provider_gen`` 完全一致的规则拼装，从而
-    离网验证「真实内容按正确顺序与归属拼成最终消息」。
+    离网验证“真实内容按正确顺序与归属拼成最终消息”。
     """
     from flowing.message import TextBlock, ThinkingBlock
     acc = {}

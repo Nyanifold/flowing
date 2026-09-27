@@ -4,8 +4,8 @@
 [tool:completed] subagent-invoke -> 
 [thinking] Now create todo list for writing a README.md.
 
-Then present to user. The task is only to dispatch explore and create checklist — the instruction says 3 steps but user only asked for step 1 and 2. Let me do todo, then report and ask/confirm before dispatching coder? The user said "先派 explore ... 再用 todo 把「为该项目写一个 README.md」拆成任务清单。" So only those two. I'll present checklist and ask for confirmation to dispatch coder.
-[tool_call] todo {"tasks_text": "[x] 探查 target 目录结构、技术栈与关键文件（explore-agent 已完成）\n[ ] 确认 README.md 的目标路径与语言/风格（根目录 <仓库根>/dev-docs/tutorial/2-4/target/README.md，中文）\n[ ] 起草 README 骨架：项目名 + 一句话简介\n[ ] 编写「项目结构」章节（pkg/calc.py、notes/adder.md、notes/divider.md 的目录树）\n[ ] 编写「功能/API 说明」章节：add(a, b)、div(a, b) 及 b==0 时 raise ValueError(\"除数不能为 0\")\n[ ] 编写「快速开始/使用方式」章节：导入方式 from pkg.calc import add, div 与示例代码\n[ ] 编写「环境要求」章节：Python 3（类型注解语法），无第三方依赖\n[ ] 编写「术语澄清」章节：说明 adder / divider 并非实际组件，只是 add / div 的叫法\n[ ] 编写「当前限制/待办」章节：无包管理文件、无 __init__.py、无测试\n[ ] 由 coder 写入 target/README.md 并回报结果\n[ ] 向用户汇总交付内容"}
+Then present to user. The task is only to dispatch explore and create checklist — the instruction says 3 steps but user only asked for step 1 and 2. Let me do todo, then report and ask/confirm before dispatching coder? The user said "先派 explore ... 再用 todo 把“为该项目写一个 README.md”拆成任务清单。" So only those two. I'll present checklist and ask for confirmation to dispatch coder.
+[tool_call] todo {"tasks_text": "[x] 探查 target 目录结构、技术栈与关键文件（explore-agent 已完成）\n[ ] 确认 README.md 的目标路径与语言/风格（根目录 <仓库根>/dev-docs/tutorial/2-4/target/README.md，中文）\n[ ] 起草 README 骨架：项目名 + 一句话简介\n[ ] 编写“项目结构”章节（pkg/calc.py、notes/adder.md、notes/divider.md 的目录树）\n[ ] 编写“功能/API 说明”章节：add(a, b)、div(a, b) 及 b==0 时 raise ValueError(\"除数不能为 0\")\n[ ] 编写“快速开始/使用方式”章节：导入方式 from pkg.calc import add, div 与示例代码\n[ ] 编写“环境要求”章节：Python 3（类型注解语法），无第三方依赖\n[ ] 编写“术语澄清”章节：说明 adder / divider 并非实际组件，只是 add / div 的叫法\n[ ] 编写“当前限制/待办”章节：无包管理文件、无 __init__.py、无测试\n[ ] 由 coder 写入 target/README.md 并回报结果\n[ ] 向用户汇总交付内容"}
 [tool:completed] todo -> 
 两步都已完成，汇报如下。
 
@@ -33,7 +33,7 @@ target/
 | README | **不存在**（任何层级都没有） |
 
 **源码要点**（`pkg/calc.py`，14 行）：
-- 模块 docstring：「示例项目：计算器。」
+- 模块 docstring：“示例项目：计算器。”
 - `add(a, b)` → 返回 `a + b`
 - `div(a, b)` → 返回 `a / b`，`b == 0` 时 `raise ValueError("除数不能为 0")`
 
@@ -41,21 +41,21 @@ target/
 
 一句话：一个无 README、无依赖、无测试的极简 Python 计算器示例，很适合做文档生成演示。
 
-## 二、「为该项目写 README.md」任务清单（11 项，已完成 1 项）
+## 二、“为该项目写 README.md”任务清单（11 项，已完成 1 项）
 
 ```
 [x] 探查 target 目录结构、技术栈与关键文件（explore-agent 已完成）
 [ ] 确认 README.md 目标路径与语言风格（target/README.md，中文）
 [ ] 起草骨架：项目名 + 一句话简介
-[ ] 「项目结构」章节：pkg/calc.py、notes/adder.md、notes/divider.md
-[ ] 「功能/API 说明」：add / div 及 b==0 抛 ValueError("除数不能为 0")
-[ ] 「快速开始/使用方式」：import 方式 + 示例代码
-[ ] 「环境要求」：Python 3，无第三方依赖
-[ ] 「术语澄清」：adder / divider 并非实际组件
-[ ] 「当前限制/待办」：无包管理文件、无 __init__.py、无测试
+[ ] “项目结构”章节：pkg/calc.py、notes/adder.md、notes/divider.md
+[ ] “功能/API 说明”：add / div 及 b==0 抛 ValueError("除数不能为 0")
+[ ] “快速开始/使用方式”：import 方式 + 示例代码
+[ ] “环境要求”：Python 3，无第三方依赖
+[ ] “术语澄清”：adder / divider 并非实际组件
+[ ] “当前限制/待办”：无包管理文件、无 __init__.py、无测试
 [ ] 由 coder 写入 target/README.md 并回报
 [ ] 向用户汇总交付
 ```
 
-按流程，第 3 步「写文件」需要派给 coder。请确认后我就派发：**默认中文、写到 `target/README.md`**——如需改语言或路径，告诉我即可。
+按流程，第 3 步“写文件”需要派给 coder。请确认后我就派发：**默认中文、写到 `target/README.md`**——如需改语言或路径，告诉我即可。
 (agent-main)>>>

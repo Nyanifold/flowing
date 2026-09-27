@@ -369,7 +369,7 @@ class ClipboardPasteTool(Tool):
         if isinstance(pos, int):
             # 整行块插入到第 N 行之前；N = 行数+1 即追加末尾。块形态归一：
             # 插入内容补齐结尾换行；末尾追加且原文件末行无换行时先补换行，
-            # 保持「整行块」语义
+            # 保持“整行块”语义
             if not 1 <= pos <= len(lines) + 1:
                 raise ValueError(
                     f"pos line number out of range: {pos} (file has {len(lines)} lines, "

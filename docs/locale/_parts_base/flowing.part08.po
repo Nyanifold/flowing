@@ -21,7 +21,7 @@ msgstr ""
 
 #: flowing.snapshot.ModelInfo:17 of
 msgid ""
-"``model_tag`` 为当前标签；经「直接赋 ``ModelConfig``」路径换模型时 （可指向配置中从未定义的模型）为 "
+"``model_tag`` 为当前标签；经“直接赋 ``ModelConfig``”路径换模型时 （可指向配置中从未定义的模型）为 "
 "``None``。"
 msgstr ""
 
@@ -80,7 +80,7 @@ msgstr ""
 #: flowing.snapshot.TurnContextInfo:12 of
 msgid ""
 "仅当逻辑 turn 执行期间（从 turn 开始到收尾清理为止） ``AgentSnapshot.current_turn`` 非 "
-"``None``；收尾观察钩子 （``after_turn``）与交付期快照即无此项——「快照无此字段」不等于 「回合钩子已跑完」。"
+"``None``；收尾观察钩子 （``after_turn``）与交付期快照即无此项——“快照无此字段”不等于 “回合钩子已跑完”。"
 msgstr ""
 
 #: flowing.snapshot.TurnContextInfo:16 of
@@ -115,7 +115,7 @@ msgid ""
 msgstr ""
 
 #: flowing.snapshot.TurnContextInfo.started_at:1 of
-msgid "逻辑 turn 开始时间戳；供「本 turn 已跑多久」类计算。"
+msgid "逻辑 turn 开始时间戳；供“本 turn 已跑多久”类计算。"
 msgstr ""
 
 #: flowing.snapshot.TurnContextInfo.finished_at:1 of
@@ -190,7 +190,7 @@ msgstr ""
 msgid ""
 "``AgentSnapshot.message_queue`` 的值类型：每 Agent 独立消息队列的两个 计数投影——待消费消息数与等待 "
 "``message()`` 结果的 pending 数。队列 内部是 deque 与等待中的 Future，均为可变内部对象；观测只需要两个计数 "
-"即可回答「有没有积压」「有没有人等结果」。"
+"即可回答“有没有积压”“有没有人等结果”。"
 msgstr ""
 
 #: flowing.snapshot.MessageQueueInfo:12 of
@@ -244,7 +244,7 @@ msgstr ""
 
 #: flowing.snapshot.RuntimeSnapshot:25 of
 msgid ""
-"一致性：一次调用内全部字段同一时刻取值（见模块 docstring「单时刻 一致性」）；返回结构与内部存储隔离（副本 / 不可变视图），修改快照 "
+"一致性：一次调用内全部字段同一时刻取值（见模块 docstring“单时刻 一致性”）；返回结构与内部存储隔离（副本 / 不可变视图），修改快照 "
 "不影响框架状态。"
 msgstr ""
 
@@ -276,20 +276,20 @@ msgstr ""
 #: flowing.snapshot.RuntimeSnapshot.nodes:1 of
 msgid ""
 "``node_id`` → ``NodeInfo``；共享 ID 空间（``runtime-*`` / ``workflow-*`` / "
-"``agent-*``）中全部节点的只读投影。注：Runtime 无 生命周期状态机，无 ``status`` 字段——「Runtime "
-"是否已关闭」见 ``Runtime.shutdown()`` 语义（``shutdown()`` 返回后即可知）。"
+"``agent-*``）中全部节点的只读投影。注：Runtime 无 生命周期状态机，无 ``status`` 字段——“Runtime "
+"是否已关闭”见 ``Runtime.shutdown()`` 语义（``shutdown()`` 返回后即可知）。"
 msgstr ""
 
 #: flowing.snapshot.RuntimeSnapshot.plugins:1 of
 msgid ""
-"已安装插件名（``plugin.name``）列表；未 ``runtime.install(...)`` 的扩展 不出现（「没存在过」，不是「被 "
-"skip」）。"
+"已安装插件名（``plugin.name``）列表；未 ``runtime.install(...)`` 的扩展 不出现（“没存在过”，不是“被 "
+"skip”）。"
 msgstr ""
 
 #: flowing.snapshot.RuntimeSnapshot.agents:1 of
 msgid ""
 "``agent_id`` → ``AgentInfo``；agent 池注册表投影（含未实例化条目， 见 "
-"``AgentInfo.loaded``）。只给池级「有没有、载没载」，不展开 Agent 内部状态——实例级观测走 "
+"``AgentInfo.loaded``）。只给池级“有没有、载没载”，不展开 Agent 内部状态——实例级观测走 "
 "``agent.snapshot()`` （两级快照不嵌套）。"
 msgstr ""
 
@@ -321,7 +321,7 @@ msgstr ""
 
 #: flowing.snapshot.AgentSnapshot:12 of
 msgid ""
-"与 ``RuntimeSnapshot`` 分工：池级「有没有、载没载」看 Runtime 快照； 实例级「在跑什么」看 Agent "
+"与 ``RuntimeSnapshot`` 分工：池级“有没有、载没载”看 Runtime 快照； 实例级“在跑什么”看 Agent "
 "快照（实例未加载时应先看 ``RuntimeSnapshot.agents[id].loaded``）。"
 msgstr ""
 
@@ -361,7 +361,7 @@ msgstr ""
 #: flowing.snapshot.AgentSnapshot.parent_id:1 of
 msgid ""
 "亲节点 id。``None`` 当且仅当该节点是 Runtime 自身（链终点无亲节点）；根 Agent 的亲节点指针指向其 Runtime 的 "
-"``node_id``——「根」由「亲节点是 Runtime」 表达，不由 ``None`` 表达。"
+"``node_id``——“根”由“亲节点是 Runtime” 表达，不由 ``None`` 表达。"
 msgstr ""
 
 #: flowing.snapshot.AgentSnapshot.agent_type:1 of
@@ -370,7 +370,7 @@ msgstr ""
 
 #: flowing.snapshot.AgentSnapshot.paused:1 of
 msgid ""
-"是否暂停中（``Agent.paused`` 的投影）。注：Agent 无生命周期状态机 ——「在干什么」由 ``current_turn`` /"
+"是否暂停中（``Agent.paused`` 的投影）。注：Agent 无生命周期状态机 ——“在干什么”由 ``current_turn`` /"
 " ``executions`` / ``paused`` 等 投影字段直接表达，快照不汇总出单一状态值。"
 msgstr ""
 
@@ -431,7 +431,7 @@ msgstr ""
 
 #: flowing.subagents:7 of
 msgid ""
-":class:`SubagentEntry` —— Agent 对子 Agent 类型的一次「用法声明」， 能力三正交（可执行对象 / LLM "
+":class:`SubagentEntry` —— Agent 对子 Agent 类型的一次“用法声明”， 能力三正交（可执行对象 / LLM "
 "可见声明 / Agent 级绑定三个维度）的 Agent 级绑定层（与 :class:`flowing.tool.ToolEntry` "
 "同构）：LLM 看到 的别名与描述、参数覆写 / 指定值 / 注入。"
 msgstr ""
@@ -531,7 +531,7 @@ msgstr ""
 #: flowing.subagents.DEFAULT_SUBAGENT_CATALOG_TEMPLATE:22 of
 msgid ""
 "预计算在 Python 侧完成，模板只负责排布（不在模板内 ``.resolve()``——与 skills "
-"模板的「模板内求值」不同，本模板的求值 已前移到 ``catalog_view``）。"
+"模板的“模板内求值”不同，本模板的求值 已前移到 ``catalog_view``）。"
 msgstr ""
 
 #: flowing.subagents.DEFAULT_SUBAGENT_CATALOG_TEMPLATE:25 of
@@ -865,7 +865,7 @@ msgstr ""
 #: flowing.tool.CliTool:5 of
 msgid ""
 "``type: cli`` 的实例类。``args`` （参数 schema）必填，无自动推断来源； 命令体 ``command`` 为 "
-"Jinja2 模板，渲染上下文为 LLM 传入的 args。 把「跑个命令」类能力零代码化；安全默认值：框架自动转义模板插入值， 原始拼接必须显式"
+"Jinja2 模板，渲染上下文为 LLM 传入的 args。 把“跑个命令”类能力零代码化；安全默认值：框架自动转义模板插入值， 原始拼接必须显式"
 " ``{{ arg | raw }}`` 且框架输出警告。"
 msgstr ""
 
@@ -924,7 +924,7 @@ msgstr ""
 #: flowing.tool.RequestTool:5 of
 msgid ""
 "``type: request`` 的实例类。``url`` 与 ``args`` 必填；参数到请求的 映射自动完成，可用 ``body`` / "
-"``query`` 显式覆盖。与 `CliTool` 同理： 把「调一个 HTTP API」降为纯声明；凭证只经 ``{{ env.X }}`` "
+"``query`` 显式覆盖。与 `CliTool` 同理： 把“调一个 HTTP API”降为纯声明；凭证只经 ``{{ env.X }}`` "
 "模板进入 请求头，不进消息、不落盘。"
 msgstr ""
 

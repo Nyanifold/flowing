@@ -81,7 +81,7 @@ class ProvideNode(Protocol):
     runtime: "Runtime"
     """节点所属的 Runtime（provide-inject 链的终点）。Agent / Workflow
     用它找到链终点；Runtime 自身的 ``runtime`` 指向自己，以此表达
-    「本节点就是链终点」。
+    “本节点就是链终点”。
     """
 
     def provide(self, key: str, value: Any) -> None:

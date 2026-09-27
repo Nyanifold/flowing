@@ -2,7 +2,7 @@
 
 说明：T88 / T90 / T91 形式上属 recover_agent 管线，但
 _restore 本体的行为（重放装袋、压缩时点①、撕裂末行/版本迁移重放由
-persistence 层承担）在本文件用「直接构造 Agent + 预写 fixtures / tmp 语料」
+persistence 层承担）在本文件用“直接构造 Agent + 预写 fixtures / tmp 语料”
 驱动，尽量覆盖实质语义。
 
 另含子 Agent 唤起（invoke_subagent 经 harness 迷你 create 管线端到端）
@@ -245,7 +245,7 @@ async def test_invoke_subagent_end_to_end(runtime, provider):
 
 
 async def test_orphan_placeholder_stable_across_recovers(tmp_path):
-    """「恢复 → 继续对话 → destroy → 再恢复」：孤立 tool_call 的占位消息以
+    """“恢复 → 继续对话 → destroy → 再恢复”：孤立 tool_call 的占位消息以
     确定性 id（``synthetic-<call_id>``）重新合成，parent 链自愈，
     崩溃前历史与新回合消息完整保留。"""
     from harness import add_fake_provider, make_runtime
@@ -254,7 +254,7 @@ async def test_orphan_placeholder_stable_across_recovers(tmp_path):
     provider = add_fake_provider(runtime)
     agent = await runtime.create_agent("test-agent", agent_id="agent-orphan")
 
-    # 构造「tool_call 已挂树、结果未 append」的崩溃现场（半截 turn）
+    # 构造“tool_call 已挂树、结果未 append”的崩溃现场（半截 turn）
     agent.push(Message(id="m-user", kind=MessageKind.USER,
                        content=[TextBlock(text="崩溃前历史")]))
     agent.push(Message(id="m-call", kind=MessageKind.PROVIDER,

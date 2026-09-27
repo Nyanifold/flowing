@@ -227,7 +227,7 @@ async def test_t32_completed_aggregation(agent, provider):
     assert merged.token_usage.output == 20
     assert merged.token_usage.raw == {}
 
-    # usages 空 -> None（区分「未上报」与「真零」）
+    # usages 空 -> None（区分“未上报”与“真零”）
     empty = TurnContext(started_at=datetime.now())
     assert build_turn_result(empty, agent).token_usage is None
 

@@ -9,7 +9,7 @@
     python demo_server.py http <port>      # streamable HTTP @ 127.0.0.1:<port>/mcp
 
 暴露两个工具（``create-issue`` 带结构化输出——MCPServer 自动生成
-``outputSchema``，供「自动填 output_schema」断言）：
+``outputSchema``，供“自动填 output_schema”断言）：
 
 - ``create-issue(title, body="")`` → dict（issue_id/title/body/url）
 - ``list-prs(state="open")`` → list[dict]（number/title/state）

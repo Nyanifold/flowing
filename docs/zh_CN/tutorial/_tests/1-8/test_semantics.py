@@ -18,7 +18,7 @@ def test_project_files_complete():
 def test_main_uses_project_local_persist_dir():
     main_py = read("main.py")
     assert 'Runtime(persist_dir="@/.flowing")' in main_py, \
-        "本篇演示「持久化目录落在工程内」"
+        "本篇演示“持久化目录落在工程内”"
 
 
 def test_transcripts_present():

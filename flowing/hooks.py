@@ -391,7 +391,7 @@ HookHandler: TypeAlias = Callable[..., Any]
 """handler 统一签名 ``(agent, value) -> value``；同步返回或返回 awaitable 均可，
 分发器检测到 awaitable 结果就 ``await`` （含构造阶段钩子点）。
 此处用 ``Callable[..., Any]`` 承载是因为各钩子点 value 类型不同；
-精确契约见模块 docstring 的「核心钩子点全集」。
+精确契约见模块 docstring 的“核心钩子点全集”。
 """
 
 
@@ -840,7 +840,7 @@ class HookRegistry:
         self._watchers: list[tuple[str, Callable[[Any, Any], Any]]] = []   # watcher 通道（非钩子）
         self._pending_on = []   # 未结算的 @on 标记暂记列表
         # 预填核心钩子点（by="core"，初始无 handler；全集见模块
-        # docstring「核心钩子点全集」两张表）。after_provider_gen /
+        # docstring“核心钩子点全集”两张表）。after_provider_gen /
         # on_provider_delta 以 match_on="by" 声明——value
         # （ProviderResponse / ProviderDelta）携带 by 来源标记，
         # handler 可按 "_turn" / "_side" / 插件自定义值做 pattern

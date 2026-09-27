@@ -126,7 +126,7 @@ class SubagentResult:
     """子 Agent 该回合的结局，透传 ``TurnResult.status``
     （``"completed"`` / ``"blocked"`` / ``"error"`` / ``"cancelled"``）。
     取消 / 异常信息的载体：被 cancel 时已置位的 finish 载荷或已产出
-    文本仍经 ``result`` 照返，「子 Agent 取消」这一事实由本字段承载，
+    文本仍经 ``result`` 照返，“子 Agent 取消”这一事实由本字段承载，
     不污染 ``result`` 的内容契约（结构化 dict 不塞标注、文本不拼后缀）。
     """
 
@@ -373,7 +373,7 @@ class SubagentEntry:
         for key, parsable in self.specified.items():
             mapped[key] = parsable.resolve(parent)   # specified 以亲代 Agent 实例上下文惰性求值后覆盖（固定值/注入表达式同路——注入表达式求值即 provide 链上溯）
         # 聚合结果直接作为子 Agent 初始化参数（args_model 校验未接线——
-        # 见 docstring「行为要点」；创建管线只透传 kwargs 到 setup）
+        # 见 docstring“行为要点”；创建管线只透传 kwargs 到 setup）
         return mapped
 
     def catalog_view(self, parent: Agent) -> dict[str, Any]:
@@ -418,8 +418,8 @@ class SubagentEntry:
             description = str(self.override_description.resolve(parent))   # 以亲代 Agent 实例为上下文求值
         else:
             # 无覆写时回退子类原 description（Parsable，渲染上下文同样是亲代
-            # Agent 实例——Agent.description 字段契约「实例创建前由亲代 Agent
-            # 读取」）；缺失 / None → 空串
+            # Agent 实例——Agent.description 字段契约“实例创建前由亲代 Agent
+            # 读取”）；缺失 / None → 空串
             raw_desc = getattr(cls, "description", None)
             if raw_desc is None:
                 description = ""
@@ -642,7 +642,7 @@ DEFAULT_SUBAGENT_CATALOG_TEMPLATE: str = (
     （含前导 ``<params>`` 片段或空串）。
 
   预计算在 Python 侧完成，模板只负责排布（不在模板内
-  ``.resolve()``——与 skills 模板的「模板内求值」不同，本模板的求值
+  ``.resolve()``——与 skills 模板的“模板内求值”不同，本模板的求值
   已前移到 ``catalog_view``）。
 - ``agent``：亲代 Agent 实例。
 

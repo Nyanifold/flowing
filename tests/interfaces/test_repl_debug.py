@@ -40,7 +40,7 @@ async def test_t29_watch_reprint_on_change(project_ok, persist_dir, monkeypatch,
 
 
 async def test_t30_eval_unbound(project_empty, persist_dir, monkeypatch, capsys):
-    """未绑定，/eval model_tag → 打印「no agent bound」。"""
+    """未绑定，/eval model_tag → 打印“no agent bound”。"""
     drive_input(monkeypatch, script_lines("debug-eval.txt"))
     rc = await cmd_repl_debug(str(project_empty), persist=str(persist_dir))
     assert rc == EXIT_OK

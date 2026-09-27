@@ -437,7 +437,7 @@ class Runtime:
     """
     runtime: "Runtime"
     """:class:`ProvideNode` 协议成员：链终点的 ``runtime`` 自指——Runtime 的
-    ``runtime`` 指向自己，以此表达「本节点就是链终点」（``__init__`` 时
+    ``runtime`` 指向自己，以此表达“本节点就是链终点”（``__init__`` 时
     真实赋值）。
     """
     project_root: Path
@@ -461,12 +461,12 @@ class Runtime:
     """
     _config_overrides: dict[str, Any]
     """运行期配置覆盖层（``set_config`` 的写入目标）：``get_config`` 读取时
-    优先于优先级链合并结果命中——「下游产品运行期复写框架配置」的通道
+    优先于优先级链合并结果命中——“下游产品运行期复写框架配置”的通道
     （如 ``set_config("agent.timeout", ...)``）。不持久化（进程级，重启即
     失效；持久覆盖请改配置文件）。内部 API，不属稳定契约。
     """
     _config_namespaces: dict[str, Any]
-    """配置命名空间注册表（命名空间 → 扩展声明的 schema）；注册只是「谁负责校验」
+    """配置命名空间注册表（命名空间 → 扩展声明的 schema）；注册只是“谁负责校验”
     的声明，不构成访问控制。内部 API，不属稳定契约。
     """
     _resources: dict[str, Any]
@@ -499,14 +499,14 @@ class Runtime:
     _model_tags_path: Path | None
     """模型标签文件路径（默认 ``~/.flowing/model-tags.yaml``，``FLOWING_MODEL_TAGS``
     环境变量优先；``set_model_tags`` 可编程覆盖）。模型标签是模型解析的
-    常规通道，无默认文件时按「未定义标签回退 default、default 也缺报错」
+    常规通道，无默认文件时按“未定义标签回退 default、default 也缺报错”
     处理（见 ``flowing.model``）。内部 API，不属稳定契约。
     """
     _models_path: Path | None
     """models.yaml 来源路径（``set_models`` 赋值；构造期解析为
     ``FLOWING_MODELS_PATH`` / ``$FLOWING_CONFIG_HOME/models.yaml`` 的有效
     默认路径——``Agent._resolve_model_tag`` 要求两路径均非 ``None``，
-    「未设定 → 默认路径」的现场求值由构造期的就地换算承担）。
+    “未设定 → 默认路径”的现场求值由构造期的就地换算承担）。
     内部 API，不属稳定契约。
     """
     _providers_path: Path | None
@@ -866,7 +866,7 @@ class Runtime:
                 ".py agent roots go through create_agent; Workflow roots go through WorkflowPlugin.launch")
         # Agent 根：与子 Agent 走同一条唯一创建入口，仅 parent_id=None 不同；
         # 幂等挂载：agent_id 指定且已在池中 -> 恢复而非新建（手动 mount 的
-        # 根是特殊节点，固定 id 使第二次启动「同一个根回来了」）；
+        # 根是特殊节点，固定 id 使第二次启动“同一个根回来了”）；
         # 类型仍由 node 解析决定
         if agent_id is not None and agent_id in self._agent_pool:
             return await self.recover_agent(agent_id, **kwargs)
@@ -987,7 +987,7 @@ class Runtime:
         agent_class = self.get_agent_class(agent_type)   # 类型名 → 类（惰性解析）
         instance: Agent = agent_class.__new__(agent_class)   # __new__ + 绑定
         # 第一步：id 冲突——显式 id 撞注册表即报错（与 recover_agent 的
-        # 「要求已存在」对称）；自动 id 撞注册表（_agent_pool ∪ _nodes，
+        # “要求已存在”对称）；自动 id 撞注册表（_agent_pool ∪ _nodes，
         # 含显式 session_dir 外挂目录的在册节点）则重生成
         if agent_id is not None:
             if agent_id in self._agent_pool or agent_id in self._nodes:
@@ -1019,12 +1019,12 @@ class Runtime:
                     break
         instance.node_id = node_id
         instance.runtime = self
-        # None 翻译为 Runtime 的 node_id：「根」由「亲节点是 Runtime」表达，
+        # None 翻译为 Runtime 的 node_id：“根”由“亲节点是 Runtime”表达，
         # _parent_id 字段内不出现 None（inject 链终点可达性的结构保证之一）
         instance._parent_id = parent_id if parent_id is not None else self.node_id
         instance._session_dir = resolved_session   # session 目录（Agent.__init__ 的 _open_stores 使用，骨架期即可知）
         # 管线负责建 session 目录（FileRecordStore 惰性打开句柄时不建上级目录；
-        # 目录存在性检查已过，此处 mkdir 即「创建即注册」的物理侧）
+        # 目录存在性检查已过，此处 mkdir 即“创建即注册”的物理侧）
         resolved_session.mkdir(parents=True, exist_ok=True)
         instance.__init__()   # 同步骨架
         # 身份四键整写 meta.json（JSON 整写、非状态、Runtime 属主）。前置
@@ -1049,11 +1049,11 @@ class Runtime:
         await instance.setup(**kwargs)
         # PENDING 检查（固定步骤，非钩子；见 _check_pending——含 @on 暂记结算）
         _check_pending(instance, agent_type)
-        # 模型初始解析（agent.py 类属性契约「实例化时由 model_tag 解析填充
-        # 初始值」的管线落点）：setup 已直接赋 self.model（ModelConfig 任意
+        # 模型初始解析（agent.py 类属性契约“实例化时由 model_tag 解析填充
+        # 初始值”的管线落点）：setup 已直接赋 self.model（ModelConfig 任意
         # 模型通道）或改过 model_tag（__setattr__ 已重解析）则跳过；解析
         # 失败（模型文件缺失 / 标签未定义）即创建失败——fail fast，不留
-        # 「创建成功但首次调用才爆雷」的窗口
+        # “创建成功但首次调用才爆雷”的窗口
         if "model" not in instance.__dict__:
             instance.model = instance._resolve_model_tag(instance.model_tag)
         # 池注册——core 名录追加（读-改-写写透；整表替换会丢掉既有名录项）
@@ -1185,7 +1185,7 @@ class Runtime:
         instance._session_dir = self._load_session_dir(meta.get("session_dir"), agent_id)   # 自定义 session 目录回绑（缺省 persist_dir/agent_id，兼容旧数据）
         if not instance._session_dir.exists():
             # 名录在案但目录缺失：可诊断告警 + 按空 session 容忍（与
-            # Agent._restore 的「按空 session 处理并报出可诊断错误」同裁）；
+            # Agent._restore 的“按空 session 处理并报出可诊断错误”同裁）；
             # mkdir 使 _restore 的压缩 sync 有落点（FileRecordStore 不建上级目录）
             warnings.warn(
                 f"recover_agent: session directory of {agent_id} is missing"
@@ -1290,7 +1290,7 @@ class Runtime:
         if agent_id in self._nodes:
             return self._nodes[agent_id]   # 活实例直接返回
         if agent_id in self._agent_pool:
-            # 「有 key 无 value → 现场恢复」：按元数据重建实例并重放 session（在 recover_agent 内）
+            # “有 key 无 value → 现场恢复”：按元数据重建实例并重放 session（在 recover_agent 内）
             return await self.recover_agent(agent_id)
         if strict:
             raise KeyError(agent_id)   # strict=True：直接用写法的快速失败
@@ -1365,7 +1365,7 @@ class Runtime:
                 if nid not in to_archive and getattr(node, "_parent_id", None) == cur:
                     stack.append(nid)
         # 2. 清理亲代侧 child_ids（亲节点为活 Agent 时，写透整表）——archive 是显式
-        #    遗忘通道，对「child_ids 只增不改」的受控例外；child_ids 核心键
+        #    遗忘通道，对“child_ids 只增不改”的受控例外；child_ids 核心键
         #    在 core 袋（property 透传），读经 parent.child_ids、写经
         #    _core_state 整表写
         for aid in to_archive:
@@ -1818,7 +1818,7 @@ class Runtime:
         """
         if name in self._config_namespaces:
             raise ConfigNamespaceConflictError(name)   # 多扩展注册同一命名空间
-        self._config_namespaces[name] = schema   # 注册只是「谁负责校验」的声明，非访问控制
+        self._config_namespaces[name] = schema   # 注册只是“谁负责校验”的声明，非访问控制
 
     def register_resource(self, name: str, instance: Any) -> None:
         """注册共享 Resource（name → 任意实例，不要求继承基类）。

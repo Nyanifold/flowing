@@ -271,7 +271,7 @@ class Usage:
     """
     reasoning: int
     """推理 token——``output`` 的子集标注，不重复计入 ``total_tokens``；
-    provider 不报告时零填充。聚合语义为「本 turn 累计推理 token」。
+    provider 不报告时零填充。聚合语义为“本 turn 累计推理 token”。
     """
     total_tokens: int
     """总 token 数。恒等式：``total_tokens == input + output``。

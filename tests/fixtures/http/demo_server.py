@@ -9,7 +9,7 @@ method 决定 body/query、auth 优先于 headers、expected_status 之外的
 
 - ``POST /recommend/<category>`` → 200，回显 ``category`` / ``query`` /
   ``body`` / ``authorization`` / ``x-api-key``，另带无关字段 ``extra``
-  （供 output 提取的「无关字段忽略」断言）；
+  （供 output 提取的“无关字段忽略”断言）；
 - ``GET /search`` → 200，回显 ``query``；
 - ``POST /always-conflict`` → 409（expected_status 之外的状态码负例）。
 """

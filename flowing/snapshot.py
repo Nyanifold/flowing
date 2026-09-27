@@ -235,7 +235,7 @@ class ExecutionInfo:
     """自由标签的拷贝，用于分组观察（与 ``cancel_by_tag`` 的分组语义对应）；
     快照后源条目 tag 变化不影响本视图。"""
     started_at: datetime
-    """启动时间戳；供监控 / 日志 / 「跑了多久」类计算使用。"""
+    """启动时间戳；供监控 / 日志 / “跑了多久”类计算使用。"""
 
 
 @dataclass
@@ -361,7 +361,7 @@ class TurnContextInfo:
     """
 
     started_at: datetime
-    """逻辑 turn 开始时间戳；供「本 turn 已跑多久」类计算。"""
+    """逻辑 turn 开始时间戳；供“本 turn 已跑多久”类计算。"""
     finished_at: datetime | None
     """turn 收尾完成时间戳投影；快照仅存在于执行期间，故此字段恒为
     ``None``——完整取值见 ``flowing.agent.TurnResult.turn.finished_at``。"""
@@ -492,14 +492,14 @@ class RuntimeSnapshot:
     nodes: dict[str, NodeInfo]
     """``node_id`` → ``NodeInfo``；共享 ID 空间（``runtime-*`` /
     ``workflow-*`` / ``agent-*``）中全部节点的只读投影。注：Runtime 无
-    生命周期状态机，无 ``status`` 字段——「Runtime 是否已关闭」见
+    生命周期状态机，无 ``status`` 字段——“Runtime 是否已关闭”见
     ``Runtime.shutdown()`` 语义（``shutdown()`` 返回后即可知）。"""
     plugins: list[str]
     """已安装插件名（``plugin.name``）列表；未 ``runtime.install(...)`` 的扩展
-    不出现（「没存在过」，不是「被 skip」）。"""
+    不出现（“没存在过”，不是“被 skip”）。"""
     agents: dict[str, AgentInfo]
     """``agent_id`` → ``AgentInfo``；agent 池注册表投影（含未实例化条目，
-    见 ``AgentInfo.loaded``）。只给池级「有没有、载没载」，不展开 Agent
+    见 ``AgentInfo.loaded``）。只给池级“有没有、载没载”，不展开 Agent
     内部状态——实例级观测走 ``agent.snapshot()`` （两级快照不嵌套）。"""
     providers: list[str]
     """provider 候选清单名（仅名字；懒创建，实例化与否不进快照）。"""
@@ -564,13 +564,13 @@ class AgentSnapshot:
     """节点 id（``== agent_id == session_id``，身份连续、可重现）。"""
     parent_id: str | None
     """亲节点 id。``None`` 当且仅当该节点是 Runtime 自身（链终点无亲节点）；根
-    Agent 的亲节点指针指向其 Runtime 的 ``node_id``——「根」由「亲节点是 Runtime」
+    Agent 的亲节点指针指向其 Runtime 的 ``node_id``——“根”由“亲节点是 Runtime”
     表达，不由 ``None`` 表达。"""
     agent_type: str
     """字符串类型名（与池注册表元数据一致）。"""
     paused: bool
     """是否暂停中（``Agent.paused`` 的投影）。注：Agent 无生命周期状态机
-    ——「在干什么」由 ``current_turn`` / ``executions`` / ``paused`` 等
+    ——“在干什么”由 ``current_turn`` / ``executions`` / ``paused`` 等
     投影字段直接表达，快照不汇总出单一状态值。"""
     messages: MessageTreeInfo
     """消息级树规模与游标视图。"""

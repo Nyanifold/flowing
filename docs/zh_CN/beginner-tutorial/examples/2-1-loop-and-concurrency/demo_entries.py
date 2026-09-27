@@ -26,7 +26,7 @@ async def main() -> None:
         await asyncio.sleep(0.2)
     print("回合已收尾")
 
-    # ── 3. query()：等待「包含我这条消息」的回合产物 TurnResult ──
+    # ── 3. query()：等待“包含我这条消息”的回合产物 TurnResult ──
     result = await agent.query("再次用 glob 确认 notes 目录的文件数量，一句话回答。")
     print(f"query() 等到 TurnResult：status={result.status}")
     print(f"final_text 前 80 字：{result.final_text[:80]}")

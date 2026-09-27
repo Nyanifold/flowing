@@ -11,5 +11,5 @@ All independent. Then answer in one sentence.
 [tool:completed] todo -> 
 [tool:completed] todo -> 
 [tool:completed] app-info -> 
-已记住偏好「主题=深色」、加入待办「写周报」和「买牛奶」，本次启动是第 1 次；不过会话轮次无对应工具可查，我无法得知。
+已记住偏好“主题=深色”、加入待办“写周报”和“买牛奶”，本次启动是第 1 次；不过会话轮次无对应工具可查，我无法得知。
 (agent-main)>>>

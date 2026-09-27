@@ -253,7 +253,7 @@ async def ghost(x: int) -> int:
             ToolRegistry().get("./payment", source_dir=tmp_path)
 
     def test_bare_name_empty_dir_falls_through(self, tmp_path):
-        """「继续向下」仅裸名语境：目录存在但无合法入口 → 继续目录外链。"""
+        """“继续向下”仅裸名语境：目录存在但无合法入口 → 继续目录外链。"""
         (tmp_path / "hollow").mkdir()   # 空目录
         _write(tmp_path / "hollow.py", '''
 from flowing.tool import flowing_tool

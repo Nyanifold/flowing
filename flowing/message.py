@@ -875,7 +875,7 @@ class Message:
     tool_status: Literal["completed", "pending", "blocked", "cancelled", "error"] | None = None
     """工具结果状态五值（默认 ``None``）：仅 ``kind=TOOL`` 非 None。
     用内联 ``Literal`` 而非 import ``flowing.tool.ToolStatus``——保持
-    「tool 认识 message、message 不认识 tool」的单向依赖。
+    “tool 认识 message、message 不认识 tool”的单向依赖。
     ``__post_init__`` 双向强制。
     """
     id: str | None = None
@@ -894,7 +894,7 @@ class Message:
     链到上一条）。fork 目标、上下文上溯、恢复重建的唯一依据。
     """
     turn_end: bool = False
-    """「逻辑 turn 关闭」边界标记（默认 ``False``）；仅 PROVIDER 消息上
+    """“逻辑 turn 关闭”边界标记（默认 ``False``）；仅 PROVIDER 消息上
     有语义。由 agent 层写入（``_run_turn`` 挂树时：turn 随本条消息关闭
     ——自然完成或取消 / abort → ``True``），与 provider 层的
     ``ProviderResponse.finish`` 分层。恢复时定位完整 turn 边界与
@@ -1151,7 +1151,7 @@ def estimate_block_tokens(block: ContentBlock) -> int:
                 + _text_tokens(json.dumps(block.args, ensure_ascii=False)))
     if isinstance(block, StructBlock):
         return _text_tokens(json.dumps(block.data, ensure_ascii=False))
-    return 0   # 未知块类型按「无文本内容」计 0
+    return 0   # 未知块类型按“无文本内容”计 0
 
 
 def estimate_message_tokens(msg: Message) -> int:
@@ -1917,7 +1917,7 @@ class MessageChain:
                 set(getattr(b, "tags", None) or []) & tags for b in m.content
             ):
                 to_remove.append(mid)
-        # 从后往前（子先删、父后删）：父恒先于子产生 → 逆产生序即「链尾向根」
+        # 从后往前（子先删、父后删）：父恒先于子产生 → 逆产生序即“链尾向根”
         for mid in reversed(to_remove):
             self.remove(mid)
         return len(to_remove)

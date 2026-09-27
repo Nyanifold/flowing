@@ -246,7 +246,7 @@ class ManagedList(Generic[Tg]):
         """
         count = 0
         for item in self._items:  # 遍历全部条目（含已停用者），只处理当前启用的匹配条目
-            if item.enabled and tag in item.tags:  # 已停用者跳过，保证「本次新停用」的计数口径
+            if item.enabled and tag in item.tags:  # 已停用者跳过，保证“本次新停用”的计数口径
                 item.enabled = False  # 只改 enabled 字段：条目保留原位、顺序不变，之后可恢复
                 count += 1
         return count
@@ -268,7 +268,7 @@ class ManagedList(Generic[Tg]):
         """
         count = 0
         for item in self._items:
-            if not item.enabled and tag in item.tags:  # 已启用者跳过，保证「本次新恢复」的计数口径
+            if not item.enabled and tag in item.tags:  # 已启用者跳过，保证“本次新恢复”的计数口径
                 item.enabled = True  # 恢复且保持原注册顺序
                 count += 1
         return count
@@ -338,7 +338,7 @@ class ManagedList(Generic[Tg]):
         """
         count = 0
         for item in self._items:
-            if not item.enabled and item.by == owner:  # 已启用者跳过，保证「本次新恢复」的计数口径
+            if not item.enabled and item.by == owner:  # 已启用者跳过，保证“本次新恢复”的计数口径
                 item.enabled = True  # 恢复且保持原注册顺序
                 count += 1
         return count

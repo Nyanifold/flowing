@@ -4,11 +4,11 @@
 Actually I can't do both in parallel meaningfully since todo should reflect exploration. Let me dispatch explore first.
 [tool_call] subagent-invoke {"agent_type": "explore-agent", "name": "explore-target", "prompt": "请查看并汇报这个绝对路径目录的内容与代码结构：\n<仓库根>/dev-docs/beginner-tutorial/examples/5-5-final-assembly/target\n\n要求：\n1. 列出目录树（含子目录与文件），标注是否为源码/配置/构建产物；\n2. 识别项目类型、入口文件、构建/运行方式（若有 package.json、pyproject.toml、Makefile、CMakeLists.txt、go.mod 等，请读取其关键字段）；\n3. 概括各主要源文件的职责（文件名 + 一句话说明）；\n4. 指出现有的文档文件（如已有 README、docs 目录）；\n5. 不要修改任何文件，只做只读探查。\n\n最后用中文给出结构化汇报。"}
 [tool:completed] subagent-invoke -> 
-explore 已汇报完毕。关键发现：`target/` 很小（仅 `pkg/calc.py` + 一个已有的 `README.md`），它是父工程 `5-5-final-assembly` 的**运行时工作目录**，本身无构建配置、无独立入口。我把「为该项目写一个 README.md」拆成以下清单：
+explore 已汇报完毕。关键发现：`target/` 很小（仅 `pkg/calc.py` + 一个已有的 `README.md`），它是父工程 `5-5-final-assembly` 的**运行时工作目录**，本身无构建配置、无独立入口。我把“为该项目写一个 README.md”拆成以下清单：
 [thinking] Explore done. Interesting: target already has README.md. The user asks to write a README.md for this project. So the task is to write/update README.md. Let me build the todo list and show the user. Then dispatch to coder.
 
 Let me create the todo list.
-[tool_call] todo {"tasks_text": "[ ] 任务1｜确认定位与内容边界：明确 target/ 是 flowing「最终装配」示例的运行时工作目录（非独立工程），README 需按此定位撰写，不虚构构建/依赖文件\n[ ] 任务2｜盘点素材：以 explore 汇报为依据，梳理目录结构（pkg/calc.py）、calc.py 的 add/div 接口与异常行为、父工程入口与运行方式（flowing repl . --cwd target / uv run python demo_fanout.py）\n[ ] 任务3｜派 coder 撰写 target/README.md，必备章节：项目简介、目录结构、环境准备（Python 3.13 + uv + DEEPSEEK_API_KEY）、运行方式、calc 模块 API 与示例代码、注意事项\n[ ] 任务4｜校验交付：确认 README.md 已写入且路径正确、内容与实际目录一致、无编造字段（无 pyproject.toml/requirements.txt/Makefile 即不得声称存在）\n[ ] 任务5｜向用户汇总：回报最终 README 的路径、结构大纲与校验结果"}
+[tool_call] todo {"tasks_text": "[ ] 任务1｜确认定位与内容边界：明确 target/ 是 flowing“最终装配”示例的运行时工作目录（非独立工程），README 需按此定位撰写，不虚构构建/依赖文件\n[ ] 任务2｜盘点素材：以 explore 汇报为依据，梳理目录结构（pkg/calc.py）、calc.py 的 add/div 接口与异常行为、父工程入口与运行方式（flowing repl . --cwd target / uv run python demo_fanout.py）\n[ ] 任务3｜派 coder 撰写 target/README.md，必备章节：项目简介、目录结构、环境准备（Python 3.13 + uv + DEEPSEEK_API_KEY）、运行方式、calc 模块 API 与示例代码、注意事项\n[ ] 任务4｜校验交付：确认 README.md 已写入且路径正确、内容与实际目录一致、无编造字段（无 pyproject.toml/requirements.txt/Makefile 即不得声称存在）\n[ ] 任务5｜向用户汇总：回报最终 README 的路径、结构大纲与校验结果"}
 [tool:completed] todo -> 
 清单已建。其中任务1、2 属于前期定位/素材盘点，我已依据 explore 的汇报完成；现在把任务3（撰写 README.md）派给 coder。
 [thinking] Now dispatch coder to write README.md.
@@ -18,19 +18,19 @@ Note: target/README.md already exists — so the coder should either overwrite o
 Tasks 1 and 2 are analysis tasks done by me from explore's report. Let me mark them done and dispatch task 3.
 
 I'll just dispatch coder now.
-[tool_call] subagent-invoke {"agent_type": "coder", "name": "write-readme", "prompt": "任务：为项目写一个 README.md。\n\n目标目录（所有写入必须在此目录内）：\n<仓库根>/dev-docs/beginner-tutorial/examples/5-5-final-assembly/target\n\n前置事实（已由 explore-agent 只读探查确认，请以此为准，勿虚构）：\n- 该目录是 flowing 多智能体「最终装配」示例（父工程为同级 5-5-final-assembly/）的**运行时工作目录（cwd）**，不是可独立构建的工程。\n- 目录内容：README.md（已有，为示例演示产物，本次可覆盖重写）+ pkg/calc.py。\n- pkg/ 内无 __init__.py（按命名空间包导入）。\n- **不存在** pyproject.toml / requirements.txt / Makefile / package.json 等任何构建或依赖配置文件，也没有 __pycache__、dist 等构建产物。README 中不得声称存在这些文件。\n- pkg/calc.py 提供两个纯函数：add(a, b) 返回 a+b；div(a, b) 返回 a/b，当 b==0 时抛 ValueError(\"除数不能为 0\")。无参数类型校验。\n- 环境：Python 3.13 + uv（实测 3.13.6 / uv 0.8.11）；父工程入口为 5-5-final-assembly/main.py（async def main(cwd, resume)）。\n- 运行方式（均在**父工程目录**下执行，cwd 指向本目录）：\n  - export DEEPSEEK_API_KEY=sk-xxx  （必需，providers.yaml 用 {{env.DEEPSEEK_API_KEY}}）\n  - cd 5-5-final-assembly && flowing repl . --cwd target\n  - 或 uv run python demo_fanout.py\n\n要求交付物：重写 <仓库根>/dev-docs/beginner-tutorial/examples/5-5-final-assembly/target/README.md，使用中文，包含以下章节：\n1. 项目简介（说明这是本示例的运行时工作目录，非独立工程）\n2. 目录结构（用代码块展示 target/ 树）\n3. 环境准备（Python 3.13、uv、DEEPSEEK_API_KEY 环境变量）\n4. 运行方式（列出上述命令，并说明需在父工程目录执行、cwd 指向 target）\n5. calc 模块 API 说明 + 示例代码（add / div，含 div 除零抛 ValueError 的示例）\n6. 注意事项（无独立构建/依赖文件、依赖由父工程 uv 环境提供、pkg 无 __init__.py 等）\n\n写入前请先读取目录内实际情况复核；如发现与上述事实不符，以实际文件为准并在交付说明中标注差异。完成后回报：写入的绝对路径 + 最终 README 的章节大纲 + 与你复核到的实况是否一致。"}
+[tool_call] subagent-invoke {"agent_type": "coder", "name": "write-readme", "prompt": "任务：为项目写一个 README.md。\n\n目标目录（所有写入必须在此目录内）：\n<仓库根>/dev-docs/beginner-tutorial/examples/5-5-final-assembly/target\n\n前置事实（已由 explore-agent 只读探查确认，请以此为准，勿虚构）：\n- 该目录是 flowing 多智能体“最终装配”示例（父工程为同级 5-5-final-assembly/）的**运行时工作目录（cwd）**，不是可独立构建的工程。\n- 目录内容：README.md（已有，为示例演示产物，本次可覆盖重写）+ pkg/calc.py。\n- pkg/ 内无 __init__.py（按命名空间包导入）。\n- **不存在** pyproject.toml / requirements.txt / Makefile / package.json 等任何构建或依赖配置文件，也没有 __pycache__、dist 等构建产物。README 中不得声称存在这些文件。\n- pkg/calc.py 提供两个纯函数：add(a, b) 返回 a+b；div(a, b) 返回 a/b，当 b==0 时抛 ValueError(\"除数不能为 0\")。无参数类型校验。\n- 环境：Python 3.13 + uv（实测 3.13.6 / uv 0.8.11）；父工程入口为 5-5-final-assembly/main.py（async def main(cwd, resume)）。\n- 运行方式（均在**父工程目录**下执行，cwd 指向本目录）：\n  - export DEEPSEEK_API_KEY=sk-xxx  （必需，providers.yaml 用 {{env.DEEPSEEK_API_KEY}}）\n  - cd 5-5-final-assembly && flowing repl . --cwd target\n  - 或 uv run python demo_fanout.py\n\n要求交付物：重写 <仓库根>/dev-docs/beginner-tutorial/examples/5-5-final-assembly/target/README.md，使用中文，包含以下章节：\n1. 项目简介（说明这是本示例的运行时工作目录，非独立工程）\n2. 目录结构（用代码块展示 target/ 树）\n3. 环境准备（Python 3.13、uv、DEEPSEEK_API_KEY 环境变量）\n4. 运行方式（列出上述命令，并说明需在父工程目录执行、cwd 指向 target）\n5. calc 模块 API 说明 + 示例代码（add / div，含 div 除零抛 ValueError 的示例）\n6. 注意事项（无独立构建/依赖文件、依赖由父工程 uv 环境提供、pkg 无 __init__.py 等）\n\n写入前请先读取目录内实际情况复核；如发现与上述事实不符，以实际文件为准并在交付说明中标注差异。完成后回报：写入的绝对路径 + 最终 README 的章节大纲 + 与你复核到的实况是否一致。"}
 [tool:completed] subagent-invoke -> 
 coder 已交付。更新清单状态：
 [thinking] Now mark todos done and summarize to user.
 
 I should update the todo list marking all done.
-[tool_call] todo {"tasks_text": "[x] 任务1｜确认定位与内容边界：明确 target/ 是 flowing「最终装配」示例的运行时工作目录（非独立工程），README 需按此定位撰写，不虚构构建/依赖文件\n[x] 任务2｜盘点素材：以 explore 汇报为依据，梳理目录结构（pkg/calc.py）、calc.py 的 add/div 接口与异常行为、父工程入口与运行方式（flowing repl . --cwd target / uv run python demo_fanout.py）\n[x] 任务3｜派 coder 撰写 target/README.md，必备章节：项目简介、目录结构、环境准备（Python 3.13 + uv + DEEPSEEK_API_KEY）、运行方式、calc 模块 API 与示例代码、注意事项\n[x] 任务4｜校验交付：确认 README.md 已写入且路径正确、内容与实际目录一致、无编造字段（无 pyproject.toml/requirements.txt/Makefile 即不得声称存在）\n[x] 任务5｜向用户汇总：回报最终 README 的路径、结构大纲与校验结果"}
+[tool_call] todo {"tasks_text": "[x] 任务1｜确认定位与内容边界：明确 target/ 是 flowing“最终装配”示例的运行时工作目录（非独立工程），README 需按此定位撰写，不虚构构建/依赖文件\n[x] 任务2｜盘点素材：以 explore 汇报为依据，梳理目录结构（pkg/calc.py）、calc.py 的 add/div 接口与异常行为、父工程入口与运行方式（flowing repl . --cwd target / uv run python demo_fanout.py）\n[x] 任务3｜派 coder 撰写 target/README.md，必备章节：项目简介、目录结构、环境准备（Python 3.13 + uv + DEEPSEEK_API_KEY）、运行方式、calc 模块 API 与示例代码、注意事项\n[x] 任务4｜校验交付：确认 README.md 已写入且路径正确、内容与实际目录一致、无编造字段（无 pyproject.toml/requirements.txt/Makefile 即不得声称存在）\n[x] 任务5｜向用户汇总：回报最终 README 的路径、结构大纲与校验结果"}
 [tool:completed] todo -> 
 全部完成，向你汇总。
 
 ## 探查结论（explore-agent）
 `target/` 内容极小、目录干净：**只有 `README.md` + `pkg/calc.py` 两个文件**。
-- 它是 flowing 多智能体「最终装配」示例（父工程 `5-5-final-assembly/`）的**运行时工作目录（cwd）**，不是可独立构建的工程。
+- 它是 flowing 多智能体“最终装配”示例（父工程 `5-5-final-assembly/`）的**运行时工作目录（cwd）**，不是可独立构建的工程。
 - 无 `pyproject.toml` / `requirements.txt` / `Makefile` / `package.json`，无任何构建产物；`pkg/` 无 `__init__.py`。
 - `calc.py`：`add(a,b)`、`div(a,b)`（除零抛 `ValueError("除数不能为 0")`）。
 - 环境：Python 3.13（实测 3.13.6）+ uv（0.8.11）；运行需 `DEEPSEEK_API_KEY`。
@@ -54,7 +54,7 @@ I should update the todo list marking all done.
 ## 两点说明（已妥善处理）
 - 运行命令写法：父工程实际用 `uv run flowing repl . --cwd "$(pwd)/target"`（带 `uv run` + 绝对路径），新 README **两种写法都列出**，以 `uv run` 形式为主。
 - 验证过程中 Python 生成的 `pkg/__pycache__` 已被 coder 删除，目录已还原，工作目录外无改动。
-(agent-main)>>>说明一下：上一轮 coder 已经写过一版 `target/README.md`。既然你要求按同一结构+清单再走一遍「写 + read 自检」，我就**复用同一个 coder 实例**（它已有上下文），让它重写并显式做一遍 read 自检。
+(agent-main)>>>说明一下：上一轮 coder 已经写过一版 `target/README.md`。既然你要求按同一结构+清单再走一遍“写 + read 自检”，我就**复用同一个 coder 实例**（它已有上下文），让它重写并显式做一遍 read 自检。
 [thinking] The user asks to dispatch coder to write README.md per the structure and task list, and after writing, have it self-check with read and report back.
 
 But we already did this in the previous turn. The README.md was already written. So the user may want us to redo it, or they missed it? The instruction is explicit: "派 coder 写出 README.md，写完让它用 read 自检一遍并向你汇总。"
@@ -68,17 +68,17 @@ I'll resume the write-readme instance with a prompt: confirm/rewrite README.md p
 Let me do it. Also should update todos? The todo list already all done. The user wants this task redone as part of flow. I could add a new task or just proceed. I think resuming and reporting is enough; but maybe re-show todo. The instruction said use todo to break down — we already did. I'll just dispatch and report.
 
 Let me resume the coder instance.
-[tool_call] subagent-invoke {"resume": "write-readme", "prompt": "按上次同样的结构和任务清单，再完整走一遍写 + 自检流程：\n\n第一步（写）：重写\n<仓库根>/dev-docs/beginner-tutorial/examples/5-5-final-assembly/target/README.md\n使用中文，保留上次的六章结构：\n1. 项目简介（本目录是 flowing「最终装配」示例的运行时工作目录 cwd，非独立可构建工程）\n2. 目录结构（target/ 实际目录树代码块）\n3. 环境准备（Python 3.13、uv、必需的 DEEPSEEK_API_KEY）\n4. 运行方式（在父工程目录执行；uv run flowing repl . --cwd target 及绝对路径写法；uv run python demo_fanout.py）\n5. calc 模块 API 说明 + 示例代码（add / div，含 div 除零抛 ValueError(\"除数不能为 0\") 的示例）\n6. 注意事项（无构建/依赖文件、依赖由父工程 uv 提供、pkg 无 __init__.py、无入参类型校验等）\n仍不得声称存在 pyproject.toml / requirements.txt / Makefile / package.json 等不存在的文件。\n\n第二步（read 自检，必做）：用 read 工具把刚写入的 README.md 完整读回来逐条核对，并逐项确认：\n- 文件中出现的每一个目录结构条目、文件路径、函数签名与异常消息，是否与 target/ 内实际情况一致；\n- 是否存在编造的配置/构建文件或不实描述；\n- 六章是否齐全；\n- 代码示例是否可运行（如可运行则实跑一次，并在结束后清理生成的 __pycache__ 等副产物，保证目录还原为 README.md + pkg/calc.py）。\n如自检发现不一致，请直接修正 README.md 并重读确认。\n\n第三步（汇报）：回报给我以下内容——\n1) 写入的绝对路径与最终行数；\n2) 六章大纲（每章一句话）；\n3) read 自检的逐项核对结果（一致 / 修正项）；\n4) 是否存在与实况不符之处或残留副产物。"}
+[tool_call] subagent-invoke {"resume": "write-readme", "prompt": "按上次同样的结构和任务清单，再完整走一遍写 + 自检流程：\n\n第一步（写）：重写\n<仓库根>/dev-docs/beginner-tutorial/examples/5-5-final-assembly/target/README.md\n使用中文，保留上次的六章结构：\n1. 项目简介（本目录是 flowing“最终装配”示例的运行时工作目录 cwd，非独立可构建工程）\n2. 目录结构（target/ 实际目录树代码块）\n3. 环境准备（Python 3.13、uv、必需的 DEEPSEEK_API_KEY）\n4. 运行方式（在父工程目录执行；uv run flowing repl . --cwd target 及绝对路径写法；uv run python demo_fanout.py）\n5. calc 模块 API 说明 + 示例代码（add / div，含 div 除零抛 ValueError(\"除数不能为 0\") 的示例）\n6. 注意事项（无构建/依赖文件、依赖由父工程 uv 提供、pkg 无 __init__.py、无入参类型校验等）\n仍不得声称存在 pyproject.toml / requirements.txt / Makefile / package.json 等不存在的文件。\n\n第二步（read 自检，必做）：用 read 工具把刚写入的 README.md 完整读回来逐条核对，并逐项确认：\n- 文件中出现的每一个目录结构条目、文件路径、函数签名与异常消息，是否与 target/ 内实际情况一致；\n- 是否存在编造的配置/构建文件或不实描述；\n- 六章是否齐全；\n- 代码示例是否可运行（如可运行则实跑一次，并在结束后清理生成的 __pycache__ 等副产物，保证目录还原为 README.md + pkg/calc.py）。\n如自检发现不一致，请直接修正 README.md 并重读确认。\n\n第三步（汇报）：回报给我以下内容——\n1) 写入的绝对路径与最终行数；\n2) 六章大纲（每章一句话）；\n3) read 自检的逐项核对结果（一致 / 修正项）；\n4) 是否存在与实况不符之处或残留副产物。"}
 [tool:completed] subagent-invoke -> 
-coder 已按同一结构完成「写 + read 自检」，向你汇总。
+coder 已按同一结构完成“写 + read 自检”，向你汇总。
 
 ## 交付物
 **路径**：`<仓库根>/dev-docs/beginner-tutorial/examples/5-5-final-assembly/target/README.md`
 **行数**：142 行（中文，覆盖重写）
 
 ## 六章大纲
-1. **项目简介** — 本目录是 flowing「最终装配」示例的运行时工作目录（cwd），非独立可构建工程，并说明 cwd 注入链
-2. **目录结构** — `target/` 实际目录树（`README.md` + `pkg/calc.py`），另附标注「不属于本目录」的父工程结构
+1. **项目简介** — 本目录是 flowing“最终装配”示例的运行时工作目录（cwd），非独立可构建工程，并说明 cwd 注入链
+2. **目录结构** — `target/` 实际目录树（`README.md` + `pkg/calc.py`），另附标注“不属于本目录”的父工程结构
 3. **环境准备** — Python 3.13（3.13.6）/ uv 0.8.x（0.8.11）/ 必需的 `DEEPSEEK_API_KEY`（含缺失行为）
 4. **运行方式** — 父工程目录下 `uv run flowing repl . --cwd target`（含绝对路径写法）与 `uv run python demo_fanout.py`
 5. **calc 模块 API** — `add` / `div` 签名与行为表格 + 可运行示例（含除零 try/except）
@@ -86,7 +86,7 @@ coder 已按同一结构完成「写 + read 自检」，向你汇总。
 
 ## read 自检结果（11 项全部一致）
 - ✅ 目录树条目、父工程 12 个条目、`add`/`div` 签名、异常消息 `ValueError("除数不能为 0")`、`main(cwd, resume)`、`{{env.DEEPSEEK_API_KEY}}` 等**均逐项与实况吻合**
-- ✅ 不存在的文件（`pyproject.toml` 等）在文中**仅出现于「不存在」语境**，无编造
+- ✅ 不存在的文件（`pyproject.toml` 等）在文中**仅出现于“不存在”语境**，无编造
 - ✅ 六章齐全；示例代码实跑输出 `4.0` / `2.5` / `出错了：除数不能为 0`，与注释一致
 - **修正 1 处**：父工程树下方补了一条说明，明确该树仅列主要条目、非穷举（修正后已重读确认）
 
@@ -97,15 +97,15 @@ coder 已按同一结构完成「写 + read 自检」，向你汇总。
 Actually to keep discipline, I could show a todo reflecting "写 + read 自检" completed. But the list is already all done. I'll just summarize. Maybe add a short note updating task list — I'll call todo with the same 5 tasks marked done plus a note? Simpler: report.
 
 I'll report concisely.
-coder 已按同一结构完成「写 + read 自检」，向你汇总。
+coder 已按同一结构完成“写 + read 自检”，向你汇总。
 
 ## 交付物
 **路径**：`<仓库根>/dev-docs/beginner-tutorial/examples/5-5-final-assembly/target/README.md`
 **行数**：142 行（中文，覆盖重写）
 
 ## 六章大纲
-1. **项目简介** — 本目录是 flowing「最终装配」示例的运行时工作目录（cwd），非独立可构建工程，并说明 cwd 注入链
-2. **目录结构** — `target/` 实际目录树（`README.md` + `pkg/calc.py`），另附标注「不属于本目录」的父工程结构
+1. **项目简介** — 本目录是 flowing“最终装配”示例的运行时工作目录（cwd），非独立可构建工程，并说明 cwd 注入链
+2. **目录结构** — `target/` 实际目录树（`README.md` + `pkg/calc.py`），另附标注“不属于本目录”的父工程结构
 3. **环境准备** — Python 3.13（3.13.6）/ uv 0.8.x（0.8.11）/ 必需的 `DEEPSEEK_API_KEY`（含缺失行为）
 4. **运行方式** — 父工程目录下 `uv run flowing repl . --cwd target`（含绝对路径写法）与 `uv run python demo_fanout.py`
 5. **calc 模块 API** — `add` / `div` 签名与行为表格 + 可运行示例（含除零 try/except）
@@ -113,7 +113,7 @@ coder 已按同一结构完成「写 + read 自检」，向你汇总。
 
 ## read 自检结果（11 项全部一致）
 - ✅ 目录树条目、父工程 12 个条目、`add`/`div` 签名、异常消息 `ValueError("除数不能为 0")`、`main(cwd, resume)`、`{{env.DEEPSEEK_API_KEY}}` 等**均逐项与实况吻合**
-- ✅ 不存在的文件（`pyproject.toml` 等）在文中**仅出现于「不存在」语境**，无编造
+- ✅ 不存在的文件（`pyproject.toml` 等）在文中**仅出现于“不存在”语境**，无编造
 - ✅ 六章齐全；示例代码实跑输出 `4.0` / `2.5` / `出错了：除数不能为 0`，与注释一致
 - **修正 1 处**：父工程树下方补了一条说明，明确该树仅列主要条目、非穷举（修正后已重读确认）
 

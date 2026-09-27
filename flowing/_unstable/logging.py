@@ -117,7 +117,7 @@ logging_plugin_key: str = "logging:plugin"
 
 LogLevel = Literal["OFF", "INFO", "DEBUG"]
 """全局等级字面量：``"OFF"`` / ``"INFO"`` / ``"DEBUG"``。
-语义见模块 docstring「等级语义」。
+语义见模块 docstring“等级语义”。
 """
 
 _LEVELS: tuple[str, ...] = ("OFF", "INFO", "DEBUG")
@@ -144,7 +144,7 @@ _INFO_HOOK_POINTS: tuple[str, ...] = (
     "on_fork",
 )
 """INFO 级关键节点清单（20 点，``use_logging`` 立即挂钩；模块 docstring
-「等级语义」的落地名表）。"""
+“等级语义”的落地名表）。"""
 
 _EXTENSION_HOOK_POINTS: dict[str, tuple[str, ...]] = {
     "skill": ("before_skill_load", "after_skill_load"),
@@ -379,14 +379,14 @@ def use_logging(agent: Agent) -> None:
         agent.hooks._hook_points[hook_name](
             _make_observer(hook_name), by="logging")
 
-    # INFO 关键节点立即挂钩（by="logging"，清单见模块 docstring「等级语义」；
+    # INFO 关键节点立即挂钩（by="logging"，清单见模块 docstring“等级语义”；
     # handler 内早退判断当前等级）
     for _name in _INFO_HOOK_POINTS:
         _attach(_name)
 
     async def _attach_debug(host: Agent, _value: Any = None) -> None:
         # DEBUG 全集与插件钩子点的延迟挂钩：挂载面按当前等级分流
-        # （只影响「挂不挂」；等级判定统一收敛在 handler 触发时回读，
+        # （只影响“挂不挂”；等级判定统一收敛在 handler 触发时回读，
         # 与早退逻辑叠加不冲突）
         level = plugin.level
         if level == "OFF":

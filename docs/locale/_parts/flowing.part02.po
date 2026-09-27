@@ -1,7 +1,7 @@
 #: flowing.message.MessageChain.remove:18 of
 msgid ""
-"重挂目标 = 被删消息的亲节点：删除**尾部消息**是纯截断语义 （无子，不产生 move）；删除**中间消息**由「逐行重写」降为 「N 条 "
-"move + 1 条 tombstone」，运行期 O(子数)。"
+"重挂目标 = 被删消息的亲节点：删除**尾部消息**是纯截断语义 （无子，不产生 move）；删除**中间消息**由“逐行重写”降为 “N 条 "
+"move + 1 条 tombstone”，运行期 O(子数)。"
 msgstr ""
 "Reattach target = the deleted message's parent: deleting a **tail message** is pure truncation semantics (no children, no move produced); deleting a **middle message** degrades from \"line-by-line rewrite\" to \"N "
 "moves + 1 tombstone\", O(child count) at runtime."
@@ -12,8 +12,8 @@ msgstr "Raises ``KeyError`` for a nonexistent id (repeated deletion is not a sil
 
 #: flowing.message.MessageChain.remove:22 of
 msgid ""
-"不移动 ``current_head_id``；删除 head 上溯路径上的消息属于调用 方责任。需要「删除当前 head "
-"并回退到亲节点」时，请使用 ``Agent.remove`` / ``Agent.pop`` （Agent 层负责 head 维护）。"
+"不移动 ``current_head_id``；删除 head 上溯路径上的消息属于调用 方责任。需要“删除当前 head "
+"并回退到亲节点”时，请使用 ``Agent.remove`` / ``Agent.pop`` （Agent 层负责 head 维护）。"
 msgstr ""
 "Does not move ``current_head_id``; deleting messages on the head's upward path is the caller's responsibility. To \"delete the current head "
 "and fall back to its parent\", use ``Agent.remove`` / ``Agent.pop`` (the Agent layer is responsible for head maintenance)."
@@ -39,7 +39,7 @@ msgid "消息任一 ``content`` block 的 ``tags`` 与给定 ``tags`` 相交。"
 msgstr "The ``tags`` of any ``content`` block of the message intersects the given ``tags``."
 
 #: flowing.message.MessageChain.remove_by_tags:11 of
-msgid "支撑「临时注入、响应后清洗」场景：``after_turn`` 钩子内按 tags 擦除本回合附加的提醒消息，保证不累积到后续轮次。"
+msgid "支撑“临时注入、响应后清洗”场景：``after_turn`` 钩子内按 tags 擦除本回合附加的提醒消息，保证不累积到后续轮次。"
 msgstr "Supports the \"temporary injection, clean up after response\" scenario: inside the ``after_turn`` hook, erase the reminder messages attached this turn by tags, guaranteeing they do not accumulate into later turns."
 
 #: flowing.message.MessageChain.remove_by_tags:16 of
@@ -128,7 +128,7 @@ msgstr "Subtree reconnect: changes the ``parent_id`` of ``msg_id``, moving the w
 
 #: flowing.message.MessageChain.reparent:5 of
 msgid ""
-"「单点 op，子树效应」——只改目标消息一个字段，其后代链不变，整个 子树自然跟着走。是五 op 中唯一能移动既有结构的 op：分支迁移、 "
+"“单点 op，子树效应”——只改目标消息一个字段，其后代链不变，整个 子树自然跟着走。是五 op 中唯一能移动既有结构的 op：分支迁移、 "
 "删除前的子树保全、压缩摘要分支的挂接都经它完成。"
 msgstr ""
 "\"Single-point op, subtree effect\" — only one field of the target message is changed, its descendant chain is untouched, and the whole subtree naturally follows. It is the only one of the five ops that can move existing structure: branch migration, "
@@ -167,7 +167,7 @@ msgstr ""
 ":meth:`flowing.agent.Agent.fork`."
 
 #: flowing.message.MessageKind:1 of
-msgid "消息来源枚举：判别「这条消息来自谁」（八值，跨版本稳定契约）。"
+msgid "消息来源枚举：判别“这条消息来自谁”（八值，跨版本稳定契约）。"
 msgstr "Message source enum: determines \"who this message came from\" (eight values, cross-version stable contract)."
 
 #: flowing.message.MessageKind:5 of
@@ -182,8 +182,8 @@ msgstr ""
 
 #: flowing.message.MessageKind:10 of
 msgid ""
-"命名原则：所有 kind 描述「来自谁」而非「扮演什么角色」。``PROVIDER`` 是 Provider "
-"输出的统一来源名——不取会隐含「纯文本 LLM」的 「assistant」读法，以覆盖文生图 / 语音 / 视频等多模态输出。 "
+"命名原则：所有 kind 描述“来自谁”而非“扮演什么角色”。``PROVIDER`` 是 Provider "
+"输出的统一来源名——不取会隐含“纯文本 LLM”的 “assistant”读法，以覆盖文生图 / 语音 / 视频等多模态输出。 "
 "``PLUGIN`` / ``SUBAGENT`` 的存在是因为 Skill 渲染结果与子 Agent "
 "返回结果永远是独立消息，不能合并进工具结果消息。"
 msgstr ""
@@ -202,7 +202,7 @@ msgstr ""
 
 #: flowing.message.MessageKind:31 of
 msgid ""
-"各 kind 的典型 ``content`` 组合（典型情况而非硬约束，框架核心不 验证「某 kind 可否含某 block type」，合法性由"
+"各 kind 的典型 ``content`` 组合（典型情况而非硬约束，框架核心不 验证“某 kind 可否含某 block type”，合法性由"
 " Provider adapter 在 组装 API 请求时验证）："
 msgstr ""
 "Typical ``content`` combinations of each kind (typical cases, not hard constraints — the framework core does not validate \"whether a kind may contain a block type\"; legality is verified by the"
@@ -277,7 +277,7 @@ msgid ""
 "``PEER`` 与 ``EVENT`` 的区分：PEER = 另一个 Agent 实例有意图地 "
 "主动发送（语义上更接近用户消息，``source`` 典型值 ``\"message_to\"`` / "
 "``\"agent_delegate\"`` / ``\"agent_steer\"``）；EVENT = 非 Agent 实体 "
-"触发的「某事发生了」（辅助信息，``source`` 典型值 ``\"scheduled_task\"`` / "
+"触发的“某事发生了”（辅助信息，``source`` 典型值 ``\"scheduled_task\"`` / "
 "``\"plugin_event\"`` / ``\"tool_result\"``）。 钩子（如 "
 "``before_turn``）可据此按触发来源做精准决策。"
 msgstr ""
@@ -364,7 +364,7 @@ msgstr ""
 
 #: flowing.message.MessagePriority:8 of
 msgid ""
-"用 ``IntEnum`` 且「更优先 = 更小数值」使排序实现为普通数值升序 + 入队 序号，无需自定义比较器。``INTERRUPT`` "
+"用 ``IntEnum`` 且“更优先 = 更小数值”使排序实现为普通数值升序 + 入队 序号，无需自定义比较器。``INTERRUPT`` "
 "用于打断当前回合的插队场景； ``STEER`` 仅弱于它——回合进行中入队的 STEER 消息被当轮吸收，当轮 LLM "
 "调用的上下文即可见但不打断；``HIGH`` 的典型场景是人工催办、 外部高优告警等紧急但不打断当前回合的通知。"
 msgstr ""
@@ -443,7 +443,7 @@ msgstr "The Agent's message queue: an async queue with priority sorting + same-p
 #: flowing.message.MessageQueue:5 of
 msgid ""
 "每个 Agent 一个独立队列（``Agent._message_queue``），是外部消息进入 逻辑 turn 循环的唯一通道。工作循环经 "
-"``Agent._dequeue()`` 消费—— 默认批次为「队首 INTERRUPT/STEER 连续段 + 其后第一条非紧急消息」 "
+"``Agent._dequeue()`` 消费—— 默认批次为“队首 INTERRUPT/STEER 连续段 + 其后第一条非紧急消息” "
 "（队首即非紧急时批次为单条），drain / 合并 / 按来源分组等更宽的 批量策略由覆写 ``_dequeue()`` 实现，本类提供 "
 "``drain_all`` / ``take_while`` 等批量取出原语支撑默认批次与覆写。"
 msgstr ""
@@ -456,7 +456,7 @@ msgstr ""
 msgid ""
 "队列只承诺最小调度语义：按 ``MessagePriority`` 数值升序、同级按入队 顺序 "
 "FIFO。防饿死、来源加权等策略不在框架核心。忙时不拒绝：活跃 turn 中入队的消息自然排队，turn 结束后被消费；入队即保证会被常驻 "
-"工作循环消费（无需「入队触发」逻辑）。"
+"工作循环消费（无需“入队触发”逻辑）。"
 msgstr ""
 "The queue promises only minimal scheduling semantics: ascending by ``MessagePriority`` value, same level by enqueue "
 "order FIFO. Starvation prevention, source weighting and similar policies are not in the framework core. No rejection when busy: messages enqueued during an active turn simply queue up and are consumed after the turn ends; enqueueing guarantees consumption by the resident "
@@ -540,8 +540,8 @@ msgstr "Block until the queue becomes non-empty (without taking messages)."
 
 #: flowing.message.MessageQueue.wait_not_empty:5 of
 msgid ""
-"「等消息」与「取消息」的拆分原语：``Agent._dequeue`` 的默认实现 用它把 ``before_dequeue`` "
-"的派发点移到「队列确实非空、即将出队」 的时刻，消除空转期的无效钩子派发。enqueue 时唤醒等待者。"
+"“等消息”与“取消息”的拆分原语：``Agent._dequeue`` 的默认实现 用它把 ``before_dequeue`` "
+"的派发点移到“队列确实非空、即将出队” 的时刻，消除空转期的无效钩子派发。enqueue 时唤醒等待者。"
 msgstr ""
 "The split primitive separating \"waiting for messages\" from \"taking messages\": the default implementation of ``Agent._dequeue`` uses it to move the dispatch point of ``before_dequeue`` "
 "to the moment when \"the queue is indeed non-empty and about to dequeue\", eliminating useless hook dispatch during idle spinning. Waiters are woken on enqueue."
@@ -582,8 +582,8 @@ msgstr "Blocking take of the highest-priority message (the one-at-a-time take pr
 
 #: flowing.message.MessageQueue.dequeue:5 of
 msgid ""
-"队列空时挂起等待，直到有消息入队。本方法是「等消息 + 取消息」合体 的便捷原语；``Agent._dequeue()`` "
-"的默认实现不使用它——为了把 ``before_dequeue`` 的派发点移到「队列确实非空、即将出队」的时刻 （每批真正出队的消息之前恰好一次"
+"队列空时挂起等待，直到有消息入队。本方法是“等消息 + 取消息”合体 的便捷原语；``Agent._dequeue()`` "
+"的默认实现不使用它——为了把 ``before_dequeue`` 的派发点移到“队列确实非空、即将出队”的时刻 （每批真正出队的消息之前恰好一次"
 " before 派发），默认实现改用 :meth:`wait_not_empty` + :meth:`take_while` / "
 ":meth:`dequeue_nowait` 的拆分组合（见 :meth:`flowing.agent.Agent._dequeue`）。不需要该"
 " 钩子时序语义的直接消费方（如自定义 ``_dequeue()`` 覆写）可用本 方法。"

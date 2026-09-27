@@ -185,8 +185,8 @@ class ModelConfig:
     """传给 API 的模型 ID；可为 Parsable（运行时求值）。解析后应为非空
     字符串；本框架不校验其是否被 provider 认识（无能力校验）。"""
     provider: str | Parsable
-    """绑定的 provider 条目名（1:1 单值绑定，非候选列表）；「模型定义中
-    即包含其提供商」。解析后必须能在 Runtime 的 provider 候选清单中查到
+    """绑定的 provider 条目名（1:1 单值绑定，非候选列表）；“模型定义中
+    即包含其提供商”。解析后必须能在 Runtime 的 provider 候选清单中查到
     条目，否则 ``provider_gen()`` 时报错；禁止列表写法。"""
     thinking_budget: int | Parsable | None
     """思考强度（token 预算）。``None`` = 未声明，adapter 自行决定。
@@ -440,6 +440,6 @@ def load_model_tags(path: Path) -> dict[str, str]:
     .. seealso:: :func:`load_models` —— 模型条目文件的对应解析器。
     """
     data = YAML(typ="rt").load(Path(path).read_text(encoding="utf-8")) or {}
-    # 文件 schema 为顶层 tags: 映射（见模块 docstring「配置文件 schema」）；
+    # 文件 schema 为顶层 tags: 映射（见模块 docstring“配置文件 schema”）；
     # 缺 tags 键 → KeyError（fail fast，不静默回退）
     return {str(tag): str(entry) for tag, entry in dict(data["tags"]).items()}

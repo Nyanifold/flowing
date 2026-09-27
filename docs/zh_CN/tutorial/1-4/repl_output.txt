@@ -14,6 +14,6 @@
 路线图.md
 --- stderr ---
 
-notes 目录里有「使用说明.md」和「路线图.md」两个文件。[hook] after_turn: ask_count=2 aborted=False
+notes 目录里有“使用说明.md”和“路线图.md”两个文件。[hook] after_turn: ask_count=2 aborted=False
 
 (agent-main)>>>

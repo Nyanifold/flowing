@@ -10,5 +10,5 @@ Response must be under one sentence.
   "body": "",
   "url": "https://example.test/issues/42"
 }
-当前有 2 个开放 PR（#1 fix typo、#2 add feature），已创建「演示 Issue」（#42）。
+当前有 2 个开放 PR（#1 fix typo、#2 add feature），已创建“演示 Issue”（#42）。
 (agent-main)>>>

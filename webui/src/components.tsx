@@ -87,7 +87,7 @@ export function Reasoning({ text, streaming }: { text: string; streaming?: boole
 }
 
 // ---- CodeBlock + JSON 高亮 -----------------------------------------------------
-// 线性状态机扫描（无回溯）：历史教训——正则「懒惰量词 + 可选组」在真实工具
+// 线性状态机扫描（无回溯）：历史教训——正则“懒惰量词 + 可选组”在真实工具
 // 返回（长字符串、嵌套 JSON、大量 & 实体）上病态回溯，页面直接卡死
 function escHtml(s: string): string {
   return s.replace(/[&<>"]/g, (c) =>

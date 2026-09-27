@@ -1,8 +1,8 @@
 """workflow 加载器测试：测试清单 T84–T87。
 
 fixtures 经 ``project`` fixture 拷入 tmp_path；``resolve_workflow`` 的
-``@/`` 解析基准经 ``project_root`` 参数显式传入；T87b 的「未传
-project_root」用例刻意不传。
+``@/`` 解析基准经 ``project_root`` 参数显式传入；T87b 的“未传
+project_root”用例刻意不传。
 """
 
 from __future__ import annotations

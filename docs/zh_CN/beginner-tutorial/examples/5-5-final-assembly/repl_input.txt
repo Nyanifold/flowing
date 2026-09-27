@@ -1,3 +1,3 @@
-先派 explore 查看 target 目录的代码结构并汇报，再用 todo 把「为该项目写一个 README.md」拆成任务清单。
+先派 explore 查看 target 目录的代码结构并汇报，再用 todo 把“为该项目写一个 README.md”拆成任务清单。
 按刚才的结构和任务清单，派 coder 写出 README.md，写完让它用 read 自检一遍并向你汇总。
 /exit

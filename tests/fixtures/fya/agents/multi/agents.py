@@ -1,7 +1,7 @@
 """multi/agents.py —— 多 Agent 子类文件（测试 64 的 ``文件::类名`` 消歧 fixture）。
 
 模块内定义**两个**本文件 Agent 子类：无 ``::ClassName`` 消歧时
-``get_agent_class`` 按「恰好一个」规则报错；``./multi/agents.py::PaymentAgent``
+``get_agent_class`` 按“恰好一个”规则报错；``./multi/agents.py::PaymentAgent``
 精确取类。两类均不声明 ``name``（不参与一致性断言）。
 """
 

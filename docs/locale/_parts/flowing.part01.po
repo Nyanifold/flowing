@@ -40,8 +40,8 @@ msgstr ""
 
 #: flowing.agent.Agent.add_tool:65 of
 msgid ""
-"``output`` → 独立判别分支：值是「字段名 → JSON Schema 定义」 映射，逐字段并入 "
-"``override_params``，不经过 args 的关键字 校验（``type`` 等键在此合法）；「省略字段 = 移除」语义见 "
+"``output`` → 独立判别分支：值是“字段名 → JSON Schema 定义” 映射，逐字段并入 "
+"``override_params``，不经过 args 的关键字 校验（``type`` 等键在此合法）；“省略字段 = 移除”语义见 "
 "``FinishTool`` 规约；"
 msgstr ""
 "``output`` → an independent discrimination branch: the value is a 'field name → JSON Schema "
@@ -137,8 +137,8 @@ msgstr ""
 #: flowing.agent.Agent.add_agent:6 of
 msgid ""
 "命名注意：本方法添加的是类型绑定条目（Agent 类 + LLM 可见声明 + 覆写），不是 Agent 实例——实例创建走 "
-":meth:`create_subagent` / :meth:`invoke_subagent`。「add」的对象是「这个 Agent "
-"如何使用某子 Agent 类型」的声明。按引用找到子 Agent 类型，判别覆写体并构造 "
+":meth:`create_subagent` / :meth:`invoke_subagent`。“add”的对象是“这个 Agent "
+"如何使用某子 Agent 类型”的声明。按引用找到子 Agent 类型，判别覆写体并构造 "
 ":class:`flowing.subagents.SubagentEntry`，以别名为 key 写入 "
 "``self._subagent_entries``。从此该类型进入本 Agent 的 catalog （``enabled=True`` 时对 "
 "LLM 可见）与可唤起集 （``invoke_subagent()`` 仅按别名查本表）。"
@@ -549,7 +549,7 @@ msgstr "The value of the ``before_cancel`` / ``after_cancel`` hook points — th
 msgid ""
 "``cancel()`` 在置位任何取消信号之前 dispatch ``before_cancel``， handler 可 ``raise "
 "Intercepted`` 阻止取消——适用于当前操作不可中断的 场景（支付已提交、关键事务进行中）。``after_cancel`` "
-"在信号置位后 立即 dispatch，是「取消请求已被接受」的事实事件（纯观察）。"
+"在信号置位后 立即 dispatch，是“取消请求已被接受”的事实事件（纯观察）。"
 msgstr ""
 "``cancel()`` dispatches ``before_cancel`` before setting any cancel signal; a handler may "
 "``raise Intercepted`` to prevent the cancellation — for scenarios where the current operation "
@@ -600,7 +600,7 @@ msgid ""
 "``ConfigKey[T]`` 是 :meth:`flowing.runtime.Runtime.get_config` 的键 类型：泛型参数 "
 "``T`` 声明该配置值的 Python 类型，``name`` 是配置项 的键名（约定为含命名空间的点分路径，如 "
 "``\"retry.max_attempts\"`` / ``\"i18n.locale\"``）。``get_config(key, "
-"default=...)`` 的 ``default`` 参数类型须与 ``T`` 一致，否则静态检查报错——这把「键名 → 值类型」 "
+"default=...)`` 的 ``default`` 参数类型须与 ``T`` 一致，否则静态检查报错——这把“键名 → 值类型” "
 "的对应关系固化为可静态检查的契约。与裸字符串 key 共存：字符串简写 返回值类型为 ``Any``。与 ``InjectionKey`` "
 "同模式——类型信息只在 调用侧生效，配置存储层按字符串键存取，不感知泛型。"
 msgstr ""
@@ -616,7 +616,7 @@ msgstr ""
 
 #: flowing.params.ConfigKey:33 of
 msgid ""
-"``name`` 创建后不可变；命名空间段（``retry``、``i18n``）是约定 而非本类强制——命名空间的注册与「谁负责校验」由 "
+"``name`` 创建后不可变；命名空间段（``retry``、``i18n``）是约定 而非本类强制——命名空间的注册与“谁负责校验”由 "
 ":meth:`flowing.runtime.Runtime.register_config_namespace` 管理； "
 "``get_config`` 不做命名空间访问控制，任何代码可读取任何命名空间 下的值。"
 msgstr ""
@@ -675,7 +675,7 @@ msgid "配置键名（约定为含命名空间的点分路径）；创建后不�
 msgstr "The config key name (by convention a namespaced dotted path); immutable after creation; equivalent to the same-named bare string (same hash, consistent equality)."
 
 #: flowing.message.ContentBlock:1 of
-msgid "消息内容片段基类：``type`` 字段判别「这一段是什么」（八种 type）。"
+msgid "消息内容片段基类：``type`` 字段判别“这一段是什么”（八种 type）。"
 msgstr "Base class of message content fragments: the ``type`` field discriminates 'what this piece is' (eight types)."
 
 #: flowing.message.ContentBlock:5 of
@@ -971,7 +971,7 @@ msgstr ""
 "docstring for the rules."
 
 #: flowing.agent.Execution:1 of
-msgid "活跃异步执行条目——「谁正在运行、谁可取消」的追踪单位。"
+msgid "活跃异步执行条目——“谁正在运行、谁可取消”的追踪单位。"
 msgstr "An active asynchronous execution entry — the tracking unit of 'who is running and who can be cancelled'."
 
 #: flowing.agent.Execution:5 of
@@ -1428,10 +1428,10 @@ msgstr ""
 #: flowing.tool.ScriptTool:45 of
 msgid ""
 "后台工具形态（async generator）：``execute`` 写成 async generator—— 第一个 ``yield`` "
-"是「准备完成」标记（可空值），`Tool.__call__` 等待它 作为 ``pending`` "
+"是“准备完成”标记（可空值），`Tool.__call__` 等待它 作为 ``pending`` "
 "收据（``tool_status=\"pending\"`` 的 TOOL 消息带内容）； 后续每个 ``yield`` 由框架后台驱动并逐段投递"
 " EVENT 消息（LLM 可见）； 首 yield 前只允许轻量准备，长任务必须放在首 yield 之后（违反的后果 "
-"是收据延迟——作者责任）。「只要后台、不要中间报告」的普通 async ``execute`` 可声明类属性 ``background = "
+"是收据延迟——作者责任）。“只要后台、不要中间报告”的普通 async ``execute`` 可声明类属性 ``background = "
 "True`` （仅 script 型生效）走 同一 ``pending`` 通道："
 msgstr ""
 "The background-tool form (async generator): write ``execute`` as an async generator — the "
@@ -1567,8 +1567,8 @@ msgstr ""
 #: flowing.hooks.HookRegistry:9 of
 msgid ""
 "钩子只影响当前 Agent 实例，无全局钩子表——同类的两个 Agent 可以有 不同的钩子栈。钩子点集合是显式的：访问未声明的钩子点立即抛 "
-"``UnknownHookPointError`` （而非静默创建空钩子点），让「没调用 ``use_skill()`` 却访问 "
-"``before_skill_load``」这类错误在开发期暴露。"
+"``UnknownHookPointError`` （而非静默创建空钩子点），让“没调用 ``use_skill()`` 却访问 "
+"``before_skill_load``”这类错误在开发期暴露。"
 msgstr ""
 "Hooks affect only the current Agent instance; there is no global hook table — two Agents of "
 "the same class may have different hook stacks. The hook-point set is explicit: accessing an "
@@ -1625,9 +1625,9 @@ msgstr ""
 
 #: flowing.hooks.HookRegistry.declare:8 of
 msgid ""
-"钩子点从「核心固定集」变为「声明即创建」：Skill 扩展声明 ``before_skill_load``，Comm 扩展声明 "
-"``on_signal``——不调用这些 扩展的 Agent 实例没有这些钩子点。声明者是钩子点「所有者」， "
-"注册者是「使用者」；声明后任何代码都可挂 handler，无需再声明。"
+"钩子点从“核心固定集”变为“声明即创建”：Skill 扩展声明 ``before_skill_load``，Comm 扩展声明 "
+"``on_signal``——不调用这些 扩展的 Agent 实例没有这些钩子点。声明者是钩子点“所有者”， "
+"注册者是“使用者”；声明后任何代码都可挂 handler，无需再声明。"
 msgstr ""
 "Hook points change from 'a fixed core set' to 'created on declaration': the Skill extension "
 "declares ``before_skill_load``, the Comm extension declares ``on_signal`` — Agent instances "
@@ -1666,7 +1666,7 @@ msgstr ""
 
 #: flowing.hooks.HookRegistry.declare:37 of
 msgid ""
-"``@on`` 冲刷：创建钩子点（而非走「同名同 by 幂等返回已有」路径）时，把 ``_pending_on`` 里同名记录全部挂载进新 "
+"``@on`` 冲刷：创建钩子点（而非走“同名同 by 幂等返回已有”路径）时，把 ``_pending_on`` 里同名记录全部挂载进新 "
 "``HookList`` （含 pattern 的走 ``HookList[pattern]`` 通道）并从暂记列表移除——此刻尚无其它 "
 "handler，``@on`` handler 天然排最前。幂等路径（同名 + 同 ``by``） 不冲刷——首次声明时已结算。"
 msgstr ""
@@ -1828,7 +1828,7 @@ msgstr "The type-safe injection key for provide/inject — providing compile-tim
 #: flowing.params.InjectionKey:5 of
 msgid ""
 "``InjectionKey[T]`` 是一个带泛型参数的具名键：``name`` 是运行期唯一 实质内容，``T`` "
-"是给类型检查器与读者的「该键应注入什么类型的值」 标注。与裸字符串 key 共存：需要类型安全（共享的 ``keys.py``、框架 "
+"是给类型检查器与读者的“该键应注入什么类型的值” 标注。与裸字符串 key 共存：需要类型安全（共享的 ``keys.py``、框架 "
 "插件内部的键定义如 ``communication_key``）用 ``InjectionKey``； "
 "简单一次性场景用字符串简写（``inject(\"locale\")``，类型为 ``Any``）。 字符串 key "
 "容易拼错、重构不可追踪；泛型键让 ``provide`` / ``inject`` 两侧的值类型在静态检查下对齐。类型信息不跨节点传递：注入存储的"
@@ -1905,7 +1905,7 @@ msgstr "The intentional hard-blocking signal of hook handlers (deliberately not 
 #: flowing.errors.Intercepted:5 of
 msgid ""
 "handler 的三种合法出口之一（另两种：返回 value、设置 ``shortcut`` 字段 短路）。``raise "
-"Intercepted`` 表示「有意的阻止」——审批拒绝、安全阻断、权限 检查等正常业务分支，而不是意外错误。dispatch "
+"Intercepted`` 表示“有意的阻止”——审批拒绝、安全阻断、权限 检查等正常业务分支，而不是意外错误。dispatch "
 "层捕获本信号后原样重抛：处理 链停止、后续 handler 不执行、对应的 ``after_`` 钩子不触发（整个操作标记为 "
 "无效）；不当作错误处理（INFO 级日志，非 ERROR）。``tool_call()`` 路径把本 信号转换为 "
 "``ToolResult.blocked(reason)``——LLM 收到 ``tool_status=\"blocked\"``、内容为 "
@@ -1947,7 +1947,7 @@ msgid "本信号不触发任何错误钩子，也不进入 ``on_provider_error``
 msgstr "This signal triggers no error hooks and does not enter the ``on_provider_error`` decision tree; it has nothing to do with retries."
 
 #: flowing.errors.Intercepted:40 of
-msgid "在「没有对应工具调用」的钩子点（如 ``before_turn``）抛出时，由该操作的 发起路径决定如何呈现，框架不保证统一的 LLM 可见形式。"
+msgid "在“没有对应工具调用”的钩子点（如 ``before_turn``）抛出时，由该操作的 发起路径决定如何呈现，框架不保证统一的 LLM 可见形式。"
 msgstr "When raised at a hook point with no corresponding tool call (e.g. ``before_turn``), how it is presented is decided by the initiating path of that operation; the framework guarantees no uniform LLM-visible form."
 
 #: flowing.errors.Intercepted:45 of
@@ -2068,7 +2068,7 @@ msgstr "No deduplication: the same entry object may be appended multiple times; 
 
 #: flowing.lists.ManagedList.append:15 of
 msgid ""
-"本方法对子类形态不做约束：子类可把 append 特化为「构造并 追加」的工厂式签名（如 "
+"本方法对子类形态不做约束：子类可把 append 特化为“构造并 追加”的工厂式签名（如 "
 ":class:`flowing.context.PromptBlockList` 的 ``append(name, content, "
 "...)``）；此时基类的元素式 ``append(item)`` 在该子类上不可用，属有意为之。"
 msgstr ""
@@ -2115,7 +2115,7 @@ msgstr "Like :meth:`append`, no deduplication: the same entry object may be inse
 
 #: flowing.lists.ManagedList.insert:25 of
 msgid ""
-"本方法对子类形态不做约束：子类可把 insert 特化为「构造并 插入」的工厂式签名（如 "
+"本方法对子类形态不做约束：子类可把 insert 特化为“构造并 插入”的工厂式签名（如 "
 ":class:`flowing.context.PromptBlockList` 的 ``insert(index, name, content,"
 " ...)``）；此时基类的元素式 ``insert(index, item)`` 在该子类上不可用，属有意为之。"
 msgstr ""

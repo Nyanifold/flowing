@@ -135,7 +135,7 @@ class AgentRegistry:
     """
 
     def __init__(self, *, project_root: "Path | None" = None) -> None:
-        # 空注册表（无启动扫描——「无默认扫描目录」基调）
+        # 空注册表（无启动扫描——“无默认扫描目录”基调）
         self._agents = {}
         # @/ 引用的解析基准：Runtime 构造时传入固化值（project_root），
         # 终身有效；裸注册表（测试）为 None——@/ 引用报错、其余形态退化
@@ -265,7 +265,7 @@ class AgentRegistry:
         if agent_type in self._agents:
             return self._agents[agent_type]
         # 形态判别委托 classify_ref（词法唯一来源）——注意不能用
-        # `"::" in agent_type` 粗判：「文件::类名」（消歧形态）也含 ::，
+        # `"::" in agent_type` 粗判：“文件::类名”（消歧形态）也含 ::，
         # 但属路径形态（左段含路径特征时 classify_ref 判 "path"）
         form = _classify_ref(agent_type)
         if form == "qualified":

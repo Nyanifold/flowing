@@ -1,6 +1,6 @@
 """恢复不变量演示（4-3，离线）：孤立 tool_call 的 synthetic 占位合成。
 
-手工构造一棵「撕裂」的树（provider 带 tool_call 但结果缺失），
+手工构造一棵“撕裂”的树（provider 带 tool_call 但结果缺失），
 经恢复管线重放后，配对锚由合成占位封闭。
 运行：uv run python demo_synthetic.py
 """

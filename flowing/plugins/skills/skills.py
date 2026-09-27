@@ -751,7 +751,7 @@ def use_skill(
     agent.hooks.declare("after_skill_load", by="skill")
     if not hasattr(agent, "_skill_entries"):
         agent._skill_entries = {}  # 绑定层条目表（别名 -> SkillEntry）；核心不感知，本插件自建
-    if not hasattr(agent, "skill_add"):  # 第 3 步：「检查后跳过」——条目装配单点（契约见 docstring「skill_add 契约」）
+    if not hasattr(agent, "skill_add"):  # 第 3 步：“检查后跳过”——条目装配单点（契约见 docstring“skill_add 契约”）
         def skill_add(name: str | EntryRef, *, alias: str | None = None,
                       body: dict[str, Any] | None = None) -> SkillEntry:
             if isinstance(name, EntryRef):   # 归一：EntryRef 与 alias/body 不可同传
@@ -877,18 +877,18 @@ def use_skill(
         catalog_template=catalog,
     )
     # 包装为动态块注册进 prompt_blocks——PromptBlock.content 的求值协议是
-    # 「带 resolve(agent) 方法的对象」，LazySkillsPrompt 天然满足（duck-typed，
+    # “带 resolve(agent) 方法的对象”，LazySkillsPrompt 天然满足（duck-typed，
     # _assemble_context 只做 str(block.content.resolve(self))）；块名取
     # "skills"（标识与分组管理用，非唯一键）
     agent.prompt_blocks.append(  # type: ignore[arg-type]
         "skills", lazy, cache="dynamic", by="skill", tags=["skill.catalog"],
     )
     # skill-load 可见性走 .fya tools: 或用户显式 add_tool（本体由 SkillPlugin.install() 注册）
-    if not hasattr(agent, "skill_load"):  # 第 6 步：「检查后跳过」——agent 当前已有此函数（实例属性或类级方法）则保留用户的，不绑定
+    if not hasattr(agent, "skill_load"):  # 第 6 步：“检查后跳过”——agent 当前已有此函数（实例属性或类级方法）则保留用户的，不绑定
         async def skill_load(name: str) -> SkillResult:
             return await _load_skill(agent, name)
         agent.skill_load = skill_load  # type: ignore[attr-defined]
-    if not hasattr(agent, "skill_get"):  # 第 7 步：上下文感知的技能解析门面（同「检查后跳过」律）
+    if not hasattr(agent, "skill_get"):  # 第 7 步：上下文感知的技能解析门面（同“检查后跳过”律）
         def skill_get(name: str) -> Skill:
             """薄委托 ``SkillRegistry.get(name, source_dir=agent.source_dir())``——
             裸名先查本 Agent 定义文件所在目录的文件链（文件覆盖 default::/builtin::），

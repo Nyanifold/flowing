@@ -99,7 +99,7 @@ class TestToolResult:
 
     async def test_t19_execute_exception_wrapped_error(self):
         """清单 19：execute 抛异常 → error 正常产物（本层无钩子参与，
-        「不触发 on_provider_error」由 __call__ 无任何钩子调用保证）。"""
+        “不触发 on_provider_error”由 __call__ 无任何钩子调用保证）。"""
         def _raise():
             raise ValueError("bad")
 

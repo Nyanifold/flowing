@@ -52,8 +52,8 @@ CatalogTemplate: TypeAlias = str
 
 模板上下文变量：
 
-- ``entries``：``list[tuple[SkillEntry, Skill]]``——「(条目, 已解析
-  Skill)」对列表，只含 ``visible=True`` 的条目，顺序即 ``skills:``
+- ``entries``：``list[tuple[SkillEntry, Skill]]``——“(条目, 已解析
+  Skill)”对列表，只含 ``visible=True`` 的条目，顺序即 ``skills:``
   声明顺序；空列表时模板应渲染为空串（:class:`LazySkillsPrompt`
   据此跳过整块注入，内置模板以 ``{% if entries %}`` 保证）。
 - ``agent``：调用方 Agent 实例。条目的描述字段是
@@ -166,7 +166,7 @@ class Skill:
     .. seealso:: :data:`DEFAULT_CATALOG_TEMPLATE`
     """
     content: Parsable[str]
-    """Skill 正文（执行指南），惰性求值——存的是「如何解析」的指令，
+    """Skill 正文（执行指南），惰性求值——存的是“如何解析”的指令，
     不是解析结果。``skill_load()`` 对其 ``resolve``：先展开 ``$`` 文件
     引用，再执行 Jinja2 模板渲染；渲染上下文包含调用方 Agent 的局部
     变量与合并后的 args。

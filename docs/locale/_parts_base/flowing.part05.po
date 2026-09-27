@@ -21,7 +21,7 @@ msgstr ""
 #: flowing.compiler.compile_fya_file:9 of
 msgid ""
 "发射：生成 ``.py`` 源码——Parsable 值以类体赋值形式写出 （如 ``system_prompt = Parsable"
-"('$./system-prompt.md')``）， ``$script`` 按「self 签名」二分：self 方法入类体，其余顶层 "
+"('$./system-prompt.md')``）， ``$script`` 按“self 签名”二分：self 方法入类体，其余顶层 "
 "语句按原序提升到模块级；"
 msgstr ""
 
@@ -72,7 +72,7 @@ msgid ""
 msgstr ""
 
 #: flowing.compiler.compile_project:13 of
-msgid "边缘情况：无 ``.fya`` 文件 → 返回空列表（调用方 CLI 打印 「无可编译文件」并正常退出）。"
+msgid "边缘情况：无 ``.fya`` 文件 → 返回空列表（调用方 CLI 打印 “无可编译文件”并正常退出）。"
 msgstr ""
 
 #: flowing.compiler.compile_project:15 of
@@ -110,7 +110,7 @@ msgid "``flowing.context`` —— 上下文组装：system prompt 分层注册�
 msgstr ""
 
 #: flowing.context:5 of
-msgid "本模块定义「system prompt 分层注册 → 惰性求值 → Provider adapter 消费」 这条链路上的全部数据结构："
+msgid "本模块定义“system prompt 分层注册 → 惰性求值 → Provider adapter 消费” 这条链路上的全部数据结构："
 msgstr ""
 
 #: flowing.context:8 of
@@ -278,9 +278,9 @@ msgstr ""
 
 #: flowing.context.ContextUsageEstimate:6 of
 msgid ""
-"「现在如果把上下文发给 LLM，大约多大」的快照值：``measured`` 是锚点 （最近一次 Provider "
+"“现在如果把上下文发给 LLM，大约多大”的快照值：``measured`` 是锚点 （最近一次 Provider "
 "实测）覆盖的部分，``estimated`` 是锚点之后（或无 锚点时全段）的本地启发式估算部分，``tokens`` 为两者之和。两部分分开 "
-"承载而非只给一个和——观测方可以区分「多少是实测、多少是猜的」。估算 部分永不用于计费（计费走 "
+"承载而非只给一个和——观测方可以区分“多少是实测、多少是猜的”。估算 部分永不用于计费（计费走 "
 "``TurnResult.token_usage`` 聚合口径，两条数据 流不混）。"
 msgstr ""
 
@@ -559,7 +559,7 @@ msgstr ""
 #: flowing.errors.ConfigNamespaceConflictError:5 of
 msgid ""
 "``Runtime.register_config_namespace(name, schema)`` 检测到命名空间已被其它 "
-"扩展注册时抛出。命名空间注册声明「谁负责校验 / 提供默认值 / 类型转换」； "
+"扩展注册时抛出。命名空间注册声明“谁负责校验 / 提供默认值 / 类型转换”； "
 "两个扩展认领同一命名空间会产生两套冲突的校验规则，必须在注册时立即失败 （fail-"
 "fast）。未被任何扩展注册的命名空间可自由读取，不触发本异常。"
 msgstr ""
@@ -625,11 +625,11 @@ msgstr ""
 #: flowing.errors.MissingProvideError:18 of
 msgid ""
 "``key`` 字段为未命中的 provide key（``InjectionKey[T]`` 退化为其 ``name`` "
-"字符串）；仅诊断用途，不提供「最接近的 key」之类的猜测。"
+"字符串）；仅诊断用途，不提供“最接近的 key”之类的猜测。"
 msgstr ""
 
 #: flowing.errors.MissingProvideError:20 of
-msgid "``inject`` 没有默认值参数：需要「缺失时用默认值」的语义，请自行捕获本 异常后回退默认值。"
+msgid "``inject`` 没有默认值参数：需要“缺失时用默认值”的语义，请自行捕获本 异常后回退默认值。"
 msgstr ""
 
 #: flowing.errors.MissingProvideError:22 of
@@ -755,7 +755,7 @@ msgstr ""
 msgid ""
 "工具系统（``script`` / ``mcp`` / ``cli`` / ``request`` 四种类型）的定义期 "
 "与查找期异常公共基类。与工具业务错误严格区分：业务错误是 ``ToolResult(status=\"error\")`` 正常产物，LLM "
-"可见，不走异常通道；本层只 承载「工具坏了」这一类（定义缺失、注册冲突、查找失败）。"
+"可见，不走异常通道；本层只 承载“工具坏了”这一类（定义缺失、注册冲突、查找失败）。"
 msgstr ""
 
 #: flowing.errors.ToolError:12 of
@@ -927,7 +927,7 @@ msgstr ""
 #: flowing.errors.AmbiguousToolError:5 of
 msgid ""
 "script 工具的定向查找中，同一 ``.py`` 文件出现以下任一情况即抛出，框架 无法判定用户意图：同时含 "
-"``@flowing_tool`` 打标函数与 Tool 子类；或含多个 打标函数（违反「每文件至多一个」规则）。两种形态生成不同的 Tool "
+"``@flowing_tool`` 打标函数与 Tool 子类；或含多个 打标函数（违反“每文件至多一个”规则）。两种形态生成不同的 Tool "
 "定义路径， 按序选其一或隐式合并都会让行为依赖文件内容的出现顺序。"
 msgstr ""
 
@@ -966,7 +966,7 @@ msgid "``name`` 字段为声明冲突的 MCP 工具规范名。"
 msgstr ""
 
 #: flowing.errors.AmbiguousMcpSourceError:12 of
-msgid "与 ``MissingMcpSourceError`` （两者均未声明）构成「恰好一个来源」的对偶 约束。"
+msgid "与 ``MissingMcpSourceError`` （两者均未声明）构成“恰好一个来源”的对偶 约束。"
 msgstr ""
 
 #: flowing.errors.AmbiguousMcpSourceError:17 of
@@ -1025,7 +1025,7 @@ msgstr ""
 #: flowing.errors.ResourceError:15 of
 msgid ""
 "``get_resource(name, type_hint=...)`` 的 ``type_hint`` 仅供 IDE 推断， 运行时不做 "
-"isinstance 校验，不存在「类型不匹配」异常。"
+"isinstance 校验，不存在“类型不匹配”异常。"
 msgstr ""
 
 #: flowing.errors.ResourceError:20 of
@@ -1257,7 +1257,7 @@ msgid "未启用任何重试 handler 时，回合直接以 error 结局终止—
 msgstr ""
 
 #: flowing.errors.RateLimitedError:18 of
-msgid "与 ``QuotaExhaustedError`` 区分：同为 429，本类是「太快了」，后者是「没 额度了」（不可重试）。"
+msgid "与 ``QuotaExhaustedError`` 区分：同为 429，本类是“太快了”，后者是“没 额度了”（不可重试）。"
 msgstr ""
 
 #: flowing.errors.RateLimitedError:23 of
@@ -1272,8 +1272,8 @@ msgstr ""
 
 #: flowing.errors.QuotaExhaustedError:5 of
 msgid ""
-"与 ``RateLimitedError`` 同为 429 但语义相反：「你太快了」（等一等能成功） "
-"与「你没额度了」（等多久都不会成功，需要人介入——充值、换 key、换 provider）。重试配额耗尽是纯浪费：每次重试必然失败。刻意不做 "
+"与 ``RateLimitedError`` 同为 429 但语义相反：“你太快了”（等一等能成功） "
+"与“你没额度了”（等多久都不会成功，需要人介入——充值、换 key、换 provider）。重试配额耗尽是纯浪费：每次重试必然失败。刻意不做 "
 "``RateLimitedError`` 的子类：继承会让 ``except RateLimitedError`` 与 isinstance "
 "重试判定误捕本类——类型树本身即是重试策略的判定表。"
 msgstr ""
@@ -1364,7 +1364,7 @@ msgstr ""
 #: flowing.errors.AuthenticationError:5 of
 msgid ""
 "API key 无效、过期或权限不足。凭证问题不自愈，分类为不可重试——默认重试 策略（``use_retry()``）对本类直接放行（不写 "
-"``can_continue``）。凭证修复 需要人工介入（换 key、改配置）；应用层可自定义 handler 做「换凭证后重试」， "
+"``can_continue``）。凭证修复 需要人工介入（换 key、改配置）；应用层可自定义 handler 做“换凭证后重试”， "
 "不可重试只是分类事实的默认值，策略仍可覆盖。"
 msgstr ""
 
@@ -1410,7 +1410,7 @@ msgstr ""
 #: flowing.errors.ContentPolicyError:5 of
 msgid ""
 "Provider 侧内容审查（输入或输出触发安全策略）拒绝生成时抛出。内容拒绝与 限流 / "
-"故障语义完全不同：不是暂时不可用，而是「这个内容不行」；应用层通常 需要改写输入或告知用户，独立分类便于策略层区分处理。"
+"故障语义完全不同：不是暂时不可用，而是“这个内容不行”；应用层通常 需要改写输入或告知用户，独立分类便于策略层区分处理。"
 msgstr ""
 
 #: flowing.errors.ContentPolicyError:12 of
@@ -1518,7 +1518,7 @@ msgstr ""
 msgid ""
 "``Runtime.install()`` 每次安装插件后对当前已装集合的依赖图做增量校验：已装子图 成环（A 依赖 B、B 依赖 "
 "A）即抛出本异常，报错现场即引入环的那次 ``install()``。 依赖缺失只产生 ``warnings.warn`` "
-"警告、不抛本异常（「声明了依赖但实际 用不上」是合法形态，``install()`` 可分批）；运行期真用到缺失依赖时由 "
+"警告、不抛本异常（“声明了依赖但实际 用不上”是合法形态，``install()`` 可分批）；运行期真用到缺失依赖时由 "
 "``MissingProvideError`` 兜底。"
 msgstr ""
 
@@ -1610,7 +1610,7 @@ msgstr ""
 msgid ""
 "``Communication.send()`` / ``request()`` 按目标端点 ID 路由失败时抛出—— "
 "点对点信号的投递失败是调用方可修正的错误（端点未注册、ID 拼错）。``send`` "
-"是「立即返回」语义，路由失败属于同步可判定的错误，发送阶段当场抛出。与 ``publish`` "
+"是“立即返回”语义，路由失败属于同步可判定的错误，发送阶段当场抛出。与 ``publish`` "
 "的广播容错（单订阅者异常静默忽略）形成有意的语义对比。"
 msgstr ""
 
@@ -1646,7 +1646,7 @@ msgstr ""
 #: flowing.errors.SignalTimeoutError:5 of
 msgid ""
 "请求-回复模式下，``correlation_id`` 匹配的回复在 ``timeout`` 秒内未到达即 抛出，pending future "
-"随之清理。审批等交互场景的「超时」是正常业务分支 （典型用法：审批超时 → ``raise Intercepted(\"审批超时\")`` "
+"随之清理。审批等交互场景的“超时”是正常业务分支 （典型用法：审批超时 → ``raise Intercepted(\"审批超时\")`` "
 "阻断工具调用）， 需要类型化异常供 handler 捕获，而非裸 ``asyncio.TimeoutError``。"
 msgstr ""
 
@@ -1685,7 +1685,7 @@ msgstr ""
 #: flowing.errors.FormatError:5 of
 msgid ""
 "``.fya`` 声明解析、创建管线 PENDING 检查、Parsable 求值上下文、保留属性名 "
-"等「声明与格式」层异常的公共基类。声明式与命令式两种 Agent 形式生成完全 相同的 Python 类模型，格式错误必须在类生成 / "
+"等“声明与格式”层异常的公共基类。声明式与命令式两种 Agent 形式生成完全 相同的 Python 类模型，格式错误必须在类生成 / "
 "实例化早期暴露，归为一层便于 工具（如 ``flowing compile``）统一报告。"
 msgstr ""
 
@@ -1712,8 +1712,8 @@ msgstr ""
 msgid ""
 "``.fya`` 中以 ``_`` 标记的延迟定义字段解析为 ``PENDING`` 哨兵；``setup()`` "
 "结束后、``after_create`` 钩子前的 PENDING 检查点发现仍有 ``PENDING`` 字段 （典型：唯一必填的类属性 "
-"``system_prompt`` 未赋值）时抛出。PENDING 是「延迟 "
-"定义承诺」——声明层允许先占位，但管线必须在固定检查点兑现承诺；缺失时 fail-fast 优于带着 ``None`` 进入 Turn "
+"``system_prompt`` 未赋值）时抛出。PENDING 是“延迟 "
+"定义承诺”——声明层允许先占位，但管线必须在固定检查点兑现承诺；缺失时 fail-fast 优于带着 ``None`` 进入 Turn "
 "循环。恢复管线同样检查。"
 msgstr ""
 
@@ -1782,7 +1782,7 @@ msgid ""
 "Parsable 渲染上下文由框架注入四个保留名：``env`` （绑定 ``os.environ``）、 ``config`` （Runtime"
 " 配置）、``agent`` 与 ``self`` （实例自身入口）。Agent "
 "实例属性占用这些名字会覆盖注入值，框架在求值前检测到即抛出——保留名冲突是 "
-"静默错误的高发源，显式保留名单加检测比「合并时谁覆盖谁」的隐式规则更清晰。"
+"静默错误的高发源，显式保留名单加检测比“合并时谁覆盖谁”的隐式规则更清晰。"
 msgstr ""
 
 #: flowing.errors.ReservedAttributeError:12 of
@@ -1923,8 +1923,8 @@ msgstr ""
 #: flowing.errors.CorruptionError:5 of
 msgid ""
 "``RecordStore.replay`` 按行解析时发现中间行（非撕裂末行）JSON 损坏即 "
-"抛出。撕裂末行（崩溃半截写产物，无换行结尾）是合法容忍路径，截断丢弃、 不抛本异常；中间行损坏意味着已提交数据受损，属事故而非正常窗口——「中间行"
-" 损坏报警不容忍」是持久化层的既定约定。"
+"抛出。撕裂末行（崩溃半截写产物，无换行结尾）是合法容忍路径，截断丢弃、 不抛本异常；中间行损坏意味着已提交数据受损，属事故而非正常窗口——“中间行"
+" 损坏报警不容忍”是持久化层的既定约定。"
 msgstr ""
 
 #: flowing.errors.CorruptionError:12 of
@@ -2008,7 +2008,7 @@ msgid ""
 msgstr ""
 
 #: flowing.hooks:28 of
-msgid "``watch`` 通道：与钩子点并列的独立 watcher 机制，监听实例属性赋值 事件（见行为要点的「watcher 通道」）。"
+msgid "``watch`` 通道：与钩子点并列的独立 watcher 机制，监听实例属性赋值 事件（见行为要点的“watcher 通道”）。"
 msgstr ""
 
 #: flowing.hooks:31 of

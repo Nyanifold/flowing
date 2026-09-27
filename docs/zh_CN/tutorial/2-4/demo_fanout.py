@@ -17,7 +17,7 @@ async def main() -> None:
         try:
             result = await child.query(
                 f"在工作目录里写一个 notes/{topic}.md，正文一句话说明"
-                f"「{topic}」在这个项目中的作用（先建目录再写），"
+                f"“{topic}”在这个项目中的作用（先建目录再写），"
                 "写完用 finish 交卷。")
             return f"{name}: status={result.status}"
         finally:

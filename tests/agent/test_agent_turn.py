@@ -51,7 +51,7 @@ class EchoTool(Tool):
 
 class OpenTool(Tool):
     """strict=False 工具：LLM 多传的未声明参数放行透传到 execute
-    （「工具层不限制参数」契约的回归载体）。"""
+    （“工具层不限制参数”契约的回归载体）。"""
 
     definition = ToolDefinition(
         name="open", description="开放参数工具",
@@ -530,7 +530,7 @@ async def test_t59_in_turn_fork_seek(runtime, provider):
 
 
 async def test_t60_fork_dangling_tool_call(agent, provider):
-    # 构造「tool_call 已挂树、结果未 append」的 fork 落点
+    # 构造“tool_call 已挂树、结果未 append”的 fork 落点
     user = Message(id="u", kind=MessageKind.USER, content=[TextBlock(text="问")])
     agent.push(user)
     call_msg = Message(id="p-call", kind=MessageKind.PROVIDER,
@@ -1011,7 +1011,7 @@ async def test_t77_hallucinated_param(runtime, provider):
 
 async def test_t77b_strict_false_tool_receives_undeclared_params(runtime, provider):
     """T77 补充回归：strict=False 工具的 LLM 多传参数放行透传到 execute
-    （ToolDefinition「False 时工具层不限制参数」契约；strict=True 的拒绝
+    （ToolDefinition“False 时工具层不限制参数”契约；strict=True 的拒绝
     语义由 T77 覆盖，不回归）。"""
     runtime.register_tool(OpenTool())
     agent = await runtime.create_agent(SimpleAgent)
@@ -1047,7 +1047,7 @@ async def test_t78_async_tool_pending_and_event(runtime, provider):
     tool_msgs = [agent._messages[mid] for mid in result.turn.message_ids
                  if agent._messages[mid].kind is MessageKind.TOOL]
     assert [m.tool_status for m in tool_msgs] == ["pending", "pending"]   # 收据配对封闭
-    # B10：pending 收据附加「后台任务 ID」块（Task 路径 output 仍 None——
+    # B10：pending 收据附加“后台任务 ID”块（Task 路径 output 仍 None——
     # 内容只有附加块，无结果块）
     assert [len(m.content) for m in tool_msgs] == [1, 1]
     assert all(isinstance(b, TextBlock) and b.text.startswith("background task ID: ")

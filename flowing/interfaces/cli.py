@@ -315,7 +315,7 @@ def cmd_compile(path: str) -> int:
     from flowing.errors import ArtifactModifiedError
 
     # 编译器入口（flowing.compiler.compile_project）；无 .fya 时
-    # compile_project 返回空列表——打印「无可编译文件」并正常退出
+    # compile_project 返回空列表——打印“无可编译文件”并正常退出
     try:
         products = compile_project(Path(path))
     except ArtifactModifiedError as exc:

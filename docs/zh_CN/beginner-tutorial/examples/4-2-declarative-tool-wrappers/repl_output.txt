@@ -7,5 +7,5 @@ Hmm, but a cautious assistant might wait. The guidance says if no dependencies, 
 [tool_call] order-create {"item": "演示商品", "count": 2}
 [tool:completed] status-get -> 
 [tool:completed] order-create -> 
-status-get 返回 `{"status": "ok", "uptime": 2.9}`，服务器正常；order-create 返回 `{"order_id": "ord-001", "total": 19.8}`，2 件「演示商品」已下单。
+status-get 返回 `{"status": "ok", "uptime": 2.9}`，服务器正常；order-create 返回 `{"order_id": "ord-001", "total": 19.8}`，2 件“演示商品”已下单。
 (agent-main)>>>

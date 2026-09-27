@@ -1,7 +1,7 @@
 #: flowing.message.MessageChain.remove:18 of
 msgid ""
-"重挂目标 = 被删消息的亲节点：删除**尾部消息**是纯截断语义 （无子，不产生 move）；删除**中间消息**由「逐行重写」降为 「N 条 "
-"move + 1 条 tombstone」，运行期 O(子数)。"
+"重挂目标 = 被删消息的亲节点：删除**尾部消息**是纯截断语义 （无子，不产生 move）；删除**中间消息**由“逐行重写”降为 “N 条 "
+"move + 1 条 tombstone”，运行期 O(子数)。"
 msgstr ""
 
 #: flowing.message.MessageChain.remove:21 of
@@ -10,8 +10,8 @@ msgstr ""
 
 #: flowing.message.MessageChain.remove:22 of
 msgid ""
-"不移动 ``current_head_id``；删除 head 上溯路径上的消息属于调用 方责任。需要「删除当前 head "
-"并回退到亲节点」时，请使用 ``Agent.remove`` / ``Agent.pop`` （Agent 层负责 head 维护）。"
+"不移动 ``current_head_id``；删除 head 上溯路径上的消息属于调用 方责任。需要“删除当前 head "
+"并回退到亲节点”时，请使用 ``Agent.remove`` / ``Agent.pop`` （Agent 层负责 head 维护）。"
 msgstr ""
 
 #: flowing.message.MessageChain.remove:29 of
@@ -35,7 +35,7 @@ msgid "消息任一 ``content`` block 的 ``tags`` 与给定 ``tags`` 相交。"
 msgstr ""
 
 #: flowing.message.MessageChain.remove_by_tags:11 of
-msgid "支撑「临时注入、响应后清洗」场景：``after_turn`` 钩子内按 tags 擦除本回合附加的提醒消息，保证不累积到后续轮次。"
+msgid "支撑“临时注入、响应后清洗”场景：``after_turn`` 钩子内按 tags 擦除本回合附加的提醒消息，保证不累积到后续轮次。"
 msgstr ""
 
 #: flowing.message.MessageChain.remove_by_tags:16 of
@@ -110,7 +110,7 @@ msgstr ""
 
 #: flowing.message.MessageChain.reparent:5 of
 msgid ""
-"「单点 op，子树效应」——只改目标消息一个字段，其后代链不变，整个 子树自然跟着走。是五 op 中唯一能移动既有结构的 op：分支迁移、 "
+"“单点 op，子树效应”——只改目标消息一个字段，其后代链不变，整个 子树自然跟着走。是五 op 中唯一能移动既有结构的 op：分支迁移、 "
 "删除前的子树保全、压缩摘要分支的挂接都经它完成。"
 msgstr ""
 
@@ -145,7 +145,7 @@ msgid ""
 msgstr ""
 
 #: flowing.message.MessageKind:1 of
-msgid "消息来源枚举：判别「这条消息来自谁」（八值，跨版本稳定契约）。"
+msgid "消息来源枚举：判别“这条消息来自谁”（八值，跨版本稳定契约）。"
 msgstr ""
 
 #: flowing.message.MessageKind:5 of
@@ -157,8 +157,8 @@ msgstr ""
 
 #: flowing.message.MessageKind:10 of
 msgid ""
-"命名原则：所有 kind 描述「来自谁」而非「扮演什么角色」。``PROVIDER`` 是 Provider "
-"输出的统一来源名——不取会隐含「纯文本 LLM」的 「assistant」读法，以覆盖文生图 / 语音 / 视频等多模态输出。 "
+"命名原则：所有 kind 描述“来自谁”而非“扮演什么角色”。``PROVIDER`` 是 Provider "
+"输出的统一来源名——不取会隐含“纯文本 LLM”的 “assistant”读法，以覆盖文生图 / 语音 / 视频等多模态输出。 "
 "``PLUGIN`` / ``SUBAGENT`` 的存在是因为 Skill 渲染结果与子 Agent "
 "返回结果永远是独立消息，不能合并进工具结果消息。"
 msgstr ""
@@ -171,7 +171,7 @@ msgstr ""
 
 #: flowing.message.MessageKind:31 of
 msgid ""
-"各 kind 的典型 ``content`` 组合（典型情况而非硬约束，框架核心不 验证「某 kind 可否含某 block type」，合法性由"
+"各 kind 的典型 ``content`` 组合（典型情况而非硬约束，框架核心不 验证“某 kind 可否含某 block type”，合法性由"
 " Provider adapter 在 组装 API 请求时验证）："
 msgstr ""
 
@@ -242,7 +242,7 @@ msgid ""
 "``PEER`` 与 ``EVENT`` 的区分：PEER = 另一个 Agent 实例有意图地 "
 "主动发送（语义上更接近用户消息，``source`` 典型值 ``\"message_to\"`` / "
 "``\"agent_delegate\"`` / ``\"agent_steer\"``）；EVENT = 非 Agent 实体 "
-"触发的「某事发生了」（辅助信息，``source`` 典型值 ``\"scheduled_task\"`` / "
+"触发的“某事发生了”（辅助信息，``source`` 典型值 ``\"scheduled_task\"`` / "
 "``\"plugin_event\"`` / ``\"tool_result\"``）。 钩子（如 "
 "``before_turn``）可据此按触发来源做精准决策。"
 msgstr ""
@@ -310,7 +310,7 @@ msgstr ""
 
 #: flowing.message.MessagePriority:8 of
 msgid ""
-"用 ``IntEnum`` 且「更优先 = 更小数值」使排序实现为普通数值升序 + 入队 序号，无需自定义比较器。``INTERRUPT`` "
+"用 ``IntEnum`` 且“更优先 = 更小数值”使排序实现为普通数值升序 + 入队 序号，无需自定义比较器。``INTERRUPT`` "
 "用于打断当前回合的插队场景； ``STEER`` 仅弱于它——回合进行中入队的 STEER 消息被当轮吸收，当轮 LLM "
 "调用的上下文即可见但不打断；``HIGH`` 的典型场景是人工催办、 外部高优告警等紧急但不打断当前回合的通知。"
 msgstr ""
@@ -376,7 +376,7 @@ msgstr ""
 #: flowing.message.MessageQueue:5 of
 msgid ""
 "每个 Agent 一个独立队列（``Agent._message_queue``），是外部消息进入 逻辑 turn 循环的唯一通道。工作循环经 "
-"``Agent._dequeue()`` 消费—— 默认批次为「队首 INTERRUPT/STEER 连续段 + 其后第一条非紧急消息」 "
+"``Agent._dequeue()`` 消费—— 默认批次为“队首 INTERRUPT/STEER 连续段 + 其后第一条非紧急消息” "
 "（队首即非紧急时批次为单条），drain / 合并 / 按来源分组等更宽的 批量策略由覆写 ``_dequeue()`` 实现，本类提供 "
 "``drain_all`` / ``take_while`` 等批量取出原语支撑默认批次与覆写。"
 msgstr ""
@@ -385,7 +385,7 @@ msgstr ""
 msgid ""
 "队列只承诺最小调度语义：按 ``MessagePriority`` 数值升序、同级按入队 顺序 "
 "FIFO。防饿死、来源加权等策略不在框架核心。忙时不拒绝：活跃 turn 中入队的消息自然排队，turn 结束后被消费；入队即保证会被常驻 "
-"工作循环消费（无需「入队触发」逻辑）。"
+"工作循环消费（无需“入队触发”逻辑）。"
 msgstr ""
 
 #: flowing.message.MessageQueue:40 of
@@ -452,8 +452,8 @@ msgstr ""
 
 #: flowing.message.MessageQueue.wait_not_empty:5 of
 msgid ""
-"「等消息」与「取消息」的拆分原语：``Agent._dequeue`` 的默认实现 用它把 ``before_dequeue`` "
-"的派发点移到「队列确实非空、即将出队」 的时刻，消除空转期的无效钩子派发。enqueue 时唤醒等待者。"
+"“等消息”与“取消息”的拆分原语：``Agent._dequeue`` 的默认实现 用它把 ``before_dequeue`` "
+"的派发点移到“队列确实非空、即将出队” 的时刻，消除空转期的无效钩子派发。enqueue 时唤醒等待者。"
 msgstr ""
 
 #: flowing.message.MessageQueue.wait_not_empty:11 of
@@ -487,8 +487,8 @@ msgstr ""
 
 #: flowing.message.MessageQueue.dequeue:5 of
 msgid ""
-"队列空时挂起等待，直到有消息入队。本方法是「等消息 + 取消息」合体 的便捷原语；``Agent._dequeue()`` "
-"的默认实现不使用它——为了把 ``before_dequeue`` 的派发点移到「队列确实非空、即将出队」的时刻 （每批真正出队的消息之前恰好一次"
+"队列空时挂起等待，直到有消息入队。本方法是“等消息 + 取消息”合体 的便捷原语；``Agent._dequeue()`` "
+"的默认实现不使用它——为了把 ``before_dequeue`` 的派发点移到“队列确实非空、即将出队”的时刻 （每批真正出队的消息之前恰好一次"
 " before 派发），默认实现改用 :meth:`wait_not_empty` + :meth:`take_while` / "
 ":meth:`dequeue_nowait` 的拆分组合（见 :meth:`flowing.agent.Agent._dequeue`）。不需要该"
 " 钩子时序语义的直接消费方（如自定义 ``_dequeue()`` 覆写）可用本 方法。"
@@ -523,12 +523,12 @@ msgstr ""
 
 #: flowing.message.MessageQueue.drain_all:10 of
 msgid ""
-"用于 ``_dequeue()`` 覆写实现「合并回合」：多条消息一次吸收， 回合收尾时每条消息的等待者共享同一 ``TurnResult`` "
+"用于 ``_dequeue()`` 覆写实现“合并回合”：多条消息一次吸收， 回合收尾时每条消息的等待者共享同一 ``TurnResult`` "
 "并被全部 resolve（核心通用收尾天然兼容批量）。"
 msgstr ""
 
 #: flowing.message.MessageQueue.drain_all:13 of
-msgid "边缘情况：调用与「另一生产者正在 enqueue」交错时，只保证取出 调用时刻的存量；新入队者留给下一次。"
+msgid "边缘情况：调用与“另一生产者正在 enqueue”交错时，只保证取出 调用时刻的存量；新入队者留给下一次。"
 msgstr ""
 
 #: flowing.message.MessageQueue.drain_all:17 of
@@ -568,13 +568,13 @@ msgstr ""
 #: flowing.message.MessageQueue.peek:5 of
 msgid ""
 "按出队顺序（优先级 + 同级 FIFO）返回队首消息；指定 ``priority`` 时返回该优先级带内 FIFO "
-"队首（用于「只看某一带」的观察，如 UI 分列预览各优先级各一条）。队列为空、或指定优先级带内无消息时 返回 ``None``。"
+"队首（用于“只看某一带”的观察，如 UI 分列预览各优先级各一条）。队列为空、或指定优先级带内无消息时 返回 ``None``。"
 msgstr ""
 
 #: flowing.message.MessageQueue.peek:10 of
 msgid ""
 "``dequeue`` 阻塞且移除、``drain_all`` / ``take_while`` 批量移除 "
-"——队列此前没有「只看不动」的入口；``peek`` 补齐观测面，与 :meth:`__len__` 同属观测原语。"
+"——队列此前没有“只看不动”的入口；``peek`` 补齐观测面，与 :meth:`__len__` 同属观测原语。"
 msgstr ""
 
 #: flowing.message.MessageQueue.peek:16 of
@@ -584,7 +584,7 @@ msgstr ""
 #: flowing.message.MessageQueue.peek:17 of
 msgid ""
 "返回的消息仍在队列中：后续 ``dequeue`` / ``set_priority`` / ``remove`` "
-"照常作用于它；不得将返回值视为「已占有」。"
+"照常作用于它；不得将返回值视为“已占有”。"
 msgstr ""
 
 #: flowing.message.MessageQueue.peek:19 of
@@ -634,8 +634,8 @@ msgstr ""
 
 #: flowing.message.MessageQueue.set_priority:9 of
 msgid ""
-"优先级是入队后仍可变的调度属性（典型场景：用户催办、Guardrail 升级提醒）。重排保留原入队序号：语义为「这条消息从入队起就该是 "
-"新优先级」，而非「现在新来的一条高优先级消息」；它在新优先级带 内的 FIFO 位置由原入队早晚决定。"
+"优先级是入队后仍可变的调度属性（典型场景：用户催办、Guardrail 升级提醒）。重排保留原入队序号：语义为“这条消息从入队起就该是 "
+"新优先级”，而非“现在新来的一条高优先级消息”；它在新优先级带 内的 FIFO 位置由原入队早晚决定。"
 msgstr ""
 
 #: flowing.message.MessageQueue.set_priority:23 of
@@ -670,8 +670,8 @@ msgstr ""
 
 #: flowing.model.ModelConfig:11 of
 msgid ""
-"「换模型」在 Flowing 中始终是「换一份完整规格」：``provider`` 字段是 绑定关系（单个 provider 条目名），换提供商 "
-"= 换模型（或动态构造新 结构体）；不存在「只换 ID、其他参数沿用旧模型」的中间态。"
+"“换模型”在 Flowing 中始终是“换一份完整规格”：``provider`` 字段是 绑定关系（单个 provider 条目名），换提供商 "
+"= 换模型（或动态构造新 结构体）；不存在“只换 ID、其他参数沿用旧模型”的中间态。"
 msgstr ""
 
 #: flowing.model.ModelConfig:15 of
@@ -741,7 +741,7 @@ msgstr ""
 
 #: flowing.ModelConfig.provider:1 flowing.model.ModelConfig.provider:1 of
 msgid ""
-"绑定的 provider 条目名（1:1 单值绑定，非候选列表）；「模型定义中 即包含其提供商」。解析后必须能在 Runtime 的 "
+"绑定的 provider 条目名（1:1 单值绑定，非候选列表）；“模型定义中 即包含其提供商”。解析后必须能在 Runtime 的 "
 "provider 候选清单中查到 条目，否则 ``provider_gen()`` 时报错；禁止列表写法。"
 msgstr ""
 
@@ -770,7 +770,7 @@ msgstr ""
 msgid ""
 "对含 Parsable 的字段逐一求值（Jinja2，渲染上下文为 ``agent`` 的实例 属性，可引用 env / config / "
 "运行时状态），产出一份字段均为静态值的 ``ModelConfig``。``Agent.provider_gen()`` 在每次调用 "
-"Provider 之前 调用本方法——「同 Turn 内改模型立即生效」的契约由「每次 provider_gen 前重新 resolve」保证。"
+"Provider 之前 调用本方法——“同 Turn 内改模型立即生效”的契约由“每次 provider_gen 前重新 resolve”保证。"
 msgstr ""
 
 #: flowing.model.ModelConfig.resolve:19 of
@@ -811,7 +811,7 @@ msgstr ""
 
 #: flowing.parsable.Parsable:5 of
 msgid ""
-"``.fya`` 中所有「可解析字段」（``system_prompt``、``description`` 及 "
+"``.fya`` 中所有“可解析字段”（``system_prompt``、``description`` 及 "
 "各类具名块内容）与手写子类中的等价声明，统一表示为 ``Parsable[T]``。 ``Parsable`` 不是固定数据类型：``type``"
 " 由 ``source`` 样式自动推断 （``LITERAL`` / ``FILE_REF`` / ``EXPRESSION`` / "
 "``TEMPLATE`` / ``RAW``）， 渲染结果的类型由形式决定（``EXPRESSION`` 返回表达式原生类型，其余返回 "
@@ -822,7 +822,7 @@ msgstr ""
 #: flowing.parsable.Parsable:13 of
 msgid ""
 "惰性求值是功能正确性前提而非性能优化：文件解析阶段求值会在环境变量未 加载、Agent 实例尚不存在、被引用文件未就绪三类场景下产生错误结果。 "
-"统一抽象使 ``.fya`` 五种写法与 Python 手写声明走同一条渲染管线， 「用到的时候重新算」取代了响应式系统（无 "
+"统一抽象使 ``.fya`` 五种写法与 Python 手写声明走同一条渲染管线， “用到的时候重新算”取代了响应式系统（无 "
 "Proxy、无依赖图、无缓存）。"
 msgstr ""
 
@@ -831,11 +831,11 @@ msgid "``.fya`` 声明式入口（五种形式）："
 msgstr ""
 
 #: flowing.parsable.Parsable:35 of
-msgid "手写子类与 Python API 侧用法见模块 docstring「使用示例」。"
+msgid "手写子类与 Python API 侧用法见模块 docstring“使用示例”。"
 msgstr ""
 
 #: flowing.parsable.Parsable:39 of
-msgid "``type`` 自动推断，构造时不接受手动指定；推断规则见模块级 「五种形式判定」。"
+msgid "``type`` 自动推断，构造时不接受手动指定；推断规则见模块级 “五种形式判定”。"
 msgstr ""
 
 #: flowing.parsable.Parsable:41 of
@@ -846,7 +846,7 @@ msgid ""
 msgstr ""
 
 #: flowing.parsable.Parsable:45 of
-msgid "求值上下文：见 :meth:`resolve`；渲染上下文构成见模块级「渲染上下文」。"
+msgid "求值上下文：见 :meth:`resolve`；渲染上下文构成见模块级“渲染上下文”。"
 msgstr ""
 
 #: flowing.parsable.Parsable:46 of
@@ -892,7 +892,7 @@ msgstr ""
 
 #: flowing.parsable.Parsable.bind:5 of
 msgid ""
-"与描述符实例访问同构的**显式绑定**入口：给「构造期无法预知调用方 的声明式 Parsable」补绑定。典型场景：SKILL.fya 的 "
+"与描述符实例访问同构的**显式绑定**入口：给“构造期无法预知调用方 的声明式 Parsable”补绑定。典型场景：SKILL.fya 的 "
 "``content`` 在 registry 解析期构造（此时无 Agent），使用时才绑定调用方 Agent—— 绑定后 ``resolve``"
 " 能取到 ``config`` / ``env`` / FILE_REF 的 runtime "
 "来源；``source_dir``（构造时给的声明文件目录）在绑定后仍优先。"
@@ -920,7 +920,7 @@ msgstr ""
 msgid ""
 "对 ``source`` 按 ``type`` 求值：``RAW`` 直接返回引号内文本；``LITERAL`` 返回 ``source`` "
 "原样；``FILE_REF`` 现场读文件后渲染；``EXPRESSION`` 返回 表达式原生值；``TEMPLATE`` 返回渲染后的 "
-"``str``。同步方法——求值可能 涉及文件读取，但均为本地小文件，不引入异步。「用到的时候重新算」是 "
+"``str``。同步方法——求值可能 涉及文件读取，但均为本地小文件，不引入异步。“用到的时候重新算”是 "
 "框架取代响应式系统的核心机制：每次调用现场求值（无缓存）保证拿到的 永远是最新的 ``env`` / ``config`` / 实例属性 / "
 "被引用文件内容。"
 msgstr ""
@@ -1019,9 +1019,9 @@ msgstr ""
 msgid ""
 "Jinja2 渲染任意对象时默认调用 ``str()``——对 Parsable 而言 ``str()`` 只展示模板源（不求值，见 "
 ":meth:`__str__`）；因此模板内引用 Parsable 必须写显式的 ``.resolved`` "
-"（「这里是一次求值」意图可读，不依赖隐式 字符串化）。模板中显式 ``{{ x.resolve() }}`` （无参、已绑定）与 "
+"（“这里是一次求值”意图可读，不依赖隐式 字符串化）。模板中显式 ``{{ x.resolve() }}`` （无参、已绑定）与 "
 "``.resolved`` 语义等价，但 ``.resolved`` 是惯用写法。模板内完整示例见 :data:`TEMPLATE` "
-"的「混合内容中的 Parsable 引用」。"
+"的“混合内容中的 Parsable 引用”。"
 msgstr ""
 
 #: flowing.Parsable.resolved:18 flowing.parsable.Parsable.resolved:18 of
@@ -1057,7 +1057,7 @@ msgid ""
 "类型、Resource、全局状态命名空间）。 插件实例由用户代码构造后传入 ``Runtime.install()``，框架不实例化插件。 "
 "本类是扩展的唯一基类；子类须显式声明 :attr:`name` 与 :attr:`dependencies` （:attr:`namespace`"
 " 可选），并按需实现 :meth:`install` / :meth:`shutdown`。插件作者的约定（``install`` "
-"只注册、协作不查询、注册只在 ``install``、依赖只声明；以及绑函数 约定、命名约定）见本模块 docstring「全局约定」。"
+"只注册、协作不查询、注册只在 ``install``、依赖只声明；以及绑函数 约定、命名约定）见本模块 docstring“全局约定”。"
 msgstr ""
 
 #: flowing.plugins.Plugin:37 of
@@ -1112,7 +1112,7 @@ msgstr ""
 msgid ""
 "本名用于：``dependencies`` 的依赖匹配（其它插件按注册名声明依赖）、 ``runtime.get_plugin(name)`` "
 "查询、日志、快照 ``plugins`` 列表， 以及同名插件查重——一个 Runtime 同时只装一个同名插件。注册名是 per-Runtime"
-" 作用域的标签，生态语义见模块 docstring「全局约定」。"
+" 作用域的标签，生态语义见模块 docstring“全局约定”。"
 msgstr ""
 
 #: flowing.Plugin.name:11 of
@@ -1229,7 +1229,7 @@ msgstr ""
 
 #: flowing.context.PromptBlock:5 of
 msgid ""
-"框架核心层数据结构。一个 ``PromptBlock`` 是「一段 system prompt 的注册 声明」：``content`` "
+"框架核心层数据结构。一个 ``PromptBlock`` 是“一段 system prompt 的注册 声明”：``content`` "
 "是惰性内容（:class:`flowing.parsable.Parsable`）， ``cache`` / ``tags`` / ``by`` "
 "/ ``enabled`` 是管理元数据。注册时不解析 "
 "内容，直到每次组装（``Agent._assemble_context()``）现场求值，产出 :class:`PromptSegment`。"
@@ -1237,7 +1237,7 @@ msgstr ""
 
 #: flowing.context.PromptBlock:11 of
 msgid ""
-"system prompt 从「一段完整文本」变为「按注册顺序拼接的分层片段」，使 "
+"system prompt 从“一段完整文本”变为“按注册顺序拼接的分层片段”，使 "
 "框架骨架（``by=\"core\"``）、内置扩展与应用代码能各自注册、各自管理自己 的片段，互不感知。内容用 ``Parsable`` "
 "承载是因为惰性求值是功能正确性 的前提：注册时环境变量、配置值、实例属性可能尚不存在，只有使用时才能 解析。"
 msgstr ""
@@ -1348,7 +1348,7 @@ msgstr ""
 
 #: flowing.PromptBlock.by:1 flowing.context.PromptBlock.by:1 of
 msgid ""
-"来源标识：ManagedList「按属主管理」的操作目标。默认空串 ``\"\"`` （不标 来源）；约定值 ``\"core\"`` "
+"来源标识：ManagedList“按属主管理”的操作目标。默认空串 ``\"\"`` （不标 来源）；约定值 ``\"core\"`` "
 "（框架骨架——框架内部 append 时显式传入，非 默认值）/ ``\"skill\"`` （SkillPlugin）/ 应用自定义值。"
 msgstr ""
 
@@ -1580,7 +1580,7 @@ msgid "把 ``tags`` 列表中含有 ``tag`` 的全部块从启用改为停用（
 msgstr ""
 
 #: flowing.context.PromptBlockList.disable_by_tag:6 of
-msgid "标签是「一组块共同的功能身份」（如 ``\"mode-plan\"``），启停一组块不应 依赖各自的位置或名字。"
+msgid "标签是“一组块共同的功能身份”（如 ``\"mode-plan\"``），启停一组块不应 依赖各自的位置或名字。"
 msgstr ""
 
 #: flowing.context.PromptBlockList.disable_by_tag:15
@@ -1601,8 +1601,8 @@ msgstr ""
 
 #: flowing.context.PromptBlockList.disable_by_tag:22 of
 msgid ""
-"已处于停用状态的匹配块不产生任何变化，但仍计入返回值：重复调用同一 个 ``tag`` 返回相同数值（本类的计数口径是「命中数」，与基类 "
-"``ManagedList`` 的「本次实际变化数」口径不同）。"
+"已处于停用状态的匹配块不产生任何变化，但仍计入返回值：重复调用同一 个 ``tag`` 返回相同数值（本类的计数口径是“命中数”，与基类 "
+"``ManagedList`` 的“本次实际变化数”口径不同）。"
 msgstr ""
 
 #: flowing.context.PromptBlockList.disable_by_owner:17
@@ -1672,7 +1672,7 @@ msgid "从列表中物理删除所有 ``tags`` 列表中含有 ``tag`` 的块（
 msgstr ""
 
 #: flowing.context.PromptBlockList.remove_by_tag:5 of
-msgid "与 disable 系列互补：disable 是「暂时不用」（可逆、保序），remove 是 「永久退场」（如扩展卸载、模式机制整体移除）。"
+msgid "与 disable 系列互补：disable 是“暂时不用”（可逆、保序），remove 是 “永久退场”（如扩展卸载、模式机制整体移除）。"
 msgstr ""
 
 #: flowing.context.PromptBlockList.remove_by_owner:18
@@ -1713,7 +1713,7 @@ msgstr ""
 
 #: flowing.context.PromptBlockList.disable_by_owner:5 of
 msgid ""
-"属主是「谁注册的」——扩展或 Composable 需要整体停用自己注册的全部块 时，不应枚举各自的 tag。这也是扩展必须如实填写 ``by``"
+"属主是“谁注册的”——扩展或 Composable 需要整体停用自己注册的全部块 时，不应枚举各自的 tag。这也是扩展必须如实填写 ``by``"
 " 的原因。"
 msgstr ""
 
@@ -1748,7 +1748,7 @@ msgid "从列表中物理删除所有 ``block.by == owner`` 的块（不可逆�
 msgstr ""
 
 #: flowing.context.PromptBlockList.remove_by_owner:6 of
-msgid "「谁注册、谁回收」：属主维度比 tag 更贴近扩展的生命周期边界（一个 扩展可能注册多个不同 tag 的块）。"
+msgid "“谁注册、谁回收”：属主维度比 tag 更贴近扩展的生命周期边界（一个 扩展可能注册多个不同 tag 的块）。"
 msgstr ""
 
 #: flowing.context.PromptBlockList.remove_by_owner:22 of
@@ -1860,7 +1860,7 @@ msgstr ""
 
 #: flowing.provide.ProvideNode:5 of
 msgid ""
-"统一「可 provide / 可 inject」的节点签名。框架内 :class:`flowing.runtime.Runtime` "
+"统一“可 provide / 可 inject”的节点签名。框架内 :class:`flowing.runtime.Runtime` "
 "（链终点）、:class:`flowing.agent.Agent` 与 "
 "``flowing.plugins.workflow.Workflow`` 都实现本协议。协议带 "
 "``@runtime_checkable``，可以用 ``isinstance(node, ProvideNode)`` 在 "
@@ -1901,7 +1901,7 @@ msgstr ""
 #: flowing.runtime.ProvideNode.runtime:1 of
 msgid ""
 "节点所属的 Runtime（provide-inject 链的终点）。Agent / Workflow 用它找到链终点；Runtime 自身的 "
-"``runtime`` 指向自己，以此表达 「本节点就是链终点」。"
+"``runtime`` 指向自己，以此表达 “本节点就是链终点”。"
 msgstr ""
 
 #: flowing.provide.ProvideNode.provide:1 of
@@ -2267,7 +2267,7 @@ msgid "不做 schema 校验；``adapter`` 键只由加载器用于选类。"
 msgstr ""
 
 #: flowing.providers.provider.ProviderConfig:36 of
-msgid "安全边界：本配置含凭证，禁止写入消息、``_provided`` 与任何落盘 文件（详见包 docstring「安全边界」）。"
+msgid "安全边界：本配置含凭证，禁止写入消息、``_provided`` 与任何落盘 文件（详见包 docstring“安全边界”）。"
 msgstr ""
 
 #: flowing.providers.provider.ProviderConfig:41 of
@@ -2288,8 +2288,8 @@ msgstr ""
 #: flowing.providers.provider.ProviderDelta:10 of
 msgid ""
 "非流式路径同样产生一条：``stream=False`` 时 ``provider_gen()`` 在 拿到完整响应后合成一条全量 delta "
-"分发（从空到全量即一个增量）， 两种路径的 delta 数据格式完全一致。订阅者因此永远可以依赖「每次 ``provider_gen()`` "
-"至少收到一条 delta」。"
+"分发（从空到全量即一个增量）， 两种路径的 delta 数据格式完全一致。订阅者因此永远可以依赖“每次 ``provider_gen()`` "
+"至少收到一条 delta”。"
 msgstr ""
 
 #: flowing.providers.provider.ProviderDelta:15 of

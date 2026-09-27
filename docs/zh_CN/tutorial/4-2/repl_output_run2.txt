@@ -9,5 +9,5 @@ Also note: app-info "boots" — previous said 1. Access count? Not available.
 [tool:completed] prefs -> 
 [tool:completed] todo -> 
 [tool:completed] app-info -> 
-偏好是「主题=深色」，待办有「写周报」「买牛奶」两条未完成，启动次数为 2；访问计数没有对应工具，我查不到。
+偏好是“主题=深色”，待办有“写周报”“买牛奶”两条未完成，启动次数为 2；访问计数没有对应工具，我查不到。
 (agent-main)>>>

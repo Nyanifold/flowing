@@ -163,7 +163,7 @@ class Plugin:
     本名用于：``dependencies`` 的依赖匹配（其它插件按注册名声明依赖）、
     ``runtime.get_plugin(name)`` 查询、日志、快照 ``plugins`` 列表，
     以及同名插件查重——一个 Runtime 同时只装一个同名插件。注册名是
-    per-Runtime 作用域的标签，生态语义见模块 docstring「全局约定」。
+    per-Runtime 作用域的标签，生态语义见模块 docstring“全局约定”。
 
     .. seealso:: :attr:`namespace`
     """

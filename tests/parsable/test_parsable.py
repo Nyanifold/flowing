@@ -46,7 +46,7 @@ def test_t22_form_inference():
 def test_t23_edge_forms():
     assert Parsable('$"_"').type is RAW
     assert Parsable("_").type is LITERAL  # 裸字符串：PENDING 语义只在 .fya 解析层
-    # 两个并列表达式不是「恰好一个完整表达式」→ TEMPLATE
+    # 两个并列表达式不是“恰好一个完整表达式”→ TEMPLATE
     assert Parsable("{{ a }} {{ b }}").type is TEMPLATE
 
 

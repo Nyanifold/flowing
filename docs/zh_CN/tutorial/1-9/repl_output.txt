@@ -9,7 +9,7 @@
 DONE愿阁下今日顺遂，凡事称心。时值午后，愿您诸事顺遂，心神安然，谢谢您一路相待。若您有所差遣，在下自当竭力而为，还请多多指教。
 
 DONE
-[thinking] The user asks to use the fixed sentence pattern to wish them a good afternoon, ending with DONE. The fixed pattern is 「愿阁下今日顺遂，凡事称心。」 Use it, address as 您, polite endings.
+[thinking] The user asks to use the fixed sentence pattern to wish them a good afternoon, ending with DONE. The fixed pattern is “愿阁下今日顺遂，凡事称心。” Use it, address as 您, polite endings.
 愿阁下今日顺遂，凡事称心。时值午后，愿您诸事顺遂，心神安然，谢谢您一路相待。若您有所差遣，在下自当竭力而为，还请多多指教。
 
 DONE
@@ -19,7 +19,7 @@ DONE
 5  tool      
 6  provider  技能已加载，正文将作为独立消息送达。
 7  event     验收条件未满足：你的最终回复必须包含单独一行的 DONE。请重新回答刚才的问题，并在末尾附上 DONE。
-4  event    # 礼貌问候规范 - 问候时必须使用固定句式开头：「愿阁下今日顺遂，凡事称心。」； - 称呼用户为「您」，句末使用「请」「谢谢」等敬语； - 语气谦逊，避免生硬…
+4  event    # 礼貌问候规范 - 问候时必须使用固定句式开头：“愿阁下今日顺遂，凡事称心。”； - 称呼用户为“您”，句末使用“请”“谢谢”等敬语； - 语气谦逊，避免生硬…
 8  event     [提醒] 当前工作目录：<仓库根>/dev-docs/tutorial…
 9  provider  愿阁下今日顺遂，凡事称心。承蒙您清晨相候，能与您道一声早上好，实为在下之幸，谢谢您。若您有所吩咐，在下定当尽心效劳，还请不吝赐教。 DONE
 10  user      继续：请用刚学到的固定句式祝我下午顺利，末尾附 DONE。

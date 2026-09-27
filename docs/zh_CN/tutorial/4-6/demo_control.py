@@ -31,8 +31,8 @@ class FlakyProvider(Provider):
         response = await real.generate(context, model)
         # 测试 adapter 的归一：仅思考块（无正文/无工具调用）的响应补占位文本块——
         # 空文本会在流式合成增量时被累积器丢弃（delta.text="" 不归位），
-        # 下一轮请求将因「assistant 消息既无 content 也无 tool_calls」被
-        # DeepSeek 拒绝（框架级空正文处理见 PROGRESS「编写期发现」）。
+        # 下一轮请求将因“assistant 消息既无 content 也无 tool_calls”被
+        # DeepSeek 拒绝（框架级空正文处理见 PROGRESS“编写期发现”）。
         msg = response.message
         if msg is not None and not any(isinstance(b, ToolCallBlock)
                                        for b in msg.content) and not any(

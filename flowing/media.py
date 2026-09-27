@@ -414,7 +414,7 @@ async def normalize_output(value: Any) -> Any:
         - :class:`flowing.tool.ToolResult` —— 五形态的承载字段 ``output``。
     """
     def _is_basic(v: Any) -> bool:
-        # 「基础类型」：None/bool/int/float/str/dict/list/tuple/dataclass
+        # “基础类型”：None/bool/int/float/str/dict/list/tuple/dataclass
         # 实例/pydantic BaseModel 实例（JSON 兼容及其常见载体）。
         # 注意：媒体载体四类与全部 ContentBlock 都是 dataclass 实例，必须
         # 显式排除（否则永远走不到载体转换与违禁块检查）。

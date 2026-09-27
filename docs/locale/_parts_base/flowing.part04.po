@@ -72,7 +72,7 @@ msgstr ""
 #: flowing.subagents.SubagentResult:12 of
 msgid ""
 "``subagent_id``：子 Agent 的 ``node_id``。调用方需要活实例时， 经 "
-"``runtime.get_agent(subagent_id)`` 按「有记录无实例 → 现场 恢复」语义获取；不要在本对象上保留实例引用。"
+"``runtime.get_agent(subagent_id)`` 按“有记录无实例 → 现场 恢复”语义获取；不要在本对象上保留实例引用。"
 msgstr ""
 
 #: flowing.subagents.SubagentResult:15 of
@@ -131,7 +131,7 @@ msgstr ""
 msgid ""
 "子 Agent 该回合的结局，透传 ``TurnResult.status`` （``\"completed\"`` / "
 "``\"blocked\"`` / ``\"error\"`` / ``\"cancelled\"``）。 取消 / 异常信息的载体：被 "
-"cancel 时已置位的 finish 载荷或已产出 文本仍经 ``result`` 照返，「子 Agent 取消」这一事实由本字段承载， 不污染"
+"cancel 时已置位的 finish 载荷或已产出 文本仍经 ``result`` 照返，“子 Agent 取消”这一事实由本字段承载， 不污染"
 " ``result`` 的内容契约（结构化 dict 不塞标注、文本不拼后缀）。"
 msgstr ""
 
@@ -210,7 +210,7 @@ msgid "Provider 签发的完整性签名（如 Anthropic）；无签名机制时
 msgstr ""
 
 #: flowing.tool.Tool:1 of
-msgid "可执行对象基类——三正交中的「执行」层。"
+msgid "可执行对象基类——三正交中的“执行”层。"
 msgstr ""
 
 #: flowing.tool.Tool:5 of
@@ -218,7 +218,7 @@ msgid ""
 "`Tool` 只对执行负责：持有一份默认 `ToolDefinition`，暴露 ``execute()``；框架调度层经 "
 "``__call__`` 统一调用。四种工具类型 （script / mcp / cli / request）均以本类（或其子类）为最终产物。 "
 "调度职责（awaitable / async generator 检测、Task 包装、caller 注入、 返回值包装）集中在 "
-"``__call__``，让 ``execute()`` 保持「零散参数进、 普通值出」的最简单签名——工具作者不需要知道 "
+"``__call__``，让 ``execute()`` 保持“零散参数进、 普通值出”的最简单签名——工具作者不需要知道 "
 "`ToolResult` 的存在。"
 msgstr ""
 
@@ -307,7 +307,7 @@ msgstr ""
 
 #: flowing.tool.ToolCall:5 of
 msgid ""
-"`ToolCall` 是「LLM 想调什么」的纯数据载体：从 PROVIDER 消息的工具调用 "
+"`ToolCall` 是“LLM 想调什么”的纯数据载体：从 PROVIDER 消息的工具调用 "
 "块（``ToolCallBlock``）解析而来，经 ``before_tool_call`` 钩子链传递， 最终被解包为零散参数喂给 "
 "``Tool.execute()``。`ToolCall` 只是调用意图， 不是可执行对象；``execute()`` 不接收 "
 "`ToolCall` 整体入参。"
@@ -371,7 +371,7 @@ msgstr ""
 
 #: flowing.ToolCall.shortcut:1 flowing.tool.ToolCall.shortcut:1 of
 msgid ""
-"钩子短路字段：初值 ``None``，钩子链以「非 ``None`` 即短路」门控。 handler 把一个 `ToolResult` "
+"钩子短路字段：初值 ``None``，钩子链以“非 ``None`` 即短路”门控。 handler 把一个 `ToolResult` "
 "放进本字段后返回——钩子链停止、工具默认 执行被替代（该 `ToolResult` 直接作为本次调用的结果，典型场景：缓存 "
 "命中跳过工具执行），``after_tool_call`` 照常触发。与 ``raise Intercepted`` 的区别：shortcut "
 "是正常收场、结果由 handler 提供， Intercepted 是硬阻断、结果为 "
@@ -420,7 +420,7 @@ msgstr ""
 #: flowing.message.ToolCallBlock:10 of
 msgid ""
 "block 形式是消息层的权威表示（持久化、上下文组装都用它）； :class:`flowing.tool.ToolCall` "
-"是它的「解析后」形式——剥离通用字段， 只保留 ``id`` / ``name`` / ``args`` （+ 通用短路字段 "
+"是它的“解析后”形式——剥离通用字段， 只保留 ``id`` / ``name`` / ``args`` （+ 通用短路字段 "
 "``shortcut``）， 供 ``Agent.tool_call()`` 与工具钩子使用。两者经 "
 ":meth:`flowing.tool.ToolCall.from_block` 单向转换（模块依赖保持 单向：``flowing.tool`` "
 "认识 ``flowing.message``，反之不认识）。"
@@ -468,7 +468,7 @@ msgstr ""
 
 #: flowing.tool.ToolDefinition:5 of
 msgid ""
-"三正交中的「LLM 可见声明」层：字段为 ``name`` / ``description`` / ``params_schema`` / "
+"三正交中的“LLM 可见声明”层：字段为 ``name`` / ``description`` / ``params_schema`` / "
 "``output_schema`` / ``strict``。它出现在 ``Context.tools`` 中，是 Provider "
 "adapter 组装各家 function-calling schema 的唯一来源（adapter 为白名单语义——只取 ``name`` / "
 "``description`` / ``params`` 等已知字段构造，多带的字段天然不会被 映射）。"
@@ -495,7 +495,7 @@ msgstr ""
 #: flowing.tool.ToolDefinition:36 of
 msgid ""
 "``strict`` 语义：``True`` （默认）时工具层按 ``params_schema`` 严格约束 LLM 入参——LLM "
-"传出未定义参数即校验失败；``False`` 时 工具层不限制参数（未知键原样放行，用于「参数由下游自行校验」的 工具）。"
+"传出未定义参数即校验失败；``False`` 时 工具层不限制参数（未知键原样放行，用于“参数由下游自行校验”的 工具）。"
 msgstr ""
 
 #: flowing.tool.ToolDefinition:43 of
@@ -544,7 +544,7 @@ msgid ""
 msgstr ""
 
 #: flowing.ToolDefinition.strict:1 flowing.tool.ToolDefinition.strict:1 of
-msgid "是否在工具层严格约束 LLM 入参；``False`` 用于「参数由下游自行校验」 的工具。"
+msgid "是否在工具层严格约束 LLM 入参；``False`` 用于“参数由下游自行校验” 的工具。"
 msgstr ""
 
 #: flowing.tool.ToolDefinition.clone_with_overrides:1 of
@@ -554,7 +554,7 @@ msgstr ""
 #: flowing.tool.ToolDefinition.clone_with_overrides:5 of
 msgid ""
 "`ToolEntry.llm_definition()` 的唯一覆写机制：别名、参数局部覆写、 "
-"描述覆写、隐藏参数移除，全部经本方法一次性完成。「返回新对象， 原始不变」是绑定层不污染全局注册表的结构性保证——`ToolRegistry` "
+"描述覆写、隐藏参数移除，全部经本方法一次性完成。“返回新对象， 原始不变”是绑定层不污染全局注册表的结构性保证——`ToolRegistry` "
 "中的定义永不被 Agent 级覆写修改。"
 msgstr ""
 
@@ -608,12 +608,12 @@ msgid ":meth:`flowing.tool.ToolEntry.llm_definition` —— 本方法的 唯一�
 msgstr ""
 
 #: flowing.tool.ToolEntry:1 of
-msgid "Agent 对工具的一次「用法声明」——三正交中的 Agent 级绑定层。"
+msgid "Agent 对工具的一次“用法声明”——三正交中的 Agent 级绑定层。"
 msgstr ""
 
 #: flowing.tool.ToolEntry:5 of
 msgid ""
-"`ToolEntry` 回答「这个 Agent 如何使用这个 Tool」：LLM 看到的别名、 参数覆写、指定值、参数别名。每个 Agent "
+"`ToolEntry` 回答“这个 Agent 如何使用这个 Tool”：LLM 看到的别名、 参数覆写、指定值、参数别名。每个 Agent "
 "实例持有自己的 entry 集合， 互不共享——同一工具在不同 Agent 上可以呈现不同的 LLM 视图（如 ``FinishTool`` "
 "在不同 Agent 上的不同 schema），覆写发生在 Agent 级 绑定层，而不是全局注册表。"
 msgstr ""
@@ -761,8 +761,8 @@ msgstr ""
 msgid ""
 "本方法在 ``Agent._normalize()`` 内部被调用（``before_tool_call`` "
 "钩子之后），产出按规范名组织的最终参数字典。只收参数声明表 ``params_schema`` "
-"（``tool.definition.params_schema``），不持有 `Tool` 引用——`ToolEntry` 保持在「绑定 / "
-"声明」层，不依赖「执行」 层；调用方（``Agent._normalize``）已持有 Tool 实例，顺手传入 声明表即可。"
+"（``tool.definition.params_schema``），不持有 `Tool` 引用——`ToolEntry` 保持在“绑定 / "
+"声明”层，不依赖“执行” 层；调用方（``Agent._normalize``）已持有 Tool 实例，顺手传入 声明表即可。"
 msgstr ""
 
 #: flowing.tool.ToolEntry.resolve:14 of
@@ -1155,7 +1155,7 @@ msgid ""
 msgstr ""
 
 #: flowing.tool.ToolResult.blocked:1 of
-msgid "构造「被钩子硬阻断」的结果（``status=\"blocked\"`` 的唯一来源）。"
+msgid "构造“被钩子硬阻断”的结果（``status=\"blocked\"`` 的唯一来源）。"
 msgstr ""
 
 #: flowing.tool.ToolResult.blocked:5 of
@@ -1164,7 +1164,7 @@ msgid ""
 "Intercepted``，或 ``execute()`` 内部主动抛出 ``Intercepted`` 时，框架捕获 "
 "``Intercepted`` 并调用本工厂生成 阻断结果：``before_tool_call`` "
 "拦截时工具未执行；``after_tool_call`` 拦截时工具已执行完、结果被丢弃；``execute`` 内拦截时执行被中断 "
-"于中途。统一由本工厂生成，保证所有阻断路径的产物结构一致（LLM 可据此向用户说明「该操作被拦截」而不是「执行失败」）。"
+"于中途。统一由本工厂生成，保证所有阻断路径的产物结构一致（LLM 可据此向用户说明“该操作被拦截”而不是“执行失败”）。"
 msgstr ""
 
 #: flowing.tool.ToolResult.blocked:13 of
@@ -1251,7 +1251,7 @@ msgstr ""
 msgid ""
 "边缘情况：``status=\"pending\"`` 也产生消息（收据消息）——返回 Task 路径 ``output=None`` → "
 "``content=[]`` （空 tool_result 的 API 层兜底属 adapter 职责）；async gen 路径 "
-"``output=首 yield`` → content 带内容，并（注册键非 ``None`` 时）末尾附加「后台任务 ID」文本块（不动作者 "
+"``output=首 yield`` → content 带内容，并（注册键非 ``None`` 时）末尾附加“后台任务 ID”文本块（不动作者 "
 "yield 的内容）；异步任务真正完成时的结果 由框架另行产生多块 EVENT 消息，与本收据互不覆盖。"
 msgstr ""
 
@@ -1271,8 +1271,8 @@ msgstr ""
 
 #: flowing.agent.TurnContext:6 of
 msgid ""
-"逻辑 Turn 是「消费一条（或按覆写的出队策略多条）消息、直到 Provider 响应 ``finish=True`` "
-"才结束」的执行过程。本对象由回合执行体在 Turn 开始时创建、收尾后丢弃，是 :attr:`TurnResult.turn` 与 "
+"逻辑 Turn 是“消费一条（或按覆写的出队策略多条）消息、直到 Provider 响应 ``finish=True`` "
+"才结束”的执行过程。本对象由回合执行体在 Turn 开始时创建、收尾后丢弃，是 :attr:`TurnResult.turn` 与 "
 "``Agent.current_turn`` 的类型。它只承载回合执行期间的临时信息：不进入 "
 "消息树、不写任何持久化文件、进程崩溃后不恢复（恢复只重建消息级树与 状态袋，见本模块 docstring）。"
 msgstr ""
@@ -1397,7 +1397,7 @@ msgstr ""
 msgid ""
 "``token_usage`` 是本 Turn 各次成功 ``provider_gen`` 上报用量的 聚合（对 "
 "``TurnContext.usages`` 逐字段求和；``raw`` 不聚合）；为 ``None`` "
-"当且仅当没有任何成功调用上报用量——区分「provider 未上报」 与「真用了 0」。部分调用上报时只就上报者求和。"
+"当且仅当没有任何成功调用上报用量——区分“provider 未上报” 与“真用了 0”。部分调用上报时只就上报者求和。"
 msgstr ""
 
 #: flowing.agent.TurnResult:32 of
@@ -1457,7 +1457,7 @@ msgstr ""
 #: flowing.providers.provider.Usage:24 of
 msgid ""
 "七个计数字段为非负 ``int``；provider 无某概念（如无 cache、不 报告推理 "
-"token）时对应字段零填充。「未上报」信号只存在于整体层 （``message.usage is None``），不做逐字段 ``None`` "
+"token）时对应字段零填充。“未上报”信号只存在于整体层 （``message.usage is None``），不做逐字段 ``None`` "
 "区分。"
 msgstr ""
 
@@ -1469,7 +1469,7 @@ msgstr ""
 
 #: flowing.providers.provider.Usage:30 of
 msgid ""
-"``reasoning`` 是 ``output`` 的子集标注，不是正交桶——参与聚合 （「本 turn 累计推理 token」），但不重复计入"
+"``reasoning`` 是 ``output`` 的子集标注，不是正交桶——参与聚合 （“本 turn 累计推理 token”），但不重复计入"
 " ``total_tokens``。"
 msgstr ""
 
@@ -1520,7 +1520,7 @@ msgstr ""
 #: flowing.Usage.reasoning:1 of
 msgid ""
 "推理 token——``output`` 的子集标注，不重复计入 ``total_tokens``； provider "
-"不报告时零填充。聚合语义为「本 turn 累计推理 token」。"
+"不报告时零填充。聚合语义为“本 turn 累计推理 token”。"
 msgstr ""
 
 #: flowing.Usage.total_tokens:1 of
@@ -1554,7 +1554,7 @@ msgid ""
 "两种用法：``@flowing_tool`` （名字由文件名 / 目录名推断）或 ``@flowing_tool(\"make-"
 "payment\")`` （参数仅作一致性断言——必须与推断名 一致，不符抛 "
 ":class:`flowing.errors.NameMismatchError`）。定义处的 "
-"显式打标让「这个函数是工具」成为作者意图而非框架猜测。"
+"显式打标让“这个函数是工具”成为作者意图而非框架猜测。"
 msgstr ""
 
 #: flowing.tool.flowing_tool:17 of
@@ -1647,7 +1647,7 @@ msgstr ""
 
 #: flowing.runtime.launch:50 of
 msgid ""
-"本函数只负责把子项目拉起为 Runtime：不解析配置、不认识插件、不决定 「新建 vs 恢复」（那是 ``main()`` "
+"本函数只负责把子项目拉起为 Runtime：不解析配置、不认识插件、不决定 “新建 vs 恢复”（那是 ``main()`` "
 "的策略）、不启动任何服务端口。"
 msgstr ""
 
@@ -1685,7 +1685,7 @@ msgstr ""
 msgid ""
 "工具结果的统一归一入口：`Tool.__call__` 与 ``Agent.tool_call`` 收尾 "
 "各调一次（两次都安全，见行为要点）。产物为五形态之一：``None`` / 基础值原样 / 单块 / 纯基础 list / 混合 "
-"list（基础成员原样保留 + 非基础成员已转块）。「基础类型」指 ``None`` / ``bool`` / ``int`` / "
+"list（基础成员原样保留 + 非基础成员已转块）。“基础类型”指 ``None`` / ``bool`` / ``int`` / "
 "``float`` / ``str`` / ``dict`` / ``list`` / ``tuple`` / dataclass 实例 / "
 "pydantic ``BaseModel`` 实例（JSON 兼容及其常见载体）。"
 msgstr ""
@@ -1779,7 +1779,7 @@ msgid ""
 "setup 后结算：``setup()`` 返回后的 PENDING 检查发现暂记列表非空 → 抛 "
 ":class:`flowing.errors.UnknownHookPointError` （拼错的 "
 "钩子点名或未启用对应插件，必须死在创建期，不做静默死信）。``@on`` 的目标钩子点必须在 setup 结束前被 "
-"declare（与「Composable 在 setup 里启用」约定一致）。"
+"declare（与“Composable 在 setup 里启用”约定一致）。"
 msgstr ""
 
 #: flowing.hooks.on:67 of
@@ -1954,7 +1954,7 @@ msgid ":class:`TurnResult` —— 回合产物（``query()`` 等待语义的返�
 msgstr ""
 
 #: flowing.agent:12 of
-msgid ":class:`Execution` —— 异步执行追踪条目（「谁正在运行、谁可取消」）。"
+msgid ":class:`Execution` —— 异步执行追踪条目（“谁正在运行、谁可取消”）。"
 msgstr ""
 
 #: flowing.agent:13 of
@@ -1990,7 +1990,7 @@ msgstr ""
 
 #: flowing.agent:29 of
 msgid ""
-"本模块遵循「框架只提供机制，不提供策略」：核心只做错误分类、钩子点 分发与消息流转；重试、压缩、审批等策略全部放在扩展 / Composable "
+"本模块遵循“框架只提供机制，不提供策略”：核心只做错误分类、钩子点 分发与消息流转；重试、压缩、审批等策略全部放在扩展 / Composable "
 "/ 应用层。"
 msgstr ""
 
@@ -2018,7 +2018,7 @@ msgid ""
 "``Workflow.create_agent`` / ``Runtime.mount`` 全部委托创建管线）。创建与 "
 "恢复管线各自在一个新实例上执行 ``setup()``；实例诞生（``after_create`` / ``after_recover`` "
 "完成）即启动常驻工作循环 Task，``destroy()`` 时取消。 ``destroy()`` 递归销毁子树、丢弃实例，但 session "
-"记录（tree.jsonl / state.jsonl）与池 key 保留——「有 key 无 value」可现场恢复。"
+"记录（tree.jsonl / state.jsonl）与池 key 保留——“有 key 无 value”可现场恢复。"
 msgstr ""
 
 #: flowing.agent:53 of
@@ -2067,7 +2067,7 @@ msgid ""
 msgstr ""
 
 #: flowing.agent:86 of
-msgid "无生命周期状态机：Agent 不提供 ``status`` 字段；「在干什么」的观测 由快照层从内部状态现场派生（``snapshot()``）。"
+msgid "无生命周期状态机：Agent 不提供 ``status`` 字段；“在干什么”的观测 由快照层从内部状态现场派生（``snapshot()``）。"
 msgstr ""
 
 #: flowing.agent:91 of
@@ -2118,8 +2118,8 @@ msgstr ""
 
 #: flowing.agent.build_turn_result:16 of
 msgid ""
-"``token_usage`` 聚合：``turn.usages`` 为空 → ``None`` （区分 「provider 未上报」与「真用了 "
-"0」）；非空 → 七个计数字段逐字段 求和，聚合体的 ``raw`` 为空字典（逐次原始字段的消费方走 "
+"``token_usage`` 聚合：``turn.usages`` 为空 → ``None`` （区分 “provider 未上报”与“真用了 "
+"0”）；非空 → 七个计数字段逐字段 求和，聚合体的 ``raw`` 为空字典（逐次原始字段的消费方走 "
 "``after_provider_gen`` 钩子）。"
 msgstr ""
 
@@ -2179,7 +2179,7 @@ msgid "``flowing.compiler`` —— ``.fya`` 显式编译器：构建期把声明
 msgstr ""
 
 #: flowing.compiler:5 of
-msgid "本模块是「``.fya`` → Agent 类」的合成层本体（三层架构：parser 字面层 → 装配层 → 本模块合成层）。两个入口同源："
+msgid "本模块是“``.fya`` → Agent 类”的合成层本体（三层架构：parser 字面层 → 装配层 → 本模块合成层）。两个入口同源："
 msgstr ""
 
 #: flowing.compiler:8 of
@@ -2316,7 +2316,7 @@ msgid ""
 "判别、``args`` 经 :func:`flowing.params.expand_args_schema` 归一化 + "
 ":func:`flowing.params.schema_to_model` 桥接为 ``args_model``）→ 合成（生成 Agent "
 "子类：类属性注入 ``source_file``/``description``/ ``system_prompt`` 等；``$script``"
-" 按「self 签名」二分——带 self 的 顶层函数（``setup`` / ``@on`` handler / 实例方法）入类体，其余一切 "
+" 按“self 签名”二分——带 self 的 顶层函数（``setup`` / ``@on`` handler / 实例方法）入类体，其余一切 "
 "顶层语句（import / 无 self 函数 / 类声明 / 赋值等）按原序提升到 "
 "模块级——类体层语句对方法体不可见，提升后才是用户直觉语义）。 产物是普通 Python 类，与手写子类同属一个类模型（二者是 "
 "等价的两条声明途径，同目录并存时 ``.fya`` 优先）。"

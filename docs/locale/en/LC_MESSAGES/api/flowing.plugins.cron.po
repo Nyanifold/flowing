@@ -196,12 +196,12 @@ msgstr ""
 ":meth:`CronJob`, :meth:`CronFireContext`"
 
 #: flowing.plugins.cron.models.CronJob:1 of
-msgid "一条定时任务——「cron 表达式 + 推送内容」的持久化单元。"
+msgid "一条定时任务——“cron 表达式 + 推送内容”的持久化单元。"
 msgstr "A single cron job — the persistence unit of \"cron expression + content to push\"."
 
 #: flowing.plugins.cron.models.CronJob:5 of
 msgid ""
-"描述「什么时候、给 Agent 推一条什么消息」：``cron`` 是触发节奏， ``content`` 是到点推送的消息文本（可含 "
+"描述“什么时候、给 Agent 推一条什么消息”：``cron`` 是触发节奏， ``content`` 是到点推送的消息文本（可含 "
 "``{{current_time}}`` 占位符），``source`` 是供 ``on_cron_trigger`` 钩子 pattern "
 "分组过滤 的语义标签。任务由 Agent 逐智能体携带，以 ``cron_jobs`` 状态键 "
 "（``list[dict]``）写透落盘；对象本体只在读侧按需重建，运行期不留 数据镜像。"
@@ -223,7 +223,7 @@ msgstr ""
 
 #: flowing.plugins.cron.models.CronJob:17 of
 msgid ""
-"``source`` 不进消息文本，只服务钩子过滤与 EVENT 消息来源标识； 空串表示「未设标签」（对非 ``\"*\"`` 的钩子 "
+"``source`` 不进消息文本，只服务钩子过滤与 EVENT 消息来源标识； 空串表示“未设标签”（对非 ``\"*\"`` 的钩子 "
 "pattern 不命中）。"
 msgstr ""
 "``source`` does not go into the message text; it only serves hook filtering and the source identity of EVENT "
@@ -546,7 +546,7 @@ msgstr "Persistence Model (Delegated to the Master List)"
 #: flowing.plugins.cron.jobs:11 of
 msgid ""
 "任务的唯一真相是 ``agent.state.cron_jobs``（``use_cron`` 登记、缺省即 "
-"写，此后键恒存在）。本模块**不留数据镜像**：每次变更 = 「读总表 → 改 → 二次赋值（写透）」；交付例程含 await（钩子 "
+"写，此后键恒存在）。本模块**不留数据镜像**：每次变更 = “读总表 → 改 → 二次赋值（写透）”；交付例程含 await（钩子 "
 "dispatch、消息入队）， 其写回步骤在 await 后**重新读当前总表、只按 id 替换/移除自己那条**， "
 "并发到点的多个任务互不覆盖游标。"
 msgstr ""
@@ -614,7 +614,7 @@ msgstr "``{cron}`` —— the job's cron expression, verbatim"
 
 #: flowing.plugins.cron.jobs.MISSED_NOTICE:9 of
 #, python-brace-format, python-format
-msgid "``{last_fired_at}`` —— 上次成功交付时刻（本地 ``%Y-%m-%d %H:%M``； 从未交付渲染「从未交付」）"
+msgid "``{last_fired_at}`` —— 上次成功交付时刻（本地 ``%Y-%m-%d %H:%M``； 从未交付渲染“从未交付”）"
 msgstr "``{last_fired_at}`` —— time of the last successful delivery (local ``%Y-%m-%d %H:%M``; renders as \"never delivered\" if never delivered)"
 
 #: flowing.plugins.cron.jobs.MISSED_NOTICE:11 of
@@ -623,7 +623,7 @@ msgid "``{content}`` —— 本次推送内容（已做 ``{{current_time}}`` 替
 msgstr "``{content}`` —— the content pushed this time (``{{current_time}}`` already substituted)"
 
 #: flowing.plugins.cron.jobs.MISSED_NOTICE:13 of
-msgid "模板不提单一应触发时刻：多次错过没有「某一个本应触发时刻」。"
+msgid "模板不提单一应触发时刻：多次错过没有“某一个本应触发时刻”。"
 msgstr "The template does not mention a single expected firing time: with multiple misses there is no \"one time it should have fired\"."
 
 #: flowing.plugins.cron.jobs.substitute_current_time:1 of

@@ -6,7 +6,7 @@ I should call the subagent-invoke tool with agent_type "greet" and prompt. Also 
 Note: the user asks to report current user. I know it's u-7 from the system context. The subagent may not know. I should probably include it in the prompt or just report it myself.
 
 Let me invoke the greet subagent.
-[tool_call] subagent-invoke {"agent_type": "greet", "prompt": "请用「俏皮」风格问候当前用户（用户 ID：u-7）。"}
+[tool_call] subagent-invoke {"agent_type": "greet", "prompt": "请用“俏皮”风格问候当前用户（用户 ID：u-7）。"}
 [hook] before_tool_call: subagent-invoke
 [tool:completed] subagent-invoke -> 
 已完成 ✅
@@ -17,5 +17,5 @@ Let me invoke the greet subagent.
 **当前用户汇报：**
 - 用户 ID：`u-7`
 
-子智能体已按「俏皮」风格完成问候，任务结束。
+子智能体已按“俏皮”风格完成问候，任务结束。
 (agent-main)>>>

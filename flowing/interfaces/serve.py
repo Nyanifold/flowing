@@ -103,9 +103,9 @@ serve 是纯 API 的冷启动
 - ``GET /healthz``：健康检查，返回 ``{"status": "ok"}``；只表示
   HTTP 进程与 Runtime 存活，不做深度检查。
 
-根选取无状态：API 层没有「默认主 Agent」或「当前选中」概念——一切
+根选取无状态：API 层没有“默认主 Agent”或“当前选中”概念——一切
 目标选择由客户端基于 ``GET /agents`` / ``GET /snapshot`` 自行完成，
-「切换 Agent」是纯客户端动作（改自己请求里的 id），无服务端对应
+“切换 Agent”是纯客户端动作（改自己请求里的 id），无服务端对应
 端点。
 
 .. seealso:: :func:`cmd_serve`、:data:`WEB_EXTRA_ENDPOINTS`

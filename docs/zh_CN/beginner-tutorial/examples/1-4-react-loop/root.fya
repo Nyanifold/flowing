@@ -4,7 +4,7 @@ args:
   strict:
     type: string
     default: ""
-    description: 设为 done 时启用「答复必须含 DONE」的收尾断言
+    description: 设为 done 时启用“答复必须含 DONE”的收尾断言
 tools:
   - read      # 裸名：命名空间省略，等价于 builtin::read
   - glob

@@ -3,7 +3,7 @@
 提供：``harness`` 助手转发（HarnessRuntime / make_runtime / FakeProvider
 脚本回放）、skills fixtures 拷贝、测试 Agent 类（``source_file`` 显式指向
 ``@/skills/`` 使 ``source_dir`` 落在拷贝后的 fixture 目录）、以及
-「装好 SkillPlugin 的 HarnessRuntime」工厂。
+“装好 SkillPlugin 的 HarnessRuntime”工厂。
 
 本模块为普通模块而非 conftest：测试文件直接 ``import skills_support``，
 避免顶级模块名 ``conftest`` 遮蔽。

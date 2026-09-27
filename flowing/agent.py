@@ -210,7 +210,7 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 
 _logger = logging.getLogger(__name__)
-"""模块级 logger：工作循环回合异常等的记录点（规约只要求「记日志」，未具名
+"""模块级 logger：工作循环回合异常等的记录点（规约只要求“记日志”，未具名
 logger 符号）。"""
 
 
@@ -1175,7 +1175,7 @@ class Agent:
     """
     _children: dict[str, Agent]
     """生命周期子树（``node_id → 子 Agent 实例``）：创建加入、销毁移除；
-    回答「谁该随我销毁」。与 ``_executions`` / provide 链正交，不可合并。
+    回答“谁该随我销毁”。与 ``_executions`` / provide 链正交，不可合并。
     内部 API。
     """
     child_ids: dict[str, str]
@@ -1220,7 +1220,7 @@ class Agent:
     记录，压缩期重写。
     """
     current_head_id: str | None
-    """消息级树游标——指向某条消息的 id，即「添加节点的位置」：新消息
+    """消息级树游标——指向某条消息的 id，即“添加节点的位置”：新消息
     链到它并随即将它前移；fork 即切换它。空树（新 Agent）为 ``None``。
 
     只读 property（用户写 → ``AttributeError``）；框架内部写透落盘
@@ -1242,9 +1242,9 @@ class Agent:
     路径同样覆写。``side_query`` 不写本字段。
     """
     _executions: dict[str, Execution]
-    """执行追踪注册表（动态结构：仅「有正在运行的异步操作」时有条目）；
+    """执行追踪注册表（动态结构：仅“有正在运行的异步操作”时有条目）；
     注册 / 清理 finally 成对；``cancel`` / ``stop`` 族遍历它置位信号。
-    回答「谁在运行、谁可取消」。内部 API。
+    回答“谁在运行、谁可取消”。内部 API。
     """
     _pending_turns: dict[str, asyncio.Future[TurnResult]]
     """``message_id → Future`` 等待句柄，纯运行时不持久化（future 不可
@@ -1253,7 +1253,7 @@ class Agent:
     _measured_tool_names: set[str]
     """本进程内已被实测覆盖过的工具规范名集——``provider_gen()`` 每次
     收到带 ``usage`` 的响应时，把当时 ``Context.tools`` 的名字并入。
-    仅服务于 :meth:`estimate_context_tokens` 的「锚点后新增工具补估」
+    仅服务于 :meth:`estimate_context_tokens` 的“锚点后新增工具补估”
     规则；不持久化（重启后清空，首次估计把全部工具算进 ``estimated``
     而暂时偏高，下一次带实测的 ``provider_gen`` 自愈）；纯内存、不进
     快照。内部 API。
@@ -1272,7 +1272,7 @@ class Agent:
     model: ModelConfig
     """模型结构体（运行时成员，可解析、可变）；实例化时由 ``model_tag``
     解析填充初始值。两条动态修改路径：① 改 ``model_tag`` （只能指向配置
-    已定义模型）；② 直接赋 ``ModelConfig(...)`` （任意模型）。「换模型」
+    已定义模型）；② 直接赋 ``ModelConfig(...)`` （任意模型）。“换模型”
     = 换一份完整规格，无中间态。
     """
 
@@ -1303,7 +1303,7 @@ class Agent:
     路径原样 / 相对 ``runtime._persist_dir``），缺省
     ``persist_dir / node_id``；恢复路径从池元数据回绑。子类可在
     ``super().__init__()``
-    之前覆写本字段实现「初始化时指定」。内部 API，不属稳定契约。
+    之前覆写本字段实现“初始化时指定”。内部 API，不属稳定契约。
     """
     _tree_store: RecordStore
     """``tree.jsonl`` 的落盘后端（write-behind：提交同步排队、drain
@@ -1351,7 +1351,7 @@ class Agent:
         """
         # _extra 与状态袋在 __init__ 建立——管线第 2 步
         # （__new__ 绑 node_id / runtime / _parent_id）先于 __init__，
-        # session 目录骨架期即可知，「尚不可知」的旧表述作废
+        # session 目录骨架期即可知，“尚不可知”的旧表述作废
         self._extra = {}   # 实例级静默仓库；fya 装配层在生成 setup() 前置段合入未知字段
         self._open_stores(self._session_dir)   # 持久化后端（换装点，见 _open_stores；session 目录由管线预绑——create_agent(session_dir=...) 或默认 persist_dir/node_id，子类可于 super().__init__() 前覆写 self._session_dir）
         self._children = {}
@@ -1462,7 +1462,7 @@ class Agent:
                 if marks:
                     marked.append((member, marks))
         for member, marks in reversed(marked):   # 基类 → 派生类
-            # spec 未写清处落实（「按绑定方法注册」与 dispatch 的 (agent, value)
+            # spec 未写清处落实（“按绑定方法注册”与 dispatch 的 (agent, value)
             # 统一签名冲突——绑定方法会多收一个位置参数）：注册未绑定函数，
             # dispatch 时首参 agent 恰好落进方法的 self 位（与 .fya $script
             # 的 def _(self, tool_call) 写法相容）
@@ -1765,9 +1765,9 @@ class Agent:
             - :meth:`flowing.runtime.Runtime.get_agent` —— 现场恢复入口。
             - :meth:`flowing.runtime.Runtime.shutdown` —— 进程级收尾。
         """
-        # 幂等守卫（docstring 行为要点：重复调用安全，二次调用「直接返回」）：
+        # 幂等守卫（docstring 行为要点：重复调用安全，二次调用“直接返回”）：
         # **本实例**已摘除即二次调用，直接返回——按身份比较而非 id：本 id
-        # 可能已被「有 key 无 value → 现场恢复」重建为新实例重新注册，
+        # 可能已被“有 key 无 value → 现场恢复”重建为新实例重新注册，
         # 旧实例（如亲节点 _children 里的过期引用）不得再操作已关闭的后端
         if self.runtime._nodes.get(self.node_id) is not self:
             return
@@ -1803,7 +1803,7 @@ class Agent:
             await view._close()
         await self.hooks.before_destroy.dispatch(self)   # 3.
         # 4. 深度优先递归（双来源收集：_children 生命周期子树 ∪ _nodes 按
-        #    _parent_id 扫描——后者覆盖「destroy 后现场恢复」重新注册的同 id
+        #    _parent_id 扫描——后者覆盖“destroy 后现场恢复”重新注册的同 id
         #    新实例（旧引用已随本例的幂等守卫失效）；重复/过期引用由
         #    child.destroy() 的幂等守卫兜住）
         seen_children: set[int] = set()
@@ -1880,7 +1880,7 @@ class Agent:
         #    扫描 PROVIDER 消息的 ToolCallBlock.id，全局（全树）无
         #    tool_call_id 匹配的 TOOL 消息者，经 chain.insert 合成占位消息
         #    挂树**落盘**封闭配对（消息行 + 邻接调整记录一并写回，占位出现在
-        #    「调用之后、既有后续之前」的链上位置）：
+        #    “调用之后、既有后续之前”的链上位置）：
         #    Message(kind=TOOL, tool_call_id=<孤立调用 id>,
         #            tool_status="error", synthetic=True,
         #            content=[TextBlock(占位说明)])
@@ -1919,7 +1919,7 @@ class Agent:
         # ③ 读 state.jsonl（_state_bag._store.replay()）逐键重放进默认袋
         #    （直写 _persisted 绕过写通道；无 schema：持久化键
         #    无论登记与否一律装袋——逐键覆盖 register 的初值
-        #    是「已持久值优先」语义的天然结果（D4）；child_ids 已在 core 袋
+        #    是“已持久值优先”语义的天然结果（D4）；child_ids 已在 core 袋
         #    重放中装袋——core 袋唯一真值，无内存镜像）
         persisted = self._state_bag._persisted
         for record in list(self._state_bag._store.replay()):
@@ -1999,7 +1999,7 @@ class Agent:
         self._pending_turns[msg.id] = fut   # 注册先于入队——消息对外可见时句柄必已存在
         try:
             message_id = await self.enqueue_message(msg)   # 打包 + 入队
-            return await fut   # 等待「包含我这条消息的回合」产物（四结局均 resolve）
+            return await fut   # 等待“包含我这条消息的回合”产物（四结局均 resolve）
         finally:
             self._pending_turns.pop(msg.id, None)   # Intercepted / 取消 / 正常三路均清理；取消等待 ≠ 取消回合
 
@@ -2556,7 +2556,7 @@ class Agent:
                 # 非流式：一次性请求（经 _race_cancel 与取消信号竞速，在途
                 # 可取消）；拿到完整响应后合成一条全量 delta 同样
                 # dispatch（两种路径 delta 数据格式一致，订阅者永远能依赖
-                # 「每次 provider_gen 至少一条 delta」——在途被取消的调用
+                # “每次 provider_gen 至少一条 delta”——在途被取消的调用
                 # 除外：无任何 delta、message=None）
                 cancelled, result = await self._race_cancel(
                     provider.generate(context, model), execution)
@@ -2656,7 +2656,7 @@ class Agent:
         if response.message is not None and response.message.usage is not None:
             # 估算锚点记账：本次实测覆盖了当时 context.tools 的 schema，
             # 名字并入 _measured_tool_names（estimate_context_tokens 的
-            # 「锚点后新增工具补估」规则以此差集为准；纯内存不持久化；
+            # “锚点后新增工具补估”规则以此差集为准；纯内存不持久化；
             # usage 的唯一载体是消息——ProviderResponse 不携带）
             self._measured_tool_names |= {d.name for d in context.tools}
         return response
@@ -2760,7 +2760,7 @@ class Agent:
 
     # ────────────────────────── 消息树手术便捷方法 ─────────────────────────
     # head 的维护收口在 Agent 层：MessageChain 五 op 不移动 current_head_id；
-    # 以下方法把「删除当前 head 时 head 回退到亲节点」等策略固定在 Agent 上。
+    # 以下方法把“删除当前 head 时 head 回退到亲节点”等策略固定在 Agent 上。
 
     def remove(self, message_id: str) -> None:
         """删除一条消息；若删的是 ``current_head_id``，head 回退到其
@@ -3200,7 +3200,7 @@ class Agent:
         for execution in self._executions.values():
             execution.cancel.set()   # 协作式信号：执行体自行决定停止方式
         self._turn_abort.set()
-        # after_cancel：信号置位后立即 dispatch——「取消已被接受」的事实事件
+        # after_cancel：信号置位后立即 dispatch——“取消已被接受”的事实事件
         # （回合真正退出的观察归 _run_turn finally 的
         #   after_turn，handler 读 turn.aborted 分流）
         await self.hooks.after_cancel.dispatch(self, CancelContext())
@@ -3452,8 +3452,8 @@ class Agent:
         resolve——``kwargs`` 按契约忽略）。
         """
         # 续接路径（resume 非 None）不查条目、不 resolve：实例已存在，
-        # kwargs 忽略（契约见 invoke_subagent docstring「resume 与新建参数
-        # 互斥：续接保持原类型，kwargs 忽略」）。工具路径下 LLM 按互斥契约
+        # kwargs 忽略（契约见 invoke_subagent docstring“resume 与新建参数
+        # 互斥：续接保持原类型，kwargs 忽略”）。工具路径下 LLM 按互斥契约
         # 只给 resume、agent_type 为 ""——若无条件查条目会得到
         # dict[""] KeyError（续接必败回归，见 tests/builtins 清单 73 续接
         # 正负例）。
@@ -3465,7 +3465,7 @@ class Agent:
         invocation = SubagentInvocation(
             alias=agent_type,
             # spec 未写清处落实：骨架把别名直接当 agent_type 透传，与
-            # SubagentInvocation.agent_type「取自 SubagentEntry.name_ori」的
+            # SubagentInvocation.agent_type“取自 SubagentEntry.name_ori”的
             # 字段契约矛盾——按字段契约落实（别名是 LLM 面，类型名是创建面）
             agent_type=entry.name_ori if entry is not None else None,   # resume 与 agent_type 互斥
             name=name,
@@ -3662,7 +3662,7 @@ class Agent:
                 finally:
                     self._executions.pop(execution.id, None)
                 # on_tool_yields 统一点：仅 Tool.__call__ 执行产出的非 blocked
-                # 结果触发（blocked 语义即「没有产物」；shortcut 与 LLM 校验
+                # 结果触发（blocked 语义即“没有产物”；shortcut 与 LLM 校验
                 # 失败的 error 各在自己的分支，结构性不经过本点）
                 result.name = tool_call.name
                 result.tool_call_id = tool_call.id
@@ -3722,7 +3722,7 @@ class Agent:
         llm_model.model_validate(tool_call.args)   # 类型/必填错误 -> ValidationError 上抛给 tool_call 包装
         unknown = sorted(set(tool_call.args) - set(llm_schema))
         if unknown and tool.definition.strict:
-            # 幻觉参数（LLM 传出 schema 未定义的参数）按「未定义参数」校验
+            # 幻觉参数（LLM 传出 schema 未定义的参数）按“未定义参数”校验
             # 错误处理——桥接模型默认忽略多余键，未知键在此显式拒绝；
             # strict=False 工具不施加本拒绝（工具层不限制参数，未知键
             # 原样放行进入下方聚合，由下游自行校验）
@@ -4039,12 +4039,12 @@ class Agent:
                     raise FormatError(f"tool override args must be a mapping: {body_val!r}")
                 _classify_override_args(body_val, override_params, specified, param_aliases)
             elif body_key == "output":
-                # 独立判别分支（B 方案）：「字段名 -> JSON Schema 定义」映射
+                # 独立判别分支（B 方案）：“字段名 -> JSON Schema 定义”映射
                 # 逐字段并入 override_params（type 等键在此合法，不经 args 的
-                # 关键字校验）——「省略字段 = 移除」语义见 FinishTool 规约。
+                # 关键字校验）——“省略字段 = 移除”语义见 FinishTool 规约。
                 # spec 未写清处落实：骨架注释的 {"schema": 定义} 包装与
                 # apply_param_overrides 的 property->patch 形态不一致，按行为
-                # 规约正文「逐字段并入 override_params」落实（不套 schema 键）
+                # 规约正文“逐字段并入 override_params”落实（不套 schema 键）
                 if not isinstance(body_val, Mapping):
                     raise FormatError(f"tool override output must be a mapping: {body_val!r}")
                 for field_name, field_def in body_val.items():
@@ -4533,7 +4533,7 @@ class Agent:
             try:
                 await self._run_turn(msgs, waiters)
             except Exception:
-                # 回合级异常的兜底闸（「钩子抛异常不再楔死 agent」的收口点）：
+                # 回合级异常的兜底闸（“钩子抛异常不再楔死 agent”的收口点）：
                 # _run_turn 的 except 帧保留异常上抛以保逐层审计，工作循环在
                 # 此记录后继续消费——waiters 已由 _run_turn 的 finally 喂饱
                 # （destroy 的第 1 步另有兜底），此处只保证循环存活
@@ -4670,7 +4670,7 @@ class Agent:
                     #（自然 finish 或取消/abort）→ True；provider 的 finish
                     # 只是关闭原因之一，adapter 不写 turn_end；finish 工具
                     # 置位路径的 turn_end 落在其配对 TOOL 消息上（见下
-                    # 「置位转移检测」），本条 PROVIDER 消息不追溯改写
+                    # “置位转移检测”），本条 PROVIDER 消息不追溯改写
                     #（已挂树落盘）
                     response.message.turn_end = response.finish or response.cancelled
                     await self._append_message(response.message, turn)
@@ -4701,9 +4701,9 @@ class Agent:
                             return tc, result, before, after
 
                         # 结果返回即挂树（实时完成序）：崩溃只丢真正在飞的
-                        # 结果——「整批完成后按响应块序统一挂树」改为
-                        # as_completed 边返回边挂；finish 置位检测的「首个
-                        # 触发置位」相应为实时首个（谁先交卷谁标 turn_end）；
+                        # 结果——“整批完成后按响应块序统一挂树”改为
+                        # as_completed 边返回边挂；finish 置位检测的“首个
+                        # 触发置位”相应为实时首个（谁先交卷谁标 turn_end）；
                         # 执行中的异常仍在全部结果落树后再上抛
                         errors: list[BaseException] = []
                         marked = False
@@ -4891,7 +4891,7 @@ class Agent:
         改写（但不推荐直接改写 ``messages``——内容增删走持久化路径）。
         """
         # 1. 遍历 prompt_blocks（__iter__ 跳过 enabled=False）逐块现场求值
-        # 分段装配（「未见具名符号」落实）：PromptSegment(content=求值文本,
+        # 分段装配（“未见具名符号”落实）：PromptSegment(content=求值文本,
         # cache/name 从来源块原样透传)
         segments: list[PromptSegment] = []
         for block in self.prompt_blocks:
@@ -4924,7 +4924,7 @@ class Agent:
         # 并入 system_prompt 段（cache="dynamic" 语义，无本地缓存）
         subagent_catalog = self._render_subagent_catalog()
         if subagent_catalog:
-            # 并入 system_prompt 段（段名「subagent-catalog」为落实命名，
+            # 并入 system_prompt 段（段名“subagent-catalog”为落实命名，
             # 规约未具名）；cache="dynamic"（visible 状态与覆写运行时可变）
             segments.append(PromptSegment(
                 content=subagent_catalog, cache="dynamic", name="subagent-catalog"))

@@ -2,8 +2,8 @@
 
 全部 FakeProvider 脚本回放驱动；退避延迟经 ``sleep_spy`` 记录断言，
 不做真实等待。T112 按 R6 澄清口径验证（Composable 不做幂等去重记号：
-重复调用按注册语义叠加、各自独立、不抛错——与原测试清单「同参数
-幂等去重、异参报错」的冲突以澄清为准）。
+重复调用按注册语义叠加、各自独立、不抛错——与原测试清单“同参数
+幂等去重、异参报错”的冲突以澄清为准）。
 """
 
 from __future__ import annotations
@@ -297,7 +297,7 @@ async def test_t112_repeated_calls_stack_independently(tmp_path):
     参数的重复调用均按注册语义叠加、各自独立、不抛错；max_retries=0 →
     立即放弃（等价不重试，多一次空分发）。
 
-    原测试清单为「同参数幂等去重、异参报错」，与 R6 澄清（允许不同
+    原测试清单为“同参数幂等去重、异参报错”，与 R6 澄清（允许不同
     参数多次 use 同一 Composable）冲突，以澄清为准。
     """
     runtime, provider = make_composables_harness(tmp_path, agent_cls=SimpleAgent)

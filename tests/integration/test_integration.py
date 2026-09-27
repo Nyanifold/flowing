@@ -274,7 +274,7 @@ async def test_t126_no_write_gate_whole_lifecycle(tmp_path):
 
 async def test_t127_mount_idempotent_restart(tmp_path):
     """T127 / A4：固定 id 的节点 destroy 后同 id 再 mount → 走恢复，
-    消息树与 state 完好（「同一个根回来了」），可多轮往复。"""
+    消息树与 state 完好（“同一个根回来了”），可多轮往复。"""
     runtime = make_runtime(tmp_path)
     provider = add_fake_provider(runtime)
     script_provider(provider, text_response("第一轮"), text_response("第二轮"))

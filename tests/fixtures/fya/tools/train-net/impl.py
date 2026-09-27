@@ -1,6 +1,6 @@
 """train-net 的 callable 实现——async generator 形态（B1/B5，不含 background 字段）。
 
-呼应 ScriptTool 类 docstring「async generator 形态」的循环推回示例：
+呼应 ScriptTool 类 docstring“async generator 形态”的循环推回示例：
 首 yield 收据 → 每 N 轮 yield 验证结果 → 末 yield 最终呈现。
 """
 

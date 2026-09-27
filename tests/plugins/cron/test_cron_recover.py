@@ -42,7 +42,7 @@ async def test_restart_recover_sweep(tmp_path):
     agent = await rt1.create_agent("cron-agent")
     aid = agent.node_id
     jid = schedule(agent, "* * * * *", "x", job_id="j", source="tick")
-    # 模拟停机区间：游标回拨 5 分钟（写透落盘，随「进程重启」存续）
+    # 模拟停机区间：游标回拨 5 分钟（写透落盘，随“进程重启”存续）
     agent.state.cron_jobs = [
         {**rec, "last_fired_at": (base - timedelta(minutes=5)).isoformat()}
         for rec in agent.state.cron_jobs
@@ -71,7 +71,7 @@ async def test_restart_recover_sweep(tmp_path):
 
 async def test_recover_coalesced_from_fixture(tmp_path):
     """预写语料：last_fired_at 为一小时前的每分钟任务 → recover 后队列立即
-    出现「错过了 60 次」的合并补发，游标推进。
+    出现“错过了 60 次”的合并补发，游标推进。
 
     语料：``tests/fixtures/persistence/state-cron-jobs.jsonl``（新记录
     形态：无 node_id/action，含 content/source）。

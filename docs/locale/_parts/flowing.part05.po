@@ -21,7 +21,7 @@ msgstr "Synthesis: obtain the emitted source via the same ``_build`` as :func:`c
 #: flowing.compiler.compile_fya_file:9 of
 msgid ""
 "发射：生成 ``.py`` 源码——Parsable 值以类体赋值形式写出 （如 ``system_prompt = Parsable"
-"('$./system-prompt.md')``）， ``$script`` 按「self 签名」二分：self 方法入类体，其余顶层 "
+"('$./system-prompt.md')``）， ``$script`` 按“self 签名”二分：self 方法入类体，其余顶层 "
 "语句按原序提升到模块级；"
 msgstr ""
 "Emission: generate the ``.py`` source — Parsable values are written as class-body assignments (e.g. ``system_prompt = Parsable"
@@ -84,7 +84,7 @@ msgstr ""
 "``ArtifactModifiedError``, abort (already-produced files are not rolled back — compilation is idempotent and re-running continues)."
 
 #: flowing.compiler.compile_project:13 of
-msgid "边缘情况：无 ``.fya`` 文件 → 返回空列表（调用方 CLI 打印 「无可编译文件」并正常退出）。"
+msgid "边缘情况：无 ``.fya`` 文件 → 返回空列表（调用方 CLI 打印 “无可编译文件”并正常退出）。"
 msgstr "Edge case: no ``.fya`` files → return an empty list (the calling CLI prints \"no compilable files\" and exits normally)."
 
 #: flowing.compiler.compile_project:15 of
@@ -124,7 +124,7 @@ msgid "``flowing.context`` —— 上下文组装：system prompt 分层注册�
 msgstr "``flowing.context`` — context assembly: layered registration, evaluation, and assembled output of the system prompt."
 
 #: flowing.context:5 of
-msgid "本模块定义「system prompt 分层注册 → 惰性求值 → Provider adapter 消费」 这条链路上的全部数据结构："
+msgid "本模块定义“system prompt 分层注册 → 惰性求值 → Provider adapter 消费” 这条链路上的全部数据结构："
 msgstr "This module defines all data structures on the \"layered system-prompt registration → lazy evaluation → Provider adapter consumption\" pipeline:"
 
 #: flowing.context:8 of
@@ -327,9 +327,9 @@ msgstr "Estimate of current context usage — the return type of ``flowing.agent
 
 #: flowing.context.ContextUsageEstimate:6 of
 msgid ""
-"「现在如果把上下文发给 LLM，大约多大」的快照值：``measured`` 是锚点 （最近一次 Provider "
+"“现在如果把上下文发给 LLM，大约多大”的快照值：``measured`` 是锚点 （最近一次 Provider "
 "实测）覆盖的部分，``estimated`` 是锚点之后（或无 锚点时全段）的本地启发式估算部分，``tokens`` 为两者之和。两部分分开 "
-"承载而非只给一个和——观测方可以区分「多少是实测、多少是猜的」。估算 部分永不用于计费（计费走 "
+"承载而非只给一个和——观测方可以区分“多少是实测、多少是猜的”。估算 部分永不用于计费（计费走 "
 "``TurnResult.token_usage`` 聚合口径，两条数据 流不混）。"
 msgstr ""
 "A snapshot value of \"roughly how big the context would be if sent to the LLM now\": ``measured`` is the part covered by the anchor (the most recent Provider "
@@ -667,7 +667,7 @@ msgstr "Raised when multiple extensions register the same config namespace."
 #: flowing.errors.ConfigNamespaceConflictError:5 of
 msgid ""
 "``Runtime.register_config_namespace(name, schema)`` 检测到命名空间已被其它 "
-"扩展注册时抛出。命名空间注册声明「谁负责校验 / 提供默认值 / 类型转换」； "
+"扩展注册时抛出。命名空间注册声明“谁负责校验 / 提供默认值 / 类型转换”； "
 "两个扩展认领同一命名空间会产生两套冲突的校验规则，必须在注册时立即失败 （fail-"
 "fast）。未被任何扩展注册的命名空间可自由读取，不触发本异常。"
 msgstr ""
@@ -746,13 +746,13 @@ msgstr ""
 #: flowing.errors.MissingProvideError:18 of
 msgid ""
 "``key`` 字段为未命中的 provide key（``InjectionKey[T]`` 退化为其 ``name`` "
-"字符串）；仅诊断用途，不提供「最接近的 key」之类的猜测。"
+"字符串）；仅诊断用途，不提供“最接近的 key”之类的猜测。"
 msgstr ""
 "The ``key`` field is the missed provide key (an ``InjectionKey[T]`` degrades to its ``name`` "
 "string); diagnostic only, with no \"closest key\" style guessing."
 
 #: flowing.errors.MissingProvideError:20 of
-msgid "``inject`` 没有默认值参数：需要「缺失时用默认值」的语义，请自行捕获本 异常后回退默认值。"
+msgid "``inject`` 没有默认值参数：需要“缺失时用默认值”的语义，请自行捕获本 异常后回退默认值。"
 msgstr "``inject`` has no default-value parameter: for \"use a default when missing\" semantics, catch this exception yourself and fall back to the default."
 
 #: flowing.errors.MissingProvideError:22 of
@@ -896,7 +896,7 @@ msgstr "Classification middle layer for tool definition / registration / lookup 
 msgid ""
 "工具系统（``script`` / ``mcp`` / ``cli`` / ``request`` 四种类型）的定义期 "
 "与查找期异常公共基类。与工具业务错误严格区分：业务错误是 ``ToolResult(status=\"error\")`` 正常产物，LLM "
-"可见，不走异常通道；本层只 承载「工具坏了」这一类（定义缺失、注册冲突、查找失败）。"
+"可见，不走异常通道；本层只 承载“工具坏了”这一类（定义缺失、注册冲突、查找失败）。"
 msgstr ""
 "Common base class of definition-time and lookup-time exceptions of the tool system (the four types ``script`` / ``mcp`` / ``cli`` / ``request``). "
 "Strictly distinct from tool business errors: a business error is a normal ``ToolResult(status=\"error\")`` product, visible to the LLM, "
@@ -1093,7 +1093,7 @@ msgstr "Raised when a tool ``.py`` file's definition form is ambiguous."
 #: flowing.errors.AmbiguousToolError:5 of
 msgid ""
 "script 工具的定向查找中，同一 ``.py`` 文件出现以下任一情况即抛出，框架 无法判定用户意图：同时含 "
-"``@flowing_tool`` 打标函数与 Tool 子类；或含多个 打标函数（违反「每文件至多一个」规则）。两种形态生成不同的 Tool "
+"``@flowing_tool`` 打标函数与 Tool 子类；或含多个 打标函数（违反“每文件至多一个”规则）。两种形态生成不同的 Tool "
 "定义路径， 按序选其一或隐式合并都会让行为依赖文件内容的出现顺序。"
 msgstr ""
 "During directed lookup of a script tool, raised when the same ``.py`` file shows either of the following, leaving the framework unable to judge user intent: it contains both a "
@@ -1141,7 +1141,7 @@ msgid "``name`` 字段为声明冲突的 MCP 工具规范名。"
 msgstr "The ``name`` field is the MCP tool canonical name with the conflicting declaration."
 
 #: flowing.errors.AmbiguousMcpSourceError:12 of
-msgid "与 ``MissingMcpSourceError`` （两者均未声明）构成「恰好一个来源」的对偶 约束。"
+msgid "与 ``MissingMcpSourceError`` （两者均未声明）构成“恰好一个来源”的对偶 约束。"
 msgstr "Together with ``MissingMcpSourceError`` (neither declared), forms the dual constraint of \"exactly one source\"."
 
 #: flowing.errors.AmbiguousMcpSourceError:17 of
@@ -1209,7 +1209,7 @@ msgstr "This class is a classification middle layer: what the framework actually
 #: flowing.errors.ResourceError:15 of
 msgid ""
 "``get_resource(name, type_hint=...)`` 的 ``type_hint`` 仅供 IDE 推断， 运行时不做 "
-"isinstance 校验，不存在「类型不匹配」异常。"
+"isinstance 校验，不存在“类型不匹配”异常。"
 msgstr ""
 "The ``type_hint`` of ``get_resource(name, type_hint=...)`` is for IDE inference only; no isinstance check happens at "
 "runtime, and there is no \"type mismatch\" exception."

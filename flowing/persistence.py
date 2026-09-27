@@ -281,8 +281,8 @@ class FileRecordStore:
         # 队列项形态：("record", dict) / ("sync", list[dict]) / ("barrier", Event)
         self._queue: deque[tuple] = deque()
         # 写任务惰性启动于首个 submit / sync / drain 调用——Agent 创建期
-        # 不做 await（写任务需要运行中的事件循环）；约束「首次提交须在
-        # 运行中的事件循环内」。
+        # 不做 await（写任务需要运行中的事件循环）；约束“首次提交须在
+        # 运行中的事件循环内”。
         self._drain_task: asyncio.Task | None = None
         self._wakeup: asyncio.Event | None = None
         self._closed = False
@@ -292,8 +292,8 @@ class FileRecordStore:
         self._last_line: tuple[int, str, str] | None = None  # 末行合并跟踪（offset, op, key）
         # 末行合并的截尾安全网：仅当本 session 已知文件从空开始、且被截尾的
         # set 是该 key 在文件中的唯一一行时，delete 才随之省略（否则截尾会
-        # 复活更早的同名 set 行）。当前实现仅对「新建文件上的连续同 key
-        # 序列」做截尾省行，跨交错序列一律保守补写 delete 行。
+        # 复活更早的同名 set 行）。当前实现仅对“新建文件上的连续同 key
+        # 序列”做截尾省行，跨交错序列一律保守补写 delete 行。
         self._fresh_start = False
         self._key_line_counts: dict[str, int] = {}
         self._tombstone_count = 0    # 墓碑计数（append 时 +1；replay 初始化加载时累计）
@@ -374,13 +374,13 @@ class FileRecordStore:
         if self._drain_task is None and not self._queue:
             # 从未提交（写任务惰性未启动）：无在队记录，写任务私有状态
             # 不可能被并发触碰，直接在本调用点做压缩检查——覆盖
-            # 「replay 初始化加载累计墓碑后随即 drain / close」的路径
+            # “replay 初始化加载累计墓碑后随即 drain / close”的路径
             self._maybe_compact_tombstones()
             return
         self._ensure_drain_task()
         if self._drain_task.done():
             # drain 任务已终结（poison / close），barrier 不会有人消费。
-            # poison 态下「返回时此前记录已全部落盘」的承诺已被违反——
+            # poison 态下“返回时此前记录已全部落盘”的承诺已被违反——
             # 同步重抛首次落盘异常（与 submit 同律，不静默返回）
             if self._poisoned is not None:
                 raise self._poisoned
@@ -564,7 +564,7 @@ class FileRecordStore:
             if lop == "set" and lkey == key and op == "set":
                 # 同 key 连续 set → 就地重写末行（seek + truncate 机制，
                 # POSIX 语义。跨平台文件锁 / 偏移语义若出问题，演进方向
-                # 是退化为 sync 式整文件重写——逻辑契约「透明性」不变）
+                # 是退化为 sync 式整文件重写——逻辑契约“透明性”不变）
                 f.seek(loffset)
                 f.write(data)
                 f.truncate()

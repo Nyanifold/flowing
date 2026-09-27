@@ -10,5 +10,5 @@ Wait, but the instruction says answer in one sentence. Let me call both tools in
   "body": "",
   "url": "https://example.test/issues/42"
 }
-当前有两个开放的 PR（#1「fix typo」、#2「add feature」），已为你创建 Issue #42「演示 Issue」。
+当前有两个开放的 PR（#1“fix typo”、#2“add feature”），已为你创建 Issue #42“演示 Issue”。
 (agent-main)>>>

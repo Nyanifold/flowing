@@ -364,8 +364,8 @@ EXPRESSION: Final[str] = "EXPRESSION"
 
 ``strip(source)`` 恰好是一个完整的 ``{{ expr }}`` （无任何其它内容）时的
 ``Parsable.type`` 取值；``resolve()`` 返回表达式的原生类型值（``int`` /
-``bool`` / ``dict`` 等），不做字符串化——这是 Parsable 结果类型「不一定
-是 ``str``」的唯一来源。
+``bool`` / ``dict`` 等），不做字符串化——这是 Parsable 结果类型“不一定
+是 ``str``”的唯一来源。
 
 .. rubric:: 行为要点
 
@@ -376,8 +376,8 @@ EXPRESSION: Final[str] = "EXPRESSION"
 - ``.fya`` 中双花括号必须写在 YAML 引号内，否则 YAML 解析先行报错。
 - 结果收尾（一层）：表达式求值结果是 :class:`Parsable` 时，经其
   ``.resolved`` 渲染一层后返回（类属性经描述符 ``__get__`` 已绑定实例，
-  内层模板随之渲染）。这保证 ``{{ self.system_prompt }}`` 这类「引用另
-  一个 Parsable」的惰性引用拿到的是渲染后文本而非 Parsable 对象；递归
+  内层模板随之渲染）。这保证 ``{{ self.system_prompt }}`` 这类“引用另
+  一个 Parsable”的惰性引用拿到的是渲染后文本而非 Parsable 对象；递归
   深度仍只有一层。注意 ``__str__`` 只展示模板源（不求值），本收尾必须
   用 ``.resolved`` 而非 ``str()``。
 
@@ -421,8 +421,8 @@ TEMPLATE: Final[str] = "TEMPLATE"
     {{ refund_policy.resolved }}
 
 这里 ``user_id`` 是普通实例属性（摊平上下文），直接插值；
-``refund_policy`` 是 Parsable——``.resolved`` 明确表示「此处发生一次
-求值」，不写则渲染出 ``$./refund-rules.md`` 这个模板原文。被引用片段
+``refund_policy`` 是 Parsable——``.resolved`` 明确表示“此处发生一次
+求值”，不写则渲染出 ``$./refund-rules.md`` 这个模板原文。被引用片段
 内部若再引用 Parsable，同样各写各的 ``.resolved``——嵌套渲染的每一步
 都是显式的，不存在无限递归通道。
 
@@ -482,9 +482,9 @@ PENDING: Final[_MissingType] = _MissingType()
 .. rubric:: 功能介绍
 
 ``_`` 在解析阶段不映射为 ``None`` 或空字符串，而是映射为本模块级单例
-哨兵，表示「我承诺稍后（``setup()`` 或具名块中）赋值」。独立哨兵使
-「承诺了但没兑现」能被精确检测——``None`` / ``""`` / ``[]`` 都是合法的
-显式值（``field: null`` 对可选字段表示「确实无值」），不能兼作「未赋值」
+哨兵，表示“我承诺稍后（``setup()`` 或具名块中）赋值”。独立哨兵使
+“承诺了但没兑现”能被精确检测——``None`` / ``""`` / ``[]`` 都是合法的
+显式值（``field: null`` 对可选字段表示“确实无值”），不能兼作“未赋值”
 标记。
 
 .. rubric:: 使用示例
@@ -507,7 +507,7 @@ PENDING: Final[_MissingType] = _MissingType()
 - 写法映射：``field: _`` → ``PENDING``；字段缺失或 ``field: null`` →
   可选字段 ``None``、必填字段视同 ``_`` （``PENDING``）；``field: $"_"``
   → 字符串 ``"_"`` （RAW 形式，不触发 PENDING）。
-- 位置分流：字段位 ``_`` = 「必须兑现的承诺」（创建管线检查点）；覆写位
+- 位置分流：字段位 ``_`` = “必须兑现的承诺”（创建管线检查点）；覆写位
   （entry 覆写 / ``args`` 覆写）``_`` = 空补丁（装配层解析为空、可从
   基底回填，不报错）；资源列表项位禁止 ``_``
   （``flowing.parser.normalize_entries`` 抛 ``FormatError``）。
@@ -521,22 +521,22 @@ PENDING: Final[_MissingType] = _MissingType()
   检查点——空补丁语义）。
 - 替换语义：多层具名块（如 ``$subagents.pay.system_prompt:``）赋值时，
   源字段为 ``PENDING`` → 合法替换；源字段已有实际值 → 报冲突。即
-  ``_`` 不是「忽略」，而是「该位置的 PENDING 可被具名块替换」的合法
+  ``_`` 不是“忽略”，而是“该位置的 PENDING 可被具名块替换”的合法
   前提。
 - 不变量：进程内只有一个 ``PENDING`` 实例；可安全跨模块 ``is`` 比较。
 
 .. seealso::
 
     :data:`_UNSET`
-        语义不同的另一个哨兵（「未设置」），不可混用。
+        语义不同的另一个哨兵（“未设置”），不可混用。
     ``flowing.runtime.Runtime.create_agent``
         PENDING 检查点所在的创建管线。
 """
 
 _UNSET: Final[Any] = object()
-"""「未设置」哨兵。内部 API，不属稳定契约。
+"""“未设置”哨兵。内部 API，不属稳定契约。
 
-表示「该位置从无默认 / 显式值」，现用于 ``Agent.source_file`` 的自动推算
+表示“该位置从无默认 / 显式值”，现用于 ``Agent.source_file`` 的自动推算
 触发（``source_file is _UNSET`` 时才推算，用户显式写 ``None`` 表示禁用
 相对路径）。与 :data:`PENDING` 语义不同：``PENDING`` 等待用户代码赋值，
 ``_UNSET`` 是静态判定标记，不可混用。唯一合法判定方式是 ``is`` /
@@ -1045,7 +1045,7 @@ class Parsable(Generic[T]):
         ``"_"`` （裸字符串，非哨兵）→ ``LITERAL`` （PENDING 语义只存在于
         ``.fya`` 解析层，不经本函数）。
         """
-        # 按模块级「五种形式判定」自上而下判定，首个命中者生效
+        # 按模块级“五种形式判定”自上而下判定，首个命中者生效
         if not isinstance(source, str):
             # 非字符串值（123/true 等）：LITERAL（宿主声明 Parsable 承载的
             # 例外与 Python API 手动构造）

@@ -109,7 +109,7 @@ function MessageRow({ m, toolResults }: { m: Message; toolResults: Map<string, M
 }
 
 // ---- 记录视图（纯链：只展示从当前 head 上溯的消息序列，不含任何树的
-// 元素——分叉/分支只出现在「树」页签） -------------------------------------------
+// 元素——分叉/分支只出现在“树”页签） -------------------------------------------
 function RecordView({ messages }: { messages: Message[] }) {
   // tool_call_id → TOOL 消息（当前链配对表）
   const toolResults = new Map<string, Message>();
@@ -141,7 +141,7 @@ function TreeView({ tree, onRewind }: { tree: Tree; onRewind: (id: string) => vo
     const isCollapsed = collapsed.has(n.id);
     return (
       <div className="flex items-center gap-0.5">
-        {/* 只有「分叉出的首条消息」渲染箭头（有子消息才可开合）；线性链
+        {/* 只有“分叉出的首条消息”渲染箭头（有子消息才可开合）；线性链
             不占箭头槽、不缩进 */}
         {forkHead && hasKids ? (
           <button type="button" onClick={() => toggle(n.id)} title={isCollapsed ? "Expand" : "Collapse"}

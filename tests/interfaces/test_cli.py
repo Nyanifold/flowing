@@ -279,7 +279,7 @@ def test_t59_artifact_modified(tmp_path, capsys):
 
 
 def test_t60_no_fya(tmp_path, capsys):
-    """项目无 .fya → 打印「无可编译文件」，返回 EXIT_OK。"""
+    """项目无 .fya → 打印“无可编译文件”，返回 EXIT_OK。"""
     project = tmp_path / "empty-proj"
     project.mkdir()
     assert main(["compile", str(project)]) == EXIT_OK

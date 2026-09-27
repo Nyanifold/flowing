@@ -119,7 +119,7 @@ RETRYABLE_ERRORS: tuple[type[BaseException], ...] = (
     NetworkError,
     ProviderTimeoutError,
 )
-"""默认策略视为可重试的异常类型元组（「限流 + 基础设施瞬时故障」四类）。
+"""默认策略视为可重试的异常类型元组（“限流 + 基础设施瞬时故障”四类）。
 
 分别是 :class:`flowing.errors.RateLimitedError` （限流）、
 :class:`flowing.errors.ServerError` （服务端错误）、
@@ -127,7 +127,7 @@ RETRYABLE_ERRORS: tuple[type[BaseException], ...] = (
 :class:`flowing.errors.ProviderTimeoutError` （Provider 超时）。
 
 这是策略清单而非机制清单：机制只保证这些类型在对应故障时被 Provider
-adapter 抛出、且会经过 ``on_provider_error`` 分发；「对它们重试」是
+adapter 抛出、且会经过 ``on_provider_error`` 分发；“对它们重试”是
 ``use_retry`` 的选择，用户 handler 可自由采用不同清单。不在此元组中的
 异常类型（含一切未知异常）默认策略一律不重试。
 

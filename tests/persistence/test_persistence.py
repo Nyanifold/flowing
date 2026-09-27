@@ -87,7 +87,7 @@ async def test_s4_poison_reraise(tmp_path):
     with pytest.raises(TypeError):
         store.submit({"op": "set", "key": "after", "value": 2})
     assert isinstance(store._poisoned, TypeError)
-    # poison 态下 drain 的「返回即全部落盘」承诺不可静默违反：任务已终结
+    # poison 态下 drain 的“返回即全部落盘”承诺不可静默违反：任务已终结
     # 时同步重抛首次落盘异常（契约③ 与 submit 同律）
     with pytest.raises(TypeError):
         await store.drain()
@@ -99,7 +99,7 @@ async def test_s4_poison_reraise(tmp_path):
 async def test_close_compacts_tombstones_without_submissions(copy_fixture):
     """X16 收尾时点：replay 累计墓碑 ≥ 阈值后直接 close（无 submit）→ 压缩发生。
 
-    回归基线：close 的「drain 任务从未启动」快捷分支不得跳过墓碑压缩。
+    回归基线：close 的“drain 任务从未启动”快捷分支不得跳过墓碑压缩。
     """
     path = copy_fixture("persistence/tree-with-tombstones.jsonl")
     store = FileRecordStore(path, tombstone_threshold=256)

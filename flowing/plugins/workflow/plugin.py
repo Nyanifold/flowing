@@ -72,7 +72,7 @@ class RunWorkflowTool(ScriptTool):
     """类级默认声明：规范名 ``run-workflow``、参数表只含 ``path``、
     ``strict=False``——运行参数由 ``Workflow.run()`` 签名决定，工具层
     不做参数限制（与 :class:`flowing.plugins.skills.SkillLoadTool`
-    同构的「薄入口 + 内层校验」形态）。
+    同构的“薄入口 + 内层校验”形态）。
     """
 
     async def execute(self, *, path: str, caller: Agent, **args: Any):
@@ -176,8 +176,8 @@ class WorkflowPlugin(Plugin):
 
     未注册（``runtime.install(WorkflowPlugin())`` 未调用）时为 ``None``——
     :meth:`launch` 据此拒绝未注册使用。保存 runtime 供 launch 是用户显式
-    调用的工厂路径，非运行期回调，与插件约定「不保存 runtime 用于运行期
-    回调」不冲突。
+    调用的工厂路径，非运行期回调，与插件约定“不保存 runtime 用于运行期
+    回调”不冲突。
     """
 
     def install(self, runtime: Runtime) -> None:
