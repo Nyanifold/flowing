@@ -104,9 +104,11 @@ async def launch(
     default it is ``<path>/main.py``; ``main_file`` selects another file and
     accepts an absolute path or an ``@``-relative path. The same entry point is
     used whether the caller later exposes the Runtime through a CLI, HTTP,
-    Web, tests, or an embedding host. The project decides whether to create or
-    recover Agents; arguments such as ``resume`` are ordinary values forwarded
-    to its ``main`` function.
+    Web, tests, or an embedding host. Whether an Agent is created or recovered
+    follows from how the project assembles it: ``mount()`` with a fixed
+    ``agent_id`` is an idempotent mount — an id already in the pool goes
+    through the recovery pipeline, otherwise a new Agent is created. Arguments
+    such as ``resume`` are ordinary values forwarded to its ``main`` function.
 
     .. rubric:: Usage example
 
@@ -115,15 +117,14 @@ async def launch(
         # @/main.py
         from flowing import Runtime
 
-        async def main(resume: str | None = None) -> Runtime:
+        async def main() -> Runtime:
             runtime = Runtime()
-            if resume is not None:
-                await runtime.recover_agent(resume)
-            else:
-                await runtime.mount("@/root.fya")
+            # Fixed agent_id → idempotent mount: a second launch recovers
+            # the same root instead of creating a new one.
+            await runtime.mount("@/root.fya", agent_id="agent-main")
             return runtime
 
-        runtime = await launch("/path/to/flowing-project", resume="agent-1")
+        runtime = await launch("/path/to/flowing-project")
         await runtime
 
     .. rubric:: Behavior notes

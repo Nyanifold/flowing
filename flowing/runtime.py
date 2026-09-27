@@ -224,9 +224,10 @@ async def launch(
     注入、``mount`` 根节点，并返回它。CLI / HTTP / Web / 测试 / 嵌入五种
     暴露方式共用此入口——调用方决定如何暴露 Runtime，框架不耦合暴露方式。
 
-    新建 vs 恢复是子项目 ``main()`` 的策略（如
-    ``main(resume: str | None = None)``）：框架不特殊处理 ``--resume`` 之类
-    的参数——它们经本函数的 ``**kwargs`` 原样透传给 ``main(**kwargs)``。
+    新建 vs 恢复由子项目 ``main()`` 的装配方式决定：``mount()`` 指定固定
+    ``agent_id`` 即幂等挂载——id 已在池中则走恢复管线，否则新建。框架不
+    特殊处理 ``--resume`` 之类的参数——它们经本函数的 ``**kwargs`` 原样
+    透传给 ``main(**kwargs)``。
 
     .. rubric:: 使用示例
 
@@ -235,18 +236,16 @@ async def launch(
         # @/main.py —— 子项目入口（launch 会 import 并调用它）
         from flowing import Runtime
 
-        async def main(resume: str | None = None) -> Runtime:
+        async def main() -> Runtime:
             runtime = Runtime()                      # @ 自动绑定到实例
-            if resume is not None:
-                await runtime.recover_agent(resume)
-            else:
-                await runtime.mount("@/root.fya")
+            # 固定 agent_id → 幂等挂载：第二次启动走恢复，“同一个根回来了”
+            await runtime.mount("@/root.fya", agent_id="agent-main")
             return runtime
 
     .. code-block:: python
 
         # 宿主进程 / CLI 内部
-        runtime = await launch("/path/to/flowing-project", resume="agent-xxx")
+        runtime = await launch("/path/to/flowing-project")
         await runtime                                # 阻塞至 shutdown()
 
     .. rubric:: 行为要点
@@ -262,7 +261,7 @@ async def launch(
     - 返回值是 ``main()`` 返回的 Runtime——此时 Agent 已激活、工作循环
       Task 已就绪；若调用方不做 ``await runtime``，进程/任务随即无事可做。
     - 本函数只负责把子项目拉起为 Runtime：不解析配置、不认识插件、不决定
-      “新建 vs 恢复”（那是 ``main()`` 的策略）、不启动任何服务端口。
+      “新建 vs 恢复”（由 ``main()`` 的装配方式决定）、不启动任何服务端口。
 
     :param path: flowing 子项目目录（普通文件系统路径，CLI 层不感知 ``@``）。
     :param main_file: 替代的 main 文件路径（可选；缺省 ``<path>/main.py``）。
