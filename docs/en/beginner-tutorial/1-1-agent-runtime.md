@@ -1,7 +1,9 @@
 # 1-1 · The Agent Runtime: The Nature of the LLM Interface and the Framework's Responsibilities
 
 > Reproduction requirements: Python 3.13+, uv, an available Flowing CLI, a DeepSeek API key, and network access from the terminal. To switch to OpenRouter's GPT-6 Luna, also set `OPENROUTER_API_KEY`.
-> All configuration, prompts, inputs, and sample outputs needed for this example are included at the end of this chapter. Save each block under its stated filename in a new empty directory.
+> All configuration, prompts, inputs, and sample outputs needed for this example are included at the end of this chapter. Save project files in a new empty directory; the Provider configuration can live in the shared user-level location described below.
+>
+> Configure a Provider once for multiple subprojects with `flowing-config providers add`. At the path prompt, press Enter to use the default user-level configuration (`~/.flowing/providers.yaml`, overridable through environment variables). Runtime loads this file automatically, so this and later chapters do not need a project-level `providers.yaml` or a `set_providers()` call. Create a project-level file and enable that call only when a project needs a different configuration.
 
 ## What this chapter covers
 
@@ -210,7 +212,7 @@ $system_prompt:
 You are a concise English assistant. Keep your answers within three sentences. {% if user_name %}The user is named {{ user_name }}; you may address them by name in your answers.{% endif %}
 ```
 
-`providers.yaml`:
+User-level `providers.yaml` (the default path is `~/.flowing/providers.yaml`):
 
 ```yaml
 deepseek:

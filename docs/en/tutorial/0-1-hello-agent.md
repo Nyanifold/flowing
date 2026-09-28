@@ -165,6 +165,13 @@ declaring `providers.yaml` and `models.yaml` in every example directory; keep th
 `set_providers()` and `set_models()` calls commented out. To share the tag mapping too,
 comment out `set_model_tags()` and put `model-tags.yaml` in the user-level directory.
 
+For the first Provider setup, run `flowing-config providers add` and press Enter at
+the path prompt to use the default user-level `providers.yaml`. Its location can also
+be selected with `FLOWING_CONFIG_HOME` or `FLOWING_PROVIDERS_PATH`. Runtime then loads
+the shared configuration automatically; later tutorials can reference an existing
+Provider entry from `models.yaml` without adding that entry again or calling
+`set_providers()`.
+
 The user-level `models.yaml` and `model-tags.yaml` can use the contents shown above.
 In `providers.yaml`, you can keep the environment-variable placeholder or write the
 credential directly in a private local configuration:

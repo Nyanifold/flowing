@@ -151,6 +151,12 @@ Provider 和模型配置时，无需在每个示例目录重新声明 `providers
 `models.yaml`；对应的 `set_providers()` / `set_models()` 调用也应保持注释。若要
 共享标签映射，再注释 `set_model_tags()` 并把 `model-tags.yaml` 放到用户级目录。
 
+首次配置 Provider 时，可以运行 `flowing-config providers add`，在路径提示处
+直接回车，使用默认的用户级 `providers.yaml`；其路径也可由
+`FLOWING_CONFIG_HOME` 或 `FLOWING_PROVIDERS_PATH` 指定。之后 Runtime 自动读取
+全局配置，后续教程只需在 `models.yaml` 中引用已有的 Provider 条目名，无需再次
+添加 Provider 条目或调用 `set_providers()`。
+
 用户级配置中的 `models.yaml` 和 `model-tags.yaml` 可直接使用本篇上面的内容。
 `providers.yaml` 可以继续用环境变量占位符，也可以在本机私有配置中直接写凭证：
 

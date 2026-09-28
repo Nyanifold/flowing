@@ -1,7 +1,9 @@
 # 1-1 · 智能体运行时：LLM 接口的性质与框架职责
 
 > 复现条件：Python 3.13+、uv、可用的 Flowing CLI、DeepSeek API key，以及终端网络连接。若要切换到 OpenRouter 的 GPT-6 Luna，还需 `OPENROUTER_API_KEY`。
-> 本篇末尾提供运行所需的完整配置、提示词、输入和示例输出；新建空目录后按代码块标注的文件名保存即可复现。
+> 本篇末尾提供运行所需的完整配置、提示词、输入和示例输出；项目文件保存在新建空目录中，Provider 配置可按下文放入用户级共享路径。
+>
+> Provider 可以配置一次供多个子项目共享：运行 `flowing-config providers add`，在路径提示处直接回车使用默认用户级配置（`~/.flowing/providers.yaml`，也可由环境变量覆盖）。Runtime 会自动读取该文件；本篇及后续篇章无需重复创建项目级 `providers.yaml`，`set_providers()` 也保持注释。只有需要为某个项目指定另一份配置时，才在项目内创建文件并启用该调用。
 
 ## 这篇讲什么
 
@@ -183,7 +185,7 @@ $system_prompt:
 你是一个简洁的中文助手，回答控制在三句话以内。{% if user_name %}用户叫做 {{ user_name }}，回答时可以直接以名字相称。{% endif %}
 ```
 
-`providers.yaml`：
+用户级 `providers.yaml`（默认路径为 `~/.flowing/providers.yaml`）：
 
 ```yaml
 deepseek:
