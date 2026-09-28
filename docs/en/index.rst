@@ -103,6 +103,17 @@ Run:
 
 The conversation doesn't vanish on exit: the messages it produced are persisted under ``.flowing/`` in the project directory. A fixed ``agent_id`` means that running ``flowing repl .`` again brings back the same agent with its full history — no recovery code required.
 
+Provider configuration command
+-------------------------------
+
+After installing ``flowing-agent``, use the standalone command to manage Provider configuration interactively. It does not start a Runtime or contact a model service::
+
+   $ flowing-config providers add [path]
+   $ flowing-config providers list [path]
+   $ flowing-config providers delete [path]
+
+``path`` can be a ``providers.yaml`` file or a configuration directory. When omitted, the command asks for a path and defaults to the Runtime priority order: ``FLOWING_PROVIDERS_PATH``, ``FLOWING_CONFIG_HOME/providers.yaml``, then ``~/.flowing/providers.yaml``. The add operation prompts for adapter fields one at a time; ``env.API_KEY`` is saved as ``{{env.API_KEY}}``. The list operation masks credentials while preserving environment-variable template text. Deletion proceeds only after an explicit ``y``. Changes take effect when a new Runtime is constructed.
+
 Going further
 -------------
 

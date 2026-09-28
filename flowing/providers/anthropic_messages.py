@@ -59,6 +59,7 @@ from flowing.message import (
 from flowing.model import ModelConfig
 from flowing.providers.provider import (
     Provider,
+    ProviderConfigField,
     ProviderDelta,
     ProviderResponse,
     Usage,
@@ -131,6 +132,15 @@ class AnthropicMessagesProvider(Provider):
     known_model_fields: ClassVar[frozenset[str]] = frozenset({"thinking_budget"})
     default_base_url: ClassVar[str | None] = None
     """子类覆写：厂商官方端点；条目配 ``base_url`` 时以条目为准。"""
+    config_fields: ClassVar[tuple[ProviderConfigField, ...]] = (
+        ProviderConfigField(
+            name="base_url",
+            prompt="API 端点",
+            default_factory=lambda adapter_cls: adapter_cls.default_base_url,
+            persist_default=False,
+        ),
+    )
+    """本协议家族的配置项描述；端点默认值由具体 adapter 动态提供。"""
 
     anthropic_version: ClassVar[str] = "2023-06-01"
     """``anthropic-version`` 请求头值。"""

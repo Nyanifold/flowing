@@ -37,6 +37,7 @@ Issues = "https://github.com/Nyanifold/flowing/issues"
 
 [project.scripts]
 flowing = "flowing.interfaces.cli:main"
+flowing-config = "flowing.config_cli:main"
 
 [dependency-groups]
 dev = [

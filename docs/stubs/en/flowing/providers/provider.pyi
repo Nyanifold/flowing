@@ -5,9 +5,11 @@
 This module contains the core Provider-side mechanisms: the :class:`Provider`
 abstract base; complete call results (:class:`ProviderResponse`), streaming
 deltas (:class:`ProviderDelta`), and token-usage records (:class:`Usage`);
-entry configuration (:class:`ProviderConfig`); the built-in test double
+entry configuration (:class:`ProviderConfig`); machine-readable field
+descriptions (:class:`ProviderConfigField`); the built-in test double
 :class:`FakeProvider`; the adapter registration decorator
-(:func:`register_provider`); the Runtime-level lazy instance table
+(:func:`register_provider`) and read-only enumeration
+(:func:`provider_adapters`); the Runtime-level lazy instance table
 (:class:`ProviderRegistry`); and the ``providers.yaml`` loader
 (:func:`load_provider_candidates`).
 
@@ -48,7 +50,7 @@ class ProviderConfig(dict[str, Any]):
 
     The set of fields is open. The adapter reads every field other than the
     common ``adapter``, ``api_key``, and ``base_url`` fields itself; for
-    example, a Bedrock adapter may read ``aws_region``. The framework core
+    example, a Bedrock adapter may read ``aws_session_token``. The framework core
     does not interpret adapter-specific fields.
 
     .. rubric:: Example
@@ -76,8 +78,9 @@ class ProviderConfig(dict[str, Any]):
     - This class does not validate a schema. The loader uses the ``adapter``
       key only to select the Provider class.
     - This configuration can contain credentials. Do not write it to
-      messages, ``_provided``, or persisted files. See the security section
-      in the :mod:`flowing.providers` package documentation.
+      messages, ``_provided``, or Runtime message/state persistence. The raw
+      ``providers.yaml`` file is the credential source and must remain private;
+      see the security section in the :mod:`flowing.providers` documentation.
 
     .. seealso::
 
@@ -85,6 +88,63 @@ class ProviderConfig(dict[str, Any]):
         :func:`register_provider` maps adapter names to classes.
     """
     ...
+
+@dataclass(frozen=True)
+class ProviderConfigField:
+    """Machine-readable description of one Provider configuration field.
+
+    .. rubric:: Overview
+
+    Adapters declare these fields in their class-level ``config_fields`` tuple
+    for configuration tools. The metadata does not validate runtime
+    ``ProviderConfig`` objects.
+
+    .. rubric:: Example
+
+    .. code-block:: python
+
+        from flowing.providers import ProviderConfigField
+
+        config_fields = (
+            ProviderConfigField(name="gateway", prompt="Proxy URL", default=""),
+        )
+
+    .. rubric:: Behavioral notes
+
+    - A resolved default of ``None`` means that the field is required; an
+      actual optional ``None`` default is not supported.
+    - ``default_factory`` receives the concrete adapter class, so endpoint
+      defaults can be read dynamically from ``default_base_url``.
+    - ``parser`` converts prompt input. ``sensitive`` controls list masking,
+      and ``supports_env`` enables ``env.NAME`` input shorthand.
+    - When a blank prompt accepts the default, ``persist_default`` controls
+      whether the default is written to the configuration file.
+    - Field metadata does not restrict the open ``ProviderConfig`` mapping or
+      change adapter construction and requests.
+
+    .. seealso:: :meth:`Provider.config_fields_for` merges inherited fields.
+    """
+    name: str
+    prompt: str
+    parser: Callable[[str], Any] = str
+    default: Any | None = None
+    default_factory: Callable[[type[Provider]], Any | None] | None = None
+    sensitive: bool = False
+    supports_env: bool = True
+    persist_default: bool = True
+
+    def __post_init__(self) -> None:
+        """Validate field names, prompt text, and parser metadata."""
+        ...
+
+    def default_for(self, adapter_cls: type[Provider]) -> Any | None:
+        """Resolve the field default for one adapter; ``None`` means required."""
+        ...
+
+    def is_required_for(self, adapter_cls: type[Provider]) -> bool:
+        """Return whether this field is required for one adapter."""
+        ...
+
 
 class ProviderDelta:
     """One streaming increment delivered as the value of ``on_provider_delta``.
@@ -484,8 +544,10 @@ class Provider(ABC):
 
     .. seealso::
 
-        :class:`OpenAICompletionsProvider` and
-        :class:`AnthropicMessagesProvider` determine two API-format families.
+        :class:`OpenAICompletionsProvider`, :class:`OpenAIResponsesProvider`,
+        and :class:`AnthropicMessagesProvider` determine API-format families.
+        :class:`ProviderConfigField` describes adapter configuration fields.
+        :func:`provider_adapters` enumerates registered adapter classes.
         :func:`register_provider` registers adapter classes.
         :class:`flowing.runtime.Runtime` owns ``provider_registry``.
     """
@@ -495,6 +557,8 @@ class Provider(ABC):
     ``providers.yaml`` entry uses this name to select the class. A conflict
     requires ``override=True``; this type-level name is distinct from the
     Provider entry name, which identifies a credential identity."""
+    config_fields: ClassVar[tuple[ProviderConfigField, ...]]
+    """Ordered field descriptions declared by this class."""
     api_format: ClassVar[str]
     """The API format identifier, such as ``"openai_completions"`` or
     ``"anthropic_messages"``. The framework family base class determines
@@ -511,7 +575,7 @@ class Provider(ABC):
     config: ProviderConfig
     """The entry configuration, including credentials, bound to this
     instance at construction. Treat it as read-only and do not expose its
-    credentials in messages, ``_provided``, or persisted data. See
+    credentials in messages, ``_provided``, or Runtime message/state data. See
     :class:`ProviderConfig`."""
     def __init__(self, config: ProviderConfig) -> None:
         """Construct a Provider instance from one entry's configuration.
@@ -727,6 +791,15 @@ class Provider(ABC):
           not refresh them automatically or provide a refresh hook.
 
         .. seealso:: :class:`ProviderConfig` stores the credential source.
+        """
+        ...
+
+    @classmethod
+    def config_fields_for(cls) -> tuple[ProviderConfigField, ...]:
+        """Merge configuration field descriptions in inheritance order.
+
+        A subclass declaration with the same field name replaces its parent's
+        description while keeping the original position.
         """
         ...
 
@@ -1073,5 +1146,13 @@ def register_provider(cls: type[Provider] | None=None, *, override: bool=False) 
 
         :class:`Provider` is the base class and defines the ``name`` contract.
         :class:`flowing.runtime.Runtime` owns the lazy candidate table.
+    """
+    ...
+
+def provider_adapters() -> tuple[tuple[str, type[Provider]], ...]:
+    """Return registered adapters as a name-sorted immutable tuple.
+
+    The function only enumerates classes already imported and registered. It
+    does not expose the registry mapping or discover third-party packages.
     """
     ...

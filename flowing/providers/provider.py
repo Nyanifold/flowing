@@ -5,8 +5,9 @@
 本模块承载 Provider 侧机制层的核心符号：抽象基类 :class:`Provider`、
 一次调用的完整产物 :class:`ProviderResponse` / 流式增量
 :class:`ProviderDelta` / token 用量记录 :class:`Usage`、条目配置
-:class:`ProviderConfig`、内置测试替身 :class:`FakeProvider`、adapter
-注册装饰器 :func:`register_provider`、Runtime 级懒实例化表
+:class:`ProviderConfig`、配置字段说明 :class:`ProviderConfigField`、内置
+测试替身 :class:`FakeProvider`、adapter 注册装饰器
+:func:`register_provider` / 只读枚举 :func:`provider_adapters`、Runtime 级懒实例化表
 :class:`ProviderRegistry` 与 providers.yaml 加载器
 :func:`load_provider_candidates`。
 
@@ -54,7 +55,7 @@ class ProviderConfig(dict[str, Any]):
     取值。
 
     字段集合是开放的：``adapter`` / ``api_key`` / ``base_url`` 之外的
-    字段全部由 adapter 自行读取（如 Bedrock 的 ``aws_region``），框架
+    字段全部由 adapter 自行读取（如 Bedrock 的 ``aws_session_token``），框架
     核心不解释任何字段的含义。
 
     .. rubric:: 使用示例
@@ -77,8 +78,9 @@ class ProviderConfig(dict[str, Any]):
       ``on_provider_error`` 分发）。
     - 实例化 Provider 后按只读对待：运行期修改 config 不属于支持的行为。
     - 不做 schema 校验；``adapter`` 键只由加载器用于选类。
-    - 安全边界：本配置含凭证，禁止写入消息、``_provided`` 与任何落盘
-      文件（详见包 docstring“安全边界”）。
+    - 安全边界：本配置含凭证，不得写入消息、``_provided`` 或 Runtime
+      消息/状态落盘文件。原始 ``providers.yaml`` 是凭证配置来源，应
+      保持用户私有权限（详见包 docstring“安全边界”）。
 
     .. seealso::
 
@@ -86,6 +88,91 @@ class ProviderConfig(dict[str, Any]):
         :func:`register_provider` adapter 名到类的注册表。
     """
     ...
+
+
+@dataclass(frozen=True)
+class ProviderConfigField:
+    """一个 Provider 配置项的机器可读说明。
+
+    .. rubric:: 功能介绍
+
+    描述配置项的名称、交互提示、输入解析、默认值和敏感性。Provider
+    adapter 以类级 ``config_fields`` 声明字段；配置管理命令按继承顺序
+    合并这些声明，为用户生成交互表单。该描述只供配置工具使用，不参与
+    Provider 运行期配置校验。
+
+    .. rubric:: 使用示例
+
+    .. code-block:: python
+
+        from flowing.providers import OpenAICompletionsProvider, ProviderConfigField
+
+        class LocalProvider(OpenAICompletionsProvider):
+            config_fields = (
+                ProviderConfigField(name="gateway", prompt="代理地址", default=""),
+            )
+
+    .. rubric:: 行为要点
+
+    - ``default`` 或 ``default_factory`` 的解析结果为 ``None`` 时，该
+      字段在交互中必填；不支持把 ``None`` 表示成一个可选默认值。
+    - ``default_factory`` 接收具体 adapter 类，在交互时解析动态默认值，
+      例如读取 adapter 的 ``default_base_url``。
+    - ``parser`` 将用户输入的字符串转换为配置值；``sensitive`` 标记
+      控制列表界面的值遮蔽；``supports_env`` 控制是否接受
+      ``env.NAME`` 简写；``persist_default`` 控制留空采用默认值时是否
+      将默认值写入文件。
+    - 本描述不限制 ``ProviderConfig`` 可包含的字段，也不改变 adapter
+      构造或请求行为。
+
+    .. seealso:: :meth:`Provider.config_fields_for` 字段继承查询。
+    """
+
+    name: str
+    """落盘配置映射中的字段名。"""
+    prompt: str
+    """交互命令显示的字段提示。"""
+    parser: Callable[[str], Any] = str
+    """把用户输入转换为配置值的函数。"""
+    default: Any | None = None
+    """静态默认值；``None`` 表示字段必填。"""
+    default_factory: Callable[[type[Provider]], Any | None] | None = None
+    """接收具体 adapter 类并返回默认值的函数；返回 ``None`` 表示必填。"""
+    sensitive: bool = False
+    """是否为敏感值，配置列表应遮蔽非模板形式的实际值。"""
+    supports_env: bool = True
+    """是否接受 ``env.NAME`` 与 ``{{env.NAME}}`` 环境变量引用。"""
+    persist_default: bool = True
+    """留空采用默认值时，是否把该值写入配置文件。"""
+
+    def __post_init__(self) -> None:
+        """校验字段名、提示文字及解析函数。"""
+        if not self.name or self.name == "adapter":
+            raise ValueError(
+                "ProviderConfigField name must be non-empty and cannot be 'adapter'")
+        if not self.prompt:
+            raise ValueError("ProviderConfigField prompt must be non-empty")
+        if self.default_factory is not None and self.default is not None:
+            raise ValueError(
+                "ProviderConfigField accepts a static default or default_factory, not both")
+        if not callable(self.parser):
+            raise ValueError("ProviderConfigField parser must be callable")
+        if self.default_factory is not None and not callable(self.default_factory):
+            raise ValueError("ProviderConfigField default_factory must be callable")
+
+    def default_for(self, adapter_cls: type[Provider]) -> Any | None:
+        """解析该字段对具体 adapter 生效的默认值。
+
+        :param adapter_cls: 提供该字段的具体 Provider adapter 类。
+        :return: 静态或动态默认值；``None`` 表示必填。
+        """
+        if self.default_factory is not None:
+            return self.default_factory(adapter_cls)
+        return self.default
+
+    def is_required_for(self, adapter_cls: type[Provider]) -> bool:
+        """判断该字段对具体 adapter 是否必填。"""
+        return self.default_for(adapter_cls) is None
 
 
 @dataclass
@@ -445,6 +532,9 @@ class Provider(ABC):
 
     - 懒创建：实例化只发生在首次按条目名获取时；实例化后按条目名缓存，
       同条目后续获取返回同一实例。
+    - 类级 ``config_fields`` 为配置工具提供交互字段说明；字段描述不
+      参与运行期配置校验。:meth:`config_fields_for` 按继承顺序合并，
+      同名子类字段覆盖父类描述。
     - 子类约束：作为注册 adapter 的子类必须定义非空类属性 ``name``
       （adapter 注册键，全局唯一）；``api_format`` 由框架基类决定，
       子类通常不再改。
@@ -455,8 +545,10 @@ class Provider(ABC):
 
     .. seealso::
 
-        :class:`OpenAICompletionsProvider` / :class:`AnthropicMessagesProvider`
-            两个框架基类（决定 ``api_format``）。
+        :class:`OpenAICompletionsProvider` / :class:`OpenAIResponsesProvider` /
+        :class:`AnthropicMessagesProvider` 三个框架基类（决定 ``api_format``）。
+        :class:`ProviderConfigField` adapter 配置字段的说明。
+        :func:`provider_adapters` 已注册 adapter 的只读枚举。
         :func:`register_provider` adapter 类注册入口。
         :class:`flowing.runtime.Runtime` ``provider_registry`` 的宿主。
     """
@@ -467,6 +559,16 @@ class Provider(ABC):
     须 ``override=True`` 见 :func:`register_provider`；与 provider 条目
     名是不同概念（条目名是身份标识，adapter 名是类型标识）。
     """
+    config_fields: ClassVar[tuple[ProviderConfigField, ...]] = (
+        ProviderConfigField(
+            name="api_key",
+            prompt="API 密钥",
+            default="",
+            sensitive=True,
+            persist_default=False,
+        ),
+    )
+    """本类及子类声明的有序配置项；字段值只供配置管理工具读取。"""
     api_format: ClassVar[str]
     """API 格式标识（如 ``"openai_completions"`` / ``"anthropic_messages"``），
     由框架基类决定。行为边界：禁止在业务代码中对它做 ``if`` 分支
@@ -482,7 +584,8 @@ class Provider(ABC):
     """
     config: ProviderConfig
     """构造时绑定的条目配置（含凭证）。行为边界：按只读对待；凭证禁止
-    外泄（不进消息 / ``_provided`` / 落盘）。参见 :class:`ProviderConfig`。
+    外泄（不进消息 / ``_provided`` / Runtime 消息与状态落盘）。参见
+    :class:`ProviderConfig`。
     """
 
     def __init__(self, config: ProviderConfig) -> None:
@@ -715,6 +818,36 @@ class Provider(ABC):
             :class:`ProviderConfig` 凭证的来源容器。
         """
         return self.config.get("api_key")
+
+    @classmethod
+    def config_fields_for(cls) -> tuple[ProviderConfigField, ...]:
+        """按继承顺序合并本 adapter 的配置项说明。
+
+        .. rubric:: 功能介绍
+
+        汇总 ``Provider.config_fields`` 与各子类的类级声明。字段按基类
+        到子类的顺序排列；子类同名声明覆盖原字段说明，但保留该字段
+        在列表中的位置。
+
+        .. rubric:: 使用示例
+
+        .. code-block:: python
+
+            for field in DeepSeekProvider.config_fields_for():
+                print(field.name, field.default_for(DeepSeekProvider))
+
+        .. rubric:: 行为要点
+
+        - 返回不可变 tuple；调用方修改结果不会影响类级声明。
+        - 本方法只读取字段说明，不实例化 Provider，不校验配置映射。
+
+        .. seealso:: :class:`ProviderConfigField` 字段描述结构。
+        """
+        merged: dict[str, ProviderConfigField] = {}
+        for base in reversed(cls.__mro__):
+            for config_field in base.__dict__.get("config_fields", ()):
+                merged[config_field.name] = config_field
+        return tuple(merged.values())
 
 
 class FakeProvider(Provider):
@@ -1132,3 +1265,31 @@ def register_provider(
     if cls is None:
         return _register  # @register_provider(override=True) 形态
     return _register(cls)  # @register_provider 形态
+
+
+def provider_adapters() -> tuple[tuple[str, type[Provider]], ...]:
+    """返回当前已注册的 Provider adapter 清单。
+
+    .. rubric:: 功能介绍
+
+    提供 adapter 注册表的只读枚举视图，供配置工具展示可选类别。结果
+    按 adapter 名排序，不暴露内部注册字典。
+
+    .. rubric:: 使用示例
+
+    .. code-block:: python
+
+        from flowing.providers import provider_adapters
+
+        for name, adapter_cls in provider_adapters():
+            print(name, adapter_cls.__name__)
+
+    .. rubric:: 行为要点
+
+    - 返回不可变 tuple，每项为 ``(adapter 名, adapter 类)``。
+    - 只枚举已导入并注册的类；本函数不导入模块、不自动发现第三方包。
+
+    .. seealso:: :func:`register_provider` adapter 注册入口。
+    """
+    return tuple((name, _provider_adapters[name])
+                 for name in sorted(_provider_adapters))

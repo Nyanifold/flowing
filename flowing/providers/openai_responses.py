@@ -66,6 +66,7 @@ from flowing.message import (
 from flowing.model import ModelConfig
 from flowing.providers.provider import (
     Provider,
+    ProviderConfigField,
     ProviderDelta,
     ProviderResponse,
     Usage,
@@ -172,6 +173,15 @@ class OpenAIResponsesProvider(Provider):
     known_model_fields: ClassVar[frozenset[str]] = frozenset()
     default_base_url: ClassVar[str | None] = None
     """子类覆写：厂商官方端点；条目配 ``base_url`` 时以条目为准（代理场景）。"""
+    config_fields: ClassVar[tuple[ProviderConfigField, ...]] = (
+        ProviderConfigField(
+            name="base_url",
+            prompt="API 端点",
+            default_factory=lambda adapter_cls: adapter_cls.default_base_url,
+            persist_default=False,
+        ),
+    )
+    """本协议家族的配置项描述；端点默认值由具体 adapter 动态提供。"""
 
     # ── 网络点（唯一）──────────────────────────────────────────────────
 

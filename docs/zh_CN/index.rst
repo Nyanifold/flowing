@@ -103,6 +103,17 @@ Flowing 是一个为复杂交互设计的轻量级、可扩展的描述式 Agent
 
 这轮对话并没有随退出而消失：项目目录下的 ``.flowing/`` 里保存着刚刚产生的消息记录。``agent_id`` 固定意味着再次执行 ``flowing repl .`` 时，找回的是同一个 Agent 及其全部历史，无需额外的恢复代码。
 
+Provider 配置命令
+-----------------
+
+安装 ``flowing-agent`` 后，可以用独立命令交互管理 Provider 配置；它不启动 Runtime，也不访问模型服务::
+
+   $ flowing-config providers add [path]
+   $ flowing-config providers list [path]
+   $ flowing-config providers delete [path]
+
+``path`` 可以是 ``providers.yaml`` 文件或配置目录。省略时命令会询问目标路径，默认跟随 Runtime 的优先级：``FLOWING_PROVIDERS_PATH``、``FLOWING_CONFIG_HOME/providers.yaml``、``~/.flowing/providers.yaml``。添加时逐项填写 adapter 字段；``env.API_KEY`` 会保存为 ``{{env.API_KEY}}``。列表会遮蔽密钥，但保留环境变量模板文本。删除操作只有明确输入 ``y`` 才会执行。配置改动在后续新建 Runtime 时生效。
+
 进一步
 ------
 

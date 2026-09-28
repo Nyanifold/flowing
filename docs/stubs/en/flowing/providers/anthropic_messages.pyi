@@ -38,7 +38,7 @@ from flowing.context import Context
 from flowing.errors import AuthenticationError, ContentPolicyError, ContextLengthError, FlowingError, InvalidRequestError, NetworkError, ProviderError, ProviderTimeoutError, RateLimitedError, RequestTooLargeError, ServerError
 from flowing.message import MediaBlock, Message, MessageKind, StructBlock, TextBlock, ThinkingBlock, ToolCallBlock
 from flowing.model import ModelConfig
-from flowing.providers.provider import Provider, ProviderDelta, ProviderResponse, Usage
+from flowing.providers.provider import Provider, ProviderConfigField, ProviderDelta, ProviderResponse, Usage
 
 class _HttpResponseError(Exception):
     """Internal carrier for a non-2xx transport response, before classification.
@@ -110,6 +110,8 @@ class AnthropicMessagesProvider(Provider):
     default_base_url: ClassVar[str | None]
     """Subclass override for the vendor's official endpoint. An entry-level
     ``base_url`` takes precedence, for example when using a proxy."""
+    config_fields: ClassVar[tuple[ProviderConfigField, ...]]
+    """Fields for configuration tools; the endpoint default follows the adapter class."""
     anthropic_version: ClassVar[str]
     """The Anthropic API version sent in the request header."""
     async def _post(self, path: str, body: dict) -> dict:

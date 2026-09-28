@@ -7,8 +7,9 @@ adapter 继承树（:mod:`flowing.providers.openai_completions` /
 :mod:`flowing.providers.openai_responses` /
 :mod:`flowing.providers.anthropic_messages` 三个格式家族）、调用产物
 :class:`ProviderResponse` / :class:`ProviderDelta` / 一次调用的 token
-用量记录 :class:`Usage`、条目配置 :class:`ProviderConfig`、adapter
-注册装饰器 :func:`register_provider`、Runtime 级懒实例化表
+:class:`Usage`、条目配置 :class:`ProviderConfig`、配置字段说明
+:class:`ProviderConfigField`、adapter 注册装饰器
+:func:`register_provider` 与只读枚举 :func:`provider_adapters`、Runtime 级懒实例化表
 :class:`ProviderRegistry`、内置测试替身 :class:`FakeProvider`。模型侧
 契约（``ModelConfig`` / models.yaml / 标签映射）在 :mod:`flowing.model`。
 
@@ -209,11 +210,13 @@ from flowing.providers.provider import (
     FakeProvider,
     Provider,
     ProviderConfig,
+    ProviderConfigField,
     ProviderDelta,
     ProviderRegistry,
     ProviderResponse,
     Usage,
     load_provider_candidates,
+    provider_adapters,
     register_provider,
 )
 
@@ -229,10 +232,12 @@ __all__ = [
     "OpenRouterProvider",
     "Provider",
     "ProviderConfig",
+    "ProviderConfigField",
     "ProviderDelta",
     "ProviderRegistry",
     "ProviderResponse",
     "Usage",
     "load_provider_candidates",
+    "provider_adapters",
     "register_provider",
 ]

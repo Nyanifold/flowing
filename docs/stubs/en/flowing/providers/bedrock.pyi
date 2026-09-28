@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import ClassVar
 from flowing.providers.anthropic_messages import AnthropicMessagesProvider
-from flowing.providers.provider import register_provider
+from flowing.providers.provider import ProviderConfigField, register_provider
 
 class BedrockProvider(AnthropicMessagesProvider):
     """Anthropic Messages adapter that sends requests to AWS Bedrock.
@@ -59,6 +59,8 @@ class BedrockProvider(AnthropicMessagesProvider):
     """
 
     name: ClassVar[str]
+    config_fields: ClassVar[tuple[ProviderConfigField, ...]]
+    """Required endpoint and optional AWS Session Token fields."""
 
     def get_credential(self) -> str | None:
         """Return the configured Bedrock credential, falling back to ``api_key``.

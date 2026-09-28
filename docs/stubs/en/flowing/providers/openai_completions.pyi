@@ -39,7 +39,7 @@ from flowing.context import Context
 from flowing.errors import AuthenticationError, ContentPolicyError, ContextLengthError, FlowingError, InvalidRequestError, NetworkError, ProviderError, ProviderTimeoutError, RateLimitedError, RequestTooLargeError, ServerError
 from flowing.message import MediaBlock, Message, MessageKind, StructBlock, TextBlock, ThinkingBlock, ToolCallBlock
 from flowing.model import ModelConfig
-from flowing.providers.provider import Provider, ProviderDelta, ProviderResponse, Usage
+from flowing.providers.provider import Provider, ProviderConfigField, ProviderDelta, ProviderResponse, Usage
 
 class _HttpResponseError(Exception):
     """Internal carrier for the raw facts of a non-2xx transport response.
@@ -122,6 +122,8 @@ class OpenAICompletionsProvider(Provider):
     default_base_url: ClassVar[str | None]
     """Subclass override for the vendor's official endpoint. An entry-level
     ``base_url`` takes precedence, for example when using a proxy."""
+    config_fields: ClassVar[tuple[ProviderConfigField, ...]]
+    """Fields for configuration tools; the endpoint default follows the adapter class."""
     _reasoning_dialect: str | None
     """The reasoning-field variant detected in an incoming response and
     remembered so that reasoning blocks use the same field when replayed."""

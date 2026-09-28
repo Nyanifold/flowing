@@ -13,7 +13,7 @@ from __future__ import annotations
 from typing import ClassVar
 
 from flowing.providers.anthropic_messages import AnthropicMessagesProvider
-from flowing.providers.provider import register_provider
+from flowing.providers.provider import ProviderConfigField, register_provider
 
 
 @register_provider
@@ -51,6 +51,17 @@ class BedrockProvider(AnthropicMessagesProvider):
     """
 
     name: ClassVar[str] = "bedrock"
+    config_fields: ClassVar[tuple[ProviderConfigField, ...]] = (
+        ProviderConfigField(name="base_url", prompt="API 端点"),
+        ProviderConfigField(
+            name="aws_session_token",
+            prompt="AWS Session Token",
+            default="",
+            sensitive=True,
+            persist_default=False,
+        ),
+    )
+    """Bedrock 端点必填，并可额外提供 AWS Session Token。"""
 
     def get_credential(self) -> str | None:
         """凭证覆写点：config 显式 ``aws_session_token`` 优先，否则回退基类 ``api_key``。
