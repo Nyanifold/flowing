@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import getpass
 import re
 import sys
 from collections.abc import Mapping
@@ -165,10 +164,7 @@ def _prompt_field(
     prompt = f"{config_field.prompt} ({config_field.name}; {suffix}): "
 
     while True:
-        if config_field.sensitive:
-            value = getpass.getpass(prompt)
-        else:
-            value = input(prompt)
+        value = input(prompt)
         if value == "":
             if default is None:
                 print("This field is required. Enter a value.")
