@@ -95,10 +95,44 @@ def _fold(text: str, limit: int = 80) -> str:
     return folded[:limit] + ("…" if len(folded) > limit else "")
 
 
-def _agent_record_lines(runtime: Runtime, separator: str = "  ") -> list[str]:
-    """按给定列分隔符渲染池名录行。"""
+def _agent_record_lines(
+    runtime: Runtime,
+    separator: str = "  ",
+    *,
+    include_header: bool = False,
+) -> list[str]:
+    """按给定列分隔符渲染池名录。
+
+    制表符模式按终端显示宽度填充并对齐各列；``include_header`` 仅用于
+    启动时的表格输出。
+    """
     records = _list_agent_records(runtime)
     lines: list[str] = []
+    if separator == "\t":
+        from prompt_toolkit.utils import get_cwidth
+
+        rows = []
+        for rec in records:
+            mtime = (time.strftime("%Y-%m-%d %H:%M", time.localtime(rec["mtime"]))
+                     if rec["mtime"] is not None else "-")
+            rows.append((rec["agent_id"], f'"{rec["last_reply"]}"', mtime))
+        headers = ("agent_id", "last_reply", "modified")
+        widths = []
+        for i, header in enumerate(headers):
+            values = (header, *(row[i] for row in rows))
+            widths.append(max(get_cwidth(value) for value in values))
+
+        def _pad(value: str, width: int) -> str:
+            return value + " " * max(0, width - get_cwidth(value))
+
+        if include_header:
+            lines.append("\t".join(
+                _pad(value, width) for value, width in zip(headers, widths)))
+        for row in rows:
+            lines.append("\t".join(
+                _pad(value, width) for value, width in zip(row, widths)))
+        return lines
+
     for rec in records:
         mtime = (time.strftime("%Y-%m-%d %H:%M", time.localtime(rec["mtime"]))
                  if rec["mtime"] is not None else "-")

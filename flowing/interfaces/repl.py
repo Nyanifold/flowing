@@ -244,7 +244,8 @@ async def cmd_repl(
        现场恢复并绑定（身份连续）；零个或多个 → 未绑定（有记录时
        打印 ``/agents`` 提示）。绑定解析后输出池名录中的全部 Agent，
        每条记录单独一行，``agent_id``、最后回复前缀和最后修改时间以制表符
-       分隔；无记录时输出 ``(no agent records)``。名录含休眠记录。
+       分隔，并按显示宽度填充对齐；无记录时输出 ``(no agent records)``。
+       名录含休眠记录。
     3. 读行循环。提示符：已绑定 ``(<agent_id>)>>>``，未绑定
        ``(new agent)>>>``。输入分两类：
 
@@ -477,15 +478,14 @@ async def cmd_repl(
         # 提示选择路径（记录数不定，措辞保持中性）
         print("root agent records exist: see /agents, select with /use <id>")
 
-    # 启动时统一展示池名录。制表符分列、换行分 Agent；休眠记录也可由
-    # /agent 现场恢复，因此与 /agents 使用同一名录数据源。
+    # 启动时统一展示池名录。制表符分列、换行分 Agent，按显示宽度填充以
+    # 对齐内容长度不同的列；休眠记录也可由 /agent 现场恢复。
     print("Available agents:")
-    print("agent_id\tlast_reply\tmodified")
-    agent_lines = _agent_record_lines(runtime, separator="\t")
-    if agent_lines:
-        for agent_line in agent_lines:
-            print(agent_line)
-    else:
+    agent_lines = _agent_record_lines(
+        runtime, separator="\t", include_header=True)
+    for agent_line in agent_lines:
+        print(agent_line)
+    if len(agent_lines) == 1:
         print("(no agent records)")
 
     # 第 3 步：读行循环；提示符 = 已绑定 (agent_id)>>> / 未绑定 (new agent)>>>

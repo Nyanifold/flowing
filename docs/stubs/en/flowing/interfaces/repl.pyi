@@ -131,7 +131,8 @@ async def cmd_repl(path: str, main_file: str | None = None, *, extra_slash_handl
        no sole active root was selected. After binding resolution, it prints
        every Agent in the pool, including inactive records, one per line with
        the Agent ID, last-reply preview, and modification time separated by
-       tabs. If the pool is empty, it prints ``(no agent records)``.
+       tabs and padded to align by display width. If the pool is empty, it
+       prints ``(no agent records)``.
     3. The prompt is ``(<agent_id>)>>>`` when bound and
        ``(new agent)>>>`` otherwise. Input is handled as follows:
 
