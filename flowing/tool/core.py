@@ -333,14 +333,16 @@ class ToolResult:
     ``None``。调用方 / LLM 可据此按 id 取消或查询后台任务。
     """
     name: str | None = None
-    """产出本结果的工具别名（LLM 命名空间）。由 ``Agent.tool_call`` 在
-    工具执行返回后接线；``on_tool_yields`` 钩子的 ``match_on="name"``
-    pattern 过滤依据。未经 ``Agent.tool_call`` 管线的结果为 ``None``。
+    """关联工具的 LLM 命名空间别名。由 ``Agent.tool_call`` 在工具产物进入
+    ``on_tool_yields`` 前接线，并在 LLM 视角参数校验失败时于
+    ``after_tool_call`` 前接线；供这两个钩子的 ``match_on="name"`` pattern
+    过滤。未经 ``Agent.tool_call`` 管线的结果为 ``None``。
     """
     tool_call_id: str | None = None
-    """配对锚：产出本结果的 ``ToolCall.id``。由 ``Agent.tool_call`` 在
-    工具执行返回后接线（先于 ``as_message`` 的消息字段接线）；后台
-    分段 / 终值携带同一 id，供 handler 关联同一次调用。
+    """配对锚：关联调用的 ``ToolCall.id``。由 ``Agent.tool_call`` 在工具
+    产物进入 ``on_tool_yields`` 前接线，并在 LLM 视角参数校验失败时于
+    ``after_tool_call`` 前接线；后台分段 / 终值携带同一 id，供 handler
+    关联同一次调用。``as_message`` 的消息字段由调用方单独接线。
     """
     production: str | None = None
     """产出形态四值：``"sync"`` （同步结果）/ ``"receipt"`` （后台工具
@@ -1222,5 +1224,4 @@ def _has_forbidden_block(value: Any) -> bool:
     if isinstance(value, (list, tuple)):
         return any(_has_forbidden_block(v) for v in value)
     return False
-
 

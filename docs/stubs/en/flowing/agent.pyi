@@ -1933,8 +1933,10 @@ class Agent:
         arguments through Agent validation and ``ToolEntry.resolve()``; invoke
         ``Tool.__call__`` while registering and finally clearing a tool
         ``Execution``; attach ``name``, ``tool_call_id``, and ``production``
-        metadata; dispatch ``on_tool_yields`` where applicable; dispatch
-        ``after_tool_call``; normalize output again idempotently; and return.
+        metadata to executed results; dispatch ``on_tool_yields`` where
+        applicable; attach the call name and ID to LLM argument-validation
+        errors before dispatching ``after_tool_call``; normalize output again
+        idempotently; and return.
 
         .. rubric:: Behavior notes
 
@@ -1943,9 +1945,11 @@ class Agent:
         - If ``before_tool_call`` raises ``Intercepted``, this method returns
           ``ToolResult.blocked(...)`` whose LLM-visible content is
           ``[TextBlock(reason)]`` rather than raising the signal to the caller.
-          The ``on_tool_yields`` hook runs only for non-blocked results
-          produced by ``Tool.__call__``. It does not run for a shortcut or an
-          LLM-facing argument-validation error; ``after_tool_call`` does run
+          LLM-facing argument-validation errors carry the call name and ID in
+          ``after_tool_call``. The ``on_tool_yields`` hook runs only for
+          non-blocked results produced by ``Tool.__call__``. It does not run
+          for a shortcut or an LLM-facing argument-validation error;
+          ``after_tool_call`` does run
           for a shortcut and may modify the result before final normalization.
         - A Tool returning ``ToolResult(status="error")`` is a normal result,
           not an exception-channel error. LLM-facing argument validation

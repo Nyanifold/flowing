@@ -3571,11 +3571,12 @@ class Agent:
         执行；``raise Intercepted`` 硬阻断）→ 按别名查
         ``_tool_entries`` → :meth:`_normalize` （LLM 视角校验 / 别名映射
         与 ``ToolEntry.resolve()`` 聚合 / 默认值填充）→ ``Tool.__call__``
-        调度（注册 ``Execution(kind="tool")``，finally 清理）→ 元信息
+        调度（注册 ``Execution(kind="tool")``，finally 清理）→ 执行产物
         接线（``name`` / ``tool_call_id`` / ``production``）→ dispatch
         ``on_tool_yields`` （仅 ``Tool.__call__`` 执行产出的非 blocked
         结果触发——blocked 语义即“没有产物”；shortcut 与 LLM 校验失败
-        的产物不经过本点；可改写 ``output`` 原料值）→ dispatch
+        的产物不经过本点；可改写 ``output`` 原料值）；LLM 校验失败的
+        error 结果接线 ``name`` / ``tool_call_id`` → dispatch
         ``after_tool_call`` （可改写结果；shortcut 路径照常触发）→ 收尾
         归一（return 前幂等再跑一次 ``normalize_output``，封 shortcut 与
         钩子改写两条缝）→ 返回。
@@ -3590,8 +3591,10 @@ class Agent:
           任何错误钩子（工具业务错误不走异常通道）。
         - LLM 视角校验失败同属正常产物：包装为
           ``ToolResult(status="error", error=<LLM 命名空间的错误文本>)``，
-          ``after_tool_call`` 照常触发，随后正常返回进消息树——LLM 的
-          自我修正反馈，不是回合异常。内部校验失败（specified / inject /
+          并接线当前 ``ToolCall`` 的 ``name`` 与 ``id``；``after_tool_call``
+          照常触发，按工具名过滤的 handler 可识别该错误调用。结果随后
+          正常返回进消息树——LLM 的自我修正反馈，不是回合异常。内部校验
+          失败（specified / inject /
           默认值的配置错误，在 ``Tool.__call__`` 触发）例外：上抛框架
           错误通道 + 日志，不包成 ToolResult、不进 LLM 可见文本。
         - abort 于工具调用循环中：批次前检查点③的批次整体跳过（不
@@ -3647,7 +3650,12 @@ class Agent:
             try:
                 resolved_args: dict[str, Any] = self._normalize(entry, tool_call, tool)
             except (ValidationError, _LlmViewValidationError) as exc:
-                result = ToolResult(status="error", error=str(exc))
+                result = ToolResult(
+                    status="error",
+                    error=str(exc),
+                    name=tool_call.name,
+                    tool_call_id=tool_call.id,
+                )
             else:
                 execution = Execution(id=self._next_execution_id(), kind="tool", tags=[],
                                       started_at=datetime.now(),

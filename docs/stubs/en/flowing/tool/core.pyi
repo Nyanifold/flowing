@@ -277,17 +277,20 @@ class ToolResult:
     can use the ID to cancel or query the task.
     """
     name: str | None = None
-    """The LLM-visible alias of the tool that produced this result.
+    """The LLM-visible alias of the tool associated with this result.
 
-    ``Agent.tool_call`` sets it after execution. ``on_tool_yields`` handlers
-    can filter results with ``match_on="name"``. Results that bypass that
-    pipeline have ``None`` here.
+    ``Agent.tool_call`` sets it before ``on_tool_yields`` for produced results
+    and before ``after_tool_call`` for LLM-facing argument-validation errors.
+    Both hooks can filter results with ``match_on="name"``. Results that
+    bypass that pipeline have ``None`` here.
     """
     tool_call_id: str | None = None
-    """The ID of the ``ToolCall`` that produced this result.
+    """The ID of the ``ToolCall`` associated with this result.
 
-    ``Agent.tool_call`` sets it before :meth:`as_message`. Background
-    segments and terminal values carry the same ID for correlation.
+    ``Agent.tool_call`` sets it before ``on_tool_yields`` for produced results
+    and before ``after_tool_call`` for LLM-facing argument-validation errors.
+    Background segments and terminal values carry the same ID for correlation;
+    :meth:`as_message` receives the message's paired ID separately.
     """
     production: str | None = None
     """The form in which the result was produced.
