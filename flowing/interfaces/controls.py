@@ -14,9 +14,11 @@ repl 输入框与 web 输入框都以 ``/cmd [arg]`` 形式接受控制命令。
 - **agent 级**（作用于给定 agent）：``messages / model / context / status /
   tasks / export / rewind / cancel / pause / resume``。
 
-``messages`` 支持 ``v`` / ``verbose`` 参数，完整序列化消息及其全部内容块；
-普通模式只完整显示较短工具结果，超过 500 个渲染字符时截断，其他消息沿用
-短摘要。
+``messages`` 支持 ``v`` / ``verbose`` 参数，保留消息 ID 与类型作为分隔，完整
+显示文本、思考、结构数据和工具调用参数，不展开消息级持久化字段；媒体块只显示
+类型、名称、MIME 和载荷长度。普通模式只完整显示较短工具结果，超过 500 个
+渲染字符时截断，并为思考内容和工具调用提供短摘要；结构块显示折叠 JSON，
+媒体块显示类型、名称、MIME 和载荷长度。
 
 约定：本目录只含“作用于显式目标并返回文本”的命令；前台绑定切换（``agent``/
 ``new``）与进程退出（``exit / quit``）是交互壳自身行为，不在此列。
@@ -35,9 +37,13 @@ import time
 from flowing.agent import Agent, _estimate_tool_schema_tokens
 from flowing.interfaces import _default_agent_type, _list_agent_records
 from flowing.message import (
+    MediaBlock,
     Message,
     MessageKind,
+    StructBlock,
     TextBlock,
+    ThinkingBlock,
+    ToolCallBlock,
     _text_tokens,
     estimate_block_tokens,
     to_record,
@@ -46,6 +52,32 @@ from flowing.runtime import Runtime
 
 _MESSAGES_PREVIEW_LIMIT = 500
 """普通 ``/messages`` 模式中，工具结果渲染内容的字符数上限。"""
+
+
+def _verbose_message_content_lines(message: Message) -> list[str]:
+    """渲染消息正文和工具调用内容，不展开消息级字段或媒体载荷。"""
+    lines: list[str] = []
+    for block in message.content:
+        if isinstance(block, TextBlock):
+            lines.extend(("[text]", block.text))
+        elif isinstance(block, ThinkingBlock):
+            lines.extend(("[thinking]", block.thinking))
+        elif isinstance(block, ToolCallBlock):
+            lines.append(f"[tool_call] {block.name}")
+            lines.extend(json.dumps(
+                block.args, ensure_ascii=False, indent=2).splitlines())
+        elif isinstance(block, StructBlock):
+            lines.append("[struct]")
+            lines.extend(json.dumps(
+                block.data, ensure_ascii=False, indent=2).splitlines())
+        elif isinstance(block, MediaBlock):
+            media_label = f"[{block.type}] {block.name}"
+            if block.mime_type:
+                media_label += f" ({block.mime_type})"
+            lines.append(f"{media_label} [payload: {len(block.data)} base64 chars]")
+        else:
+            lines.append(f"[{block.type}]")
+    return lines
 
 
 def available_model_tags(agent: Agent) -> list[str]:
@@ -93,6 +125,40 @@ HELP_LINES: tuple[str, ...] = (
 def _fold(text: str, limit: int = 80) -> str:
     folded = " ".join(text.split())
     return folded[:limit] + ("…" if len(folded) > limit else "")
+
+
+def _summary_message_content_text(message: Message) -> str:
+    """按内容块类型渲染消息正文摘要。"""
+    parts: list[str] = []
+    text_run: list[str] = []
+
+    def _flush_text() -> None:
+        if text_run:
+            parts.append(_fold("".join(text_run)))
+            text_run.clear()
+
+    for block in message.content:
+        if isinstance(block, TextBlock):
+            text_run.append(block.text)
+            continue
+        _flush_text()
+        if isinstance(block, ThinkingBlock):
+            parts.append(f"[thinking] {_fold(block.thinking)}")
+        elif isinstance(block, ToolCallBlock):
+            args = json.dumps(block.args, ensure_ascii=False, separators=(",", ":"))
+            parts.append(f"[tool_call] {block.name} {_fold(args)}")
+        elif isinstance(block, StructBlock):
+            data = json.dumps(block.data, ensure_ascii=False, separators=(",", ":"))
+            parts.append(f"[struct] {_fold(data)}")
+        elif isinstance(block, MediaBlock):
+            media_label = f"[{block.type}] {block.name}"
+            if block.mime_type:
+                media_label += f" ({block.mime_type})"
+            parts.append(f"{media_label} [payload: {len(block.data)} base64 chars]")
+        else:
+            parts.append(f"[{block.type}]")
+    _flush_text()
+    return " | ".join(parts)
 
 
 def _agent_record_lines(
@@ -181,13 +247,12 @@ async def slash_lines(cmd: str, arg: str, agent: Agent | None,
             return ["(no messages)"]
         for m in reversed(chain):
             if arg in ("v", "verbose"):
-                lines.append(f"--- {m.id} {m.kind.value} ---")
-                lines.extend(json.dumps(
-                    to_record(m), ensure_ascii=False, indent=2).splitlines())
+                lines.append(f"--- {m.id[:12]} {m.kind.value} ---")
+                lines.extend(_verbose_message_content_lines(m))
                 continue
 
-            text = "".join(b.text for b in m.content if isinstance(b, TextBlock))
             if m.kind is MessageKind.TOOL:
+                text = "".join(b.text for b in m.content if isinstance(b, TextBlock))
                 # 常见文本工具结果保持原文；混合 / 结构化内容按完整 block
                 # 记录渲染，后续统一按可见字符数裁切。
                 text_blocks = [b for b in m.content if isinstance(b, TextBlock)]
@@ -198,7 +263,7 @@ async def slash_lines(cmd: str, arg: str, agent: Agent | None,
                     text = (text[:_MESSAGES_PREVIEW_LIMIT]
                             + f"… [truncated; {omitted} characters omitted]")
             else:
-                text = _fold(text)
+                text = _summary_message_content_text(m)
             lines.append(f"{m.id[:12]}  {m.kind.value:<9} {text}")
         return lines
 

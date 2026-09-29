@@ -22,8 +22,13 @@ and does not accept runtime command registration.
 - ``/snapshot`` prints a human-readable rendering of the Runtime's read-only
   snapshot.
 - ``/messages [v|verbose]`` prints the bound Agent's message-chain summary
-  from the current head; ``v`` or ``verbose`` displays complete serialized
-  messages and content blocks. With no bound Agent, it prints a hint.
+  from the current head; ``v`` or ``verbose`` keeps message IDs and kinds as
+  separators and displays full text, thinking, structured data, and tool-call
+  arguments, without expanding message-level persistence fields. Media blocks
+  show their type, name, MIME type, and payload length. Normal mode shows
+  summaries for all content blocks: abbreviated thinking and tool calls,
+  folded JSON for structured data, and media metadata. With no bound Agent, it
+  prints a hint.
 - ``/agents`` lists recorded Agents with their IDs, last-reply previews, and
   modification times.
 - ``/agent <id>`` changes the bound Agent, restoring an inactive recorded
@@ -188,10 +193,14 @@ async def cmd_repl(path: str, main_file: str | None = None, *, extra_slash_handl
       Creation failures are printed and leave the current binding unchanged.
     - ``/messages`` prints a message when the REPL is unbound because there is
       no current conversation to show. ``/messages v`` and
-      ``/messages verbose`` display every message record, including complete
-      thinking blocks, tool calls, arguments, and results. In normal mode, a
-      tool result is shown in full up to 500 rendered characters and truncated
-      above that; other message text keeps the short preview.
+      ``/messages verbose`` display message bodies, complete thinking blocks,
+      tool-call names and arguments, results, and structured data, using only
+      message IDs and kinds as separators. Media blocks show metadata and
+      payload length. Normal mode shows a summary for each content-block type:
+      abbreviated thinking and tool calls, folded JSON for structured data,
+      and media metadata with payload length. A tool result is shown in full
+      up to 500 rendered characters and truncated above that, while other
+      message text keeps the short preview.
 
     The following optional injection points support extensions such as
     ``repl-debug``; the default ``repl`` does not pass them:
