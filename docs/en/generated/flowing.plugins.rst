@@ -13,5 +13,6 @@ flowing.plugins
    clipboard
    comm
    cron
+   peers
    skills
    workflow

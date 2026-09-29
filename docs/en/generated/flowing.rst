@@ -14,6 +14,8 @@
    builtins
    compiler
    composables
+   config_cli
+   configuration
    context
    errors
    hooks

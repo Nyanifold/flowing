@@ -15,5 +15,6 @@ Subpackages
    flowing.plugins.clipboard
    flowing.plugins.comm
    flowing.plugins.cron
+   flowing.plugins.peers
    flowing.plugins.skills
    flowing.plugins.workflow

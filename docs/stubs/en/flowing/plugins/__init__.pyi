@@ -1,7 +1,7 @@
 """Built-in extension packages and the common plugin interface.
 
 This package contains the common :class:`Plugin` base class and the built-in
-``skills``, ``comm``, ``cron``, ``workflow``, and ``clipboard`` extensions.
+``skills``, ``comm``, ``peers``, ``cron``, ``workflow``, and ``clipboard`` extensions.
 Built-in extensions ship with Flowing but are not installed automatically.
 The core consumes the plugin interface through
 ``flowing.runtime.Runtime.install()`` and does not depend on any particular

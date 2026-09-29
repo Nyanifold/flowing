@@ -9,6 +9,7 @@
 - 随包发布、需显式启用的内置扩展，各自是一个独立子包：
   :mod:`flowing.plugins.skills` （``SkillPlugin`` / ``use_skill``）、
   :mod:`flowing.plugins.comm` （``CommPlugin`` / ``use_comm``）、
+  :mod:`flowing.plugins.peers` （``PeersPlugin`` / ``use_peers``）、
   :mod:`flowing.plugins.cron` （``CronPlugin`` / ``use_cron``）、
   :mod:`flowing.plugins.workflow` （``WorkflowPlugin`` / ``Workflow``）、
   :mod:`flowing.plugins.clipboard` （``ClipboardPlugin`` / ``use_clipboard``）。
