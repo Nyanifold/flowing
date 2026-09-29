@@ -29,12 +29,14 @@ def build_parser() -> argparse.ArgumentParser:
     """构建独立于 ``flowing`` Runtime 子命令集的参数解析器。"""
     parser = argparse.ArgumentParser(
         prog="flowing-config",
-        description=(
-            "Manage Provider configuration files. This command does not start a "
-            "Runtime or contact a model service."
-        ),
+        description="Manage Flowing configuration from the command line.",
+        epilog="For details, run \"flowing-config <subcommand> -h\".",
     )
-    commands = parser.add_subparsers(dest="resource", required=True)
+    commands = parser.add_subparsers(
+        dest="resource",
+        required=True,
+        title="Subcommands",
+    )
     providers = commands.add_parser("providers", help="Manage providers.yaml")
     operations = providers.add_subparsers(dest="operation", required=True)
     for operation, help_text in (
