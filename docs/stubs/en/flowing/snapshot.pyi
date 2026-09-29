@@ -340,10 +340,11 @@ class TurnContextInfo:
 
     .. rubric:: Overview
 
-    This is the value type of ``AgentSnapshot.current_turn``. A turn is an
-    execution phase, not a message-tree node. Its ``TurnContext`` is transient,
-    is not persisted, and is not recovered after a crash; this view exists only
-    while the turn is running.
+    This is the value type of ``AgentSnapshot.current_turn``. A turn consumes
+    a message until the Provider finishes or a turn-completion flag is set.
+    It is an execution phase, not a message-tree node. Its ``TurnContext`` is
+    transient, is not persisted, and is not recovered after a crash; this view
+    exists only while the turn is running.
 
     .. rubric:: Behavior notes
 

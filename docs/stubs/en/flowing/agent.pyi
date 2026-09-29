@@ -130,8 +130,9 @@ class TurnContext:
 
     A logical turn consumes one message, or multiple messages when the
     dequeue policy is overridden, and continues until the Provider returns
-    ``finish=True``. The turn runner creates this value when the turn starts
-    and discards it after finalization. It is exposed as ``TurnResult.turn``
+    ``finish=True`` or a hook requests completion on this object. The turn
+    runner creates this value when the turn starts and discards it after
+    finalization. It is exposed as ``TurnResult.turn``
     and ``Agent.current_turn``. It is temporary: it is not added to the message
     tree, persisted, or restored after a process crash.
 
@@ -155,6 +156,18 @@ class TurnContext:
 
         agent.hooks.before_turn(add_reminder)
 
+    An ``after_tool_call`` handler can request completion without a result
+    payload:
+
+    .. code-block:: python
+
+        def finish_after_peer(agent, result):
+            if result.status == "completed" and agent.current_turn is not None:
+                agent.current_turn.finish = True
+            return result
+
+        agent.hooks.after_tool_call["message-peer"](finish_after_peer)
+
     .. rubric:: Behavior notes
 
     - ``message_ids`` contains IDs of messages in the message tree, appended
@@ -172,6 +185,9 @@ class TurnContext:
       it repeatedly has no additional effect, and ``on_turn_abort`` runs at
       most once per turn. ``after_turn`` handlers can inspect it to distinguish
       normal completion from cancellation.
+    - ``finish`` requests normal completion without a return payload. A tool
+      hook can set it to ``True``; the current tool batch completes before the
+      turn ends. It does not change the value written to ``Agent.last_result``.
     - ``usages`` accumulates the ``Usage`` objects reported by successful
       ``provider_gen`` calls in this turn. The entries are the same objects
       attached to their messages, not copies; ``Message.usage`` remains the
@@ -181,8 +197,9 @@ class TurnContext:
     - ``finish_output`` contains the structured payload returned by the finish
       tool. Setting it requests natural turn completion after the current
       tool batch finishes, as if the Provider had returned ``finish=True``.
-      Finalization stores the payload in ``Agent.last_result``. This field is
-      transient and is not persisted.
+      Finalization stores the payload in ``Agent.last_result``. Set ``finish``
+      when completion needs no payload. This field is transient and is not
+      persisted.
     - An empty turn, such as one aborted immediately after starting, creates
       no new tree node. ``message_ids`` may contain only the triggering
       message or may be empty, and ``current_head_id`` does not change.
@@ -229,6 +246,11 @@ class TurnContext:
     as if the Provider returned ``finish=True``. Finalization stores the
     payload in ``last_result``. This field is transient and is not persisted.
     """
+    finish: bool
+    """Requests normal completion without a return payload. The current tool
+    batch completes before the turn ends; this flag does not change the value
+    written to ``Agent.last_result``.
+    """
 
 
 class TurnResult:
@@ -253,7 +275,8 @@ class TurnResult:
 
     .. rubric:: Behavior notes
 
-    - ``status`` is ``"completed"`` when a Provider response ends the turn,
+    - ``status`` is ``"completed"`` when a Provider response ends the turn or
+      ``TurnContext.finish`` / ``finish_output`` requests completion,
       ``"blocked"`` when the turn runner intercepts the turn, ``"cancelled"`` when
       the turn is cancelled, destroyed, or withdrawn through ``cancel_queued``,
       and ``"error"`` when an uncaught exception terminates the turn. All four
@@ -817,8 +840,9 @@ class Agent:
     it before resolving
     waiters, including for aborted, cancelled, and failed turns. A non-``None``
     ``turn.finish_output`` takes precedence; otherwise the value is the text
-    of the last ``PROVIDER`` message in the turn. If no such message exists
-    or its text is empty, the value is ``None``.
+    of the last ``PROVIDER`` message in the turn. A control-only
+    ``turn.finish`` request does not add a payload. If no Provider message
+    exists or its text is empty, the value is ``None``.
     ``side_query`` does not update it.
     """
     model: ModelConfig

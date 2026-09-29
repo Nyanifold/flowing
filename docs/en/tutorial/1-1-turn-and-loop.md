@@ -36,8 +36,9 @@ read). In flowing, this loop is driven by no out-of-band signal; it runs
 entirely on **messages**: user input, model responses, tool results, and
 external events are all represented as `Message`, and the agent's resident
 work loop consumes the queue serially, with each (batch of) message(s)
-driving one logical Turn — until a response with `finish=True` (the Provider
-completed this response with no tool call pending) wraps it up. This chapter
+driving one logical Turn — until a response with `finish=True` or a hook sets
+`turn.finish` / a tool sets `finish_output`. The current tool batch completes
+before a hook-requested end; `turn.finish` carries no result payload. This chapter
 covers only two message kinds (text input/output and tool calls); the full
 message type system is the topic of 1-2.
 

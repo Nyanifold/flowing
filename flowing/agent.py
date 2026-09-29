@@ -292,9 +292,9 @@ class TurnContext:
 
     .. rubric:: 功能介绍
 
-    逻辑 Turn 是“消费一条（或按覆写的出队策略多条）消息、直到 Provider
-    响应 ``finish=True`` 才结束”的执行过程。本对象由回合执行体在 Turn
-    开始时创建、收尾后丢弃，是 :attr:`TurnResult.turn` 与
+    逻辑 Turn 是“消费一条（或按覆写的出队策略多条）消息，直到 Provider
+    响应 ``finish=True`` 或回合结束标志置位”的执行过程。本对象由回合
+    执行体在 Turn 开始时创建、收尾后丢弃，是 :attr:`TurnResult.turn` 与
     ``Agent.current_turn`` 的类型。它只承载回合执行期间的临时信息：不进入
     消息树、不写任何持久化文件、进程崩溃后不恢复（恢复只重建消息级树与
     状态袋，见本模块 docstring）。
@@ -314,6 +314,17 @@ class TurnContext:
 
         agent.hooks.before_turn(_reminder)
 
+    ``after_tool_call`` 钩子可仅请求结束本回合，不设置结果载荷：
+
+    .. code-block:: python
+
+        def _finish_after_peer(agent, result):
+            if result.status == "completed" and agent.current_turn is not None:
+                agent.current_turn.finish = True
+            return result
+
+        agent.hooks.after_tool_call["message-peer"](_finish_after_peer)
+
     .. rubric:: 行为要点
 
     - ``message_ids`` 引用消息级树中的节点：按产生顺序追加 id，不含消息
@@ -327,6 +338,9 @@ class TurnContext:
       / 钩子内直接置位走同一路径）；置位幂等，``on_turn_abort`` 随之
       每回合至多触发一次。``after_turn`` 钩子读 ``aborted`` 区分正常结束
       与取消。
+    - ``finish`` 是不带返回载荷的正常结束标志。工具调用钩子可置为
+      ``True``，当前工具批次执行完后回合自然结束；它不修改
+      ``Agent.last_result`` 的产出规则。瞬态字段，随回合丢弃、不落盘。
     - ``usages`` 是本回合各次成功 ``provider_gen`` 上报用量的纯内存累加
       器（追加的是消息上附着的同一个 ``Usage`` 对象引用，不是第二份
       数据；用量唯一权威是 ``Message.usage``）；收尾时聚合进
@@ -334,8 +348,8 @@ class TurnContext:
       （``side_query``）不经回合循环，其用量不记入本字段。
     - ``finish_output`` 是 finish 工具的结构化交卷载荷：置位即请求本
       回合自然结束（工具段照常执行完，随后视同 ``finish=True`` 走统一
-      收尾），载荷由收尾段写入 ``Agent.last_result``。瞬态字段，随回合
-      丢弃、不落盘。
+      收尾），载荷由收尾段写入 ``Agent.last_result``。只需结束而不需载荷时
+      设置 ``finish``。瞬态字段，随回合丢弃、不落盘。
     - 边缘情况：空 Turn（启动即被 abort）不产生新树节点，
       ``message_ids`` 可能只含触发消息或为空，``current_head_id`` 不变。
 
@@ -376,6 +390,10 @@ class TurnContext:
     执行完，随后视同 ``finish=True`` 走统一收尾），载荷由收尾段写入
     ``last_result``。瞬态字段，随回合丢弃、不落盘。
     """
+    finish: bool = False
+    """不带返回载荷的正常结束标志。置为 ``True`` 后，当前工具批次完成
+    即结束回合；不修改 ``Agent.last_result`` 的产出规则。
+    """
 
 
 @dataclass
@@ -400,8 +418,9 @@ class TurnResult:
 
     .. rubric:: 行为要点
 
-    - ``status`` 四值：``"completed"`` （Provider 响应 ``finish=True``
-      自然结束）/ ``"blocked"`` （被 ``Intercepted`` 阻断）/ ``"cancelled"``
+    - ``status`` 四值：``"completed"`` （Provider 响应 ``finish=True`` 或
+      ``TurnContext.finish`` / ``finish_output`` 请求自然结束）/ ``"blocked"``
+      （被 ``Intercepted`` 阻断）/ ``"cancelled"``
       （取消 / 销毁 / ``cancel_queued`` 联动）/ ``"error"`` （未捕获异常
       终止）。四种结局都会 resolve 给等待者。
     - ``final_text`` 是本 Turn 最后一条 PROVIDER 消息中全部
@@ -1238,8 +1257,9 @@ class Agent:
 
     填充规则（回合收尾时、resolve 等待者之前写入）：``turn.finish_output``
     非 ``None`` → 该 dict（finish 结构化交卷）；否则 → 本轮最后一条
-    PROVIDER 消息的文本，为空串则写 ``None``。abort / cancel / error
-    路径同样覆写。``side_query`` 不写本字段。
+    PROVIDER 消息的文本，为空串则写 ``None``。仅设置 ``turn.finish`` 只请求
+    正常结束，不提供载荷，故仍按 PROVIDER 文本规则填充。abort / cancel /
+    error 路径同样覆写。``side_query`` 不写本字段。
     """
     _executions: dict[str, Execution]
     """执行追踪注册表（动态结构：仅“有正在运行的异步操作”时有条目）；
@@ -4601,8 +4621,9 @@ class Agent:
         ``on_provider_error`` → ``can_continue=False`` 则 break，``True``
         则 continue）→ 响应
         消息挂树 → 工具调用循环（同一响应内全部 ``tool_call`` 并行执行，
-        批次前同一 pause/abort 检查点）→ ``response.finish`` 或
-        ``finish_output`` 置位则 break。三处 abort 判定互斥（各自随即
+        批次前同一 pause/abort 检查点）→ ``response.finish``、
+        ``turn.finish`` 或 ``finish_output`` 置位则 break。三处 abort
+        判定互斥（各自随即
         break）且 ``turn.aborted`` 幂等置位，``on_turn_abort`` 每回合
         至多触发一次。
 
@@ -4675,9 +4696,9 @@ class Agent:
                         # 不携带 usage，消息是唯一载体）
                         turn.usages.append(response.message.usage)
                     # turn_end 由 agent 层写入——turn 随本条消息关闭
-                    #（自然 finish 或取消/abort）→ True；provider 的 finish
+                    #（自然 finish 或取消/abort）→ True；Provider 的 finish
                     # 只是关闭原因之一，adapter 不写 turn_end；finish 工具
-                    # 置位路径的 turn_end 落在其配对 TOOL 消息上（见下
+                    # 或钩子置位路径的 turn_end 落在其配对 TOOL 消息上（见下
                     # “置位转移检测”），本条 PROVIDER 消息不追溯改写
                     #（已挂树落盘）
                     response.message.turn_end = response.finish or response.cancelled
@@ -4700,12 +4721,13 @@ class Agent:
                         await self.hooks.on_turn_abort.dispatch(self, turn)
                         # 跳过本批全部工具；已执行工具（无）结果仍按不执行处理
                     else:
-                        block_finish_was = turn.finish_output   # 置位转移检测：并行块开始前
+                        block_finish_was = (turn.finish
+                                            or turn.finish_output is not None)   # 置位转移检测：并行块开始前
 
                         async def _run_one(tc: ToolCall):
-                            before = turn.finish_output
+                            before = turn.finish or turn.finish_output is not None
                             result = await self.tool_call(tc)
-                            after = turn.finish_output
+                            after = turn.finish or turn.finish_output is not None
                             return tc, result, before, after
 
                         # 结果返回即挂树（实时完成序）：崩溃只丢真正在飞的
@@ -4724,16 +4746,16 @@ class Agent:
                                 errors.append(exc)
                                 continue
                             result_msg = result.as_message(tc.id)   # 配对锚接线（tc.id → tool_call_id）
-                            if (block_finish_was is None and not marked
-                                    and before is None and after is not None):
-                                result_msg.turn_end = True   # finish 置位路径：首个触发置位的 TOOL 消息标 turn_end（实时首个）
+                            if (not block_finish_was and not marked
+                                    and not before and after):
+                                result_msg.turn_end = True   # 结束标志置位路径：首个触发置位的 TOOL 消息标 turn_end
                                 marked = True
                             await self._append_message(result_msg, turn)   # 结果消息挂树（即完成即挂）
                         if errors:
                             raise errors[0]   # 框架错误：已成功的结果已挂树，异常继续走 _run_turn 的 except 通道
                 if turn.aborted:
                     break
-                if response.finish or turn.finish_output is not None:
+                if response.finish or turn.finish or turn.finish_output is not None:
                     break   # 自然结束（含 finish 置位：工具段照常执行完再收尾）
         except Intercepted:   # 拦截走异常通道（捕获结局信号）
             intercepted = True

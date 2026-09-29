@@ -332,9 +332,9 @@ class TurnContextInfo:
     .. rubric:: 功能介绍
 
     ``AgentSnapshot.current_turn`` 的值类型：逻辑 turn 执行期临时对象
-    ``TurnContext`` 的投影。Turn 只是逻辑执行阶段（消费一条消息 →
-    ``finish=True``），不是树节点；TurnContext 不落盘、不进树、崩溃后不
-    恢复，因此其快照视图同样只存在于执行期间。
+    ``TurnContext`` 的投影。Turn 只是逻辑执行阶段（消费一条消息，直到
+    Provider finish 或回合结束标志置位），不是树节点；TurnContext 不落盘、
+    不进树、崩溃后不恢复，因此其快照视图同样只存在于执行期间。
 
     .. rubric:: 行为要点
 

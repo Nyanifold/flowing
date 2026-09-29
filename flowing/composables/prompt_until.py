@@ -64,8 +64,8 @@
 - 断言回调：``(agent, turn) -> bool``——``turn`` 是
   :class:`flowing.agent.TurnContext` （``after_turn`` 钩子点的 value
   类型；``TurnResult`` 在 ``after_turn`` 之后才组装，回合收尾时点可读
-  的是回合执行期载体：``aborted`` / ``message_ids`` / ``usages`` /
-  ``finish_output``）。返回真值即通过；假值触发导向。结果只做真值
+  的是回合执行期载体：``aborted`` / ``finish`` / ``message_ids`` /
+  ``usages`` / ``finish_output``）。返回真值即通过；假值触发导向。结果只做真值
   判断，不要求严格 ``bool``。
 - 回合结局分流：``turn.aborted`` 为真（取消 / 打断 / destroy 级联）的
   回合**不检查、不入队**——取消语义优先于续跑循环，断言回调也收不到
@@ -191,7 +191,8 @@ def use_prompt_until(
     - 断言回调：``(agent, turn) -> bool``，``turn`` 是
       :class:`flowing.agent.TurnContext` （``after_turn`` 钩子点的
       value 类型；``TurnResult`` 在 ``after_turn`` 之后才组装，此处
-      可读 ``aborted`` / ``message_ids`` / ``usages`` / ``finish_output``）。
+      可读 ``aborted`` / ``finish`` / ``message_ids`` / ``usages`` /
+      ``finish_output``）。
       返回值只做真值判断。
     - 导向内容三态：``(agent) -> str | None`` 回调（``None`` / 空串
       放弃本次导向）、:class:`~flowing.parsable.Parsable`
