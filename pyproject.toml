@@ -26,6 +26,7 @@ dependencies = [
     # httpx2 仅供 streamable-http 型工具的 headers 通道（mcp 2.x 的
     # http_client 参数要求 httpx2 客户端）。
     "mcp>=2.0.0",
+    "prompt-toolkit>=3.0.53",
     "pydantic>=2.13.5",
     "ruamel-yaml>=0.19.1",
 ]

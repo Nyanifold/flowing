@@ -19,6 +19,11 @@ Commands fall into two groups. Runtime-level commands do not require an Agent:
 explicitly supplied Agent: ``messages``, ``model``, ``context``, ``status``,
 ``tasks``, ``export``, ``rewind``, ``cancel``, ``pause``, and ``resume``.
 
+``messages`` accepts ``v`` or ``verbose`` to display complete serialized
+message records and content blocks. In the default mode, tool results are
+shown in full up to 500 rendered characters and truncated above that; other
+message text keeps a short preview.
+
 This module contains only commands that act on an explicit target and return
 text. Changing the foreground binding (``agent`` and ``new``) and exiting the
 process (``exit`` and ``quit``) remain responsibilities of the interactive

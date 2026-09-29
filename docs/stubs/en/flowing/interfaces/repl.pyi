@@ -21,8 +21,9 @@ and does not accept runtime command registration.
   :data:`flowing.interfaces.EXIT_OK`; ``/quit`` is an alias.
 - ``/snapshot`` prints a human-readable rendering of the Runtime's read-only
   snapshot.
-- ``/messages`` prints the bound Agent's message-chain summary from the
-  current head, or a hint when no Agent is bound.
+- ``/messages [v|verbose]`` prints the bound Agent's message-chain summary
+  from the current head; ``v`` or ``verbose`` displays complete serialized
+  messages and content blocks. With no bound Agent, it prints a hint.
 - ``/agents`` lists recorded Agents with their IDs, last-reply previews, and
   modification times.
 - ``/agent <id>`` changes the bound Agent, restoring an inactive recorded
@@ -53,28 +54,16 @@ def _install_repl_signal_handlers(runtime: Runtime, flags: dict) -> None:
 
     During a turn, SIGINT (Ctrl-C) calls ``abort_turn()`` on the currently
     bound Agent. This cooperatively cancels that turn while keeping the
-    session alive. While ``input()`` is waiting at an idle prompt, SIGINT
-    raises ``KeyboardInterrupt`` to interrupt the current line; the input loop
-    catches it, prints a newline, and shows the prompt again. Exit with
-    ``/exit`` or Ctrl-D (EOF). SIGTERM starts the same graceful-shutdown path
-    used by ``run``, ``serve``, and ``web`` through ``runtime.shutdown()``.
+    At an idle prompt, SIGINT raises ``KeyboardInterrupt`` to interrupt the
+    current line; the input loop catches it, prints a newline, and shows the
+    prompt again. Exit with ``/exit`` or Ctrl-D (EOF). SIGTERM starts the same
+    graceful-shutdown path used by ``run``, ``serve``, and ``web`` through
+    ``runtime.shutdown()``.
 
     Signal handling is a no-op outside the main thread or on platforms that
     do not support it. The function returns the previous SIGINT handler so
     ``cmd_repl`` can restore it on exit and repeated REPL invocations in one
     process do not interfere with each other.
-    """
-
-def _install_readline():
-    """Enable line editing and top-level slash-command completion when available.
-
-    If ``readline`` can be imported, the function installs a Tab completer for
-    top-level slash commands from :data:`SLASH_COMMANDS`, but only when the
-    current word begins with ``/``; command arguments are not completed. On an
-    interactive TTY, ``input()`` also gains arrow-key navigation, line editing,
-    and session-local history. With piped input, terminal editing is not
-    available. If ``readline`` cannot be imported, the function does nothing.
-    It returns the previous completer so ``cmd_repl`` can restore it on exit.
     """
 
 def _summarize_message(host: Agent, msg: Message, *, omit_thinking: bool = False) -> str | None:
@@ -194,7 +183,11 @@ async def cmd_repl(path: str, main_file: str | None = None, *, extra_slash_handl
       determined, the REPL prints a message and does not create an Agent.
       Creation failures are printed and leave the current binding unchanged.
     - ``/messages`` prints a message when the REPL is unbound because there is
-      no current conversation to show.
+      no current conversation to show. ``/messages v`` and
+      ``/messages verbose`` display every message record, including complete
+      thinking blocks, tool calls, arguments, and results. In normal mode, a
+      tool result is shown in full up to 500 rendered characters and truncated
+      above that; other message text keeps the short preview.
 
     The following optional injection points support extensions such as
     ``repl-debug``; the default ``repl`` does not pass them:
@@ -209,19 +202,21 @@ async def cmd_repl(path: str, main_file: str | None = None, *, extra_slash_handl
 
     These injection points must not change the Agent binding or message flow.
 
-    Empty input lines are ignored. If ``readline`` is available, arrow keys,
-    line editing, and session-local history work through ``input()``; Tab
-    completes top-level slash commands only, not their arguments. An
-    unrecognized ``/xxx`` prints a hint to use ``/help`` and the loop
-    continues. A ``TurnResult`` with ``status="error"`` does not terminate the
-    REPL. Its final text is printed only when no streamed output has already
-    been shown; streamed output is not printed a second time. If restoring an
-    Agent at startup or after ``/agent``/``/use`` fails because its record is damaged, the error is printed and the
-    binding is unchanged; the user can inspect ``/agents`` and choose another
-    Agent. During a turn, SIGINT cooperatively cancels that turn with
-    ``abort_turn()`` and leaves the REPL active. At an idle prompt, SIGINT
-    interrupts only the current input line and the prompt is shown again.
-    SIGTERM requests graceful shutdown through ``runtime.shutdown()``.
+    Empty input lines are ignored. Interactive terminals support arrow keys,
+    line editing, and session-local history; Tab completes top-level slash
+    commands but not their arguments. Waiting for input does not block the
+    asyncio event loop, and output from background tasks is displayed without
+    obscuring the prompt. An unrecognized ``/xxx`` prints a hint to use
+    ``/help`` and the loop continues. A ``TurnResult`` with ``status="error"``
+    does not terminate the REPL. Its final text is printed only when no
+    streamed output has already been shown; streamed output is not printed a
+    second time. If restoring an Agent at startup or after ``/agent``/``/use``
+    fails because its record is damaged, the error is printed and the binding
+    is unchanged; the user can inspect ``/agents`` and choose another Agent.
+    During a turn, SIGINT cooperatively cancels that turn with ``abort_turn()``
+    and leaves the REPL active. At an idle prompt, SIGINT interrupts only the
+    current input line and the prompt is shown again. SIGTERM requests graceful
+    shutdown through ``runtime.shutdown()``.
 
     :param path: Project path, as for :func:`flowing.interfaces.run.cmd_run`.
     :param main_file: Optional replacement ``main`` file, supplied by CLI

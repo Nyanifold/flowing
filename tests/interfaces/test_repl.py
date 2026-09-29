@@ -384,17 +384,18 @@ async def test_sigint_aborts_active_turn_not_session():
         signal.signal(signal.SIGINT, prev)
 
 
-def test_readline_completer_slash_commands():
-    """Tab 补全：行首 / 词从 SLASH_COMMANDS 补全；非斜杠词不补全。"""
-    readline = pytest.importorskip("readline")
-    prev = repl_mod._install_readline()
-    assert prev is not None
-    try:
-        completer = readline.get_completer()
-        assert completer("/he", 0) == "/help"
-        assert completer("/e", 0) in ("/exit", "/export")
-        assert completer("/e", 1) in ("/exit", "/export")
-        assert completer("/e", 2) is None
-        assert completer("hello", 0) is None   # 非斜杠词不补全
-    finally:
-        readline.set_completer(prev)
+def test_prompt_completer_slash_commands():
+    """Tab 补全：行首 slash-command 补全，参数与普通文本不补全。"""
+    from prompt_toolkit.completion import CompleteEvent
+    from prompt_toolkit.document import Document
+
+    completer = repl_mod._SlashCommandCompleter()
+
+    def matches(text: str) -> list[str]:
+        return [item.text for item in completer.get_completions(
+            Document(text), CompleteEvent())]
+
+    assert matches("/he") == ["/help"]
+    assert set(matches("/e")) == {"/exit", "/export"}
+    assert matches("hello") == []
+    assert matches("/agent ") == []

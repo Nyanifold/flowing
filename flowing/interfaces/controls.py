@@ -14,6 +14,10 @@ repl 输入框与 web 输入框都以 ``/cmd [arg]`` 形式接受控制命令。
 - **agent 级**（作用于给定 agent）：``messages / model / context / status /
   tasks / export / rewind / cancel / pause / resume``。
 
+``messages`` 支持 ``v`` / ``verbose`` 参数，完整序列化消息及其全部内容块；
+普通模式只完整显示较短工具结果，超过 500 个渲染字符时截断，其他消息沿用
+短摘要。
+
 约定：本目录只含“作用于显式目标并返回文本”的命令；前台绑定切换（``agent``/
 ``new``）与进程退出（``exit / quit``）是交互壳自身行为，不在此列。
 
@@ -25,12 +29,23 @@ repl 输入框与 web 输入框都以 ``/cmd [arg]`` 形式接受控制命令。
 
 from __future__ import annotations
 
+import json
 import time
 
 from flowing.agent import Agent, _estimate_tool_schema_tokens
 from flowing.interfaces import _default_agent_type, _list_agent_records
-from flowing.message import Message, TextBlock, _text_tokens, estimate_block_tokens
+from flowing.message import (
+    Message,
+    MessageKind,
+    TextBlock,
+    _text_tokens,
+    estimate_block_tokens,
+    to_record,
+)
 from flowing.runtime import Runtime
+
+_MESSAGES_PREVIEW_LIMIT = 500
+"""普通 ``/messages`` 模式中，工具结果渲染内容的字符数上限。"""
 
 
 def available_model_tags(agent: Agent) -> list[str]:
@@ -62,7 +77,7 @@ HELP_LINES: tuple[str, ...] = (
     "/agents              list recorded Agents (including dormant records)",
     "/new [agent_type]    create a new root Agent and bind it",
     "/snapshot            print a read-only snapshot of the current Runtime",
-    "/messages            print the bound Agent's message chain (current head up)",
+    "/messages [v]       print the message chain (v = full content)",
     "/model [tag]         show current & available tags / switch model_tag",
     "/context [v]         show context window usage estimate (v = per-part breakdown)",
     "/status              print a status rollup of the bound Agent",
@@ -111,6 +126,8 @@ async def slash_lines(cmd: str, arg: str, agent: Agent | None,
         return ["no agent bound (see /agents, select with /agent <id>)"]
 
     if name == "messages":
+        if arg not in ("", "v", "verbose"):
+            return ["usage: /messages [v|verbose]"]
         chain: list[Message] = []
         mid = agent.current_head_id
         while mid is not None:
@@ -122,8 +139,26 @@ async def slash_lines(cmd: str, arg: str, agent: Agent | None,
         if not chain:
             return ["(no messages)"]
         for m in reversed(chain):
+            if arg in ("v", "verbose"):
+                lines.append(f"--- {m.id} {m.kind.value} ---")
+                lines.extend(json.dumps(
+                    to_record(m), ensure_ascii=False, indent=2).splitlines())
+                continue
+
             text = "".join(b.text for b in m.content if isinstance(b, TextBlock))
-            lines.append(f"{m.id[:12]}  {m.kind.value:<9} {_fold(text)}")
+            if m.kind is MessageKind.TOOL:
+                # 常见文本工具结果保持原文；混合 / 结构化内容按完整 block
+                # 记录渲染，后续统一按可见字符数裁切。
+                text_blocks = [b for b in m.content if isinstance(b, TextBlock)]
+                if len(text_blocks) != len(m.content):
+                    text = json.dumps(to_record(m)["content"], ensure_ascii=False)
+                if len(text) > _MESSAGES_PREVIEW_LIMIT:
+                    omitted = len(text) - _MESSAGES_PREVIEW_LIMIT
+                    text = (text[:_MESSAGES_PREVIEW_LIMIT]
+                            + f"… [truncated; {omitted} characters omitted]")
+            else:
+                text = _fold(text)
+            lines.append(f"{m.id[:12]}  {m.kind.value:<9} {text}")
         return lines
 
     if name == "model":
@@ -209,8 +244,6 @@ async def slash_lines(cmd: str, arg: str, agent: Agent | None,
         chain.reverse()
         fmt = arg or "md"
         if fmt == "jsonl":
-            import json
-            from flowing.message import to_record
             return [json.dumps(to_record(m), ensure_ascii=False) for m in chain]
         return [f"**{m.kind.value}**: "
                 + "".join(b.text for b in m.content if isinstance(b, TextBlock))
