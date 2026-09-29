@@ -159,7 +159,7 @@ class OpenAICompletionsProvider(Provider):
     config_fields: ClassVar[tuple[ProviderConfigField, ...]] = (
         ProviderConfigField(
             name="base_url",
-            prompt="API 端点",
+            prompt="API endpoint",
             default_factory=lambda adapter_cls: adapter_cls.default_base_url,
             persist_default=False,
         ),

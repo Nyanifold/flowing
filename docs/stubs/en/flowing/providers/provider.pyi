@@ -119,6 +119,8 @@ class ProviderConfigField:
       and ``supports_env`` enables ``env.NAME`` input shorthand.
     - When a blank prompt accepts the default, ``persist_default`` controls
       whether the default is written to the configuration file.
+    - ``prompt`` is user-facing text and must be written in English, including
+      prompts supplied by third-party adapters.
     - Field metadata does not restrict the open ``ProviderConfig`` mapping or
       change adapter construction and requests.
 

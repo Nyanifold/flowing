@@ -29,21 +29,27 @@ def build_parser() -> argparse.ArgumentParser:
     """构建独立于 ``flowing`` Runtime 子命令集的参数解析器。"""
     parser = argparse.ArgumentParser(
         prog="flowing-config",
-        description="管理 Provider 配置文件。此命令不启动 Runtime 或访问模型服务。",
+        description=(
+            "Manage Provider configuration files. This command does not start a "
+            "Runtime or contact a model service."
+        ),
     )
     commands = parser.add_subparsers(dest="resource", required=True)
-    providers = commands.add_parser("providers", help="管理 providers.yaml")
+    providers = commands.add_parser("providers", help="Manage providers.yaml")
     operations = providers.add_subparsers(dest="operation", required=True)
     for operation, help_text in (
-        ("add", "交互式添加 Provider 条目"),
-        ("list", "列出 Provider 条目"),
-        ("delete", "交互式删除 Provider 条目"),
+        ("add", "Interactively add a Provider entry"),
+        ("list", "List Provider entries"),
+        ("delete", "Interactively delete a Provider entry"),
     ):
         command = operations.add_parser(operation, help=help_text)
         command.add_argument(
             "path",
             nargs="?",
-            help="providers.yaml 文件或其所在目录；省略时询问并默认使用 Runtime 配置路径",
+            help=(
+                "providers.yaml file or its directory; when omitted, the Runtime "
+                "configuration path is used after prompting"
+            ),
         )
     return parser
 
@@ -62,10 +68,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _delete_provider(path)
         parser.error(f"unknown operation: {args.operation}")
     except EOFError:
-        print("\n输入结束，已取消。", file=sys.stderr)
+        print("\nInput ended; cancelled.", file=sys.stderr)
         return 0
     except KeyboardInterrupt:
-        print("\n已取消。", file=sys.stderr)
+        print("\nCancelled.", file=sys.stderr)
         return 130
     except ProviderConfigFileError as exc:
         print(f"flowing-config: {exc}", file=sys.stderr)
@@ -77,7 +83,7 @@ def _choose_path(path_arg: str | None):
     if path_arg is not None:
         return resolve_providers_path(path_arg)
     default_path = resolve_providers_path(None)
-    value = input(f"Provider 配置文件路径 [{default_path}]: ").strip()
+    value = input(f"Provider configuration file path [{default_path}]: ").strip()
     if not value:
         return default_path
     return resolve_providers_path(value)
@@ -99,18 +105,21 @@ def _add_provider(path) -> int:
         values,
         expected_fingerprint=snapshot.fingerprint,
     )
-    print(f"已写入 {path}：Provider 条目“{entry_name}”。新 Runtime 构造后生效。")
+    print(
+        f"Wrote Provider entry '{entry_name}' to {path}. "
+        "Changes apply to newly constructed Runtime instances."
+    )
     return 0
 
 
 def _prompt_entry_name(data: Mapping[str, Any]) -> str:
     while True:
-        entry_name = input("Provider 条目名（身份名）: ").strip()
+        entry_name = input("Provider entry name (identity): ").strip()
         if not entry_name:
-            print("条目名不能为空，请重新输入。")
+            print("Entry name cannot be empty. Try again.")
             continue
         if entry_name in data:
-            print(f"条目“{entry_name}”已存在，请输入另一个名称。")
+            print(f"Entry '{entry_name}' already exists. Enter a different name.")
             continue
         return entry_name
 
@@ -119,23 +128,23 @@ def _prompt_adapter() -> tuple[str, type]:
     adapters = provider_adapters()
     by_name = dict(adapters)
     if not adapters:
-        raise ProviderConfigFileError("没有已注册的 Provider adapter。")
+        raise ProviderConfigFileError("No Provider adapters are registered.")
 
     with _adapter_completion(tuple(by_name)):
         while True:
-            value = input("Provider 类别（adapter）: ").strip()
+            value = input("Provider adapter: ").strip()
             if value in by_name:
                 return value, by_name[value]
             if not value:
-                print("可用类别：" + ", ".join(by_name))
+                print("Available adapters: " + ", ".join(by_name))
                 continue
             matches = [name for name in by_name if name.startswith(value)]
             if len(matches) == 1:
                 return matches[0], by_name[matches[0]]
             if matches:
-                print("匹配多个类别：" + ", ".join(matches))
+                print("Multiple adapters match: " + ", ".join(matches))
             else:
-                print("没有匹配的类别。可用类别：" + ", ".join(by_name))
+                print("No adapter matched. Available adapters: " + ", ".join(by_name))
 
 
 def _prompt_field(
@@ -144,14 +153,14 @@ def _prompt_field(
 ) -> tuple[bool, Any]:
     default = config_field.default_for(adapter_cls)
     if default is None:
-        suffix = "必填"
+        suffix = "required"
     elif default == "":
-        suffix = "可选，留空跳过"
+        suffix = "optional; leave blank to skip"
     elif config_field.sensitive:
-        suffix = "留空采用默认值"
+        suffix = "leave blank to use the default"
     else:
-        suffix = f"留空采用 {default!r}"
-    prompt = f"{config_field.prompt}（{config_field.name}，{suffix}）: "
+        suffix = f"leave blank to use {default!r}"
+    prompt = f"{config_field.prompt} ({config_field.name}; {suffix}): "
 
     while True:
         if config_field.sensitive:
@@ -160,7 +169,7 @@ def _prompt_field(
             value = input(prompt)
         if value == "":
             if default is None:
-                print("此项必填，请输入值。")
+                print("This field is required. Enter a value.")
                 continue
             if not config_field.persist_default:
                 return False, default
@@ -170,7 +179,7 @@ def _prompt_field(
             value = _expand_env_shortcut(value, config_field)
             return True, config_field.parser(value)
         except (TypeError, ValueError):
-            print("输入格式无效，请重试此项。")
+            print("Invalid value. Try again.")
 
 
 def _expand_env_shortcut(value: str, config_field: ProviderConfigField) -> str:
@@ -178,31 +187,33 @@ def _expand_env_shortcut(value: str, config_field: ProviderConfigField) -> str:
         return value
     if config_field.parser is not str:
         if value.startswith("env.") or value.startswith("{{env."):
-            raise ValueError("环境变量引用只支持字符串字段")
+            raise ValueError(
+                "Environment-variable references are only supported for string fields"
+            )
         return value
 
     if value.startswith("env."):
         match = _ENV_SHORT_RE.fullmatch(value)
         if match is None:
-            raise ValueError("环境变量名无效")
+            raise ValueError("Invalid environment variable name")
         return "{{env." + match.group(1) + "}}"
     if value.startswith("{{env.") and _ENV_TEMPLATE_RE.fullmatch(value) is None:
-        raise ValueError("环境变量模板无效")
+        raise ValueError("Invalid environment-variable template")
     return value
 
 
 def _list_providers(path) -> int:
     snapshot = read_providers(path)
-    print(f"Provider 配置文件：{path}")
+    print(f"Provider configuration file: {path}")
     if not snapshot.data:
-        print("没有已配置的 Provider。")
+        print("No Provider entries configured.")
         return 0
 
     adapter_classes = dict(provider_adapters())
     for entry_name, raw_fields in snapshot.data.items():
         print(f"\n{entry_name}")
         if not isinstance(raw_fields, Mapping):
-            print(f"  配置：{_summarize(raw_fields)}")
+            print(f"  Configuration: {_summarize(raw_fields)}")
             continue
         adapter_name = raw_fields.get("adapter")
         print(f"  adapter: {adapter_name if adapter_name is not None else '<missing>'}")
@@ -224,7 +235,11 @@ def _display_config_value(
 ) -> str:
     if isinstance(value, str) and _ENV_TEMPLATE_RE.fullmatch(value):
         return value
-    sensitive = config_field.sensitive if config_field is not None else bool(_SECRET_KEY_RE.search(name))
+    sensitive = (
+        config_field.sensitive
+        if config_field is not None
+        else bool(_SECRET_KEY_RE.search(name))
+    )
     if sensitive:
         return "<empty>" if value in (None, "") else "********"
     if config_field is None:
@@ -242,42 +257,42 @@ def _summarize(value: Any) -> str:
     if isinstance(value, (int, float)):
         return str(value)
     if isinstance(value, str):
-        return f"<字符串，{len(value)} 字符>"
+        return f"<string: {len(value)} characters>"
     if isinstance(value, Mapping):
-        return f"<映射，{len(value)} 项>"
+        return f"<mapping: {len(value)} items>"
     if isinstance(value, (list, tuple)):
-        return f"<列表，{len(value)} 项>"
+        return f"<list: {len(value)} items>"
     return f"<{type(value).__name__}>"
 
 
 def _delete_provider(path) -> int:
     snapshot = read_providers(path)
     if not snapshot.data:
-        print(f"Provider 配置文件没有条目：{path}")
+        print(f"Provider configuration file has no entries: {path}")
         return 0
 
     entries = list(snapshot.data)
-    print(f"Provider 配置文件：{path}")
+    print(f"Provider configuration file: {path}")
     for index, entry_name in enumerate(entries, start=1):
         print(f"  {index}. {entry_name}")
     while True:
-        selection = input("选择要删除的条目序号（直接回车取消）: ").strip()
+        selection = input("Select an entry number to delete (press Enter to cancel): ").strip()
         if not selection:
-            print("已取消删除。")
+            print("Deletion cancelled.")
             return 0
         try:
             index = int(selection)
         except ValueError:
-            print("请输入列表中的序号。")
+            print("Enter a number from the list.")
             continue
         if 1 <= index <= len(entries):
             entry_name = str(entries[index - 1])
             break
-        print("序号超出范围，请重新输入。")
+        print("Number out of range. Try again.")
 
-    confirm = input(f"确认删除条目“{entry_name}”？[y/N] ").strip()
+    confirm = input(f"Delete Provider entry '{entry_name}'? [y/N] ").strip()
     if confirm not in {"y", "Y"}:
-        print("已取消删除。")
+        print("Deletion cancelled.")
         return 0
 
     delete_provider_entry(
@@ -285,20 +300,29 @@ def _delete_provider(path) -> int:
         entries[index - 1],
         expected_fingerprint=snapshot.fingerprint,
     )
-    print(f"已从 {path} 删除 Provider 条目“{entry_name}”。新 Runtime 构造后生效。")
+    print(
+        f"Deleted Provider entry '{entry_name}' from {path}. "
+        "Changes apply to newly constructed Runtime instances."
+    )
     return 0
 
 
 @contextmanager
 def _adapter_completion(names: tuple[str, ...]) -> Iterator[None]:
     if not sys.stdin.isatty():
-        print("当前输入不是终端，Tab 补全不可用；可以输入类别名前缀。")
+        print(
+            "Tab completion is unavailable because stdin is not a terminal; "
+            "enter an adapter name or prefix."
+        )
         yield
         return
     try:
         import readline
     except ImportError:
-        print("当前平台不支持 readline，Tab 补全不可用；可以输入类别名前缀。")
+        print(
+            "Tab completion is unavailable because readline is not supported "
+            "on this platform; enter an adapter name or prefix."
+        )
         yield
         return
 

@@ -109,7 +109,7 @@ class ProviderConfigField:
 
         class LocalProvider(OpenAICompletionsProvider):
             config_fields = (
-                ProviderConfigField(name="gateway", prompt="代理地址", default=""),
+                ProviderConfigField(name="gateway", prompt="Proxy URL", default=""),
             )
 
     .. rubric:: 行为要点
@@ -122,6 +122,8 @@ class ProviderConfigField:
       控制列表界面的值遮蔽；``supports_env`` 控制是否接受
       ``env.NAME`` 简写；``persist_default`` 控制留空采用默认值时是否
       将默认值写入文件。
+    - ``prompt`` 是配置命令显示给用户的字段提示，必须使用英文；第三方
+      adapter 提供的提示也遵循此要求。
     - 本描述不限制 ``ProviderConfig`` 可包含的字段，也不改变 adapter
       构造或请求行为。
 
@@ -131,7 +133,7 @@ class ProviderConfigField:
     name: str
     """落盘配置映射中的字段名。"""
     prompt: str
-    """交互命令显示的字段提示。"""
+    """交互命令显示的英文提示。"""
     parser: Callable[[str], Any] = str
     """把用户输入转换为配置值的函数。"""
     default: Any | None = None
@@ -562,7 +564,7 @@ class Provider(ABC):
     config_fields: ClassVar[tuple[ProviderConfigField, ...]] = (
         ProviderConfigField(
             name="api_key",
-            prompt="API 密钥",
+            prompt="API key",
             default="",
             sensitive=True,
             persist_default=False,

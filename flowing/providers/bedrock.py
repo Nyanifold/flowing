@@ -52,7 +52,7 @@ class BedrockProvider(AnthropicMessagesProvider):
 
     name: ClassVar[str] = "bedrock"
     config_fields: ClassVar[tuple[ProviderConfigField, ...]] = (
-        ProviderConfigField(name="base_url", prompt="API 端点"),
+        ProviderConfigField(name="base_url", prompt="API endpoint"),
         ProviderConfigField(
             name="aws_session_token",
             prompt="AWS Session Token",
