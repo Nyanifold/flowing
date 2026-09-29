@@ -336,8 +336,11 @@ def _adapter_completion(names: tuple[str, ...]) -> Iterator[None]:
 
     try:
         readline.set_completer(complete)
-        readline.parse_and_bind("tab: complete")
-        readline.parse_and_bind("set show-all-if-ambiguous on")
+        if getattr(readline, "backend", "readline") == "editline":
+            readline.parse_and_bind("bind ^I rl_complete")
+        else:
+            readline.parse_and_bind("tab: complete")
+            readline.parse_and_bind("set show-all-if-ambiguous on")
         yield
     finally:
         readline.set_completer(previous)
