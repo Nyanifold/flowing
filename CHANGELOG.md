@@ -5,6 +5,10 @@ All notable changes to this project are documented here. Each entry is bilingual
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/)，版本号遵循 0.x 语义化约定：
 修订号 = 兼容修复与内部完善；次版本号 = 新增能力或可能非兼容的修改。
+各版本的逐项说明见 [`changelogs/`](changelogs/)；本文保留版本总览。
+Change-by-change details for each version are in [`changelogs/`](changelogs/); this file remains the release overview.
+每个发布版本使用一个 `changelogs/vX.Y.Z.md` 文件；改动逐项成章并同步中英文，每项写明用法。只有存在不兼容性时才补充迁移方法。
+Each release has one `changelogs/vX.Y.Z.md` file. Give every change its own bilingual section and describe how to use it; include migration guidance only when a change is incompatible.
 
 ## [0.1.0] - 2026-09-25
 
@@ -24,6 +28,8 @@ All notable changes to this project are documented here. Each entry is bilingual
   （stdio / SSE / streamable HTTP）；
 - 双语文档：入门教程、详细教程、精简参考与 API 参考（700+ 测试用例通过）。
 
+详细变更和用法见 [v0.1.0 详情](changelogs/v0.1.0.md)。
+
 ### English
 
 First public release.
@@ -41,5 +47,7 @@ First public release.
   MCP support (stdio / SSE / streamable HTTP);
 - Bilingual documentation: beginner tutorial, detailed tutorial, concise
   reference, and API reference (700+ test cases passing).
+
+See [v0.1.0 details](changelogs/v0.1.0.md) for the detailed changes and usage.
 
 [0.1.0]: https://github.com/Nyanifold/flowing/releases/tag/v0.1.0
