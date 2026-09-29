@@ -95,6 +95,17 @@ def _fold(text: str, limit: int = 80) -> str:
     return folded[:limit] + ("…" if len(folded) > limit else "")
 
 
+def _agent_record_lines(runtime: Runtime, separator: str = "  ") -> list[str]:
+    """按给定列分隔符渲染池名录行。"""
+    records = _list_agent_records(runtime)
+    lines: list[str] = []
+    for rec in records:
+        mtime = (time.strftime("%Y-%m-%d %H:%M", time.localtime(rec["mtime"]))
+                 if rec["mtime"] is not None else "-")
+        lines.append(f'{rec["agent_id"]}{separator}"{rec["last_reply"]}"{separator}{mtime}')
+    return lines
+
+
 async def slash_lines(cmd: str, arg: str, agent: Agent | None,
                       runtime: Runtime) -> list[str]:
     """执行一个 slash 命令，返回应展示的文本行（纯函数式：不直接 print）。
@@ -110,13 +121,9 @@ async def slash_lines(cmd: str, arg: str, agent: Agent | None,
     if name == "help":
         return list(HELP_LINES)
     if name == "agents":
-        records = _list_agent_records(runtime)
-        if not records:
+        lines = _agent_record_lines(runtime)
+        if not lines:
             return ["(no agent records)"]
-        for rec in records:
-            mtime = (time.strftime("%Y-%m-%d %H:%M", time.localtime(rec["mtime"]))
-                     if rec["mtime"] is not None else "-")
-            lines.append(f'{rec["agent_id"]}  "{rec["last_reply"]}"  {mtime}')
         return lines
     if name == "snapshot":
         return [str(runtime.snapshot())]

@@ -128,7 +128,10 @@ async def cmd_repl(path: str, main_file: str | None = None, *, extra_slash_handl
        ``await runtime.get_agent(agent_id)`` and binds to it. With no unique
        candidate, it remains unbound and, when root records exist, prints a
        hint to use ``/agents``. The fallback restoration is attempted whenever
-       no sole active root was selected.
+       no sole active root was selected. After binding resolution, it prints
+       every Agent in the pool, including inactive records, one per line with
+       the Agent ID, last-reply preview, and modification time separated by
+       tabs. If the pool is empty, it prints ``(no agent records)``.
     3. The prompt is ``(<agent_id>)>>>`` when bound and
        ``(new agent)>>>`` otherwise. Input is handled as follows:
 
