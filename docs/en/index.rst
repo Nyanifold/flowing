@@ -36,7 +36,7 @@ Installation
 Quick start
 -----------
 
-Create a directory with five files.
+Create a project directory with three files.
 
 ``root.fya``:
 
@@ -60,12 +60,32 @@ Create a directory with five files.
        await runtime.mount("@/root.fya", agent_id="agent-main")
        return runtime
 
-Register Provider credentials and model entries with the global commands, then use a tag mapping to select the default model:
+Configure the first Provider and model in one interactive session. This example uses OpenRouter:
 
 .. code-block:: console
 
    $ flowing-config providers add
+   # Press Enter at the configuration path prompt to use the Runtime default.
+   Provider entry name (identity): openrouter
+   Provider adapter: openrouter
+   API endpoint (base_url; leave blank to use 'https://openrouter.ai/api/v1'): [Enter]
+   API key (api_key; leave blank to skip): env.OPENROUTER_API_KEY
+
    $ flowing-config models add
+   # Press Enter at the configuration path prompt to use the Runtime default.
+   Model entry name (identity): luna
+   Known Provider entries: openrouter
+   Provider entry name (identity): openrouter
+   API model ID: openai/gpt-6-luna
+   Thinking budget in tokens (thinking_budget; optional YAML value, press Enter to skip): [Enter]
+   Context window in tokens (context_window; optional YAML value, press Enter to skip): [Enter]
+   Maximum output tokens (max_output_tokens; optional YAML value, press Enter to skip): [Enter]
+   Suggested parameters for model 'openai/gpt-6-luna':
+   Reasoning effort (support and values vary by model) (reasoning.effort; optional YAML value, press Enter to skip): high
+   Add optional model-specific parameters. Enter one-line YAML values; quote template or path strings and use flow-style collections such as {key: value} for mappings.
+   Additional model field name (press Enter to finish): [Enter]
+
+The model entry ``luna`` is selected by the ``default: luna`` mapping below. Adapter parameter suggestions depend on the API model ID and do not guarantee support by the remote model.
 
 .. code-block:: yaml
 
@@ -84,34 +104,6 @@ Run:
    (agent-main)>>> /exit
 
 The conversation doesn't vanish on exit: the messages it produced are persisted under ``.flowing/`` in the project directory. A fixed ``agent_id`` means that running ``flowing repl .`` again brings back the same agent with its full history — no recovery code required.
-
-Global Provider commands
-------------------------
-
-After installing ``flowing-agent``, use these global commands to manage Provider entries. They do not start a Runtime or contact a model service::
-
-   $ flowing-config providers add
-   $ flowing-config providers list
-   $ flowing-config providers delete
-
-The add operation prompts for adapter fields one at a time; ``env.API_KEY`` is saved as ``{{env.API_KEY}}``. The list operation masks credentials while preserving environment-variable template text. Deletion proceeds only after an explicit ``y``. Changes take effect when a new Runtime is constructed.
-
-Global model commands
----------------------
-
-The standalone command can also manage model entries globally::
-
-   $ flowing-config models add
-   $ flowing-config models list
-   $ flowing-config models delete
-
-The command does not start a Runtime or contact a model service. Adding an entry asks for its Provider entry name
-and API model ID, then offers common fields and adapter parameters declared for
-that model ID. These suggestions do not guarantee that the remote model supports
-a parameter; arbitrary model-specific fields remain available as one-line YAML
-values. The list command masks sensitive fields. Changes apply the next time a
-Runtime resolves the model entry, such as when an Agent is created or its
-``model_tag`` is assigned.
 
 Going further
 -------------

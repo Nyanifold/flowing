@@ -33,7 +33,7 @@ pip install flowing-agent
 
 ## 快速上手
 
-新建一个目录，写入五个文件。
+新建一个项目目录，创建三个文件。
 
 `root.fya`：
 
@@ -57,12 +57,32 @@ async def main() -> Runtime:
     return runtime
 ```
 
-使用全局命令登记 Provider 凭证和模型条目，再通过标签映射选择默认模型：
+在同一段交互过程中配置第一个 Provider 和模型。下面以 OpenRouter 为例：
 
 ```console
 $ flowing-config providers add
+# Press Enter at the configuration path prompt to use the Runtime default.
+Provider entry name (identity): openrouter
+Provider adapter: openrouter
+API endpoint (base_url; leave blank to use 'https://openrouter.ai/api/v1'): [Enter]
+API key (api_key; leave blank to skip): env.OPENROUTER_API_KEY
+
 $ flowing-config models add
+# Press Enter at the configuration path prompt to use the Runtime default.
+Model entry name (identity): luna
+Known Provider entries: openrouter
+Provider entry name (identity): openrouter
+API model ID: openai/gpt-6-luna
+Thinking budget in tokens (thinking_budget; optional YAML value, press Enter to skip): [Enter]
+Context window in tokens (context_window; optional YAML value, press Enter to skip): [Enter]
+Maximum output tokens (max_output_tokens; optional YAML value, press Enter to skip): [Enter]
+Suggested parameters for model 'openai/gpt-6-luna':
+Reasoning effort (support and values vary by model) (reasoning.effort; optional YAML value, press Enter to skip): high
+Add optional model-specific parameters. Enter one-line YAML values; quote template or path strings and use flow-style collections such as {key: value} for mappings.
+Additional model field name (press Enter to finish): [Enter]
 ```
+
+下方的 `default: luna` 标签映射会选中 `luna` 模型条目。adapter 参数提示依赖 API 模型 ID，不保证远端模型支持对应参数。
 
 ```yaml
 # model-tags.yaml
@@ -81,33 +101,6 @@ $ flowing repl .
 ```
 
 这轮对话并没有随退出而消失：项目目录下的 `.flowing/` 里保存着刚刚产生的消息记录。`agent_id` 固定意味着再次执行 `flowing repl .` 时，找回的是同一个 Agent 及其全部历史，无需额外的恢复代码。
-
-## 全局 Provider 命令
-
-安装 `flowing-agent` 后，可以用以下全局命令管理 Provider 条目；命令不启动 Runtime，也不访问模型服务：
-
-```console
-$ flowing-config providers add
-$ flowing-config providers list
-$ flowing-config providers delete
-```
-
-添加时逐项填写 adapter 字段；`env.API_KEY` 会保存为 `{{env.API_KEY}}`。列表会遮蔽密钥，但保留环境变量模板文本。删除操作只有明确输入 `y` 才会执行。配置改动在后续新建 Runtime 时生效。
-
-## 全局模型命令
-
-也可以用同一个独立命令全局管理模型条目：
-
-```console
-$ flowing-config models add
-$ flowing-config models list
-$ flowing-config models delete
-```
-
-该命令不启动 Runtime，也不访问模型服务。添加时填写 Provider 条目名和 API 模型 ID，随后命令会
-提供通用字段，以及 adapter 针对该模型 ID 声明的参数提示。这些提示不能保证远端模型
-支持对应参数；用户仍可追加任意模型扩展字段，值使用单行 YAML。列表会遮蔽敏感字段。Agent 创建或重新指定
-`model_tag`、Runtime 再次解析该模型条目时，配置改动生效。
 
 ## 进一步
 
