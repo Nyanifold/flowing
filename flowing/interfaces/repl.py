@@ -9,11 +9,13 @@ import json
 import sys
 from collections.abc import Awaitable, Callable, Iterator
 
-from prompt_toolkit import PromptSession
+from prompt_toolkit import PromptSession, print_formatted_text
 from prompt_toolkit.completion import CompleteEvent, Completer, Completion
 from prompt_toolkit.document import Document
+from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.patch_stdout import patch_stdout
+from prompt_toolkit.styles import Style
 
 from flowing.agent import Agent, TurnContext
 from flowing.message import (
@@ -375,14 +377,11 @@ async def cmd_repl(
     # （管道/重定向）时不回填思考，保持 stdout 答案是干净正文，思考留给
     # 折叠摘要兜底显示。
     _TTY = sys.stdout.isatty()
-    _GRAY = "\x1b[90m"
-    _RESET = "\x1b[0m"
+    _THINKING_STYLE = Style.from_dict({"thinking": "fg:#808080"})
 
     def _end_thinking() -> None:
-        # 结束当前灰显思考行：只重置颜色（换行由调用方按需补）
-        if flags["thinking_line"]:
-            print(_RESET, end="", flush=True)
-            flags["thinking_line"] = False
+        # 每段思考都独立着色，不依赖跨输出调用的终端颜色状态。
+        flags["thinking_line"] = False
 
     def _print_line(text: str) -> None:
         if flags["thinking_line"] or flags["mid_line"]:
@@ -408,10 +407,13 @@ async def cmd_repl(
             if flags["mid_line"]:
                 print()   # 罕见交错（正文先行）：先收正文行
                 flags["mid_line"] = False
-            if not flags["thinking_line"]:
-                print(_GRAY, end="", flush=True)
-                flags["thinking_line"] = True
-            print(delta.text, end="", flush=True)
+            flags["thinking_line"] = True
+            # patch_stdout 会过滤直接写入的 VT100 控制码；由 Prompt Toolkit
+            # 渲染样式，确保提示符等待期间的后台思考输出也保持灰显。
+            print_formatted_text(
+                FormattedText([("class:thinking", delta.text)]),
+                end="", flush=True, style=_THINKING_STYLE,
+            )
         return delta
 
     def _on_append(host: Agent, msg: Message) -> Message:
