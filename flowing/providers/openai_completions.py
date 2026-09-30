@@ -61,12 +61,19 @@ from flowing.message import (
 )
 from flowing.model import ModelConfig
 from flowing.providers.provider import (
+    ModelConfigField,
     Provider,
     ProviderConfigField,
     ProviderDelta,
     ProviderResponse,
     Usage,
 )
+
+
+def _parse_extra_body(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ValueError("extra_body must be a YAML mapping")
+    return value
 
 
 class _HttpResponseError(Exception):
@@ -158,6 +165,14 @@ class OpenAICompletionsProvider(Provider):
 
     api_format: ClassVar[str] = "openai_completions"
     known_model_fields: ClassVar[frozenset[str]] = frozenset()
+    model_fields: ClassVar[tuple[ModelConfigField, ...]] = (
+        ModelConfigField(
+            name="extra_body",
+            prompt="Additional request fields (YAML mapping)",
+            parser=_parse_extra_body,
+        ),
+    )
+    """配置工具可展示的 OpenAI 兼容扩展请求体字段。"""
     default_base_url: ClassVar[str | None] = None
     """子类覆写：厂商官方端点；条目配 ``base_url`` 时以条目为准（代理场景）。"""
     config_fields: ClassVar[tuple[ProviderConfigField, ...]] = (

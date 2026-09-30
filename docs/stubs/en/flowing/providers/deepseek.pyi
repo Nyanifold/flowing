@@ -19,7 +19,7 @@ from flowing.context import Context
 from flowing.errors import InvalidRequestError
 from flowing.model import ModelConfig
 from flowing.providers.openai_completions import OpenAICompletionsProvider
-from flowing.providers.provider import register_provider
+from flowing.providers.provider import ModelConfigField, register_provider
 
 class DeepSeekProvider(OpenAICompletionsProvider):
     """Built-in adapter for DeepSeek's OpenAI-compatible chat/completions API.
@@ -87,6 +87,8 @@ class DeepSeekProvider(OpenAICompletionsProvider):
     name: ClassVar[str]
 
     known_model_fields: ClassVar[frozenset[str]]
+    model_fields: ClassVar[tuple[ModelConfigField, ...]]
+    """Model-option descriptions for DeepSeek request fields."""
 
     default_base_url: ClassVar[str | None]
 

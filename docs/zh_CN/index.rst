@@ -114,6 +114,25 @@ Provider 配置命令
 
 ``path`` 可以是 ``providers.yaml`` 文件或配置目录。省略时命令会询问目标路径，默认跟随 Runtime 的优先级：``FLOWING_PROVIDERS_PATH``、``FLOWING_CONFIG_HOME/providers.yaml``、``~/.flowing/providers.yaml``。添加时逐项填写 adapter 字段；``env.API_KEY`` 会保存为 ``{{env.API_KEY}}``。列表会遮蔽密钥，但保留环境变量模板文本。删除操作只有明确输入 ``y`` 才会执行。配置改动在后续新建 Runtime 时生效。
 
+模型配置命令
+------------
+
+独立命令也可以交互管理 ``models.yaml`` 中的模型条目::
+
+   $ flowing-config models add [path]
+   $ flowing-config models list [path]
+   $ flowing-config models delete [path]
+
+该命令只编辑 YAML，不启动 Runtime，也不访问模型服务。
+
+省略 ``path`` 时，命令会询问目标路径，默认跟随 Runtime 的模型配置路径：
+``FLOWING_MODELS_PATH``、``FLOWING_CONFIG_HOME/models.yaml``，再到
+``~/.flowing/models.yaml``。添加时填写 Provider 条目名和 API 模型 ID，随后命令会
+提供通用字段，以及 adapter 针对该模型 ID 声明的参数提示。这些提示不能保证远端模型
+支持对应参数；用户仍可追加任意模型扩展字段，值使用单行 YAML。模板或路径字符串请加
+引号；映射和列表使用 flow 风格 YAML。列表会遮蔽敏感字段。Agent 创建或重新指定
+``model_tag``、Runtime 再次解析该模型条目时，配置改动生效。
+
 进一步
 ------
 

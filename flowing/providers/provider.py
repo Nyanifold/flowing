@@ -5,7 +5,8 @@
 本模块承载 Provider 侧机制层的核心符号：抽象基类 :class:`Provider`、
 一次调用的完整产物 :class:`ProviderResponse` / 流式增量
 :class:`ProviderDelta` / token 用量记录 :class:`Usage`、条目配置
-:class:`ProviderConfig`、配置字段说明 :class:`ProviderConfigField`、内置
+:class:`ProviderConfig`、配置字段说明 :class:`ProviderConfigField` / 模型参数
+说明 :class:`ModelConfigField`、内置
 测试替身 :class:`FakeProvider`、adapter 注册装饰器
 :func:`register_provider` / 只读枚举 :func:`provider_adapters`、Runtime 级懒实例化表
 :class:`ProviderRegistry` 与 providers.yaml 加载器
@@ -25,6 +26,7 @@ from __future__ import annotations
 import os
 import re
 import warnings
+from fnmatch import fnmatchcase
 
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -175,6 +177,88 @@ class ProviderConfigField:
     def is_required_for(self, adapter_cls: type[Provider]) -> bool:
         """判断该字段对具体 adapter 是否必填。"""
         return self.default_for(adapter_cls) is None
+
+
+def _identity_model_value(value: Any) -> Any:
+    return value
+
+
+@dataclass(frozen=True)
+class ModelConfigField:
+    """一个 Provider 模型参数的交互描述。
+
+    .. rubric:: 功能介绍
+
+    描述配置工具可为某个 API 模型提示的参数名、用途、适用模型 ID
+    模式和值解析器。字段值写入 ``models.yaml`` 的模型条目；adapter
+    仍负责请求映射与运行期校验。
+
+    .. rubric:: 使用示例
+
+    .. code-block:: python
+
+        from flowing.providers import ModelConfigField
+
+        model_fields = (
+            ModelConfigField(
+                name="reasoning.effort",
+                prompt="Reasoning effort",
+                model_patterns=("openai/*", "anthropic/*"),
+            ),
+        )
+
+    .. rubric:: 行为要点
+
+    - ``model_patterns`` 使用大小写敏感的 shell 风格通配符，匹配传入的
+      API 模型 ID；默认 ``("*",)`` 表示 adapter 为所有模型提供该提示。
+    - 模型专属字段通常可省略；命令交互中留空会省略字段。
+    - ``parser`` 接收从 YAML 值解析出的对象，可转换该值，或通过
+      ``TypeError`` / ``ValueError`` 拒绝该值。映射、列表等复杂值也可交给
+      解析器处理。
+    - 字段描述不证明服务端模型支持该参数，也不参与请求或 ``ModelConfig``
+      运行期校验。模型能力以实际服务端为准。
+    - ``sensitive`` 控制配置列表对该字段值的遮蔽。
+    - ``prompt`` 是配置命令显示给用户的英文提示；第三方 adapter 提供的
+      提示也遵循此要求。
+
+    .. seealso:: :meth:`Provider.model_fields_for` 按模型 ID 查询提示字段。
+    """
+
+    name: str
+    """写入模型条目的字段名；点号作为字段名的一部分保留。"""
+    prompt: str
+    """配置命令显示的英文提示。"""
+    parser: Callable[[Any], Any] = _identity_model_value
+    """接收 YAML 值并返回保存值的解析函数。"""
+    model_patterns: tuple[str, ...] = ("*",)
+    """适用的 API 模型 ID shell 风格通配符。"""
+    sensitive: bool = False
+    """是否在配置列表中遮蔽字段值。"""
+
+    def __post_init__(self) -> None:
+        """校验模型参数提示的字段名、匹配模式和解析函数。"""
+        if not self.name or self.name in {
+            "model", "provider", "thinking_budget", "context_window",
+            "max_output_tokens",
+        }:
+            raise ValueError(
+                "ModelConfigField name must be non-empty and cannot be a "
+                "built-in ModelConfig field")
+        if not self.prompt:
+            raise ValueError("ModelConfigField prompt must be non-empty")
+        if (
+            not isinstance(self.model_patterns, tuple)
+            or not self.model_patterns
+            or any(not isinstance(pattern, str) or not pattern
+                   for pattern in self.model_patterns)
+        ):
+            raise ValueError("ModelConfigField model_patterns must contain non-empty patterns")
+        if not callable(self.parser):
+            raise ValueError("ModelConfigField parser must be callable")
+
+    def matches(self, model_name: str) -> bool:
+        """判断字段是否适用于给定的 API 模型 ID。"""
+        return any(fnmatchcase(model_name, pattern) for pattern in self.model_patterns)
 
 
 @dataclass
@@ -550,6 +634,7 @@ class Provider(ABC):
         :class:`OpenAICompletionsProvider` / :class:`OpenAIResponsesProvider` /
         :class:`AnthropicMessagesProvider` 三个框架基类（决定 ``api_format``）。
         :class:`ProviderConfigField` adapter 配置字段的说明。
+        :class:`ModelConfigField` 按模型 ID 展示的参数提示。
         :func:`provider_adapters` 已注册 adapter 的只读枚举。
         :func:`register_provider` adapter 类注册入口。
         :class:`flowing.runtime.Runtime` ``provider_registry`` 的宿主。
@@ -577,13 +662,15 @@ class Provider(ABC):
     （格式差异应经子类覆写表达）。
     """
     known_model_fields: ClassVar[frozenset[str]]
-    """本 adapter 声明的模型元数据字段名集合（如 ``thinking_budget``）。
+    """本 adapter 会读取的模型字段名集合（如 ``thinking_budget``）。
 
-    框架当前不读取本属性：模型条目字段的分流由 :mod:`flowing.model`
-    的固定内建字段集决定，其余字段进 ``ModelConfig._extra``。保留为
-    声明性扩展点，供未来消费方或第三方工具参考；基类缺省为空
-    frozenset。
+    本集合描述 adapter 读取哪些字段，不描述某个具体模型 ID 是否支持这些
+    参数。配置工具按模型 ID 展示的字段描述由 :attr:`model_fields` 与
+    :meth:`model_fields_for` 提供。模型条目字段的分流仍由
+    :mod:`flowing.model` 决定；其余字段进入 ``ModelConfig._extra``。
     """
+    model_fields: ClassVar[tuple[ModelConfigField, ...]] = ()
+    """供配置工具按模型 ID 展示的有序模型参数描述。"""
     config: ProviderConfig
     """构造时绑定的条目配置（含凭证）。行为边界：按只读对待；凭证禁止
     外泄（不进消息 / ``_provided`` / Runtime 消息与状态落盘）。参见
@@ -850,6 +937,42 @@ class Provider(ABC):
             for config_field in base.__dict__.get("config_fields", ()):
                 merged[config_field.name] = config_field
         return tuple(merged.values())
+
+    @classmethod
+    def model_fields_for(cls, model_name: str) -> tuple[ModelConfigField, ...]:
+        """按 API 模型 ID 返回配置工具可展示的模型参数描述。
+
+        .. rubric:: 功能介绍
+
+        汇总 ``Provider.model_fields`` 与各子类的类级声明，并按传入的
+        API 模型 ID 过滤适用字段。adapter 可覆写本方法，以模型目录或
+        其他本地能力资料生成更精确的字段提示。
+
+        .. rubric:: 使用示例
+
+        .. code-block:: python
+
+            for field in DeepSeekProvider.model_fields_for("deepseek-v4-pro"):
+                print(field.name, field.prompt)
+
+        .. rubric:: 行为要点
+
+        - 返回不可变 tuple；字段按基类到子类合并，同名子类描述覆盖父类
+          描述，再按 ``model_patterns`` 过滤。
+        - 本方法只读取声明性元数据，不实例化 Provider、不发起网络请求，
+          也不检查服务端模型能力。
+        - 未列出的参数仍可作为开放模型字段写入 ``models.yaml``。
+
+        .. seealso:: :class:`ModelConfigField` 模型参数描述结构。
+        """
+        merged: dict[str, ModelConfigField] = {}
+        for base in reversed(cls.__mro__):
+            for model_field in base.__dict__.get("model_fields", ()):
+                merged[model_field.name] = model_field
+        return tuple(
+            model_field for model_field in merged.values()
+            if model_field.matches(model_name)
+        )
 
 
 class FakeProvider(Provider):

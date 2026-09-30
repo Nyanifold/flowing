@@ -6,7 +6,8 @@ This module contains the core Provider-side mechanisms: the :class:`Provider`
 abstract base; complete call results (:class:`ProviderResponse`), streaming
 deltas (:class:`ProviderDelta`), and token-usage records (:class:`Usage`);
 entry configuration (:class:`ProviderConfig`); machine-readable field
-descriptions (:class:`ProviderConfigField`); the built-in test double
+descriptions (:class:`ProviderConfigField`) and model-option descriptions
+(:class:`ModelConfigField`); the built-in test double
 :class:`FakeProvider`; the adapter registration decorator
 (:func:`register_provider`) and read-only enumeration
 (:func:`provider_adapters`); the Runtime-level lazy instance table
@@ -145,6 +146,59 @@ class ProviderConfigField:
 
     def is_required_for(self, adapter_cls: type[Provider]) -> bool:
         """Return whether this field is required for one adapter."""
+        ...
+
+
+@dataclass(frozen=True)
+class ModelConfigField:
+    """Machine-readable description of a model option shown by configuration tools.
+
+    Adapters use these descriptions to guide input for a specific API model ID.
+    The field is saved to the model entry in ``models.yaml``; the adapter still
+    owns request mapping and runtime validation.
+
+    .. rubric:: Example
+
+    .. code-block:: python
+
+        from flowing.providers import ModelConfigField
+
+        model_fields = (
+            ModelConfigField(
+                name="reasoning.effort",
+                prompt="Reasoning effort",
+                model_patterns=("openai/*", "anthropic/*"),
+            ),
+        )
+
+    .. rubric:: Behavioral notes
+
+    - ``model_patterns`` uses case-sensitive shell-style wildcards against the
+      API model ID. The default ``("*",)`` offers the field for every model.
+    - Model-specific fields can be omitted. The configuration command skips
+      the field when its prompt is blank.
+    - ``parser`` receives the YAML value as a Python object and can transform
+      it or reject it with ``TypeError`` or ``ValueError``, including for
+      mappings and lists.
+    - A description does not establish that the remote model accepts a field
+      and does not validate ``ModelConfig`` at runtime.
+    - ``sensitive`` controls whether the configuration list masks the value.
+      Prompts, including third-party prompts, must be written in English.
+
+    .. seealso:: :meth:`Provider.model_fields_for` filters fields by model ID.
+    """
+    name: str
+    prompt: str
+    parser: Callable[[Any], Any] = ...
+    model_patterns: tuple[str, ...] = ("*",)
+    sensitive: bool = False
+
+    def __post_init__(self) -> None:
+        """Validate the field name, match patterns, and parser."""
+        ...
+
+    def matches(self, model_name: str) -> bool:
+        """Return whether a field applies to the given API model ID."""
         ...
 
 
@@ -549,6 +603,7 @@ class Provider(ABC):
         :class:`OpenAICompletionsProvider`, :class:`OpenAIResponsesProvider`,
         and :class:`AnthropicMessagesProvider` determine API-format families.
         :class:`ProviderConfigField` describes adapter configuration fields.
+        :class:`ModelConfigField` describes model options displayed by configuration tools.
         :func:`provider_adapters` enumerates registered adapter classes.
         :func:`register_provider` registers adapter classes.
         :class:`flowing.runtime.Runtime` owns ``provider_registry``.
@@ -567,13 +622,10 @@ class Provider(ABC):
     this value. Business code must not branch on it; subclasses express
     format differences through overrides."""
     known_model_fields: ClassVar[frozenset[str]]
-    """A declarative set of model-metadata field names, such as
-    ``thinking_budget``. The framework currently does not read this
-    attribute: :mod:`flowing.model` uses a fixed built-in field set when
-    separating ``ModelConfig`` fields, and stores other fields in
-    ``ModelConfig._extra``. This attribute remains available to future
-    consumers and third-party tools; the base class defaults it to an empty
-    ``frozenset``."""
+    """Model field names read by this adapter; this set does not describe
+    support for a particular API model ID."""
+    model_fields: ClassVar[tuple[ModelConfigField, ...]]
+    """Ordered model-option descriptions for configuration tools."""
     config: ProviderConfig
     """The entry configuration, including credentials, bound to this
     instance at construction. Treat it as read-only and do not expose its
@@ -802,6 +854,18 @@ class Provider(ABC):
 
         A subclass declaration with the same field name replaces its parent's
         description while keeping the original position.
+        """
+        ...
+
+    @classmethod
+    def model_fields_for(cls, model_name: str) -> tuple[ModelConfigField, ...]:
+        """Return configuration-tool model options matching an API model ID.
+
+        Class declarations are merged from base to subclass, with a subclass
+        description replacing a parent description of the same name, then
+        filtered by each field's ``model_patterns``. Adapters may override
+        this method to use more specific local model data. It does not create a
+        Provider instance, make a network request, or validate remote support.
         """
         ...
 

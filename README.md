@@ -112,6 +112,20 @@ $ flowing-config providers delete [path]
 
 `path` can be a `providers.yaml` file or a configuration directory. When omitted, the command asks for a path and defaults to the Runtime priority order: `FLOWING_PROVIDERS_PATH`, `FLOWING_CONFIG_HOME/providers.yaml`, then `~/.flowing/providers.yaml`. The add operation prompts for adapter fields one at a time; `env.API_KEY` is saved as `{{env.API_KEY}}`. The list operation masks credentials while preserving environment-variable template text. Deletion proceeds only after an explicit `y`. Changes take effect when a new Runtime is constructed.
 
+## Model configuration command
+
+Use the same standalone command to manage model entries in `models.yaml`:
+
+```console
+$ flowing-config models add [path]
+$ flowing-config models list [path]
+$ flowing-config models delete [path]
+```
+
+The command edits YAML only; it does not start a Runtime or contact a model service.
+
+When `path` is omitted, the command prompts and defaults to the Runtime model configuration path: `FLOWING_MODELS_PATH`, `FLOWING_CONFIG_HOME/models.yaml`, then `~/.flowing/models.yaml`. Adding an entry asks for its Provider entry name and API model ID, then offers common fields and any adapter parameters declared for that model ID. These suggestions do not guarantee that the remote model supports a parameter; arbitrary model-specific fields remain available as one-line YAML values. Quote template or path strings, and use flow-style YAML for mappings and lists. The list command masks sensitive fields. Changes apply the next time a Runtime resolves the model entry, such as when an Agent is created or its `model_tag` is assigned.
+
 ## Going further
 
 - **Capability access**: declare built-in tools, MCP servers, or shell commands and HTTP endpoints as tools via `tools:`; implement custom logic with `ScriptTool`.

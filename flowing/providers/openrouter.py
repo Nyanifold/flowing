@@ -17,7 +17,13 @@ from flowing.context import Context
 from flowing.errors import InvalidRequestError
 from flowing.model import ModelConfig
 from flowing.providers.openai_completions import OpenAICompletionsProvider
-from flowing.providers.provider import ProviderResponse, register_provider
+from flowing.providers.provider import ModelConfigField, ProviderResponse, register_provider
+
+
+def _parse_reasoning_effort(value: object) -> str:
+    if not isinstance(value, str):
+        raise ValueError("reasoning.effort must be a string")
+    return value
 
 
 @register_provider
@@ -65,6 +71,14 @@ class OpenRouterProvider(OpenAICompletionsProvider):
     """
 
     name: ClassVar[str] = "openrouter"
+    model_fields: ClassVar[tuple[ModelConfigField, ...]] = (
+        ModelConfigField(
+            name="reasoning.effort",
+            prompt="Reasoning effort (support and values vary by model)",
+            parser=_parse_reasoning_effort,
+        ),
+    )
+    """配置工具可展示的 OpenRouter 模型参数。"""
     default_base_url: ClassVar[str | None] = "https://openrouter.ai/api/v1"
 
     def _additional_headers(self) -> dict[str, str]:

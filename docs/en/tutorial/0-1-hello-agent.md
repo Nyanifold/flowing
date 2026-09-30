@@ -172,6 +172,13 @@ the shared configuration automatically; later tutorials can reference an existin
 Provider entry from `models.yaml` without adding that entry again or calling
 `set_providers()`.
 
+To add a model entry, run `flowing-config models add` and press Enter at the path
+prompt to use the default user-level `models.yaml`; `FLOWING_CONFIG_HOME` and
+`FLOWING_MODELS_PATH` can select its location. The command asks for the Provider
+entry name and API model ID, then shows parameters declared by the adapter for
+that model ID and accepts arbitrary extra fields. These prompts are not a
+complete list of the remote model's capabilities.
+
 The user-level `models.yaml` and `model-tags.yaml` can use the contents shown above.
 In `providers.yaml`, you can keep the environment-variable placeholder or write the
 credential directly in a private local configuration:

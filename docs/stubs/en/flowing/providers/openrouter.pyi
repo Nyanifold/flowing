@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import ClassVar
 from flowing.providers.openai_completions import OpenAICompletionsProvider
-from flowing.providers.provider import register_provider
+from flowing.providers.provider import ModelConfigField, register_provider
 
 class OpenRouterProvider(OpenAICompletionsProvider):
     """Built-in adapter for OpenRouter's aggregated chat/completions API.
@@ -55,5 +55,7 @@ class OpenRouterProvider(OpenAICompletionsProvider):
     """
 
     name: ClassVar[str]
+    model_fields: ClassVar[tuple[ModelConfigField, ...]]
+    """Model-option descriptions for OpenRouter request fields."""
 
     default_base_url: ClassVar[str | None]

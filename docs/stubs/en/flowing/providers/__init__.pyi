@@ -9,7 +9,8 @@ in :mod:`flowing.providers.openai_completions`,
 :mod:`flowing.providers.anthropic_messages`); the results of a call
 (:class:`ProviderResponse`, :class:`ProviderDelta`, and the per-call token
 record :class:`Usage`); entry configuration (:class:`ProviderConfig`);
-machine-readable field descriptions (:class:`ProviderConfigField`); the
+machine-readable field descriptions (:class:`ProviderConfigField`) and
+model-option descriptions (:class:`ModelConfigField`); the
 adapter registration decorator (:func:`register_provider`) and read-only
 enumeration (:func:`provider_adapters`); the Runtime-level lazy instance table
 (:class:`ProviderRegistry`); and the built-in test double :class:`FakeProvider`.
@@ -234,5 +235,5 @@ from flowing.providers.moonshot_responses import MoonshotResponsesProvider
 from flowing.providers.openai_completions import OpenAICompletionsProvider
 from flowing.providers.openai_responses import OpenAIResponsesProvider
 from flowing.providers.openrouter import OpenRouterProvider
-from flowing.providers.provider import FakeProvider, Provider, ProviderConfig, ProviderConfigField, ProviderDelta, ProviderRegistry, ProviderResponse, Usage, load_provider_candidates, provider_adapters, register_provider
+from flowing.providers.provider import FakeProvider, ModelConfigField, Provider, ProviderConfig, ProviderConfigField, ProviderDelta, ProviderRegistry, ProviderResponse, Usage, load_provider_candidates, provider_adapters, register_provider
 __all__: object

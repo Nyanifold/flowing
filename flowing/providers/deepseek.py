@@ -9,13 +9,25 @@ import 期经 :func:`register_provider` 进程级注册（``name="deepseek"``）
 
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from flowing.context import Context
 from flowing.errors import InvalidRequestError
 from flowing.model import ModelConfig
 from flowing.providers.openai_completions import OpenAICompletionsProvider
-from flowing.providers.provider import register_provider
+from flowing.providers.provider import ModelConfigField, register_provider
+
+
+def _parse_thinking(value: Any) -> Any:
+    if not isinstance(value, (str, dict)):
+        raise ValueError("thinking must be a string or YAML mapping")
+    return value
+
+
+def _parse_reasoning_effort(value: Any) -> str:
+    if not isinstance(value, str):
+        raise ValueError("reasoning_effort must be a string")
+    return value
 
 
 @register_provider
@@ -78,6 +90,19 @@ class DeepSeekProvider(OpenAICompletionsProvider):
     name: ClassVar[str] = "deepseek"
     known_model_fields: ClassVar[frozenset[str]] = frozenset(
         {"thinking", "reasoning_effort"})
+    model_fields: ClassVar[tuple[ModelConfigField, ...]] = (
+        ModelConfigField(
+            name="thinking",
+            prompt="Thinking mode (model support varies; use a string or YAML mapping)",
+            parser=_parse_thinking,
+        ),
+        ModelConfigField(
+            name="reasoning_effort",
+            prompt="Reasoning effort (model support and values vary)",
+            parser=_parse_reasoning_effort,
+        ),
+    )
+    """配置工具可展示的 DeepSeek 模型参数。"""
     default_base_url: ClassVar[str | None] = "https://api.deepseek.com"
 
     def _build_request(self, context: Context, model: ModelConfig) -> dict:

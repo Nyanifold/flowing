@@ -7,7 +7,7 @@ import os
 import stat
 import tempfile
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,8 +33,32 @@ class ProviderEntryMissingError(ProviderConfigFileError):
     """目标文件已不包含所选条目。"""
 
 
+class ModelConfigFileError(Exception):
+    """配置路径或 ``models.yaml`` 原始读写操作失败。"""
+
+
+class ModelConfigConflictError(ModelConfigFileError):
+    """交互配置期间模型文件发生变化。"""
+
+
+class ModelEntryExistsError(ModelConfigFileError):
+    """目标模型文件已包含指定条目名。"""
+
+
+class ModelEntryMissingError(ModelConfigFileError):
+    """目标模型文件已不包含所选条目。"""
+
+
 @dataclass(frozen=True)
 class ProvidersSnapshot:
+    """Round-trip YAML 映射及其来源文件版本指纹。"""
+
+    data: Any
+    fingerprint: str | None
+
+
+@dataclass(frozen=True)
+class ModelsSnapshot:
     """Round-trip YAML 映射及其来源文件版本指纹。"""
 
     data: Any
@@ -102,43 +126,103 @@ def resolve_providers_path(
     return candidate / "providers.yaml"
 
 
+def default_models_path(
+    env: Mapping[str, str] | None = None,
+    home: Path | None = None,
+) -> Path:
+    """返回与 ``Runtime`` 相同的默认模型配置文件。"""
+    env = os.environ if env is None else env
+    if "FLOWING_MODELS_PATH" in env:
+        return Path(env["FLOWING_MODELS_PATH"])
+    if "FLOWING_CONFIG_HOME" in env:
+        return Path(env["FLOWING_CONFIG_HOME"]) / "models.yaml"
+    config_home = Path.home() if home is None else Path(home).expanduser()
+    return config_home / ".flowing" / "models.yaml"
+
+
+def resolve_models_path(
+    path_arg: str | Path | None,
+    *,
+    env: Mapping[str, str] | None = None,
+    home: Path | None = None,
+) -> Path:
+    """将命令行路径解析为 ``models.yaml`` 文件。"""
+    if path_arg is None:
+        candidate = default_models_path(env, home).resolve(strict=False)
+        if candidate.exists() and candidate.is_dir():
+            raise ModelConfigFileError(
+                f"The configured models path is a directory, expected a file: {candidate}")
+        return candidate
+
+    candidate = Path(path_arg).expanduser()
+    try:
+        candidate = candidate.resolve(strict=False)
+    except OSError as exc:
+        raise ModelConfigFileError(
+            f"Cannot resolve models path {candidate}: {exc.strerror or exc}") from None
+
+    if candidate.exists():
+        if candidate.is_dir():
+            return candidate / "models.yaml"
+        if not candidate.is_file():
+            raise ModelConfigFileError(
+                f"Models path is not a regular file or directory: {candidate}")
+        if candidate.suffix.lower() not in {".yaml", ".yml"}:
+            raise ModelConfigFileError(
+                f"Models file must use a .yaml or .yml suffix: {candidate}")
+        return candidate
+
+    if candidate.suffix.lower() in {".yaml", ".yml"}:
+        return candidate
+    return candidate / "models.yaml"
+
+
 def read_providers(path: Path) -> ProvidersSnapshot:
     """以 round-trip 模式读取原始 YAML，不展开环境变量引用。"""
+    return _read_config(path, "providers", ProvidersSnapshot, ProviderConfigFileError)
+
+
+def read_models(path: Path) -> ModelsSnapshot:
+    """以 round-trip 模式读取原始模型 YAML，不求值 Parsable 字符串。"""
+    return _read_config(path, "models", ModelsSnapshot, ModelConfigFileError)
+
+
+def _read_config(path, resource, snapshot_type, error_type):
     path = Path(path)
     try:
         path_stat = path.stat()
     except FileNotFoundError:
-        return ProvidersSnapshot(_empty_mapping(), None)
+        return snapshot_type(_empty_mapping(), None)
     except OSError as exc:
-        raise ProviderConfigFileError(
-            f"Cannot inspect providers file {path}: {exc.strerror or exc}") from None
+        raise error_type(
+            f"Cannot inspect {resource} file {path}: {exc.strerror or exc}") from None
     if not stat.S_ISREG(path_stat.st_mode):
-        raise ProviderConfigFileError(f"Providers path is not a regular file: {path}")
+        raise error_type(f"{resource.title()} path is not a regular file: {path}")
 
     try:
         raw = path.read_bytes()
     except OSError as exc:
-        raise ProviderConfigFileError(
-            f"Cannot read providers file {path}: {exc.strerror or exc}") from None
+        raise error_type(
+            f"Cannot read {resource} file {path}: {exc.strerror or exc}") from None
 
     yaml = _round_trip_yaml()
     try:
         data = yaml.load(raw.decode("utf-8")) if raw.strip() else None
     except UnicodeDecodeError:
-        raise ProviderConfigFileError(f"Providers file is not valid UTF-8: {path}") from None
+        raise error_type(f"{resource.title()} file is not valid UTF-8: {path}") from None
     except YAMLError as exc:
         # 解析器错误可能包含源文本片段；只报告路径和行列，避免回显任意配置内容。
         mark = getattr(exc, "problem_mark", None)
         location = f" at line {mark.line + 1}, column {mark.column + 1}" if mark else ""
-        raise ProviderConfigFileError(
-            f"Invalid YAML in providers file {path}{location}") from None
+        raise error_type(
+            f"Invalid YAML in {resource} file {path}{location}") from None
 
     if data is None:
         data = _empty_mapping()
     if not isinstance(data, Mapping):
-        raise ProviderConfigFileError(
-            f"Providers file root must be a YAML mapping: {path}")
-    return ProvidersSnapshot(data, hashlib.sha256(raw).hexdigest())
+        raise error_type(
+            f"{resource.title()} file root must be a YAML mapping: {path}")
+    return snapshot_type(data, hashlib.sha256(raw).hexdigest())
 
 
 def add_provider_entry(
@@ -149,16 +233,13 @@ def add_provider_entry(
     expected_fingerprint: str | None,
 ) -> None:
     """确认文件仍与提示开始时的快照一致后添加条目。"""
-    path = Path(path)
-    _ensure_parent(path.parent)
-    with _file_lock(path):
-        snapshot = read_providers(path)
-        _assert_same_version(snapshot, expected_fingerprint)
-        if entry_name in snapshot.data:
-            raise ProviderEntryExistsError(
-                f"Provider entry {entry_name!r} already exists in {path}")
-        snapshot.data[entry_name] = dict(fields)
-        _write_snapshot(path, snapshot.data, expected_fingerprint)
+    _add_entry(
+        path, entry_name, fields, expected_fingerprint=expected_fingerprint,
+        resource="providers", read_snapshot=read_providers,
+        file_error=ProviderConfigFileError,
+        conflict_error=ProviderConfigConflictError,
+        exists_error=ProviderEntryExistsError,
+    )
 
 
 def delete_provider_entry(
@@ -168,24 +249,111 @@ def delete_provider_entry(
     expected_fingerprint: str | None,
 ) -> None:
     """确认文件仍与选择条目时的快照一致后删除条目。"""
+    _delete_entry(
+        path, entry_name, expected_fingerprint=expected_fingerprint,
+        resource="providers", read_snapshot=read_providers,
+        file_error=ProviderConfigFileError,
+        conflict_error=ProviderConfigConflictError,
+        missing_error=ProviderEntryMissingError,
+    )
+
+
+def add_model_entry(
+    path: Path,
+    entry_name: str,
+    fields: Mapping[str, Any],
+    *,
+    expected_fingerprint: str | None,
+) -> None:
+    """确认文件仍与提示开始时的快照一致后添加模型条目。"""
+    _add_entry(
+        path, entry_name, fields, expected_fingerprint=expected_fingerprint,
+        resource="models", read_snapshot=read_models,
+        file_error=ModelConfigFileError,
+        conflict_error=ModelConfigConflictError,
+        exists_error=ModelEntryExistsError,
+    )
+
+
+def delete_model_entry(
+    path: Path,
+    entry_name: str,
+    *,
+    expected_fingerprint: str | None,
+) -> None:
+    """确认文件仍与选择条目时的快照一致后删除模型条目。"""
+    _delete_entry(
+        path, entry_name, expected_fingerprint=expected_fingerprint,
+        resource="models", read_snapshot=read_models,
+        file_error=ModelConfigFileError,
+        conflict_error=ModelConfigConflictError,
+        missing_error=ModelEntryMissingError,
+    )
+
+
+def _add_entry(
+    path: Path,
+    entry_name: str,
+    fields: Mapping[str, Any],
+    *,
+    expected_fingerprint: str | None,
+    resource: str,
+    read_snapshot: Callable[[Path], Any],
+    file_error: type[Exception],
+    conflict_error: type[Exception],
+    exists_error: type[Exception],
+) -> None:
     path = Path(path)
-    with _file_lock(path):
-        snapshot = read_providers(path)
-        _assert_same_version(snapshot, expected_fingerprint)
+    _ensure_parent(path.parent, resource, file_error)
+    with _file_lock(path, resource, file_error, conflict_error):
+        snapshot = read_snapshot(path)
+        _assert_same_version(snapshot, expected_fingerprint, resource, conflict_error)
+        if entry_name in snapshot.data:
+            noun = "Provider" if resource == "providers" else "Model"
+            raise exists_error(f"{noun} entry {entry_name!r} already exists in {path}")
+        snapshot.data[entry_name] = dict(fields)
+        _write_snapshot(
+            path, snapshot.data, expected_fingerprint,
+            resource=resource, read_snapshot=read_snapshot,
+            file_error=file_error, conflict_error=conflict_error,
+        )
+
+
+def _delete_entry(
+    path: Path,
+    entry_name: str,
+    *,
+    expected_fingerprint: str | None,
+    resource: str,
+    read_snapshot: Callable[[Path], Any],
+    file_error: type[Exception],
+    conflict_error: type[Exception],
+    missing_error: type[Exception],
+) -> None:
+    path = Path(path)
+    with _file_lock(path, resource, file_error, conflict_error):
+        snapshot = read_snapshot(path)
+        _assert_same_version(snapshot, expected_fingerprint, resource, conflict_error)
         if entry_name not in snapshot.data:
-            raise ProviderEntryMissingError(
-                f"Provider entry {entry_name!r} no longer exists in {path}")
+            noun = "Provider" if resource == "providers" else "Model"
+            raise missing_error(f"{noun} entry {entry_name!r} no longer exists in {path}")
         del snapshot.data[entry_name]
-        _write_snapshot(path, snapshot.data, expected_fingerprint)
+        _write_snapshot(
+            path, snapshot.data, expected_fingerprint,
+            resource=resource, read_snapshot=read_snapshot,
+            file_error=file_error, conflict_error=conflict_error,
+        )
 
 
 def _assert_same_version(
-    snapshot: ProvidersSnapshot,
+    snapshot: Any,
     expected_fingerprint: str | None,
+    resource: str,
+    conflict_error: type[Exception],
 ) -> None:
     if snapshot.fingerprint != expected_fingerprint:
-        raise ProviderConfigConflictError(
-            "The providers file changed during this interaction. "
+        raise conflict_error(
+            f"The {resource} file changed during this interaction. "
             "The file was left untouched; run the command again.")
 
 
@@ -193,10 +361,15 @@ def _write_snapshot(
     path: Path,
     data: Any,
     expected_fingerprint: str | None,
+    *,
+    resource: str,
+    read_snapshot: Callable[[Path], Any],
+    file_error: type[Exception],
+    conflict_error: type[Exception],
 ) -> None:
     """序列化到同目录临时文件，再原子替换目标文件。"""
-    current = read_providers(path)
-    _assert_same_version(current, expected_fingerprint)
+    current = read_snapshot(path)
+    _assert_same_version(current, expected_fingerprint, resource, conflict_error)
     try:
         from io import StringIO
 
@@ -204,16 +377,16 @@ def _write_snapshot(
         _round_trip_yaml().dump(data, output)
         serialized = output.getvalue().encode("utf-8")
     except Exception:
-        raise ProviderConfigFileError(
-            f"Could not serialize providers file {path}; the original was left untouched") from None
+        raise file_error(
+            f"Could not serialize {resource} file {path}; the original was left untouched") from None
 
     old_mode: int | None = None
     if path.exists():
         try:
             old_mode = stat.S_IMODE(path.stat().st_mode)
         except OSError as exc:
-            raise ProviderConfigFileError(
-                f"Cannot inspect providers file permissions {path}: {exc.strerror or exc}") from None
+            raise file_error(
+                f"Cannot inspect {resource} file permissions {path}: {exc.strerror or exc}") from None
 
     temp_path: Path | None = None
     open_fd: int | None = None
@@ -234,15 +407,16 @@ def _write_snapshot(
             os.fsync(stream.fileno())
 
         # 序列化后、替换前再次检查文件版本。
-        _assert_same_version(read_providers(path), expected_fingerprint)
+        _assert_same_version(
+            read_snapshot(path), expected_fingerprint, resource, conflict_error)
         os.replace(temp_path, path)
         temp_path = None
         _fsync_directory(path.parent)
-    except ProviderConfigFileError:
+    except file_error:
         raise
     except OSError as exc:
-        raise ProviderConfigFileError(
-            f"Could not safely write providers file {path}: {exc.strerror or exc}; "
+        raise file_error(
+            f"Could not safely write {resource} file {path}: {exc.strerror or exc}; "
             "the original was left untouched") from None
     finally:
         if open_fd is not None:
@@ -255,14 +429,19 @@ def _write_snapshot(
 
 
 @contextmanager
-def _file_lock(path: Path) -> Iterator[None]:
+def _file_lock(
+    path: Path,
+    resource: str,
+    file_error: type[Exception],
+    conflict_error: type[Exception],
+) -> Iterator[None]:
     """用 advisory lock 文件串行化遵循同一约定的配置命令写入。"""
     lock_path = path.with_name(f".{path.name}.lock")
     try:
         fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
     except OSError as exc:
-        raise ProviderConfigFileError(
-            f"Cannot create providers lock file {lock_path}: {exc.strerror or exc}") from None
+        raise file_error(
+            f"Cannot create {resource} lock file {lock_path}: {exc.strerror or exc}") from None
 
     locked = False
     try:
@@ -280,7 +459,7 @@ def _file_lock(path: Path) -> Iterator[None]:
                     break
                 except OSError:
                     if time.monotonic() >= deadline:
-                        raise ProviderConfigConflictError(
+                        raise conflict_error(
                             f"Another configuration command is updating {path}") from None
                     time.sleep(0.05)
         else:
@@ -294,7 +473,7 @@ def _file_lock(path: Path) -> Iterator[None]:
                     break
                 except BlockingIOError:
                     if time.monotonic() >= deadline:
-                        raise ProviderConfigConflictError(
+                        raise conflict_error(
                             f"Another configuration command is updating {path}") from None
                     time.sleep(0.05)
         yield
@@ -312,7 +491,11 @@ def _file_lock(path: Path) -> Iterator[None]:
         os.close(fd)
 
 
-def _ensure_parent(directory: Path) -> None:
+def _ensure_parent(
+    directory: Path,
+    resource: str,
+    file_error: type[Exception],
+) -> None:
     missing: list[Path] = []
     current = directory
     while not current.exists():
@@ -321,17 +504,17 @@ def _ensure_parent(directory: Path) -> None:
             break
         current = current.parent
     if current.exists() and not current.is_dir():
-        raise ProviderConfigFileError(f"Providers parent path is not a directory: {current}")
+        raise file_error(f"{resource.title()} parent path is not a directory: {current}")
     for item in reversed(missing):
         try:
             item.mkdir(mode=0o700)
         except FileExistsError:
             if not item.is_dir():
-                raise ProviderConfigFileError(
-                    f"Providers parent path is not a directory: {item}") from None
+                raise file_error(
+                    f"{resource.title()} parent path is not a directory: {item}") from None
         except OSError as exc:
-            raise ProviderConfigFileError(
-                f"Cannot create providers directory {item}: {exc.strerror or exc}") from None
+            raise file_error(
+                f"Cannot create {resource} directory {item}: {exc.strerror or exc}") from None
 
 
 def _round_trip_yaml() -> YAML:

@@ -45,7 +45,7 @@ from flowing.context import Context
 from flowing.errors import AuthenticationError, ContentPolicyError, ContextLengthError, FlowingError, InvalidRequestError, NetworkError, ProviderError, ProviderTimeoutError, RateLimitedError, RequestTooLargeError, ServerError
 from flowing.message import MediaBlock, Message, MessageKind, StructBlock, TextBlock, ThinkingBlock, ToolCallBlock
 from flowing.model import ModelConfig
-from flowing.providers.provider import Provider, ProviderConfigField, ProviderDelta, ProviderResponse, Usage
+from flowing.providers.provider import ModelConfigField, Provider, ProviderConfigField, ProviderDelta, ProviderResponse, Usage
 
 class _HttpResponseError(Exception):
     """Internal carrier for the raw facts of a non-2xx transport response.
@@ -150,6 +150,8 @@ class OpenAIResponsesProvider(Provider):
     """
     api_format: ClassVar[str]
     known_model_fields: ClassVar[frozenset[str]]
+    model_fields: ClassVar[tuple[ModelConfigField, ...]]
+    """Model-option descriptions for additional request-body fields."""
     default_base_url: ClassVar[str | None]
     """Subclass override for the vendor's official endpoint. An entry-level
     ``base_url`` takes precedence, for example when using a proxy."""

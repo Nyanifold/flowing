@@ -157,6 +157,11 @@ Provider 和模型配置时，无需在每个示例目录重新声明 `providers
 全局配置，后续教程只需在 `models.yaml` 中引用已有的 Provider 条目名，无需再次
 添加 Provider 条目或调用 `set_providers()`。
 
+首次添加模型条目时，也可以运行 `flowing-config models add` 并在路径提示处直接回车，
+使用默认用户级 `models.yaml`；路径可由 `FLOWING_CONFIG_HOME` 或
+`FLOWING_MODELS_PATH` 指定。命令会先询问 Provider 条目名和 API 模型 ID，再展示 adapter
+为该模型 ID 声明的参数提示，并允许填写任意扩展字段。参数提示不等同于远端模型能力清单。
+
 用户级配置中的 `models.yaml` 和 `model-tags.yaml` 可直接使用本篇上面的内容。
 `providers.yaml` 可以继续用环境变量占位符，也可以在本机私有配置中直接写凭证：
 
