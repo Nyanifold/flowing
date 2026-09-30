@@ -69,7 +69,7 @@ API key (api_key; leave blank to skip): env.OPENROUTER_API_KEY
 
 $ flowing-config models add
 # Press Enter at the configuration path prompt to use the Runtime default.
-Model entry name (identity): luna
+Model entry name (identity): small
 Known Provider entries: openrouter
 Provider entry name (identity): openrouter
 API model ID: openai/gpt-6-luna
@@ -82,12 +82,12 @@ Add optional model-specific parameters. Enter one-line YAML values; quote templa
 Additional model field name (press Enter to finish): [Enter]
 ```
 
-The model entry `luna` is selected by the `default: luna` mapping below. Adapter parameter suggestions depend on the API model ID and do not guarantee support by the remote model.
+The `default` model tag is a lookup label and carries no Provider information. It resolves to the `small` Model entry, which separately selects the `openrouter` Provider and API model ID `openai/gpt-6-luna`. Adapter parameter suggestions depend on the API model ID and do not guarantee support by the remote model.
 
 ```yaml
 # model-tags.yaml
 tags:
-  default: luna
+  default: small
 ```
 
 Run:
