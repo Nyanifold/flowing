@@ -89,6 +89,11 @@ class OpenAICompletionsProvider(Provider):
       according to its kind. ``Context.tools`` is assembled from an allowlist
       into function declarations. If ``model.max_output_tokens`` is not
       ``None``, it is sent as ``max_tokens``.
+    - Message metadata: USER, EVENT, PEER, and SUBAGENT map to ordinary
+      ``user`` messages. The request contains only the role and content; it
+      does not carry the original kind or source. The server cannot distinguish
+      these message kinds or determine their source. SYSTEM and TOOL use their
+      respective API mappings.
     - Generic passthrough: if the ``extra_body`` field from a ``models.yaml``
       entry (stored in ``ModelConfig._extra`` and not evaluated by Parsable)
       is a dictionary, merge it unchanged into the request body for

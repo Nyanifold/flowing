@@ -103,6 +103,11 @@ class OpenAIResponsesProvider(Provider):
       the server keeps no conversation state and the full history is replayed,
       and ``include: ["reasoning.encrypted_content"]`` so reasoning items
       include encrypted content needed for multi-turn replay with storage off.
+    - Message metadata: USER, EVENT, PEER, and SUBAGENT map to ordinary
+      ``user`` messages. The request contains only the role and content; it
+      does not carry the original kind or source. The server cannot distinguish
+      these message kinds or determine their source. SYSTEM and TOOL use their
+      respective API mappings.
     - Generic passthrough: if the ``extra_body`` field from a ``models.yaml``
       entry (stored in ``ModelConfig._extra`` and not evaluated by Parsable)
       is a dictionary, merge it unchanged into the request body for

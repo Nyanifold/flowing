@@ -121,6 +121,10 @@ class OpenAICompletionsProvider(Provider):
       ``Context.messages`` 逐条按 kind 映射 role；``Context.tools`` 经
       白名单组装为 function 声明；``model.max_output_tokens`` 非
       ``None`` 时写入 ``max_tokens``。
+    - 消息元数据：USER / EVENT / PEER / SUBAGENT 均映射为普通 ``user``
+      消息。请求只包含 role 与 content，不携带原始 kind 和 source；服务端
+      无法区分这几类消息，也无法获知 source。SYSTEM 与 TOOL 使用各自的
+      API 映射。
     - 通用透传：models.yaml 条目中的 ``extra_body`` 字段（进
       ``ModelConfig._extra``，不参与 Parsable 求值）为 dict 时原样
       合入请求体，承载厂商私有参数；非 dict 抛

@@ -9,7 +9,7 @@ for the Anthropic Messages API, including the system array, content blocks,
 endpoint and AWS Bedrock subclass it. See :mod:`flowing.providers` for the
 family design.
 
-For tool results, content blocks from TOOL and EVENT messages map directly to
+For tool results, content blocks from TOOL messages map directly to
 ``tool_result`` blocks inside a user message. The message-level
 ``tool_call_id`` maps to ``tool_use_id``; ``tool_status="error"`` maps to
 ``is_error: true``. Media blocks are embedded natively in
@@ -19,6 +19,11 @@ elsewhere.
 ``json.dumps(ensure_ascii=False)``. Consecutive TOOL messages are combined
 into one user message containing multiple ``tool_result`` blocks, as required
 to pair parallel ``tool_use`` calls. Any non-TOOL message ends the sequence.
+
+SYSTEM, USER, EVENT, PEER, and SUBAGENT messages mapped to ordinary user
+messages carry only the role and content in the request. Their original kind
+and source are not sent, so the server cannot distinguish these message kinds
+or determine their source. TOOL uses the separate ``tool_result`` mapping.
 
 On the response side, a thinking block's ``signature`` is an opaque string
 that must be replayed unchanged on later calls. The ``input`` of a
@@ -77,6 +82,11 @@ class AnthropicMessagesProvider(Provider):
 
     .. rubric:: Behavioral notes
 
+    - Message metadata: SYSTEM, USER, EVENT, PEER, and SUBAGENT map to ordinary
+      ``user`` messages. The request contains only the role and content; it
+      does not carry the original kind or source. The server cannot distinguish
+      these message kinds or determine their source. TOOL maps to
+      ``tool_result``, and PROVIDER maps to ``assistant``.
     - Manual prefix caching: only a ``PromptSegment`` with
       ``cache="static"`` receives ``cache_control: {"type": "ephemeral"}``.
       ``cache="dynamic"`` and ``cache="session"`` do not receive a cache

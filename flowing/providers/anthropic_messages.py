@@ -8,13 +8,17 @@
 AWS Bedrock）各为一个子类。设计要点见 :mod:`flowing.providers` 包
 docstring。
 
-本格式家族的工具结果映射约定：TOOL/EVENT 消息的 ``content`` 块直接
+本格式家族的工具结果映射约定：TOOL 消息的 ``content`` 块直接
 映射进 user 消息内的 ``tool_result`` 块——消息级 ``tool_call_id`` →
 ``tool_use_id``，``tool_status="error"`` → ``is_error: true``；媒体块
 原生内嵌于 ``tool_result.content`` （image / document），无需转移；
 ``StructBlock`` 恒投影为 ``json.dumps(ensure_ascii=False)`` 文本。
 同一连续段的多条 TOOL 消息归并为一条 user 消息的多 ``tool_result``
 块（Anthropic 对并行 tool_use 的配对要求），遇到非 TOOL 消息即断段。
+
+映射为普通 user 消息的 Message（SYSTEM / USER / EVENT / PEER / SUBAGENT）
+只发送 role 与 content，不携带原始 kind 和 source；服务端无法区分这些
+消息类别，也无法获知 source。TOOL 使用独立的 ``tool_result`` 映射。
 
 响应侧事实：``thinking`` 块的 ``signature`` 为不透明签名字符串，多轮
 回放必须原样带回；``tool_use`` 的 ``input`` 为已解析 JSON 对象。
@@ -104,6 +108,10 @@ class AnthropicMessagesProvider(Provider):
 
     .. rubric:: 行为要点
 
+    - 消息元数据：SYSTEM / USER / EVENT / PEER / SUBAGENT 均映射为普通
+      ``user`` 消息。请求只包含 role 与 content，不携带原始 kind 和
+      source；服务端无法区分这几类消息，也无法获知 source。TOOL 使用
+      ``tool_result`` 映射，PROVIDER 使用 assistant 映射。
     - 手动前缀缓存：仅 ``cache="static"`` 的 PromptSegment 设置
       ``cache_control: {"type": "ephemeral"}``；``cache="dynamic"`` 与
       ``cache="session"`` 均不标记（不标记 = 不缓存）。
