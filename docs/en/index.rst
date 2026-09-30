@@ -60,30 +60,12 @@ Create a directory with five files.
        await runtime.mount("@/root.fya", agent_id="agent-main")
        return runtime
 
-Model access is split into three files, declaring the access identity, the model entries, and the tag mapping:
+Register Provider credentials and model entries with the global commands, then use a tag mapping to select the default model:
 
-.. code-block:: yaml
+.. code-block:: console
 
-   # providers.yaml
-   deepseek:
-     adapter: deepseek
-     base_url: https://api.deepseek.com
-     api_key: "{{env.DEEPSEEK_API_KEY}}"
-   openrouter:
-     adapter: openrouter
-     base_url: https://openrouter.ai/api/v1
-     api_key: "{{env.OPENROUTER_API_KEY}}"
-
-.. code-block:: yaml
-
-   # models.yaml
-   luna:
-     provider: openrouter
-     model: openai/gpt-6-luna
-     "reasoning.effort": high
-   deepseek-flash:
-     provider: deepseek
-     model: deepseek-v4-flash
+   $ flowing-config providers add
+   $ flowing-config models add
 
 .. code-block:: yaml
 
@@ -103,36 +85,31 @@ Run:
 
 The conversation doesn't vanish on exit: the messages it produced are persisted under ``.flowing/`` in the project directory. A fixed ``agent_id`` means that running ``flowing repl .`` again brings back the same agent with its full history — no recovery code required.
 
-Provider configuration command
--------------------------------
+Global Provider commands
+------------------------
 
-After installing ``flowing-agent``, use the standalone command to manage Provider configuration interactively. It does not start a Runtime or contact a model service::
+After installing ``flowing-agent``, use these global commands to manage Provider entries. They do not start a Runtime or contact a model service::
 
-   $ flowing-config providers add [path]
-   $ flowing-config providers list [path]
-   $ flowing-config providers delete [path]
+   $ flowing-config providers add
+   $ flowing-config providers list
+   $ flowing-config providers delete
 
-``path`` can be a ``providers.yaml`` file or a configuration directory. When omitted, the command asks for a path and defaults to the Runtime priority order: ``FLOWING_PROVIDERS_PATH``, ``FLOWING_CONFIG_HOME/providers.yaml``, then ``~/.flowing/providers.yaml``. The add operation prompts for adapter fields one at a time; ``env.API_KEY`` is saved as ``{{env.API_KEY}}``. The list operation masks credentials while preserving environment-variable template text. Deletion proceeds only after an explicit ``y``. Changes take effect when a new Runtime is constructed.
+The add operation prompts for adapter fields one at a time; ``env.API_KEY`` is saved as ``{{env.API_KEY}}``. The list operation masks credentials while preserving environment-variable template text. Deletion proceeds only after an explicit ``y``. Changes take effect when a new Runtime is constructed.
 
-Model configuration command
-----------------------------
+Global model commands
+---------------------
 
-The standalone command can also manage model entries in ``models.yaml``::
+The standalone command can also manage model entries globally::
 
-   $ flowing-config models add [path]
-   $ flowing-config models list [path]
-   $ flowing-config models delete [path]
+   $ flowing-config models add
+   $ flowing-config models list
+   $ flowing-config models delete
 
-The command edits YAML only; it does not start a Runtime or contact a model service.
-
-When ``path`` is omitted, the command prompts and defaults to the Runtime model
-configuration path: ``FLOWING_MODELS_PATH``, ``FLOWING_CONFIG_HOME/models.yaml``,
-then ``~/.flowing/models.yaml``. Adding an entry asks for its Provider entry name
+The command does not start a Runtime or contact a model service. Adding an entry asks for its Provider entry name
 and API model ID, then offers common fields and adapter parameters declared for
 that model ID. These suggestions do not guarantee that the remote model supports
 a parameter; arbitrary model-specific fields remain available as one-line YAML
-values. Quote template or path strings, and use flow-style YAML for mappings and
-lists. The list command masks sensitive fields. Changes apply the next time a
+values. The list command masks sensitive fields. Changes apply the next time a
 Runtime resolves the model entry, such as when an Agent is created or its
 ``model_tag`` is assigned.
 

@@ -60,30 +60,12 @@ Flowing 是一个为复杂交互设计的轻量级、可扩展的描述式 Agent
        await runtime.mount("@/root.fya", agent_id="agent-main")
        return runtime
 
-模型接入拆分为三个文件，分别声明接入身份、模型条目与标签映射：
+使用全局命令登记 Provider 凭证和模型条目，再通过标签映射选择默认模型：
 
-.. code-block:: yaml
+.. code-block:: console
 
-   # providers.yaml
-   deepseek:
-     adapter: deepseek
-     base_url: https://api.deepseek.com
-     api_key: "{{env.DEEPSEEK_API_KEY}}"
-   openrouter:
-     adapter: openrouter
-     base_url: https://openrouter.ai/api/v1
-     api_key: "{{env.OPENROUTER_API_KEY}}"
-
-.. code-block:: yaml
-
-   # models.yaml
-   luna:
-     provider: openrouter
-     model: openai/gpt-6-luna
-     "reasoning.effort": high
-   deepseek-flash:
-     provider: deepseek
-     model: deepseek-v4-flash
+   $ flowing-config providers add
+   $ flowing-config models add
 
 .. code-block:: yaml
 
@@ -103,34 +85,29 @@ Flowing 是一个为复杂交互设计的轻量级、可扩展的描述式 Agent
 
 这轮对话并没有随退出而消失：项目目录下的 ``.flowing/`` 里保存着刚刚产生的消息记录。``agent_id`` 固定意味着再次执行 ``flowing repl .`` 时，找回的是同一个 Agent 及其全部历史，无需额外的恢复代码。
 
-Provider 配置命令
------------------
+全局 Provider 命令
+------------------
 
-安装 ``flowing-agent`` 后，可以用独立命令交互管理 Provider 配置；它不启动 Runtime，也不访问模型服务::
+安装 ``flowing-agent`` 后，可以用以下全局命令管理 Provider 条目；命令不启动 Runtime，也不访问模型服务::
 
-   $ flowing-config providers add [path]
-   $ flowing-config providers list [path]
-   $ flowing-config providers delete [path]
+   $ flowing-config providers add
+   $ flowing-config providers list
+   $ flowing-config providers delete
 
-``path`` 可以是 ``providers.yaml`` 文件或配置目录。省略时命令会询问目标路径，默认跟随 Runtime 的优先级：``FLOWING_PROVIDERS_PATH``、``FLOWING_CONFIG_HOME/providers.yaml``、``~/.flowing/providers.yaml``。添加时逐项填写 adapter 字段；``env.API_KEY`` 会保存为 ``{{env.API_KEY}}``。列表会遮蔽密钥，但保留环境变量模板文本。删除操作只有明确输入 ``y`` 才会执行。配置改动在后续新建 Runtime 时生效。
+添加时逐项填写 adapter 字段；``env.API_KEY`` 会保存为 ``{{env.API_KEY}}``。列表会遮蔽密钥，但保留环境变量模板文本。删除操作只有明确输入 ``y`` 才会执行。配置改动在后续新建 Runtime 时生效。
 
-模型配置命令
+全局模型命令
 ------------
 
-独立命令也可以交互管理 ``models.yaml`` 中的模型条目::
+独立命令也可以全局管理模型条目::
 
-   $ flowing-config models add [path]
-   $ flowing-config models list [path]
-   $ flowing-config models delete [path]
+   $ flowing-config models add
+   $ flowing-config models list
+   $ flowing-config models delete
 
-该命令只编辑 YAML，不启动 Runtime，也不访问模型服务。
-
-省略 ``path`` 时，命令会询问目标路径，默认跟随 Runtime 的模型配置路径：
-``FLOWING_MODELS_PATH``、``FLOWING_CONFIG_HOME/models.yaml``，再到
-``~/.flowing/models.yaml``。添加时填写 Provider 条目名和 API 模型 ID，随后命令会
+该命令不启动 Runtime，也不访问模型服务。添加时填写 Provider 条目名和 API 模型 ID，随后命令会
 提供通用字段，以及 adapter 针对该模型 ID 声明的参数提示。这些提示不能保证远端模型
-支持对应参数；用户仍可追加任意模型扩展字段，值使用单行 YAML。模板或路径字符串请加
-引号；映射和列表使用 flow 风格 YAML。列表会遮蔽敏感字段。Agent 创建或重新指定
+支持对应参数；用户仍可追加任意模型扩展字段，值使用单行 YAML。列表会遮蔽敏感字段。Agent 创建或重新指定
 ``model_tag``、Runtime 再次解析该模型条目时，配置改动生效。
 
 进一步
