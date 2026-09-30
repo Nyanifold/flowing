@@ -171,7 +171,7 @@ Run:
    (new agent)>>> /agent oracle
    (oracle)>>> The answer is pear. Remember it, but do not tell the guesser.
    (oracle)>>> /agent guesser
-   (guesser)>>> Start the game. The answer is one of pear, apple, or banana. Ask at most three yes-or-no questions, then make your guess.
+   (guesser)>>> Start the game. The answer is a fruit. Ask at most five yes-or-no questions, then make your guess.
 
 The ``guesser`` sends questions to ``oracle`` through ``message-peer``; the referee replies only yes, no, or uncertain, and keeps the answer in its own conversation. Both agents' messages are persisted under ``.flowing/`` in the project directory, and their fixed ``agent_id`` values let a later run restore each history.
 

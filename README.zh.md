@@ -168,7 +168,7 @@ $ flowing repl .
 (new agent)>>> /agent oracle
 (oracle)>>> 谜底是梨。请记住谜底，不要告诉猜词者。
 (oracle)>>> /agent guesser
-(guesser)>>> 开始游戏。谜底是梨、苹果或香蕉之一。你最多可以提出三个是非问题，然后给出你的猜测。
+(guesser)>>> 开始游戏。谜底是一种水果。你最多可以提出五个是非问题，然后给出你的猜测。
 ```
 
 `guesser` 通过 `message-peer` 向 `oracle` 发送问题，裁判只返回“是”“否”或“不确定”；谜底留在裁判自己的会话中。两个 Agent 的消息记录都保存在项目目录下的 `.flowing/` 中，固定的 `agent_id` 让再次启动时可以恢复各自的历史。
