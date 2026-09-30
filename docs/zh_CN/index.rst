@@ -36,31 +36,108 @@ Flowing 是一个为复杂交互设计的轻量级、可扩展的描述式 Agent
 快速上手
 --------
 
-新建一个项目目录，创建三个文件。
+这个示例会搭建一个双智能体猜词游戏：裁判 ``oracle`` 私下保管谜底，猜词者 ``guesser`` 通过定向消息逐步提问并猜出答案。它展示如何在一个 Runtime 中承载多个 Agent、由 ``PeersPlugin`` 注册 Peers 工具，并用声明式工具绑定控制 Agent 的工具可见性。工具按 ``peer_id`` 通过 Runtime 查询目标 Agent。两个 Composable 各司其职：``use_peers()`` 读取 ``peers`` 目录并将其注入系统提示词，``use_retry()`` 为模型调用配置重试，裁判使用默认设置而猜词者最多重试五次。
 
-``root.fya``：
+新建一个项目目录，并创建以下四个文件：
 
-.. code-block:: yaml
-
-   description: 最小问答助手
-   model_tag: default
-   ---
-   $system_prompt:
-   你是一个简洁的中文助手，回答控制在三句话以内。
-
-``main.py``：
+``main.py`` 安装 Peers 插件，并以稳定 ID 挂载两个 Agent：
 
 .. code-block:: python
 
    from flowing import Runtime
+   from flowing.plugins.peers import PeersPlugin
 
    async def main() -> Runtime:
        runtime = Runtime()
        runtime.set_model_tags("@/model-tags.yaml")
-       await runtime.mount("@/root.fya", agent_id="agent-main")
+       # 注册 Peers 工具；Agent 是否能调用工具仍由各自的 tools: 声明决定。
+       runtime.install(PeersPlugin())
+       await runtime.mount("@/oracle.fya", agent_id="oracle")
+       await runtime.mount("@/guesser.fya", agent_id="guesser")
        return runtime
 
-要让 Quickstart 中的 Agent 调用模型，先添加 Provider 并配置连接信息。下面以 OpenRouter 为例：
+``oracle.fya`` 描述知道谜底的裁判。它只允许向 ``guesser`` 发送消息：
+
+.. code-block:: python
+
+   description: "私下保管谜底，并判断猜词者的问题。"
+   model_tag: default
+   tools:
+     - message-peer
+   peers:
+     guesser: "猜词者；通过私聊向你提问。请回复其答案。"
+
+   ---
+   $system_prompt:
+   你是猜词游戏的裁判。用户会私下告诉你谜底。记住谜底，但不要向猜词者透露。
+   猜词者发来问题时，根据谜底判断答案是肯定、否定还是无法判断。你必须调用
+   message-peer 工具，将 peer_id 设为 "guesser"，并发送包含原问题及以下三种
+   内容之一的消息：是、否、不确定。不要添加解释或其他文字，也不要直接回复猜词者。
+   用户私下告诉你谜底时，只需简短确认设置完成，不要联系猜词者。
+
+   ---
+   $script:
+   from flowing.composables import use_retry
+   from flowing.plugins.peers import use_peers
+
+
+   async def setup(self):
+       # 注入 peers 目录提示，并启用默认的 Provider 调用重试策略。
+       use_peers(self)
+       use_retry(self)
+
+       # peer 消息发出后结束当前回合，等待对方的下一条消息。
+       def _end_turn(agent, result):
+           if result.status == "completed" and agent.current_turn is not None:
+               agent.current_turn.finish = True
+           return result
+
+       self.hooks.after_tool_call["message-peer"](_end_turn, by="guessing-game")
+
+``guesser.fya`` 描述通过提问推断谜底的猜词者：
+
+.. code-block:: python
+
+   description: "通过向裁判提问来猜出谜底。"
+   model_tag: default
+   tools:
+     - message-peer
+   peers:
+     oracle: "知道谜底并回答是、否或不确定的裁判。请向其询问问题。"
+
+   ---
+   $system_prompt:
+   你正在玩猜词游戏。当用户说明开始后，请每次向 oracle 智能体（裁判）提出一个可以用是或否回答的问题。
+   不要要求裁判直接说出谜底。收到裁判回复后，根据游戏规则继续向该智能体提问；得到最终答案时，向用户
+   给出你的最佳猜测。
+
+   ---
+   $script:
+   from flowing.composables import use_retry
+   from flowing.plugins.peers import use_peers
+
+
+   async def setup(self):
+       # 注入 peers 目录提示，并将单回合重试上限设为五次。
+       use_peers(self)
+       use_retry(self, max_retries=5)
+
+       # peer 消息发出后结束当前回合，等待裁判的回复。
+       def _end_turn(agent, result):
+           if result.status == "completed" and agent.current_turn is not None:
+               agent.current_turn.finish = True
+           return result
+
+       self.hooks.after_tool_call["message-peer"](_end_turn, by="guessing-game")
+
+``model-tags.yaml`` 将查询标签 ``default`` 映射到 Model 条目 ``luna``：
+
+.. code-block:: yaml
+
+   tags:
+     default: luna
+
+要让这两个 Agent 调用模型，先添加 OpenRouter Provider 并配置连接信息：
 
 .. code-block:: console
 
@@ -84,11 +161,7 @@ Provider 配置完成后，再登记引用它的 Model 条目。示例将条目�
 
 ``default`` model-tag 是查询标签，不携带 Provider 信息；它映射到 ``luna`` Model 条目，而条目再单独指定 ``openrouter`` Provider 和 API 模型 ID ``openai/gpt-6-luna``。adapter 参数提示依赖 API 模型 ID，不保证远端模型支持对应参数。
 
-.. code-block:: yaml
-
-   # model-tags.yaml
-   tags:
-     default: luna
+这里有两种不同的声明：``tools:`` 显式绑定 Agent 可调用的 ``message-peer`` 工具；``peers:`` 列出可联系 Agent 的 ID 与说明。``PeersPlugin`` 注册 Peers 工具；工具调用时按声明的目标 ID 通过 Runtime 查询目标 Agent。``use_peers(self)`` 这个 Composable 只读取当前 Agent 的 ``peers``，将目录动态注入系统提示词，不负责工具绑定。两个 Agent 都通过 ``use_retry()`` 启用 Provider 调用重试；裁判使用默认设置，猜词者使用 ``max_retries=5``。
 
 运行：
 
@@ -96,17 +169,18 @@ Provider 配置完成后，再登记引用它的 Model 条目。示例将条目�
 
    $ export OPENROUTER_API_KEY='<your key>'
    $ flowing repl .
-   (agent-main)>>> 用一句话介绍你自己。
-   我是一个简洁的中文助手，回答会尽量控制在三句话以内。
-   (agent-main)>>> /exit
+   (new agent)>>> /agent oracle
+   (oracle)>>> 谜底是梨。请记住谜底，不要告诉猜词者。
+   (oracle)>>> /agent guesser
+   (guesser)>>> 开始游戏。谜底是梨、苹果或香蕉之一。你最多可以提出三个是非问题，然后给出你的猜测。
 
-这轮对话并没有随退出而消失：项目目录下的 ``.flowing/`` 里保存着刚刚产生的消息记录。``agent_id`` 固定意味着再次执行 ``flowing repl .`` 时，找回的是同一个 Agent 及其全部历史，无需额外的恢复代码。
+``guesser`` 通过 ``message-peer`` 向 ``oracle`` 发送问题，裁判只返回“是”“否”或“不确定”；谜底留在裁判自己的会话中。两个 Agent 的消息记录都保存在项目目录下的 ``.flowing/`` 中，固定的 ``agent_id`` 让再次启动时可以恢复各自的历史。
 
 进一步
 ------
 
 - **能力接入**：``tools:`` 声明内置工具、MCP 服务，或将 shell 命令与 HTTP 接口声明为工具；自定义逻辑经 ``ScriptTool`` 实现。
-- **多智能体**：``subagents:`` 声明子智能体类型，编排者依据自动生成的目录路由派单；也可以在代码中直接创建子 Agent 并行执行。``PeersPlugin`` 则通过 ``peers:`` 目录让同一 Runtime 中的 Agent 经消息队列定向交互。
+- **多智能体**：``subagents:`` 声明子智能体类型，编排者依据自动生成的目录路由派单；也可以在代码中直接创建子 Agent 并行执行。``PeersPlugin`` 则让同一 Runtime 中的 Agent 通过 ``peers:`` 目录和消息队列定向交互。
 - **运行介入**：在钩子点挂载 handler——工具执行前拦截待审批、回合收尾时审计、Provider 出错时换模型重试。内置的 ``use_retry`` / ``use_compact`` 即按此模式实现，可直接参考改写。
 - **嵌入宿主**：``launch()`` 返回的 Runtime 由宿主持有，输入走 ``query`` / ``message`` / ``steer``，输出经钩子订阅（流式输出、完成通知、调用拦截）。
 

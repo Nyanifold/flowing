@@ -33,31 +33,107 @@ pip install flowing-agent
 
 ## Quick start
 
-Create a project directory with three files.
+This example builds a two-agent guessing game: the referee `oracle` privately keeps the answer, while the player `guesser` asks directed questions and works it out. It shows how one Runtime can host multiple agents, how `PeersPlugin` registers Peers tools, and how declarative tool bindings control which tools each agent can see. A peer tool looks up its target agent by ID through the Runtime. The two composables have separate roles: `use_peers()` reads the `peers` catalog and injects it into the system prompt, while `use_retry()` configures model-call retries with the default settings for the referee and up to five retries for the guesser.
 
-`root.fya`:
+Create a project directory with the following four files:
 
-```yaml
-description: Minimal Q&A assistant
-model_tag: default
----
-$system_prompt:
-You are a concise assistant. Answer in at most three sentences.
-```
-
-`main.py`:
+`main.py` installs the Peers plugin and mounts both agents with stable IDs:
 
 ```python
 from flowing import Runtime
+from flowing.plugins.peers import PeersPlugin
 
 async def main() -> Runtime:
     runtime = Runtime()
     runtime.set_model_tags("@/model-tags.yaml")
-    await runtime.mount("@/root.fya", agent_id="agent-main")
+    # Register Peers tools; each agent still declares which tools it can call.
+    runtime.install(PeersPlugin())
+    await runtime.mount("@/oracle.fya", agent_id="oracle")
+    await runtime.mount("@/guesser.fya", agent_id="guesser")
     return runtime
 ```
 
-To let the Quickstart agent call a model, first add a Provider with its connection details. This example uses OpenRouter:
+`oracle.fya` defines the referee, who privately knows the answer and can message only `guesser`:
+
+```python
+description: "Keeps the answer private and evaluates the guesser's questions."
+model_tag: default
+tools:
+  - message-peer
+peers:
+  guesser: "The player who asks you questions privately. Reply with your answer."
+
+---
+$system_prompt:
+You are the referee in a guessing game. The user will privately tell you the answer. Remember it, but do not reveal it to the guesser.
+When the guesser sends a question, decide whether the answer is yes, no, or uncertain. You must call
+message-peer with peer_id set to "guesser" and send a message containing the original question followed by exactly one of: yes, no, or uncertain.
+Do not add an explanation or other text, and do not reply to the guesser directly. When the user privately tells you the answer, briefly confirm that it is set and do not contact the guesser.
+
+---
+$script:
+from flowing.composables import use_retry
+from flowing.plugins.peers import use_peers
+
+
+async def setup(self):
+    # Add the peers catalog prompt and enable retries with the default settings.
+    use_peers(self)
+    use_retry(self)
+
+    # End this turn after sending a peer message so the agent can await a reply.
+    def _end_turn(agent, result):
+        if result.status == "completed" and agent.current_turn is not None:
+            agent.current_turn.finish = True
+        return result
+
+    self.hooks.after_tool_call["message-peer"](_end_turn, by="guessing-game")
+```
+
+`guesser.fya` defines the player, who infers the answer by asking the referee:
+
+```python
+description: "Guesses the answer by asking the referee questions."
+model_tag: default
+tools:
+  - message-peer
+peers:
+  oracle: "The referee who knows the answer and replies yes, no, or uncertain. Ask it questions."
+
+---
+$system_prompt:
+You are playing a guessing game. When the user starts the game, ask the oracle one yes-or-no question at a time.
+Do not ask the referee to reveal the answer directly. After each reply, continue according to the rules; once you know the answer,
+give your best guess to the user.
+
+---
+$script:
+from flowing.composables import use_retry
+from flowing.plugins.peers import use_peers
+
+
+async def setup(self):
+    # Add the peers catalog prompt and allow up to five retries per turn.
+    use_peers(self)
+    use_retry(self, max_retries=5)
+
+    # End this turn after sending a peer message so the agent can await the referee.
+    def _end_turn(agent, result):
+        if result.status == "completed" and agent.current_turn is not None:
+            agent.current_turn.finish = True
+        return result
+
+    self.hooks.after_tool_call["message-peer"](_end_turn, by="guessing-game")
+```
+
+`model-tags.yaml` maps the lookup tag `default` to the `luna` Model entry:
+
+```yaml
+tags:
+  default: luna
+```
+
+To let both agents call a model, first add an OpenRouter Provider with its connection details:
 
 ```console
 $ flowing-config providers add
@@ -81,28 +157,25 @@ API model ID: openai/gpt-6-luna
 
 The `default` model tag is a lookup label and carries no Provider information. It resolves to the `luna` Model entry, which separately selects the `openrouter` Provider and API model ID `openai/gpt-6-luna`. Adapter parameter suggestions depend on the API model ID and do not guarantee support by the remote model.
 
-```yaml
-# model-tags.yaml
-tags:
-  default: luna
-```
+These declarations serve different purposes: `tools:` explicitly binds `message-peer` for an agent to call, while `peers:` lists the allowed peer IDs and their descriptions. `PeersPlugin` registers the Peers tools; when called, a peer tool looks up the target agent by ID through the Runtime. The `use_peers(self)` composable only reads the current agent's `peers` field and injects the catalog into its dynamic system prompt; it does not bind tools. Both agents enable Provider call retries with `use_retry()`; the referee uses the default settings, while the guesser sets `max_retries=5`.
 
 Run:
 
 ```console
 $ export OPENROUTER_API_KEY='<your key>'
 $ flowing repl .
-(agent-main)>>> Introduce yourself in one sentence.
-I'm a concise assistant, keeping answers to three sentences or fewer.
-(agent-main)>>> /exit
+(new agent)>>> /agent oracle
+(oracle)>>> The answer is pear. Remember it, but do not tell the guesser.
+(oracle)>>> /agent guesser
+(guesser)>>> Start the game. The answer is one of pear, apple, or banana. Ask at most three yes-or-no questions, then make your guess.
 ```
 
-The conversation doesn't vanish on exit: the messages it produced are persisted under `.flowing/` in the project directory. A fixed `agent_id` means that running `flowing repl .` again brings back the same agent with its full history — no recovery code required.
+The `guesser` sends questions to `oracle` through `message-peer`; the referee replies only yes, no, or uncertain, and keeps the answer in its own conversation. Both agents' messages are persisted under `.flowing/` in the project directory, and their fixed `agent_id` values let a later run restore each history.
 
 ## Going further
 
 - **Capability access**: declare built-in tools, MCP servers, or shell commands and HTTP endpoints as tools via `tools:`; implement custom logic with `ScriptTool`.
-- **Multi-agent**: declare subagent types under `subagents:` and the orchestrator routes work using the auto-generated catalog; you can also create subagents programmatically and run them in parallel.
+- **Multi-agent**: declare subagent types under `subagents:` and the orchestrator routes work using the auto-generated catalog; you can also create subagents programmatically and run them in parallel. `PeersPlugin` enables directed message-queue interactions between agents in one Runtime through a `peers:` catalog.
 - **Intervention**: attach handlers at hook points — intercept a tool call pending approval, audit at turn completion, switch models and retry on provider errors. The built-in `use_retry` / `use_compact` are implemented in exactly this way and can serve as references.
 - **Embedding**: the host application holds the Runtime returned by `launch()`; input goes through `query` / `message` / `steer`, output through hook subscriptions (streaming output, completion notices, call interception).
 
