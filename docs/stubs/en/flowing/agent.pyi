@@ -185,9 +185,10 @@ class TurnContext:
       it repeatedly has no additional effect, and ``on_turn_abort`` runs at
       most once per turn. ``after_turn`` handlers can inspect it to distinguish
       normal completion from cancellation.
-    - ``finish`` requests normal completion without a return payload. A tool
-      hook can set it to ``True``; the current tool batch completes before the
-      turn ends. It does not change the value written to ``Agent.last_result``.
+    - ``finish`` requests normal completion. The turn runner sets it when the
+      Provider returns ``finish=True``; a tool hook can also set it. The flag
+      controls turn completion, while result production follows the existing
+      ``Agent.last_result`` rules. The current tool batch completes first.
     - ``usages`` accumulates the ``Usage`` objects reported by successful
       ``provider_gen`` calls in this turn. The entries are the same objects
       attached to their messages, not copies; ``Message.usage`` remains the
@@ -197,9 +198,9 @@ class TurnContext:
     - ``finish_output`` contains the structured payload returned by the finish
       tool. Setting it requests natural turn completion after the current
       tool batch finishes, as if the Provider had returned ``finish=True``.
-      Finalization stores the payload in ``Agent.last_result``. Set ``finish``
-      when completion needs no payload. This field is transient and is not
-      persisted.
+      Finalization stores the payload in ``Agent.last_result``. This payload
+      field and the ``finish`` completion flag have separate roles. This field
+      is transient and is not persisted.
     - An empty turn, such as one aborted immediately after starting, creates
       no new tree node. ``message_ids`` may contain only the triggering
       message or may be empty, and ``current_head_id`` does not change.
@@ -247,9 +248,10 @@ class TurnContext:
     payload in ``last_result``. This field is transient and is not persisted.
     """
     finish: bool
-    """Requests normal completion without a return payload. The current tool
-    batch completes before the turn ends; this flag does not change the value
-    written to ``Agent.last_result``.
+    """Requests normal completion. The turn runner sets it when the Provider
+    returns ``finish=True``; a tool hook can also set it. The current tool batch
+    completes before the turn ends. Result production follows the existing
+    ``Agent.last_result`` rules.
     """
 
 
@@ -840,8 +842,8 @@ class Agent:
     it before resolving
     waiters, including for aborted, cancelled, and failed turns. A non-``None``
     ``turn.finish_output`` takes precedence; otherwise the value is the text
-    of the last ``PROVIDER`` message in the turn. A control-only
-    ``turn.finish`` request does not add a payload. If no Provider message
+    of the last ``PROVIDER`` message in the turn. ``turn.finish`` controls turn
+    completion and does not determine this value. If no Provider message
     exists or its text is empty, the value is ``None``.
     ``side_query`` does not update it.
     """

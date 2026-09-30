@@ -38,8 +38,9 @@ external events are all represented as `Message`, and the agent's resident
 work loop consumes the queue serially, with each (batch of) message(s)
 driving one logical Turn — until a response with `finish=True` or a hook sets
 `turn.finish` / a tool sets `finish_output`. The current tool batch completes
-before a hook-requested end; `turn.finish` carries no result payload. This chapter
-covers only two message kinds (text input/output and tool calls); the full
+before a hook-requested end; `turn.finish` controls completion while result
+production follows the turn's result rules. This chapter covers only two
+message kinds (text input/output and tool calls); the full
 message type system is the topic of 1-2.
 
 ### Three enqueue entries: choose by whether you need the result

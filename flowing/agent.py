@@ -314,7 +314,7 @@ class TurnContext:
 
         agent.hooks.before_turn(_reminder)
 
-    ``after_tool_call`` 钩子可仅请求结束本回合，不设置结果载荷：
+    ``after_tool_call`` 钩子可请求结束本回合：
 
     .. code-block:: python
 
@@ -338,9 +338,10 @@ class TurnContext:
       / 钩子内直接置位走同一路径）；置位幂等，``on_turn_abort`` 随之
       每回合至多触发一次。``after_turn`` 钩子读 ``aborted`` 区分正常结束
       与取消。
-    - ``finish`` 是不带返回载荷的正常结束标志。工具调用钩子可置为
-      ``True``，当前工具批次执行完后回合自然结束；它不修改
-      ``Agent.last_result`` 的产出规则。瞬态字段，随回合丢弃、不落盘。
+    - ``finish`` 是正常结束标志，只控制回合是否结束。Provider 响应
+      ``finish=True`` 时，回合执行体会同步置位；工具调用钩子也可置为
+      ``True``。当前工具批次执行完后回合自然结束；结果产出仍按
+      ``Agent.last_result`` 的既有规则处理。瞬态字段，随回合丢弃、不落盘。
     - ``usages`` 是本回合各次成功 ``provider_gen`` 上报用量的纯内存累加
       器（追加的是消息上附着的同一个 ``Usage`` 对象引用，不是第二份
       数据；用量唯一权威是 ``Message.usage``）；收尾时聚合进
@@ -348,8 +349,8 @@ class TurnContext:
       （``side_query``）不经回合循环，其用量不记入本字段。
     - ``finish_output`` 是 finish 工具的结构化交卷载荷：置位即请求本
       回合自然结束（工具段照常执行完，随后视同 ``finish=True`` 走统一
-      收尾），载荷由收尾段写入 ``Agent.last_result``。只需结束而不需载荷时
-      设置 ``finish``。瞬态字段，随回合丢弃、不落盘。
+      收尾），载荷由收尾段写入 ``Agent.last_result``。它提供结构化结果；
+      ``finish`` 独立控制回合是否结束。瞬态字段，随回合丢弃、不落盘。
     - 边缘情况：空 Turn（启动即被 abort）不产生新树节点，
       ``message_ids`` 可能只含触发消息或为空，``current_head_id`` 不变。
 
@@ -391,8 +392,9 @@ class TurnContext:
     ``last_result``。瞬态字段，随回合丢弃、不落盘。
     """
     finish: bool = False
-    """不带返回载荷的正常结束标志。置为 ``True`` 后，当前工具批次完成
-    即结束回合；不修改 ``Agent.last_result`` 的产出规则。
+    """正常结束标志，只控制回合是否结束。Provider 响应 ``finish=True``
+    时，回合执行体会同步置位；工具调用钩子也可置为 ``True``。当前工具
+    批次完成即结束回合；结果产出仍按 ``Agent.last_result`` 的既有规则处理。
     """
 
 
@@ -1257,9 +1259,9 @@ class Agent:
 
     填充规则（回合收尾时、resolve 等待者之前写入）：``turn.finish_output``
     非 ``None`` → 该 dict（finish 结构化交卷）；否则 → 本轮最后一条
-    PROVIDER 消息的文本，为空串则写 ``None``。仅设置 ``turn.finish`` 只请求
-    正常结束，不提供载荷，故仍按 PROVIDER 文本规则填充。abort / cancel /
-    error 路径同样覆写。``side_query`` 不写本字段。
+    PROVIDER 消息的文本，为空串则写 ``None``。``turn.finish`` 只控制回合
+    结束，不决定载荷；abort / cancel / error 路径同样覆写。``side_query``
+    不写本字段。
     """
     _executions: dict[str, Execution]
     """执行追踪注册表（动态结构：仅“有正在运行的异步操作”时有条目）；
@@ -4619,9 +4621,9 @@ class Agent:
         挂树、不 abort，当轮 context 可见）→ ``_assemble_context`` →
         ``provider_gen`` （异常 → 构造 ``ProviderErrorContext`` → dispatch
         ``on_provider_error`` → ``can_continue=False`` 则 break，``True``
-        则 continue）→ 响应
-        消息挂树 → 工具调用循环（同一响应内全部 ``tool_call`` 并行执行，
-        批次前同一 pause/abort 检查点）→ ``response.finish``、
+        则 continue）→ 响应返回后将 ``response.finish`` 同步到
+        ``turn.finish`` → 响应消息挂树 → 工具调用循环（同一响应内全部
+        ``tool_call`` 并行执行，批次前同一 pause/abort 检查点）→
         ``turn.finish`` 或 ``finish_output`` 置位则 break。三处 abort
         判定互斥（各自随即
         break）且 ``turn.aborted`` 幂等置位，``on_turn_abort`` 每回合
@@ -4689,6 +4691,8 @@ class Agent:
                             self.node_id, type(exc).__name__, exc)
                         break
                     continue    # handler 已完成退避/换模型/abort_turn()
+                if response.finish:
+                    turn.finish = True   # Provider 的自然结束统一写入 TurnContext
                 if response.message is not None:
                     if response.message.usage is not None:
                         # turn 级用量累加（追加消息上同一 Usage 对象的
@@ -4755,7 +4759,7 @@ class Agent:
                             raise errors[0]   # 框架错误：已成功的结果已挂树，异常继续走 _run_turn 的 except 通道
                 if turn.aborted:
                     break
-                if response.finish or turn.finish or turn.finish_output is not None:
+                if turn.finish or turn.finish_output is not None:
                     break   # 自然结束（含 finish 置位：工具段照常执行完再收尾）
         except Intercepted:   # 拦截走异常通道（捕获结局信号）
             intercepted = True
