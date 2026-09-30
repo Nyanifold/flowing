@@ -82,7 +82,7 @@ async def setup(self):
     use_peers(self)
     use_retry(self)
 
-    # peer 消息发出后结束当前回合，等待对方的下一条消息。
+    # status == "completed" 表示消息发送成功；本示例随即结束回合，不再请求 LLM 处理该工具结果。
     def _end_turn(agent, result):
         if result.status == "completed" and agent.current_turn is not None:
             agent.current_turn.finish = True
@@ -118,7 +118,7 @@ async def setup(self):
     use_peers(self)
     use_retry(self, max_retries=5)
 
-    # peer 消息发出后结束当前回合，等待裁判的回复。
+    # status == "completed" 表示消息发送成功；本示例随即结束回合，不再请求 LLM 处理该工具结果。
     def _end_turn(agent, result):
         if result.status == "completed" and agent.current_turn is not None:
             agent.current_turn.finish = True

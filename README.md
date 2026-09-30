@@ -81,7 +81,7 @@ async def setup(self):
     use_peers(self)
     use_retry(self)
 
-    # End this turn after sending a peer message so the agent can await a reply.
+    # status == "completed" means the send succeeded; this example ends the turn without another LLM request for the result.
     def _end_turn(agent, result):
         if result.status == "completed" and agent.current_turn is not None:
             agent.current_turn.finish = True
@@ -117,7 +117,7 @@ async def setup(self):
     use_peers(self)
     use_retry(self, max_retries=5)
 
-    # End this turn after sending a peer message so the agent can await the referee.
+    # status == "completed" means the send succeeded; this example ends the turn without another LLM request for the result.
     def _end_turn(agent, result):
         if result.status == "completed" and agent.current_turn is not None:
             agent.current_turn.finish = True
