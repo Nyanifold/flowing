@@ -150,8 +150,8 @@ async def cmd_repl(path: str, main_file: str | None = None, *, extra_slash_handl
          with the default ``parent_id=None``, binds the new root Agent, and
          sends the input as a string to :meth:`flowing.agent.Agent.query`.
          ``query`` packages the USER message, enqueues it, and waits for the
-         turn result. The REPL prints the final text and then shows the next
-         prompt.
+         turn result. Provider text is displayed through
+         ``on_provider_delta``, then the REPL shows the next prompt.
        - A line beginning with ``/`` is dispatched using
          :data:`SLASH_COMMANDS` and is not added to the message stream. For a
          command that takes an argument, the first space separates the
@@ -163,13 +163,13 @@ async def cmd_repl(path: str, main_file: str | None = None, *, extra_slash_handl
        ``on_turn_append`` prints full TOOL results and STEER messages, and
        prints each tool call in a PROVIDER message on its own line with its
        complete non-empty arguments as JSON. These messages are not collapsed
-       or truncated. ``after_turn`` prints the final text for turns initiated
-       by sources other than the REPL's own ``query()`` call, such as Cron or
-       communication extensions, when no text or thinking delta is already
-       visible. If deltas have been shown, the handler closes the current line
-       and does not print the final text again. ThinkingBlock content is shown
-       in full. On ``/agent`` or ``/use``, subscriptions move to the newly
-       bound Agent.
+       or truncated. ``after_turn`` closes unfinished output lines for turns
+       initiated by sources other than the REPL's own ``query()`` call, such
+       as Cron or communication extensions. Provider text is displayed only
+       through ``on_provider_delta``; the REPL does not print
+       ``TurnResult.final_text`` at turn completion. ThinkingBlock content is
+       shown in full. On ``/agent`` or ``/use``, subscriptions move to the
+       newly bound Agent.
     5. ``/exit``, ``/quit``, or EOF (Ctrl-D) calls
        ``runtime.shutdown()`` and returns :data:`flowing.interfaces.EXIT_OK`.
 
@@ -221,9 +221,9 @@ async def cmd_repl(path: str, main_file: str | None = None, *, extra_slash_handl
     asyncio event loop, and output from background tasks is displayed without
     obscuring the prompt. An unrecognized ``/xxx`` prints a hint to use
     ``/help`` and the loop continues. A ``TurnResult`` with ``status="error"``
-    does not terminate the REPL. Its final text is printed only when no
-    streamed output has already been shown; streamed output is not printed a
-    second time. If restoring an Agent at startup or after ``/agent``/``/use``
+    does not terminate the REPL. Provider text is displayed through
+    ``on_provider_delta``; the REPL does not print ``TurnResult.final_text``
+    at turn completion. If restoring an Agent at startup or after ``/agent``/``/use``
     fails because its record is damaged, the error is printed and the binding
     is unchanged; the user can inspect ``/agents`` and choose another Agent.
     During a turn, SIGINT cooperatively cancels that turn with ``abort_turn()``

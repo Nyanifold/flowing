@@ -15,7 +15,7 @@ from prompt_toolkit.document import Document
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.patch_stdout import patch_stdout
 
-from flowing.agent import Agent, TurnContext, TurnResult, build_turn_result
+from flowing.agent import Agent, TurnContext
 from flowing.message import (
     Message,
     MessageKind,
@@ -259,8 +259,8 @@ async def cmd_repl(
          提示，不创建。创建经 ``runtime.create_agent(agent_type)``
          （``parent_id=None`` 缺省即根）并绑定。然后以 ``str`` 调
          :meth:`flowing.agent.Agent.query` （打包 USER 消息在其内部
-         完成），等待回合结果（``TurnResult``），打印最终文本，再
-         显示下一个提示符。
+         完成）；Provider 正文通过 ``on_provider_delta`` 显示，再显示
+         下一个提示符。
        - ``/`` 开头：按 :data:`SLASH_COMMANDS` 解释，不进消息流；
          带参命令按第一个空格分流参数。
     4. 过程显示（绑定期间生效，``/use`` 切换时订阅随之迁移）：订阅
@@ -269,8 +269,9 @@ async def cmd_repl(
        注入消息打印全文，PROVIDER 消息中的工具调用逐调用独立成行
        （名称 + 完整参数 JSON），均不折叠、不截断；
        ``after_turn``——非 repl 的
-       ``query()`` 驱动的回合（cron / comm 等触发源）收尾后打印最终
-       文本。多轮推理（ThinkingBlock）全文可见。
+       ``query()`` 驱动的回合（cron / comm 等触发源）收尾未换行的输出。
+       Provider 正文只由 ``on_provider_delta`` 显示。多轮推理
+       （ThinkingBlock）全文可见。
     5. ``/exit``、``/quit`` 或 EOF（Ctrl-D）→ ``runtime.shutdown()``
        → 返回 :data:`EXIT_OK`。
 
@@ -317,8 +318,8 @@ async def cmd_repl(
       ``abort_turn()``——协作式取消当轮（回合以 cancelled 收尾），repl 与
       会话存活；提示符空闲时 SIGINT 中断当前输入行（换行重提示，不退出）。
       SIGTERM 走优雅关闭桥（``runtime.shutdown()``）。
-    - ``query()`` 返回 ``status="error"`` 的 ``TurnResult``：照常
-      打印错误文本，repl 不因此退出。
+    - ``query()`` 返回 ``status="error"`` 的 ``TurnResult``：repl
+      不因此退出。
     - ``/use`` 或启动绑定恢复失败（记录损坏）：打印错误，绑定不变，
       可再经 ``/agents`` + ``/use`` 现场选择。
 
@@ -355,8 +356,8 @@ async def cmd_repl(
     # ---- 过程显示的共享状态与观察 handler ---------------------------------
     # mid_line：屏幕上有未换行的流式输出（delta 就地追加，摘要做换行补偿——
     # 终端交错策略为简单换行打印，不做光标控制）；
-    # query_active：当前回合由 repl 自己的 query 驱动（其最终文本由 query
-    # 返回路径打印，after_turn handler 不重复打印）
+    # query_active：当前回合由 repl 自己的 query 驱动（after_turn 不收尾，
+    # 由 query 返回路径收尾）
     flags = {"mid_line": False, "query_active": False,
              "thinking_line": False, "thinking_streamed": False,
              "bound_agent": None}   # SIGINT 处理器读：回合进行中取消当轮
@@ -422,20 +423,14 @@ async def cmd_repl(
             _print_line(line)
         return msg
 
-    def _after_turn(host: Agent, turn: TurnContext) -> TurnContext:
-        # 后台回合（cron / comm 等无 repl 等待者的触发源）收尾后打印最终
-        # 文本，保证观察窗口可见；已有增量（正文/思考）上屏则不重复最终
-        # 文本（纯增量）。build_turn_result 在 after_turn 之后才组装
-        # TurnResult，此处复用同一聚合函数现场取文本
+    def _after_turn(_host: Agent, turn: TurnContext) -> TurnContext:
+        # Provider 原始正文已由 on_provider_delta 显示。后台回合在收尾时只需
+        # 结束尚未换行的正文 / 思考行；工具调用与工具结果摘要已自行换行。
         if not flags["query_active"]:
             if flags["thinking_line"] or flags["mid_line"]:
                 _end_thinking()
                 print()
                 flags["mid_line"] = False
-            else:
-                result = build_turn_result(turn, host)
-                if result.final_text:
-                    _print_line(result.final_text)
         return turn
 
     def _subscribe(a: Agent) -> None:
@@ -583,21 +578,21 @@ async def cmd_repl(
                     # 创建失败（如 agent_type 已不可解析）：打印错误，保持未绑定
                     print(f"failed to create agent: {exc}")
                     continue
-            # 以 str 调 query()（打包 USER 消息在其内部完成），等待回合结果
+            # 以 str 调 query()（打包 USER 消息在其内部完成）；正文由 delta 显示
             flags["query_active"] = True
             try:
-                result: TurnResult = await agent.query(line)     # 返回 TurnResult；repl 不走副线
+                await agent.query(line)                          # repl 不走副线
             finally:
                 flags["query_active"] = False
             if flags["thinking_line"] or flags["mid_line"]:
-                # 增量已流式上屏（思考灰显 / 正文）→ 收尾换行，不再重复最终文本
+                # 增量已流式上屏（思考灰显 / 正文）→ 收尾换行
                 _end_thinking()
                 print()
                 flags["mid_line"] = False
             else:
-                # 无流式（error / blocked / 空回复 / 非 tty 思考留待摘要）：
-                # 照常打印最终文本；status="error" 时照常打印（可能为空串）
-                print(result.final_text)
+                # 无未换行的增量（例如工具摘要已独占成行）：保留行间距，
+                # 不从 TurnResult.final_text 回填 Provider 正文。
+                print()
     # 还原 SIGINT 处理器（测试进程内反复进出 repl 不串扰）后优雅关闭
     if _prev_sigint is not None:
         import signal
