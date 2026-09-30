@@ -73,7 +73,7 @@ Flowing 是一个为复杂交互设计的轻量级、可扩展的描述式 Agent
 
    $ flowing-config models add
    # Press Enter at the configuration path prompt to use the Runtime default.
-   Model entry name (identity): small
+   Model entry name (identity): luna
    Known Provider entries: openrouter
    Provider entry name (identity): openrouter
    API model ID: openai/gpt-6-luna
@@ -85,13 +85,13 @@ Flowing 是一个为复杂交互设计的轻量级、可扩展的描述式 Agent
    Add optional model-specific parameters. Enter one-line YAML values; quote template or path strings and use flow-style collections such as {key: value} for mappings.
    Additional model field name (press Enter to finish): [Enter]
 
-``default`` model-tag 是查询标签，不携带 Provider 信息；它映射到 ``small`` Model 条目，而条目再单独指定 ``openrouter`` Provider 和 API 模型 ID ``openai/gpt-6-luna``。adapter 参数提示依赖 API 模型 ID，不保证远端模型支持对应参数。
+``default`` model-tag 是查询标签，不携带 Provider 信息；它映射到 ``luna`` Model 条目，而条目再单独指定 ``openrouter`` Provider 和 API 模型 ID ``openai/gpt-6-luna``。adapter 参数提示依赖 API 模型 ID，不保证远端模型支持对应参数。
 
 .. code-block:: yaml
 
    # model-tags.yaml
    tags:
-     default: small
+     default: luna
 
 运行：
 
