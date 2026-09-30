@@ -51,13 +51,13 @@ $system_prompt:
 from flowing import Runtime
 
 async def main() -> Runtime:
-    runtime = Runtime(persist_dir="@/.flowing")
+    runtime = Runtime()
     runtime.set_model_tags("@/model-tags.yaml")
     await runtime.mount("@/root.fya", agent_id="agent-main")
     return runtime
 ```
 
-在同一段交互过程中配置第一个 Provider 和模型。下面以 OpenRouter 为例：
+要让 Quickstart 中的 Agent 调用模型，先添加 Provider 并配置连接信息。下面以 OpenRouter 为例：
 
 ```console
 $ flowing-config providers add
@@ -66,20 +66,17 @@ Provider entry name (identity): openrouter
 Provider adapter: openrouter
 API endpoint (base_url; leave blank to use 'https://openrouter.ai/api/v1'): [Enter]
 API key (api_key; leave blank to skip): env.OPENROUTER_API_KEY
+```
 
+Provider 配置完成后，再登记引用它的 Model 条目。示例将条目命名为 `luna`，并指定 API model ID `openai/gpt-6-luna`：
+
+```console
 $ flowing-config models add
 # Press Enter at the configuration path prompt to use the Runtime default.
 Model entry name (identity): luna
 Known Provider entries: openrouter
 Provider entry name (identity): openrouter
 API model ID: openai/gpt-6-luna
-Thinking budget in tokens (thinking_budget; optional YAML value, press Enter to skip): [Enter]
-Context window in tokens (context_window; optional YAML value, press Enter to skip): [Enter]
-Maximum output tokens (max_output_tokens; optional YAML value, press Enter to skip): [Enter]
-Suggested parameters for model 'openai/gpt-6-luna':
-Reasoning effort (support and values vary by model) (reasoning.effort; optional YAML value, press Enter to skip): high
-Add optional model-specific parameters. Enter one-line YAML values; quote template or path strings and use flow-style collections such as {key: value} for mappings.
-Additional model field name (press Enter to finish): [Enter]
 ```
 
 `default` model-tag 是查询标签，不携带 Provider 信息；它映射到 `luna` Model 条目，而条目再单独指定 `openrouter` Provider 和 API 模型 ID `openai/gpt-6-luna`。adapter 参数提示依赖 API 模型 ID，不保证远端模型支持对应参数。
@@ -116,9 +113,9 @@ $ flowing repl .
 - [精简参考](https://flowing-agent.readthedocs.io/zh_CN/flowing-ref/)：四篇覆盖整个框架，适合查阅；
 - [API 参考](https://flowing-agent.readthedocs.io/zh_CN/api.html)：按模块组织的公开 API。
 
-## 项目状态
+## 项目说明
 
-当前版本 0.1.0。框架核心已完成（700+ 测试用例通过），目前处于示例场景工程阶段。0.x 阶段仍可能存在非兼容更新；每次此类更新都会附带详尽的更新日志，说明应当如何迁移。
+0.x 阶段仍可能有非兼容更新；每次此类更新都会附带详尽的更新日志并说明迁移方式，详见 [changelogs/](changelogs/) 目录。
 
 本项目在开发过程中高度依赖 AI 辅助生成，使用了来自不同提供商、不同能力强度的模型。受个人精力所限，作者未能逐行检查全部代码；若您发现实现与文档（docstring、教程）之间存在分歧，欢迎提出 issue 指正。
 

@@ -55,12 +55,12 @@ Create a project directory with three files.
    from flowing import Runtime
 
    async def main() -> Runtime:
-       runtime = Runtime(persist_dir="@/.flowing")
+       runtime = Runtime()
        runtime.set_model_tags("@/model-tags.yaml")
        await runtime.mount("@/root.fya", agent_id="agent-main")
        return runtime
 
-Configure the first Provider and model in one interactive session. This example uses OpenRouter:
+To let the Quickstart agent call a model, first add a Provider with its connection details. This example uses OpenRouter:
 
 .. code-block:: console
 
@@ -71,19 +71,16 @@ Configure the first Provider and model in one interactive session. This example 
    API endpoint (base_url; leave blank to use 'https://openrouter.ai/api/v1'): [Enter]
    API key (api_key; leave blank to skip): env.OPENROUTER_API_KEY
 
+Once the Provider is saved, add a Model entry that refers to it. The entry is named ``luna``, with API model ID ``openai/gpt-6-luna``:
+
+.. code-block:: console
+
    $ flowing-config models add
    # Press Enter at the configuration path prompt to use the Runtime default.
    Model entry name (identity): luna
    Known Provider entries: openrouter
    Provider entry name (identity): openrouter
    API model ID: openai/gpt-6-luna
-   Thinking budget in tokens (thinking_budget; optional YAML value, press Enter to skip): [Enter]
-   Context window in tokens (context_window; optional YAML value, press Enter to skip): [Enter]
-   Maximum output tokens (max_output_tokens; optional YAML value, press Enter to skip): [Enter]
-   Suggested parameters for model 'openai/gpt-6-luna':
-   Reasoning effort (support and values vary by model) (reasoning.effort; optional YAML value, press Enter to skip): high
-   Add optional model-specific parameters. Enter one-line YAML values; quote template or path strings and use flow-style collections such as {key: value} for mappings.
-   Additional model field name (press Enter to finish): [Enter]
 
 The ``default`` model tag is a lookup label and carries no Provider information. It resolves to the ``luna`` Model entry, which separately selects the ``openrouter`` Provider and API model ID ``openai/gpt-6-luna``. Adapter parameter suggestions depend on the API model ID and do not guarantee support by the remote model.
 
@@ -121,10 +118,10 @@ Documentation
 - :doc:`Concise reference <flowing-ref/index>`: the whole framework in four parts, for quick lookup;
 - :doc:`API reference <api>`: the public API organized by module.
 
-Project status
---------------
+Project notes
+-------------
 
-Current version 0.1.0. The framework core is complete (700+ test cases passing) and the project is in the example-scenarios phase. Breaking changes are still possible during 0.x; every such release ships with a detailed changelog explaining how to migrate.
+Breaking changes may occur during the 0.x series. Each such release includes a detailed changelog with migration guidance; see the `changelogs/ directory <../../changelogs/>`__.
 
 This project was developed with heavy reliance on AI assistance, using models from different providers at different capability levels. Limited by the author's available time, not every line of code has been individually reviewed; if you find any divergence between the implementation and the documentation (docstrings, tutorials), an `issue <https://github.com/Nyanifold/flowing/issues>`__ is greatly appreciated.
 
