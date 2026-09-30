@@ -121,7 +121,7 @@ Documentation
 Project notes
 -------------
 
-Breaking changes may occur during the 0.x series. Each such release includes a detailed changelog with migration guidance; see the `changelogs/ directory <../../changelogs/>`__.
+Breaking changes may occur during the 0.x series. Each such release includes a detailed changelog with migration guidance; see the `changelogs/ directory <https://github.com/Nyanifold/flowing/tree/main/changelogs>`__.
 
 This project was developed with heavy reliance on AI assistance, using models from different providers at different capability levels. Limited by the author's available time, not every line of code has been individually reviewed; if you find any divergence between the implementation and the documentation (docstrings, tutorials), an `issue <https://github.com/Nyanifold/flowing/issues>`__ is greatly appreciated.
 

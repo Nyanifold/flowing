@@ -121,7 +121,7 @@ Provider 配置完成后，再登记引用它的 Model 条目。示例将条目�
 项目说明
 --------
 
-0.x 阶段仍可能有非兼容更新；每次此类更新都会附带详尽的更新日志并说明迁移方式，详见 `changelogs/ 目录 <../../changelogs/>`__。
+0.x 阶段仍可能有非兼容更新；每次此类更新都会附带详尽的更新日志并说明迁移方式，详见 `changelogs/ 目录 <https://github.com/Nyanifold/flowing/tree/main/changelogs>`__。
 
 本项目在开发过程中高度依赖 AI 辅助生成，使用了来自不同提供商、不同能力强度的模型。受个人精力所限，作者未能逐行检查全部代码；若您发现实现与文档（docstring、教程）之间存在分歧，欢迎提出 `issue <https://github.com/Nyanifold/flowing/issues>`__ 指正。
 
