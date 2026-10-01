@@ -71,12 +71,12 @@ def build(lang: str, *, strict: bool) -> int:
 
 
 def write_landing_page() -> None:
-    """自动扫描产物目录，写多语言入口页 ``docs/_build/html/index.html``。
+    """写站点根 ``docs/_build/html/index.html``。
 
-    任何含 ``index.html`` 的一级子目录都会列出——以后加入第三种语言
-    （无论走不走 LANGUAGES 登记），入口页都无需改动。若 ``DEFAULT_LANGUAGE``
-    对应的产物存在，入口页额外带 meta refresh 直接跳进该语言站，语言列表
-    作为不刷新环境（或想换语言）时的回退。
+    ``DEFAULT_LANGUAGE`` 的产物存在时，根页只做无感跳转——零延迟 meta
+    refresh 加一次 JS 替换，不渲染任何可见内容，可视区直接落在默认语言站。
+    该产物缺失时退化为语言列表页：任何含 ``index.html`` 的一级子目录都会
+    列出，以后加入第三种语言（无论走不走 LANGUAGES 登记）都无需改动。
     """
     html_root = BUILD / "html"
     if not html_root.is_dir():
@@ -84,24 +84,34 @@ def write_landing_page() -> None:
     roots = sorted(p for p in html_root.iterdir() if (p / "index.html").is_file())
     if not roots:
         return
-    items = "\n".join(
-        f'    <li><a href="{p.name}/index.html">'
-        f'{LANGUAGES.get(p.name, {}).get("label", p.name)}</a>'
-        f' <span class="code">({p.name})</span></li>'
-        for p in roots
-    )
     default_href = f"{DEFAULT_LANGUAGE}/index.html"
-    redirect = ""
-    note = ""
     if (html_root / DEFAULT_LANGUAGE / "index.html").is_file():
-        redirect = f'<meta http-equiv="refresh" content="0; url={default_href}">\n'
-        note = (f'<p><small>正在进入默认语言：'
-                f'<a href="{default_href}">{DEFAULT_LANGUAGE}</a>……</small></p>\n')
-    page = f"""<!DOCTYPE html>
+        label = LANGUAGES.get(DEFAULT_LANGUAGE, {}).get("label", DEFAULT_LANGUAGE)
+        page = f"""<!DOCTYPE html>
 <html lang="{DEFAULT_LANGUAGE}">
 <head>
 <meta charset="utf-8">
-{redirect}<title>Flowing Documentation</title>
+<meta http-equiv="refresh" content="0; url={default_href}">
+<script>location.replace("{default_href}");</script>
+<title>Flowing Documentation</title>
+</head>
+<body>
+<a href="{default_href}">{label}</a>
+</body>
+</html>
+"""
+    else:
+        items = "\n".join(
+            f'    <li><a href="{p.name}/index.html">'
+            f'{LANGUAGES.get(p.name, {}).get("label", p.name)}</a>'
+            f' <span class="code">({p.name})</span></li>'
+            for p in roots
+        )
+        page = f"""<!DOCTYPE html>
+<html lang="{DEFAULT_LANGUAGE}">
+<head>
+<meta charset="utf-8">
+<title>Flowing Documentation</title>
 <style>
   body {{ font-family: sans-serif; max-width: 40em; margin: 4em auto; line-height: 1.6; }}
   li {{ margin: 0.4em 0; }}
@@ -110,7 +120,7 @@ def write_landing_page() -> None:
 </head>
 <body>
 <h1>Flowing Documentation</h1>
-{note}<p>Choose a language / 选择语言以浏览文档：</p>
+<p>Choose a language / 选择语言以浏览文档：</p>
 <ul>
 {items}
 </ul>
