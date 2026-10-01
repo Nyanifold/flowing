@@ -128,13 +128,25 @@ class ProviderConfigField:
     .. seealso:: :meth:`Provider.config_fields_for` merges inherited fields.
     """
     name: str
+    """Field name in the persisted configuration mapping."""
     prompt: str
+    """English prompt text shown by the configuration command."""
     parser: Callable[[str], Any] = str
+    """Function converting user input into a configuration value."""
     default: Any | None = None
+    """Static default value; ``None`` means the field is required."""
     default_factory: Callable[[type[Provider]], Any | None] | None = None
+    """Function receiving the concrete adapter class and returning its default
+    value; returning ``None`` means the field is required."""
     sensitive: bool = False
+    """Whether the value is sensitive; the configuration list masks actual
+    values that are not template references."""
     supports_env: bool = True
+    """Whether ``env.NAME`` and ``{{env.NAME}}`` environment-variable
+    references are accepted."""
     persist_default: bool = True
+    """Whether the value is written to the configuration file when a blank
+    input adopts the default."""
 
     def __post_init__(self) -> None:
         """Validate field names, prompt text, and parser metadata."""
@@ -188,10 +200,16 @@ class ModelConfigField:
     .. seealso:: :meth:`Provider.model_fields_for` filters fields by model ID.
     """
     name: str
+    """Field name written to the model entry; dots are preserved as part of
+    the field name."""
     prompt: str
+    """English prompt text shown by the configuration command."""
     parser: Callable[[Any], Any] = ...
+    """Parser function receiving the YAML value and returning the stored value."""
     model_patterns: tuple[str, ...] = ("*",)
+    """Shell-style wildcards for the API model IDs the field applies to."""
     sensitive: bool = False
+    """Whether the field value is masked in the configuration list."""
 
     def __post_init__(self) -> None:
         """Validate the field name, match patterns, and parser."""

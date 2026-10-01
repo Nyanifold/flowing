@@ -4,10 +4,20 @@ The default REPL is a closed observation surface, as described in the
 ``flowing.interfaces`` package. The one-shot ``cli`` command is documented in
 ``flowing.interfaces.oneshot``; it is not an alias for this interactive loop.
 """
+from collections.abc import Iterator
 from typing import Awaitable, Callable
+from prompt_toolkit.completion import CompleteEvent, Completer, Completion
+from prompt_toolkit.document import Document
 from flowing.agent import Agent
 from flowing.message import Message
 from flowing.runtime import Runtime
+
+class _SlashCommandCompleter(Completer):
+    """Complete only slash commands at the beginning of the prompt line."""
+
+    def get_completions(
+        self, document: Document, complete_event: CompleteEvent
+    ) -> Iterator[Completion]: ...
 
 SLASH_COMMANDS: tuple[str, ...]
 """The closed set of slash commands recognized by the default REPL.
