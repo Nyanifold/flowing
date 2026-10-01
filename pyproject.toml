@@ -1,6 +1,6 @@
 [project]
 name = "flowing-agent"
-version = "0.1.0"
+version = "0.1.1"
 description = "A lightweight, extensible, descriptive agent runtime framework"
 authors = [{ name = "Nyanifold" }]
 license = "MIT"
