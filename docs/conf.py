@@ -47,21 +47,25 @@ def _doc_languages() -> list[dict[str, str]]:
 html_context = {
     "current_language": language,
     "doc_languages": _doc_languages(),
+    # Light only. The theme reads this from the page context (it is not a
+    # declared theme option), and the color-mode switch is not rendered at all
+    # — see _templates/article-header-buttons.html.
+    "default_mode": "light",
 }
 
 templates_path = [str(CONF_DIR / "_templates")]
 html_static_path = [str(CONF_DIR / "_static")]
-html_css_files = ["langmenu.css"]
+html_css_files = ["book-theme.css"]
 
-html_theme = "sphinx_rtd_theme"
+html_theme = "sphinx_book_theme"
 html_logo = "_static/logo.svg"
 html_favicon = "_static/favicon-32.png"
 html_theme_options = {
-    "collapse_navigation": False,
-    "sticky_navigation": True,
-    "navigation_depth": 8,
-    "includehidden": True,
-    "titles_only": False,
+    "show_toc_level": 2,
+    "use_repository_button": False,
+    "use_issues_button": False,
+    "use_download_button": False,
+    "use_fullscreen_button": False,
 }
 
 

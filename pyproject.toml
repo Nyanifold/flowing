@@ -49,7 +49,7 @@ dev = [
 docs = [
     "myst-parser>=5.1,<6",
     "sphinx>=9.1,<10",
-    "sphinx-rtd-theme>=3.1,<4",
+    "sphinx-book-theme>=1.4,<2",
 ]
 
 [tool.uv]

@@ -1,0 +1,16 @@
+/* Top bar brand colour.
+   The book theme paints .bd-header with var(--pst-color-on-background), so the
+   override needs !important plus a slightly stronger selector. */
+header.bd-header {
+  background-color: #2d9ba7 !important;
+}
+
+header.bd-header .navbar-brand,
+header.bd-header .navbar-brand p,
+header.bd-header .pst-navbar-icon,
+header.bd-header .pst-navbar-icon i,
+header.bd-header .search-button__default-text,
+header.bd-header .search-button__kbd-shortcut,
+header.bd-header kbd {
+  color: #06232a !important;
+}

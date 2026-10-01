@@ -1,0 +1,21 @@
+{% from "macros/buttons.html" import render_funcs with context %}
+
+{#-
+  Overrides the book theme's article header buttons. The color-mode switch is
+  dropped — the documentation site is light only — and the language switch
+  takes its place, next to the search button.
+-#}
+
+<div class="article-header-buttons">
+{%- for button in header_buttons -%}
+{% set btype = button.get("type") %}
+{% set bopts = button.copy() %}
+{% set _ = bopts.pop("type") %}
+{{ render_funcs[btype](**bopts) }}
+{%- endfor -%}
+
+{#- Extra theme buttons #}
+{% include "language-switcher.html" %}
+{% include "search-button.html" %}
+{% include "toggle-secondary-sidebar.html" %}
+</div>

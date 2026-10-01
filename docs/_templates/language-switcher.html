@@ -1,0 +1,14 @@
+{#-
+  Language switch. The two language trees are built as siblings under the site
+  root (en/ and zh_CN/), so the current page mirrors across with a relative
+  path and the check mark marks the language being read.
+-#}
+<div class="dropdown language-switch-container pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="{{ _('Language') }}">
+  <button class="btn btn-sm nav-link pst-navbar-icon dropdown-toggle" aria-label="{{ _('Language') }}" data-bs-toggle="dropdown">
+    <i class="fa-solid fa-language fa-lg fa-fw"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><a class="dropdown-item d-flex align-items-center" href="../en/{{ pagename }}.html"><i class="fa-solid fa-check fa-fw me-1 {% if language != 'en' %}invisible{% endif %}"></i>English</a></li>
+    <li><a class="dropdown-item d-flex align-items-center" href="../zh_CN/{{ pagename }}.html"><i class="fa-solid fa-check fa-fw me-1 {% if language != 'zh_CN' %}invisible{% endif %}"></i>中文</a></li>
+  </ul>
+</div>
