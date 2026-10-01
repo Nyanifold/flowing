@@ -20,7 +20,9 @@ Peers 与子 Agent 编排及 ``CommPlugin`` 相互独立。每次工具调用只
   目标当前回合。
 
 所有工具都按精确 ``agent_id`` 路由到同一 Runtime，并在每次调用时重新
-校验调用方的 ``peers`` allowlist。目标池记录存在但实例未加载时由 Runtime
+校验调用方的 ``peers`` allowlist。投递文本统一以
+``FROM PEER <caller node id>:\n`` 前缀开头，目标 Agent 据此识别来源。
+目标池记录存在但实例未加载时由 Runtime
 恢复。``use_peers()`` 只注入目录，不绑定工具；Agent 仍须在 ``tools:`` 或
 应用代码中显式绑定所需工具。
 

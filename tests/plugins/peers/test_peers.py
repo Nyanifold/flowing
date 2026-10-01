@@ -110,11 +110,17 @@ async def test_message_and_steer_route_peer_messages(tmp_path):
         assert message_result["message_id"] == received[0].id
         assert received[0].kind is MessageKind.PEER
         assert received[0].source == f"peer_message:{caller.node_id}"
+        message_text = "".join(
+            block.text for block in received[0].content if hasattr(block, "text"))
+        assert message_text == f"FROM PEER {caller.node_id}:\nQuestion"
         assert steer_result["peer_id"] == target.node_id
         assert steer_result["message_id"] == received[1].id
         assert received[1].kind is MessageKind.PEER
         assert received[1].priority is MessagePriority.STEER
         assert received[1].source == f"peer_steer:{caller.node_id}"
+        steer_text = "".join(
+            block.text for block in received[1].content if hasattr(block, "text"))
+        assert steer_text == f"FROM PEER {caller.node_id}:\nCheck this detail"
     finally:
         await runtime.shutdown()
 
@@ -126,6 +132,11 @@ async def test_query_peer_yields_receipt_then_turn_result_projection(tmp_path):
         target = await runtime.create_agent("test-agent", agent_id="target")
         caller = await runtime.create_agent("test-agent", agent_id="caller")
         caller.peers = {target.node_id: "The target agent."}
+        received = []
+        target.hooks.on_enqueue(
+            lambda agent, message: (received.append(message), message)[1],
+            by="test",
+        )
         script_provider(provider, text_response("The peer answer."))
         generator = QueryPeerTool().execute(target.node_id, "Answer me.", caller=caller)
 
@@ -137,6 +148,9 @@ async def test_query_peer_yields_receipt_then_turn_result_projection(tmp_path):
         assert result["peer_status"] == "completed"
         assert result["response"] == "The peer answer."
         assert isinstance(result["finish_reason"], str)
+        query_text = "".join(
+            block.text for block in received[0].content if hasattr(block, "text"))
+        assert query_text == f"FROM PEER {caller.node_id}:\nAnswer me."
         with pytest.raises(StopAsyncIteration):
             await anext(generator)
     finally:

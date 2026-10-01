@@ -3,7 +3,9 @@
 Each tool validates the caller's current peer allowlist and routes through
 ``Runtime.get_agent()``. ``query-peer`` yields a pending receipt and later an
 EVENT result; ``message-peer`` and ``steer-peer`` return after enqueueing a
-PEER message without waiting for the target turn.
+PEER message without waiting for the target turn. Delivered text is prefixed
+with ``FROM PEER <caller node id>:\n`` so the target can identify the sender;
+the prefix coexists with the ``source`` metadata.
 
 Catalog errors occur before the query receipt. Errors raised after the
 receipt, such as a missing target or a failed target turn, are delivered by

@@ -17,7 +17,9 @@ then delivers its status, final text, and finish reason as an EVENT.
 waiting for the target turn. ``steer-peer`` queues a PEER message at STEER
 priority without interrupting the target's current turn. Every tool call
 revalidates the caller's allowlist and routes by exact Agent ID in the same
-Runtime. An Agent in the Runtime pool can be recovered on demand.
+Runtime. Delivered text is prefixed with ``FROM PEER <caller node id>:\n``
+so the target can identify the sender. An Agent in the Runtime pool can be
+recovered on demand.
 
 The ``peers`` mapping must be non-empty, use non-empty string IDs and
 descriptions, and exclude the caller's own ID. Its descriptions are inserted

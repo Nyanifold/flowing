@@ -16,6 +16,8 @@ allowlist，并只向同一 Runtime 中一个精确 ID 的 Agent 投递
   不等待目标回合。
 - ``steer-peer`` 与 ``message-peer`` 相同地返回消息 ID，但通过
   ``Agent.steer()`` 使用 STEER 优先级。
+- 三件工具投递的文本统一以 ``FROM PEER <caller node id>:\n`` 前缀开头，
+  目标 Agent 据此识别消息来源；前缀与 ``source`` 元数据并存。
 - 目录错误发生在 query 收据之前。收据仅表示后台流程已接受，目标是否存在
   可能在其后的路由阶段失败。
 
@@ -32,6 +34,16 @@ from flowing.agent import Agent
 from flowing.message import MessageKind
 from flowing.plugins.peers.peers import peers_router_key
 from flowing.tool import Tool, ToolDefinition
+
+
+def _peer_content(caller: Agent, content: str) -> str:
+    """为投递文本添加 ``FROM PEER <caller node id>:`` 来源前缀。
+
+    :param caller: 发起交互的 Agent。
+    :param content: 原始投递文本。
+    :return: 以 ``FROM PEER <caller node id>:\n`` 前缀开头的文本。
+    """
+    return f"FROM PEER {caller.node_id}:\n{content}"
 
 
 class QueryPeerTool(Tool):
@@ -56,6 +68,7 @@ class QueryPeerTool(Tool):
     - ``peer_id`` 必须在调用方当前 ``peers`` 映射中声明。
     - 目标解析与 ``Agent.query()`` 均发生在首个收据之后；异步失败作为
       后台终止事件投递。
+    - 投递的 ``prompt`` 以 ``FROM PEER <caller node id>:\n`` 前缀开头。
     - 消息使用 ``MessageKind.PEER``，``source`` 为
       ``peer_query:<caller node id>``。
     """
@@ -91,7 +104,7 @@ class QueryPeerTool(Tool):
 
         peer = await router.resolve_peer(caller, peer_id)
         result = await peer.query(
-            prompt,
+            _peer_content(caller, prompt),
             kind=MessageKind.PEER,
             source=f"peer_query:{caller.node_id}",
         )
@@ -113,6 +126,7 @@ class MessagePeerTool(Tool):
 
     - 只接受调用方 ``peers`` 映射中声明的目标 ID。
     - 返回值包含 ``peer_id`` 和 ``message_id``。
+    - 投递的 ``message`` 以 ``FROM PEER <caller node id>:\n`` 前缀开头。
     - 消息来源为 ``peer_message:<caller node id>``。
     """
 
@@ -140,7 +154,7 @@ class MessagePeerTool(Tool):
         router = caller.inject(peers_router_key)
         peer = await router.resolve_peer(caller, peer_id)
         message_id = await peer.message(
-            message,
+            _peer_content(caller, message),
             kind=MessageKind.PEER,
             source=f"peer_message:{caller.node_id}",
         )
@@ -158,6 +172,7 @@ class SteerPeerTool(Tool):
 
     - 只接受调用方 ``peers`` 映射中声明的目标 ID。
     - 返回值包含 ``peer_id`` 和 ``message_id``。
+    - 投递的 ``instruction`` 以 ``FROM PEER <caller node id>:\n`` 前缀开头。
     - 消息来源为 ``peer_steer:<caller node id>``。
     """
 
@@ -190,7 +205,7 @@ class SteerPeerTool(Tool):
         router = caller.inject(peers_router_key)
         peer = await router.resolve_peer(caller, peer_id)
         message_id = await peer.steer(
-            instruction,
+            _peer_content(caller, instruction),
             kind=MessageKind.PEER,
             source=f"peer_steer:{caller.node_id}",
         )
