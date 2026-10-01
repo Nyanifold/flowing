@@ -3,28 +3,29 @@ Flowing
 
 **English** | `中文 <../zh_CN/>`__
 
-Flowing is a lightweight, extensible, descriptive agent runtime framework for complex interactions (Python ≥ 3.13). In Flowing, an agent's entire definition — its role and prompt, the LLM it uses, its tools and subagents, composable extensions, and hook code — lives in a single ``.fya`` file. The framework opens its execution pipeline to extensions at key points, and its runtime can be embedded into any Python host application as an ordinary object. The core does only three things: message flow, error classification, and hook dispatch; policies such as retries, compaction, and approvals are mounted on demand as composables or plugins.
+**Flowing** is a lightweight, extensible agent runtime framework for complex interactions (Python ≥ 3.13). It consolidates the entire definition of a single agent into one declarative ``.fya`` file, leaves the hosting and organization of multiple agents to an embeddable runtime, and opens behavior up to extension through plugins, composables, and hooks. Messages and state are persisted automatically, and history is organized as a message tree that can be edited at fine granularity. Adoption unfolds on demand: start with a single ``.fya`` file and the REPL, then gradually introduce tools, subagents, plugins, composables, and persistent state, up to embedding the runtime into a host application. The framework core handles only message flow, error classification, and hook dispatch; policies such as retries, compaction, and approvals are mounted on demand as composables or plugins.
 
 Who it's for
 ------------
 
-- You want every layer of the framework to be readable, modifiable, and auditable, rather than a black box of policy configuration;
-- You need fine-grained control over conversation history — branching off from any message, rewriting or pruning the past, instead of append-only dialogue;
-- You need the same capability to present different model views on different agents, with an explicit safety boundary: being registered does not mean the model can see it.
+- **You review and change agent definitions and logic frequently**: declarations, setup, hooks, and in-class logic all live in the same ``.fya`` file, and the bindings and visibility of tools and subagents are spelled out line by line — a single read shows what the agent can use and what the model can see, with no round-trips between assembly sites;
+- **You want business logic inside the agent itself**: an agent can freely define attributes and state, and hooks run your code at each point — beyond accepting, intercepting, or rewriting the passed-in object, they can read and write attributes, update state, record audits, query caches, or ask external systems;
+- **You want to decide policies like retries, compaction, and approvals yourself**: the core does only message flow, error classification, and hook dispatch; these policies ship as readable composables or plugins — copy them, modify them, or simply leave them off;
+- **You want to build an agent system along a progressive path**: the starting point is a single ``.fya`` file plus one model configuration, and it runs; each step toward complexity — tools and subagents, hook logic, persistent state, multi-agent orchestration, host embedding — accumulates on the same ``.fya`` file and plain Python code, introducing no new mechanism layer and requiring no change of working style;
+- **You need to embed agents into an existing process and write the orchestration yourself**: the runtime is an ordinary object holding the object graph; organization, shared dependencies, and downstream orchestration are all done in plain Python code;
+- **You need conversations and state to carry across runs, and to edit history after the fact**: messages and state are persisted automatically, and recovery is replay; history is a message tree on which you can branch off, rewrite, or prune at any message.
 
 These needs don't point to any single application shape: in Flowing, orchestration logic is plain Python code, with sequencing, branching, and concurrency expressed by the language itself. As a foundational runtime framework, it can be used to build coding, education, e-commerce, or companion agents as well as multi-agent systems, and to run multi-agent interaction experiments.
 
 Highlights
 ----------
 
-- **Message-driven runtime model**: each agent instance owns a priority message queue and a persistent work loop; user input, model responses, tool results, external events, and subagent receipts are all represented as messages, each driving a turn. ``query()`` waits for the turn result, ``message()`` is fire-and-forget, ``steer()`` redirects an in-flight turn.
-- **A message-level tree for history**: conversation history is a forest of messages, not a linear list. ``fork()`` moves a cursor to open a parallel branch while old branches stay intact; history itself supports five surgical operations — insert, branch, remove, update, reparent — all persisted as usual.
-- **Three-layer capability description**: the executable object, the LLM-visible declaration, and the agent-level binding evolve independently — the same tool can appear under different names, descriptions, and parameter views on different agents. Built-in tools ship with the runtime, but they must be explicitly declared to become visible to the model.
-- **Declarative .fya**: an agent's description, model intent, capability bindings, system prompt, and hook code live in one self-contained file; the compiled output is fully equivalent to a hand-written ``Agent`` subclass.
-- **Instance-level hooks**: every instance has its own hook registry, with hook points spanning the lifecycle, turns, messages, model calls, tool execution, and subagents. A handler can rewrite data, asynchronously wait for external confirmation, or raise ``Intercepted`` to hard-block the operation — a natural foundation for human approval gates.
-- **Automatic persistence and crash recovery**: messages and state are persisted write-behind; after a crash, replay rebuilds the state. Unpaired tool calls are sealed during recovery, so the model always sees a complete, paired history.
-- **Zero-code tool access**: MCP servers (stdio / SSE / HTTP), shell command templates (arguments auto-escaped), and HTTP endpoints can all become tools from a single declaration file.
-- **Complete exposure options**: eight subcommands — REPL, one-shot CLI, plain HTTP API, a built-in web frontend, CI smoke tests, and more — run the same project unchanged in any form.
+- **Semantically self-contained agent declarations**: an agent's description, model intent, system prompt, tools and subagents, provided and injected objects, fields required by downstream plugins (such as skill lists and peer catalogs), hooks, and composable calls are all defined in a single ``.fya`` file, with assembly code concentrated in its ``setup()``. A tool, subagent, or skill is defined once and can then be bound by many agents as different model views — and being registered does not mean the model can see it. Reviewing a single agent therefore means reading a single file, with no round-trips between assembly sites.
+- **A hosting, embeddable runtime**: the runtime is an ordinary Python object that can be embedded into any host program. It hosts and organizes multiple agents — mounting, lookup by ID, recovery, destruction, and archiving — and the host or any agent can fetch subagents from it for downstream orchestration. Shared dependencies such as database connections and indexes are provided on the runtime and can be injected into agents at any depth.
+- **Plugins, composables, and hooks**: a plugin packages a set of extensions into a distributable unit that other projects can install and enable; tools, subagent types, skills, and model adapters can likewise be packaged for reuse by other projects. A composable is a finer-grained unit of reuse: an ordinary function that injects a piece of policy into a given agent, reusable with different parameters and stackable within the same agent. Hooks attach to points across the message loop, spanning lifecycle, turns, messages, model calls, tool execution, and subagents; every agent can freely define its own attributes, with its own state and run logic. A hook function executes your code at those points: beyond accepting, intercepting, or rewriting the passed-in object, it can read and write those attributes, update state, record audits, query caches, ask external systems, and more.
+- **Automatic persistence of messages and state**: messages and state are written to disk automatically, and a crash is rebuilt by replay. The default backend is json/jsonl files, and the persistence backend is replaceable. Fields that must survive across runs — todo lists, goals, cron schedules, dangerous-operation counters — are declared as agent state, and the framework manages the rest.
+- **A tree-structured message history**: conversation history is organized as a message tree. Moving the cursor opens a parallel branch while old branches stay intact; history supports five operations — insert, branch, remove, update, and reparent — and every change is persisted automatically as well. The structure of the message record can thus be organized and edited freely.
+- **Built-in verification entries**: a one-shot CLI, a REPL, an HTTP service, and a web frontend are built in. Even before your own frontend exists, the agents or agent systems you build can be demonstrated, tested, and verified directly through the built-in entries.
 
 Installation
 ------------
@@ -36,7 +37,7 @@ Installation
 Quick start
 -----------
 
-This example builds a two-agent guessing game: the referee ``oracle`` privately keeps the answer, while the player ``guesser`` asks directed questions and works it out. It shows how one Runtime can host multiple agents, how ``PeersPlugin`` registers Peers tools, and how declarative tool bindings control which tools each agent can see. A peer tool looks up its target agent by ID through the Runtime. The two composables have separate roles: ``use_peers()`` reads the ``peers`` catalog and injects it into the system prompt, while ``use_retry()`` configures model-call retries with the default settings for the referee and up to five retries for the guesser.
+This example builds a two-agent guessing game: the referee ``oracle`` privately keeps the answer, while the player ``guesser`` asks directed questions and works it out. It shows how one Runtime can host multiple agents, how ``PeersPlugin`` registers Peers tools, and how declarative tool bindings control which tools each agent can see. A peer tool looks up its target agent by ID through the Runtime. The two composables have separate roles: ``use_peers()`` reads the ``peers`` catalog and injects it into the system prompt, while ``use_retry()`` configures model-call retries with the default settings (three retries) for the referee and up to five retries for the guesser.
 
 Create a project directory with the following four files:
 
@@ -175,13 +176,59 @@ Run:
 
 The ``guesser`` sends questions to ``oracle`` through ``message-peer``; the referee replies only yes, no, or uncertain, and keeps the answer in its own conversation. Both agents' messages are persisted under ``.flowing/`` in the project directory, and their fixed ``agent_id`` values let a later run restore each history.
 
+.. note::
+
+   The REPL's progress display only renders messages produced by the bound foreground agent's provider (streaming text, thinking, tool calls, and tool results) plus your own input; messages injected dynamically at run time are not rendered through this channel — so PEER messages delivered by ``message-peer`` do not appear automatically. Type ``/messages`` to see the full message list of the current chain (``/messages verbose`` for full content).
+
 Going further
 -------------
 
 - **Capability access**: declare built-in tools, MCP servers, or shell commands and HTTP endpoints as tools via ``tools:``; implement custom logic with ``ScriptTool``.
 - **Multi-agent**: declare subagent types under ``subagents:`` and the orchestrator routes work using the auto-generated catalog; you can also create subagents programmatically and run them in parallel. ``PeersPlugin`` enables directed message-queue interactions between agents in one Runtime through a ``peers:`` catalog.
 - **Intervention**: attach handlers at hook points — intercept a tool call pending approval, audit at turn completion, switch models and retry on provider errors. The built-in ``use_retry`` / ``use_compact`` are implemented in exactly this way and can serve as references.
+- **Run modes**: eight subcommands — REPL, one-shot CLI, plain HTTP API, a built-in web frontend, CI smoke tests, and more — run the same project unchanged in any form.
 - **Embedding**: the host application holds the Runtime returned by ``launch()``; input goes through ``query`` / ``message`` / ``steer``, output through hook subscriptions (streaming output, completion notices, call interception).
+
+Built-in plugins and composables
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Plugins and composables are the two reusable units of extension, both shipped with the package and enabled on demand. A plugin is installed with ``runtime.install()`` and then enabled per agent by calling the matching ``use_xxx(self)`` in ``setup()``. A composable is an ordinary function ``use_xxx(agent, ...)`` that injects one piece of policy into a single agent in ``setup()``; composables stack and can be copied and rewritten.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 14 86
+
+   * - Plugin
+     - Purpose
+   * - ``skills``
+     - Load a prompt section by name: declare the catalog under ``skills:``; the model loads detailed guidance with the ``skill-load`` tool.
+   * - ``comm``
+     - An in-process communication bus with two channels: point-to-point signals (``send`` / ``request`` / ``reply``) and publish-subscribe events (``publish`` / ``subscribe``), for agents, UI components, and application code.
+   * - ``peers``
+     - Directed interaction between agents in one Runtime: registers ``query-peer`` / ``message-peer`` / ``steer-peer`` and limits reachable targets by the ``peers:`` catalog.
+   * - ``cron``
+     - Per-agent scheduled tasks: ``schedule`` / ``unschedule`` / ``jobs`` live with each agent, the model schedules through ``schedule-cron`` / ``manage-cron``, and delivery arrives on the ``on_cron_trigger`` hook.
+   * - ``workflow``
+     - Rule-based orchestration: subclass ``Workflow`` to write branching, loops, and parallel or sequential steps in Python, then start it by path with the ``run-workflow`` tool.
+   * - ``clipboard``
+     - Cut, copy, and paste file ranges (``clipboard-cut`` / ``clipboard-copy`` / ``clipboard-paste``), for moving code sections across files.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 18 82
+
+   * - Composable
+     - Purpose
+   * - ``use_retry``
+     - On a retryable LLM call failure, wait by the backoff model and resend, up to the retry limit.
+   * - ``use_compact``
+     - After a request: once context usage crosses a threshold, have the model compress the conversation into a handover summary and start a new chain from it.
+   * - ``use_auto_compact``
+     - Before a request: keep the head and tail messages, compress the middle into one message, and send the request with the compacted context.
+   * - ``use_system_reminder``
+     - Before each logical turn, inject a system reminder (current time, directory, task state) that is persisted with the batch.
+   * - ``use_prompt_until``
+     - At turn end, run an assertion; if it fails, steer the agent into a further turn.
 
 Documentation
 -------------

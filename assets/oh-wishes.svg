@@ -1,4 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="480" height="72" viewBox="0 0 480 72">
-  <text x="240" y="28" text-anchor="middle" font-family="sans-serif" font-size="24" font-weight="bold" font-style="italic" fill="#D2E474">Oh wishes...</text>
-  <text x="240" y="60" text-anchor="middle" font-family="sans-serif" font-size="24" font-weight="bold" font-style="italic" fill="#D2E474">I beg you coalesce!</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="454" height="76" viewBox="327 69 454 76">
+    <g data-type-group="true" transform="translate(554.3753662109375 98.30171966552734)">
+        <text x="0" y="0" text-anchor="middle" fill="#B1C83C"
+            font-family="Helvetica Neue,Arial,sans-serif" font-size="34" font-style="italic"
+            font-weight="550" letter-spacing="2">OH, WISHES!</text>
+        <text xml:space="preserve" x="0" y="42" text-anchor="middle" fill="#B1C83C"
+            font-family="Helvetica Neue,Arial,sans-serif" font-size="32" font-style="italic"
+            font-weight="550" letter-spacing="1">I BEG YOU COALESCE!</text>
+    </g>
 </svg>

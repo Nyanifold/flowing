@@ -15,7 +15,7 @@
     <button class="langswitch-btn" type="button"
             aria-label="{% if current_language == 'zh_CN' %}选择语言{% else %}Choose language{% endif %}"
             aria-haspopup="true">
-      {% if current_language == 'zh_CN' %}语言{% else %}language{% endif %}
+      {% if current_language == 'zh_CN' %}语言{% else %}Language{% endif %}
     </button>
     <ul class="langswitch-menu" role="menu">
       {%- for item in doc_languages %}
