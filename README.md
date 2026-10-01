@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://flowing-agent.readthedocs.io/en/index.html"><img src="https://readthedocs.org/projects/flowing-agent/badge/?version=latest" alt="Documentation"></a>
-  <a href="https://pypi.org/project/flowing-agent/"><img src="https://img.shields.io/pypi/v/flowing-agent" alt="PyPI version"></a>
+  <a href="https://pypi.org/project/flowing-agent/"><img src="https://img.shields.io/pypi/v/flowing-agent?cacheSeconds=300" alt="PyPI version"></a>
   <img src="https://img.shields.io/badge/python-%E2%89%A53.13-blue" alt="Python ≥ 3.13">
 </p>
 
