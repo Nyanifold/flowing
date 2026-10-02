@@ -82,41 +82,17 @@ explore-agent 确认其能力；如果它只有只读工具，不要声称已经
 
 ## 主线示例
 
-先以内联内容准备独立项目。Agent 定义与完整系统提示词已在上文给出；入口
-和模型配置如下，凭证只通过环境变量注入：
+先以内联内容准备独立项目。Agent 定义与完整系统提示词已在上文给出；入口如下。此处沿用前两篇配置好的全局 Provider 与 Model：
 
 ```python
 from flowing import Runtime
 
-
 async def main() -> Runtime:
-    runtime = Runtime(persist_dir="@/.flowing")
-    # runtime.set_providers("@/providers.yaml")
-    # runtime.set_models("@/models.yaml")
-    runtime.set_model_tags("@/model-tags.yaml")
+    runtime = Runtime()
     await runtime.mount("@/root.fya", agent_id="agent-main")
     return runtime
 ```
 
-```yaml
-deepseek:
-  adapter: deepseek
-  base_url: https://api.deepseek.com
-  api_key: "{{env.DEEPSEEK_API_KEY}}"
-```
-
-```yaml
-deepseek-flash:
-  provider: deepseek
-  model: deepseek-v4-flash
-```
-
-```yaml
-tags:
-  default: deepseek-flash
-```
-
-依次将配置保存为 `providers.yaml`、`models.yaml` 和 `model-tags.yaml`。
 为探索智能体准备以下两份完整笔记，分别保存为 `notes/使用说明.md` 和
 `notes/路线图.md`：
 
@@ -146,12 +122,12 @@ tags:
 - 2026-Q4：发布 1.0 版本
 ```
 
-设置 `DEEPSEEK_API_KEY` 后，从保存这些文件的项目根目录启动 repl，并输入
+从保存这些文件的项目根目录启动 repl，并输入
 下方两条用户消息。以下工具路径用 `<project-root>` 表示运行时项目根，以免
 把本机绝对路径写入文档：
 
 ```console
-$ uv run flowing repl .
+$ DEEPSEEK_API_KEY="<your API key>" uv run flowing repl .
 (agent-main)>>> 请检查 notes 目录里有哪些文件，并如实汇报。
 我会把只读检查任务交给 explore-agent。
 [thinking]（推理痕迹已省略）

@@ -2,8 +2,8 @@
 
 ## 前置阅读
 
-[0-1 第一个智能体](0-1-hello-agent.md)（子项目三件套、`launch`、repl 用法）。
-本篇在下文内联完整的 Python 入口、Agent 定义、模型配置、系统提示词、
+[0-1 第一个智能体](0-1-hello-agent.md)（子项目结构、`launch`、repl 用法）。
+本篇沿用前篇配置好的全局 Provider 与 Model，并在下文内联完整的 Python 入口、Agent 定义、系统提示词、
 演示笔记、用户输入和示例交互。请把这些内容保存到你自行创建的项目中，
 并在该项目根目录运行命令。
 
@@ -80,38 +80,15 @@ $system_prompt:
 ## 主线示例
 
 下面先给出复现本例所需的完整项目材料。保存时，Python 代码块作为 `main.py`，
-Agent 声明作为 `root.fya`，三段模型配置依次保存为 `providers.yaml`、
-`models.yaml` 和 `model-tags.yaml`。API key 继续由环境变量提供：
+Agent 声明作为 `root.fya`：
 
 ```python
 from flowing import Runtime
 
-
 async def main() -> Runtime:
-    runtime = Runtime(persist_dir="@/.flowing")
-    # runtime.set_providers("@/providers.yaml")
-    # runtime.set_models("@/models.yaml")
-    runtime.set_model_tags("@/model-tags.yaml")
+    runtime = Runtime()
     await runtime.mount("@/root.fya", agent_id="agent-main")
     return runtime
-```
-
-```yaml
-deepseek:
-  adapter: deepseek
-  base_url: https://api.deepseek.com
-  api_key: "{{env.DEEPSEEK_API_KEY}}"
-```
-
-```yaml
-deepseek-flash:
-  provider: deepseek
-  model: deepseek-v4-flash
-```
-
-```yaml
-tags:
-  default: deepseek-flash
 ```
 
 将以下两份笔记分别保存为 `notes/使用说明.md` 和 `notes/路线图.md`：
@@ -132,7 +109,7 @@ tags:
 
 ## 注意事项
 
-凭证一律经环境变量持有，不要写进任何文件。
+凭证一律通过环境变量提供，不要写进任何文件。
 ```
 
 ```markdown
@@ -145,7 +122,7 @@ tags:
 现在，在保存这些内联材料的项目根目录中启动 repl，并输入下列问题：
 
 ```console
-$ uv run flowing repl .
+$ DEEPSEEK_API_KEY="<your API key>" uv run flowing repl .
 (agent-main)>>> notes 目录里有哪些文件？请概括 notes/使用说明.md 的主要内容。
 [tool_call] glob {"path": "<project-root>/notes", "pattern": "**/*"}
 [tool_call] read {"path": "<project-root>/notes/使用说明.md"}

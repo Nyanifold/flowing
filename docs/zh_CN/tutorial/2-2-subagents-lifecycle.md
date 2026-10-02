@@ -66,7 +66,7 @@ repl 两问：先让 assistant 记住数字（命名唤起），再追问（续�
 的用户输入里**不含数字本身**——若答复中出现 42，就来自续接实例的上下文：
 
 ```console
-$ uv run flowing repl .
+$ DEEPSEEK_API_KEY="<your API key>" uv run flowing repl .
 (agent-main)>>> 让 assistant 记住数字 42。
 [thinking] (reasoning trace omitted)
 [tool_call] subagent-invoke {"agent_type": "assistant", "name": "memo", "prompt": "请记住这个内容：数字 42。记住后请复述一遍以确认你已记住。"}
@@ -90,46 +90,18 @@ memo 的回答（原样转达）：
 
 ## 完整示例材料
 
-在已安装 Flowing 的项目中按相对文件名创建以下内容，并在环境变量中设置
-`DEEPSEEK_API_KEY`。assistant 的确切措辞由模型生成；实例名与续接提示保持固定。
+在已安装 Flowing 的项目中按相对文件名创建以下内容。assistant 的确切措辞由模型
+生成；实例名与续接提示保持固定。
 
 `main.py`：
 
 ```python
 from flowing import Runtime
 
-
 async def main() -> Runtime:
-    runtime = Runtime(persist_dir="@/.flowing")
-    # runtime.set_providers("@/providers.yaml")
-    # runtime.set_models("@/models.yaml")
-    runtime.set_model_tags("@/model-tags.yaml")
+    runtime = Runtime()
     await runtime.mount("@/root.fya", agent_id="agent-main")
     return runtime
-```
-
-`providers.yaml`：
-
-```yaml
-deepseek:
-  adapter: deepseek
-  base_url: https://api.deepseek.com
-  api_key: "{{env.DEEPSEEK_API_KEY}}"
-```
-
-`models.yaml`：
-
-```yaml
-deepseek-flash:
-  provider: deepseek
-  model: deepseek-v4-flash
-```
-
-`model-tags.yaml`：
-
-```yaml
-tags:
-  default: deepseek-flash
 ```
 
 `root.fya`：
@@ -170,7 +142,7 @@ $system_prompt:
 ```
 
 ```console
-$ uv run flowing repl .
+$ DEEPSEEK_API_KEY="<your API key>" uv run flowing repl .
 ```
 
 预期工具交互：第一次调用使用

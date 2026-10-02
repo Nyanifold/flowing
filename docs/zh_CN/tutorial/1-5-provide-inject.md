@@ -66,7 +66,7 @@ provide 的值不是模板的直接上下文；模板要消费它，须在 `setu
 **演示 1：`--locale en` → 英文问候**：
 
 ```console
-$ uv run flowing repl . --locale en
+$ DEEPSEEK_API_KEY="<your API key>" uv run flowing repl . --locale en
 (agent-main)>>> 请派 greeter 问候我。
 [thinking] (reasoning trace omitted)
 [tool_call] subagent-invoke {"agent_type": "greeter", "prompt": "问候用户（无额外参数）。"}
@@ -78,7 +78,7 @@ Hello! How can I help you today?
 **演示 2：默认 `zh` → 中文问候**：
 
 ```console
-$ uv run flowing repl .
+$ DEEPSEEK_API_KEY="<your API key>" uv run flowing repl .
 (agent-main)>>> 请派 greeter 问候我。
 [thinking] (reasoning trace omitted)
 [tool_call] subagent-invoke {"agent_type": "greeter", "prompt": "请问候用户。"}
@@ -103,49 +103,20 @@ inject 未命中 → MissingProvideError: Missing provide value for key: 'no_suc
 
 ## 完整示例材料
 
-在已安装 Flowing 的项目中按以下相对文件名创建内容。运行 REPL 前，在环境中
-设置 `DEEPSEEK_API_KEY`。声明、提示词、输入与输出均列在本文，不需要另找
-示例文件。
+在已安装 Flowing 的项目中按以下相对文件名创建内容。声明、提示词、输入与输出
+均列在本文，不需要另找示例文件。
 
 `main.py`：
 
 ```python
 from flowing import Runtime
 
-
 async def main(locale: str = "zh") -> Runtime:
-    runtime = Runtime(persist_dir="@/.flowing")
-    # runtime.set_providers("@/providers.yaml")
-    # runtime.set_models("@/models.yaml")
-    runtime.set_model_tags("@/model-tags.yaml")
+    runtime = Runtime()
     runtime.provide("timezone", "Asia/Shanghai")
     kwargs = {"locale": locale} if locale != "zh" else {}
     await runtime.mount("@/root.fya", agent_id="agent-main", **kwargs)
     return runtime
-```
-
-`providers.yaml`：
-
-```yaml
-deepseek:
-  adapter: deepseek
-  base_url: https://api.deepseek.com
-  api_key: "{{env.DEEPSEEK_API_KEY}}"
-```
-
-`models.yaml`：
-
-```yaml
-deepseek-flash:
-  provider: deepseek
-  model: deepseek-v4-flash
-```
-
-`model-tags.yaml`：
-
-```yaml
-tags:
-  default: deepseek-flash
 ```
 
 `root.fya`：
@@ -196,7 +167,7 @@ async def setup(self):
 ```
 
 ```console
-$ uv run flowing repl . --locale en
+$ DEEPSEEK_API_KEY="<your API key>" uv run flowing repl . --locale en
 ```
 
 预期行为：父 Agent 派发一个新建的问候员；问候员注入到的 locale 为 `en`，
@@ -210,7 +181,7 @@ $ uv run flowing repl . --locale en
 ```
 
 ```console
-$ uv run flowing repl .
+$ DEEPSEEK_API_KEY="<your API key>" uv run flowing repl .
 ```
 
 预期行为：缺省 `locale: zh`，问候员返回中文问候；具体措辞由配置的模型生成。
@@ -223,7 +194,6 @@ import asyncio
 from flowing import launch
 from flowing.errors import MissingProvideError
 
-
 async def main() -> None:
     runtime = await launch(".")
     agent = await runtime.get_agent("agent-main")
@@ -232,7 +202,6 @@ async def main() -> None:
     except MissingProvideError as exc:
         print(f"inject 未命中 → MissingProvideError: {exc}")
     await runtime.shutdown()
-
 
 asyncio.run(main())
 ```

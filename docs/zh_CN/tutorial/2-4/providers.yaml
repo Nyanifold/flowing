@@ -1,6 +1,0 @@
-# provider 条目：一个条目 = 一个 API key 身份。
-# {{env.VAR}} 在加载期替换；缺失时替换为空串并告警（warnings.warn），加载不中断。
-deepseek:
-  adapter: deepseek
-  base_url: https://api.deepseek.com
-  api_key: "{{env.DEEPSEEK_API_KEY}}"

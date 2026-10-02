@@ -4,7 +4,7 @@
 
 [0-1 第一个智能体](0-1-hello-agent.md)（`--key value` 经 `launch` 透传
 `main(**kwargs)`；0-1 用运行期赋值 `root.user_name = ...`）。本篇以内联给出
-完整入口、Agent 声明、模型配置、提示词、用户输入和示例输出；请在自行创建的
+完整入口、Agent 声明、提示词、用户输入和示例输出；请在自行创建的
 项目目录中保存后运行。
 
 ## 本篇名词表
@@ -63,27 +63,6 @@ async def setup(self, user_name: str, locale: str = "zh"):
     self.timezone = self.inject("timezone")
 ```
 
-将以下配置分别保存为 `providers.yaml`、`models.yaml` 和 `model-tags.yaml`。
-`DEEPSEEK_API_KEY` 必须保留为环境变量占位符：
-
-```yaml
-deepseek:
-  adapter: deepseek
-  base_url: https://api.deepseek.com
-  api_key: "{{env.DEEPSEEK_API_KEY}}"
-```
-
-```yaml
-deepseek-flash:
-  provider: deepseek
-  model: deepseek-v4-flash
-```
-
-```yaml
-tags:
-  default: deepseek-flash
-```
-
 必填性恒由“有无 `default`”派生：`user_name` 没有默认值 → 必填；
 `locale` 有默认值 → 可选。args 声明**声明即模型**：它同时是 LLM 可见的
 参数 schema（子智能体 catalog 渲染用）与执行层校验的来源——缺必填参数
@@ -122,12 +101,8 @@ CLI 的 `--key value` 经 `launch` 原样透传 `main(**kwargs)`；`main()` 自�
 ```python
 from flowing import Runtime
 
-
 async def main(user_name: str | None = None, locale: str = "zh") -> Runtime:
-    runtime = Runtime(persist_dir="@/.flowing")
-    # runtime.set_providers("@/providers.yaml")
-    # runtime.set_models("@/models.yaml")
-    runtime.set_model_tags("@/model-tags.yaml")
+    runtime = Runtime()
     runtime.provide("timezone", "Asia/Shanghai")   # mount 前 provide
     kwargs: dict = {}
     if user_name is not None:
@@ -149,7 +124,7 @@ async def main(user_name: str | None = None, locale: str = "zh") -> Runtime:
 **演示 1：缺必填参数 → 创建期 fail-fast**。输入中未传 `user_name`：
 
 ```console
-$ uv run flowing repl .
+$ DEEPSEEK_API_KEY="<your API key>" uv run flowing repl .
 launch failed: RootAgent.setup() missing 1 required positional argument: 'user_name'
 ```
 
@@ -159,7 +134,7 @@ surprise。
 **演示 2：参数经 setup 各就各位**。输入传入 `user_name` 和 `locale`：
 
 ```console
-$ uv run flowing repl . --user_name 小红 --locale en
+$ DEEPSEEK_API_KEY="<your API key>" uv run flowing repl . --user_name 小红 --locale en
 (agent-main)>>> 请用中文一句话汇报：当前用户是谁、locale 是什么、时区是什么。
 [thinking]（推理痕迹已省略）
 当前用户是小红，locale 为 en，时区为 Asia/Shanghai。
@@ -173,7 +148,7 @@ $ uv run flowing repl . --user_name 小红 --locale en
 用户输入明确要求中文，因此示例最终输出为中文；推理痕迹已省略。1-5 会用
 `{% if %}` 把语言切换写成确定行为。
 
-`main.py`、`root.fya`、三个模型配置、两条演示输入和对应的示例输出都已内联；
+`main.py`、`root.fya`、两条演示输入和对应的示例输出都已内联；
 把各代码块保存为对应的相对文件名即可重建该示例。推理内容只以省略标记表示。
 
 ## 小结

@@ -3,7 +3,7 @@
 ## 前置阅读
 
 [0-2 使用内置工具](0-2-use-builtin-tools.md)（你已见过 Agent 调用 glob/read
-完成一轮问答）。本篇以内联给出完整项目代码、配置、系统提示词、笔记、
+完成一轮问答）。本篇以内联给出完整项目代码、系统提示词、笔记、
 程序输入和输出。请在自行创建的项目目录中保存这些材料后运行命令。
 
 ## 本篇名词表
@@ -95,18 +95,13 @@ async def execute(self, *, caller: Agent):
 ```python
 from flowing import Runtime
 
-
 async def main() -> Runtime:
-    runtime = Runtime(persist_dir="@/.flowing")
-    # runtime.set_providers("@/providers.yaml")
-    # runtime.set_models("@/models.yaml")
-    runtime.set_model_tags("@/model-tags.yaml")
+    runtime = Runtime()
     await runtime.mount("@/root.fya", agent_id="agent-main")
     return runtime
 ```
 
-把下面声明保存为 `root.fya`，三段配置依次保存为 `providers.yaml`、
-`models.yaml`、`model-tags.yaml`。凭证保持环境变量占位符：
+把下面声明保存为 `root.fya`：
 
 ```yaml
 description: 项目问答助手：能查看目录、读取文件并总结。
@@ -119,24 +114,6 @@ $system_prompt:
 你是项目问答助手。本项目的根目录绝对路径是 {{ env.PWD }}。
 文件检查必须先用 glob 查看，再用 read 读取，并依据读取到的内容回答；不要编造。
 回答控制在五句话以内。
-```
-
-```yaml
-deepseek:
-  adapter: deepseek
-  base_url: https://api.deepseek.com
-  api_key: "{{env.DEEPSEEK_API_KEY}}"
-```
-
-```yaml
-deepseek-flash:
-  provider: deepseek
-  model: deepseek-v4-flash
-```
-
-```yaml
-tags:
-  default: deepseek-flash
 ```
 
 以下两份笔记分别保存为 `notes/使用说明.md`、`notes/路线图.md`：
@@ -175,7 +152,6 @@ import asyncio
 
 from flowing import launch
 
-
 async def main() -> None:
     runtime = await launch(".")
     agent = await runtime.get_agent("agent-main")
@@ -211,14 +187,13 @@ async def main() -> None:
 
     await runtime.shutdown()
 
-
 asyncio.run(main())
 ```
 
-设置 `DEEPSEEK_API_KEY` 后，从该项目根目录运行脚本：
+从该项目根目录运行脚本：
 
 ```console
-$ uv run python demo_entries.py
+$ DEEPSEEK_API_KEY="<your API key>" uv run python demo_entries.py
 message() 已入队，消息 id=1（调用方不等回合结果）
 回合已开始（current_turn 非 None）
 steer() 已投递（STEER 优先级：当轮可见、不打断）
@@ -252,7 +227,7 @@ final_text 前 80 字：notes 目录下依然只有 2 个文件：`使用说明.
 树上还能读出回合边界：每个 `turn_end=True` 的 PROVIDER 消息是一个回合
 的收尾（id 5 与 id 9 各收一个回合）。
 
-本篇所需的入口、Agent 定义、模型配置、笔记、完整脚本、输入和示例输出均已
+本篇所需的入口、Agent 定义、笔记、完整脚本、输入和示例输出均已
 内联；创建文件时使用代码块上方标明的相对文件名即可。留档中的模型文本与
 消息 id 会因运行而异；此外，这段时序示例依赖首个回合在 `steer()` 投递时
 仍处于进行中，若回合更早结束，导向内容就不能保证出现在首个答复中。

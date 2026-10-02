@@ -70,7 +70,7 @@ setup()](1-3-agent-args-and-setup.md)（args 声明即模型）。本篇完整�
 **演示 1：Agent 使用 todo 工具（含 error 通道）**：
 
 ```console
-$ uv run flowing repl .
+$ DEEPSEEK_API_KEY="<your API key>" uv run flowing repl .
 (agent-main)>>> 帮我把这些整理成任务清单：写方案、买咖啡（已完成）、、发邮件。
 [thinking] (reasoning trace omitted)
 [tool_call] todo {"tasks_text": "写方案\n[x] 买咖啡\n\n发邮件"}
@@ -108,19 +108,14 @@ A 与 C 独立实现、同构声明: True
 
 ### 完整复现材料
 
-以下相对文件名只是创建位置标签；每项内容都在本文中完整给出。交互演示
-需要由读者提供 `DEEPSEEK_API_KEY`；文中只保留环境变量占位符，不包含凭证。
+以下相对文件名只是创建位置标签；每项内容都在本文中完整给出。
 
 ```python
 # main.py
 from flowing import Runtime
 
-
 async def main(user_name: str | None = None, locale: str = "zh") -> Runtime:
-    runtime = Runtime(persist_dir="@/.flowing")
-    # runtime.set_providers("@/providers.yaml")
-    # runtime.set_models("@/models.yaml")
-    runtime.set_model_tags("@/model-tags.yaml")
+    runtime = Runtime()
     runtime.provide("timezone", "Asia/Shanghai")
     kwargs: dict = {}
     if user_name is not None:
@@ -129,27 +124,6 @@ async def main(user_name: str | None = None, locale: str = "zh") -> Runtime:
         kwargs["locale"] = locale
     await runtime.mount("@/root.fya", agent_id="agent-main", **kwargs)
     return runtime
-```
-
-```yaml
-# providers.yaml
-deepseek:
-  adapter: deepseek
-  base_url: https://api.deepseek.com
-  api_key: "{{env.DEEPSEEK_API_KEY}}"
-```
-
-```yaml
-# models.yaml
-deepseek-flash:
-  provider: deepseek
-  model: deepseek-v4-flash
-```
-
-```yaml
-# model-tags.yaml
-tags:
-  default: deepseek-flash
 ```
 
 ```yaml
@@ -171,12 +145,10 @@ from pydantic import BaseModel, Field
 
 from flowing import ScriptTool
 
-
 class TodoArgs(BaseModel):
     tasks_text: str = Field(
         description="任务清单文本：每行一个任务；以 [x] 开头表示已完成"
     )
-
 
 class TodoTool(ScriptTool):
     """把零散任务解析为结构化清单，并返回未结任务计数。"""
@@ -205,7 +177,6 @@ class TodoTool(ScriptTool):
 # tools/shout.py
 from flowing import flowing_tool
 
-
 @flowing_tool
 async def shout(text: str) -> str:
     """把文本转换为大写。"""
@@ -218,12 +189,10 @@ from pydantic import BaseModel, Field
 
 from flowing import ScriptTool
 
-
 class TodoFnArgs(BaseModel):
     tasks_text: str = Field(
         description="任务清单文本：每行一个任务；以 [x] 开头表示已完成"
     )
-
 
 class TodoToolFn(ScriptTool):
     """callable 指针演示用的独立任务清单工具。"""
@@ -260,7 +229,6 @@ import pathlib
 
 from flowing.tool.registry import ToolRegistry
 
-
 async def main() -> None:
     registry = ToolRegistry(project_root=pathlib.Path.cwd())
     root = pathlib.Path.cwd()
@@ -275,7 +243,6 @@ async def main() -> None:
           f"{sorted(handwritten.definition.params_schema) == sorted(pointer.definition.params_schema)}")
     for label, tool in (("A", handwritten), ("B", marked), ("C", pointer)):
         print(f"  {label}: params={sorted(tool.definition.params_schema)}")
-
 
 asyncio.run(main())
 ```
@@ -292,8 +259,7 @@ asyncio.run(main())
 切换目录。
 
 ```console
-$ export DEEPSEEK_API_KEY="<your-api-key>"
-$ uv run flowing repl .
+$ DEEPSEEK_API_KEY="<your API key>" uv run flowing repl .
 $ uv run python demo_channels.py
 ```
 

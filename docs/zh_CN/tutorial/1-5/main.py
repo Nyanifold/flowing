@@ -4,10 +4,7 @@ from flowing import Runtime
 
 
 async def main(user_name: str | None = None, locale: str = "zh") -> Runtime:
-    runtime = Runtime(persist_dir="@/.flowing")
-    runtime.set_providers("@/providers.yaml")
-    runtime.set_models("@/models.yaml")
-    runtime.set_model_tags("@/model-tags.yaml")
+    runtime = Runtime()
     # mount 之前 provide：影响装配的值在挂载前提供（1-5 讲链式语义）
     runtime.provide("timezone", "Asia/Shanghai")
     # CLI 的 --key value 经 launch 原样透传 main(**kwargs)，

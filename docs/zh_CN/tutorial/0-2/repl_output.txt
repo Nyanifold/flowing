@@ -14,9 +14,6 @@
 <仓库根>/dev-docs/tutorial/0-2/notes/使用说明.md
 <仓库根>/dev-docs/tutorial/0-2/notes/路线图.md
 <仓库根>/dev-docs/tutorial/0-2/main.py
-<仓库根>/dev-docs/tutorial/0-2/model-tags.yaml
-<仓库根>/dev-docs/tutorial/0-2/models.yaml
-<仓库根>/dev-docs/tutorial/0-2/providers.yaml
 [tool:completed] read -> 0	# 使用说明
 1	
 2	本目录是一个演示用笔记库。
@@ -33,11 +30,11 @@
 13	## 注意事项
 14	
 15	凭证一律经环境变量持有，不要写进任何文件。
-项目根目录下主要有：Python 源码 `main.py`、测试 `tests/test_semantics.py`、笔记 `notes/使用说明.md` 与 `notes/路线图.md`，以及配置文件 `models.yaml`、`model-tags.yaml`、`providers.yaml`，还有 `root.fya`、`repl_input.txt`、`repl_output.txt` 和 `.flowing/`、`__pycache__/` 等生成物。
+项目根目录下主要有：Python 源码 `main.py`、测试 `tests/test_semantics.py`、笔记 `notes/使用说明.md` 与 `notes/路线图.md`，还有 `root.fya`、`repl_input.txt`、`repl_output.txt` 和 `.flowing/`、`__pycache__/` 等生成物。
 
 `notes/使用说明.md` 说明本目录是演示用笔记库，要求 Python 3.13 或更高版本，常用命令为 `uv sync`（装依赖）和 `uv run pytest`（跑测试），并强调凭证一律通过环境变量持有、切勿写入任何文件。
 [thinking] Answer in ≤5 sentences.
-项目根目录下主要有：Python 源码 `main.py`、测试 `tests/test_semantics.py`、笔记 `notes/使用说明.md` 与 `notes/路线图.md`，以及配置文件 `models.yaml`、`model-tags.yaml`、`providers.yaml`，还有 `root.fya`、`repl_input.txt`、`repl_output.txt` 和 `.flowing/`、`__pycache__/` 等生成物。
+项目根目录下主要有：Python 源码 `main.py`、测试 `tests/test_semantics.py`、笔记 `notes/使用说明.md` 与 `notes/路线图.md`，还有 `root.fya`、`repl_input.txt`、`repl_output.txt` 和 `.flowing/`、`__pycache__/` 等生成物。
 
 `notes/使用说明.md` 说明本目录是演示用笔记库，要求 Python 3.13 或更高版本，常用命令为 `uv sync`（装依赖）和 `uv run pytest`（跑测试），并强调凭证一律通过环境变量持有、切勿写入任何文件。
 (agent-main)>>>

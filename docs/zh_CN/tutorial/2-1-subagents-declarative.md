@@ -64,7 +64,7 @@ LLM 经 `subagent-invoke` 唤起（catalog 里有哪些类型就唤起哪些）�
 **演示 1：编排者驱动“写 → 审 → 汇总”**（完整代表性交互）：
 
 ````text
-$ uv run flowing repl .
+$ DEEPSEEK_API_KEY="<your API key>" uv run flowing repl .
 (agent-main)>>> 我需要一个计算斐波那契数列的 Python 函数。让 coder 写出来，再让 reviewer 审查，并汇总审查结果。
 我先派 coder 编写斐波那契函数。
 [thinking] (reasoning trace omitted)
@@ -104,8 +104,8 @@ subagents 绑定表：
 
 ## 完整示例材料
 
-在已安装 Flowing 的项目中按相对文件名创建以下内容，并在环境变量中设置
-`DEEPSEEK_API_KEY`。模型生成的代码和审查意见可能不同；完整输入与代表性工具
+在已安装 Flowing 的项目中按相对文件名创建以下内容。模型生成的代码和审查意见
+可能不同；完整输入与代表性工具
 交互均已内联。
 
 `main.py`：
@@ -113,38 +113,10 @@ subagents 绑定表：
 ```python
 from flowing import Runtime
 
-
 async def main() -> Runtime:
-    runtime = Runtime(persist_dir="@/.flowing")
-    # runtime.set_providers("@/providers.yaml")
-    # runtime.set_models("@/models.yaml")
-    runtime.set_model_tags("@/model-tags.yaml")
+    runtime = Runtime()
     await runtime.mount("@/root.fya", agent_id="agent-main")
     return runtime
-```
-
-`providers.yaml`：
-
-```yaml
-deepseek:
-  adapter: deepseek
-  base_url: https://api.deepseek.com
-  api_key: "{{env.DEEPSEEK_API_KEY}}"
-```
-
-`models.yaml`：
-
-```yaml
-deepseek-flash:
-  provider: deepseek
-  model: deepseek-v4-flash
-```
-
-`model-tags.yaml`：
-
-```yaml
-tags:
-  default: deepseek-flash
 ```
 
 `root.fya`：
@@ -205,7 +177,7 @@ $system_prompt:
 ```
 
 ```console
-$ uv run flowing repl .
+$ DEEPSEEK_API_KEY="<your API key>" uv run flowing repl .
 ```
 
 程序化唤起隐藏审计员的 `demo_enabled.py` 完整内容：
@@ -214,7 +186,6 @@ $ uv run flowing repl .
 import asyncio
 
 from flowing import launch
-
 
 async def main() -> None:
     runtime = await launch(".")
@@ -226,7 +197,6 @@ async def main() -> None:
     result = await root.invoke_subagent("auditor", prompt="激活。")
     print(f"编程式唤起隐藏 auditor -> result={result.result!r} status={result.subagent_status}")
     await runtime.shutdown()
-
 
 asyncio.run(main())
 ```

@@ -103,7 +103,6 @@ from flowing.message import (
     ToolCallBlock,
 )
 
-
 def show(message: Message, note: str) -> None:
     print(f"── {note} ──")
     print(f"kind={message.kind.value}  source={message.source!r}  tags={message.tags}  "
@@ -125,7 +124,6 @@ def show(message: Message, note: str) -> None:
     if message.kind is MessageKind.TOOL:
         print(f"tool_call_id={message.tool_call_id}  tool_status={message.tool_status}")
     print()
-
 
 user = Message(kind=MessageKind.USER,
                content=[TextBlock(text="帮我查订单 4521")],

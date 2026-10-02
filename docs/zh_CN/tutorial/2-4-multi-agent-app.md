@@ -159,10 +159,8 @@ README 中内联的完整模块：
 ```python
 """示例项目：计算器。"""
 
-
 def add(a: float, b: float) -> float:
     return a + b
-
 
 def div(a: float, b: float) -> float:
     if b == 0:
@@ -210,10 +208,8 @@ coder 交付的完整 README 内容如下；其中的代码、调用输入与预
 ```python
 """示例项目：计算器。"""
 
-
 def add(a: float, b: float) -> float:
     return a + b
-
 
 def div(a: float, b: float) -> float:
     if b == 0:
@@ -282,7 +278,6 @@ import asyncio
 
 from flowing import launch
 
-
 async def main() -> None:
     runtime = await launch(".", cwd=".")
     root = await runtime.get_agent("agent-main")
@@ -306,7 +301,6 @@ async def main() -> None:
         print(line)
     await runtime.shutdown()
 
-
 asyncio.run(main())
 ```
 
@@ -320,44 +314,18 @@ coder-b: status=completed
 ## 完整复现材料
 
 以下代码块给出多智能体应用与目标项目的全部必要内容。注释中的相对文件名
-对应紧随其后的完整内容；命令不要求切换目录。交互式模型调用需要读者自行
-提供 DEEPSEEK_API_KEY，本文只保留占位符。
+对应紧随其后的完整内容；命令不要求切换目录。
 
 ```python
 # main.py
 from flowing import Runtime
 
-
 async def main(cwd: str | None = None) -> Runtime:
-    runtime = Runtime(persist_dir="@/.flowing")
-    # runtime.set_providers("@/providers.yaml")
-    # runtime.set_models("@/models.yaml")
-    runtime.set_model_tags("@/model-tags.yaml")
+    runtime = Runtime()
     if cwd:
         runtime.provide("cwd", cwd)
     await runtime.mount("@/root.fya", agent_id="agent-main")
     return runtime
-```
-
-```yaml
-# providers.yaml
-deepseek:
-  adapter: deepseek
-  base_url: https://api.deepseek.com
-  api_key: "{{env.DEEPSEEK_API_KEY}}"
-```
-
-```yaml
-# models.yaml
-deepseek-flash:
-  provider: deepseek
-  model: deepseek-v4-flash
-```
-
-```yaml
-# model-tags.yaml
-tags:
-  default: deepseek-flash
 ```
 
 ```yaml
@@ -411,12 +379,10 @@ from pydantic import BaseModel, Field
 
 from flowing import ScriptTool
 
-
 class TodoArgs(BaseModel):
     tasks_text: str = Field(
         description="任务清单文本：每行一个任务；以 [x] 开头表示已完成"
     )
-
 
 class TodoTool(ScriptTool):
     """把任务文本解析成清单，并返回未结任务计数。"""
@@ -448,10 +414,8 @@ class TodoTool(ScriptTool):
 # pkg/calc.py
 """示例项目：计算器。"""
 
-
 def add(a: float, b: float) -> float:
     return a + b
-
 
 def div(a: float, b: float) -> float:
     if b == 0:
@@ -479,8 +443,7 @@ divider 不是独立功能，而是除法函数 div 的非正式称呼。div 返
 相对工作目录值，不包含切换目录命令：
 
 ```console
-$ export DEEPSEEK_API_KEY="<your-api-key>"
-$ uv run flowing repl . --cwd .
+$ DEEPSEEK_API_KEY="<your API key>" uv run flowing repl . --cwd .
 ```
 
 ## 小结

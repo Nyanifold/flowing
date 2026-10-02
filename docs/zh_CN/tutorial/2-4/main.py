@@ -4,10 +4,7 @@ from flowing import Runtime
 
 
 async def main(cwd: str | None = None) -> Runtime:
-    runtime = Runtime(persist_dir="@/.flowing")
-    runtime.set_providers("@/providers.yaml")
-    runtime.set_models("@/models.yaml")
-    runtime.set_model_tags("@/model-tags.yaml")
+    runtime = Runtime()
     if cwd:
         # cwd 经 provide 链注入：各 Agent 的 system_prompt 以 {{ cwd }} 消费
         # （刻意截止至 system_prompt——声明处注入是 4-4 的分歧面）

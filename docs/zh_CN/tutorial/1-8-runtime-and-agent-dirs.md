@@ -2,8 +2,8 @@
 
 ## 前置阅读
 
-[0-1 第一个智能体](0-1-hello-agent.md)（`Runtime(persist_dir="@/.flowing")`、
-固定 `agent_id` 幂等挂载）。本篇使用最小 hello 形态，完整配置、提示词、输入
+[0-1 第一个智能体](0-1-hello-agent.md)（`Runtime()`、
+固定 `agent_id` 幂等挂载）。本篇使用最小 hello 形态，Agent 定义、提示词、输入
 和可观察的目录输出均列在下文。
 
 ## 本篇名词表
@@ -24,7 +24,7 @@
 
 ### 持久化根：缺省行为就够好
 
-`Runtime(persist_dir=...)` 指定持久化根；**缺省 `<当前工作目录>/.flowing`**，
+Runtime 的持久化根默认为 **`<当前工作目录>/.flowing`**，
 且推迟到首个持久化动作才创建——零持久化的运行不落盘、不污染工作目录。
 不配置任何东西即可跑：默认行为是“能持久化就持久化”。
 
@@ -69,7 +69,7 @@
 **run 1**：跑一轮对话，随后观察目录：
 
 ```console
-$ uv run flowing repl .
+$ DEEPSEEK_API_KEY="<your API key>" uv run flowing repl .
 (agent-main)>>> 用一句话介绍你自己。
 [thinking] (reasoning trace omitted)
 我是一个简洁的中文助手，习惯用三句话以内回答你的问题。
@@ -100,7 +100,7 @@ $ cat .flowing/agent-main/meta.json
 
 ```console
 $ mv .flowing .flowing.saved
-$ uv run flowing repl .
+$ DEEPSEEK_API_KEY="<your API key>" uv run flowing repl .
 (agent-main)>>> 用一句话介绍你自己。
 [thinking] (reasoning trace omitted)
 我是一个简洁的中文助手，能帮你快速解答问题。
@@ -115,46 +115,18 @@ $ uv run flowing repl .
 
 ## 完整示例材料
 
-在已安装 Flowing 的项目中按相对文件名创建以下文件，并在环境变量中设置
-`DEEPSEEK_API_KEY`。命令都从项目根目录运行，不需要切换目录。
+在已安装 Flowing 的项目中按相对文件名创建以下文件。命令都从项目根目录运行，
+不需要切换目录。
 
 `main.py`：
 
 ```python
 from flowing import Runtime
 
-
 async def main() -> Runtime:
-    runtime = Runtime(persist_dir="@/.flowing")
-    # runtime.set_providers("@/providers.yaml")
-    # runtime.set_models("@/models.yaml")
-    runtime.set_model_tags("@/model-tags.yaml")
+    runtime = Runtime()
     await runtime.mount("@/root.fya", agent_id="agent-main")
     return runtime
-```
-
-`providers.yaml`：
-
-```yaml
-deepseek:
-  adapter: deepseek
-  base_url: https://api.deepseek.com
-  api_key: "{{env.DEEPSEEK_API_KEY}}"
-```
-
-`models.yaml`：
-
-```yaml
-deepseek-flash:
-  provider: deepseek
-  model: deepseek-v4-flash
-```
-
-`model-tags.yaml`：
-
-```yaml
-tags:
-  default: deepseek-flash
 ```
 
 `root.fya`：
@@ -177,7 +149,7 @@ run 1 输入：
 run 1 命令与代表性输出：
 
 ```console
-$ uv run flowing repl .
+$ DEEPSEEK_API_KEY="<your API key>" uv run flowing repl .
 (agent-main)>>> 用一句话介绍你自己。
 我是一个简洁的中文助手，习惯用三句话以内回答你的问题。
 (agent-main)>>> /exit
@@ -209,7 +181,7 @@ $ cat .flowing/agent-main/meta.json
 
 ```console
 $ mv .flowing .flowing.saved
-$ uv run flowing repl .
+$ DEEPSEEK_API_KEY="<your API key>" uv run flowing repl .
 ```
 
 新建的 `.flowing/` 只包含第二次运行的对话；之前的状态仍保存在

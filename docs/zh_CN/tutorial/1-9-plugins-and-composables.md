@@ -104,7 +104,7 @@ async def setup(self):
 **run 1：skills + 两个 Composable 同场**（代表性消息流程）：
 
 ```console
-$ uv run flowing repl .
+$ DEEPSEEK_API_KEY="<your API key>" uv run flowing repl .
 (agent-main)>>> 用礼貌语问候我：早上好，回答末尾请附 DONE。
 [thinking] (reasoning trace omitted)
 [tool_call] skill-load {"name": "polite"}
@@ -142,7 +142,7 @@ DONE
 **run 2：故意不说 DONE → 被续跑**：
 
 ```console
-$ uv run flowing repl .
+$ DEEPSEEK_API_KEY="<your API key>" uv run flowing repl .
 (agent-main)>>> 只回复“好的”两个字，什么都不要加。
 [thinking] (reasoning trace omitted)
 好的
@@ -162,8 +162,8 @@ steer 消息。输入 `/exit` 可结束循环。
 
 ## 完整示例材料
 
-在已安装 Flowing 的项目中按相对文件名创建以下内容，并在环境变量中设置
-`DEEPSEEK_API_KEY`。提醒文本不含任何机器路径。回复由模型生成；稳定可观察
+在已安装 Flowing 的项目中按相对文件名创建以下内容。提醒文本不含任何机器路径。
+回复由模型生成；稳定可观察
 的行为是：加载技能后正文以 event 消息入队，缺少 `DONE` 的回复会触发 steer。
 
 `main.py`：
@@ -172,39 +172,11 @@ steer 消息。输入 `/exit` 可结束循环。
 from flowing import Runtime
 from flowing.plugins.skills import SkillPlugin
 
-
 async def main() -> Runtime:
-    runtime = Runtime(persist_dir="@/.flowing")
-    # runtime.set_providers("@/providers.yaml")
-    # runtime.set_models("@/models.yaml")
-    runtime.set_model_tags("@/model-tags.yaml")
+    runtime = Runtime()
     runtime.install(SkillPlugin())
     await runtime.mount("@/root.fya", agent_id="agent-main")
     return runtime
-```
-
-`providers.yaml`：
-
-```yaml
-deepseek:
-  adapter: deepseek
-  base_url: https://api.deepseek.com
-  api_key: "{{env.DEEPSEEK_API_KEY}}"
-```
-
-`models.yaml`：
-
-```yaml
-deepseek-flash:
-  provider: deepseek
-  model: deepseek-v4-flash
-```
-
-`model-tags.yaml`：
-
-```yaml
-tags:
-  default: deepseek-flash
 ```
 
 `root.fya`：
@@ -226,7 +198,6 @@ $script:
 from flowing import MessageKind, TextBlock
 from flowing.composables import use_prompt_until, use_system_reminder
 from flowing.plugins.skills import use_skill
-
 
 async def setup(self):
     use_skill(self)

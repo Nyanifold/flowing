@@ -85,7 +85,7 @@ handler 异常不会楔死 Agent——等待者照常拿到结果。
 repl 中先要求删除文件（触发拦截）、再要求查看目录（放行）：
 
 ```console
-$ uv run flowing repl . --user_name 小明
+$ DEEPSEEK_API_KEY="<your API key>" uv run flowing repl . --user_name 小明
 (agent-main)>>> 请用 bash 删除 notes/路线图.md。
 [tool_call] bash {"command": "rm notes/路线图.md", "cwd": "."}
 [hook] before_tool_call: bash args={'command': 'rm notes/路线图.md', 'cwd': '.'}
@@ -113,7 +113,7 @@ notes 目录里有“使用说明.md”和“路线图.md”两个文件。
 ## 完整示例材料
 
 以下内容构成本篇所需的完整示例。在已安装 Flowing 的项目根目录中按相对
-文件名创建这些文件，在环境中设置 `DEEPSEEK_API_KEY`，再执行所示命令。
+文件名创建这些文件，再执行所示命令。
 删除请求会被钩子拦截；笔记文件不会改变。
 
 `main.py`：
@@ -121,39 +121,11 @@ notes 目录里有“使用说明.md”和“路线图.md”两个文件。
 ```python
 from flowing import Runtime
 
-
 async def main(user_name: str = "小明") -> Runtime:
-    runtime = Runtime(persist_dir="@/.flowing")
-    # runtime.set_providers("@/providers.yaml")
-    # runtime.set_models("@/models.yaml")
-    runtime.set_model_tags("@/model-tags.yaml")
+    runtime = Runtime()
     runtime.provide("timezone", "Asia/Shanghai")
     await runtime.mount("@/root.fya", agent_id="agent-main", user_name=user_name)
     return runtime
-```
-
-`providers.yaml`：
-
-```yaml
-deepseek:
-  adapter: deepseek
-  base_url: https://api.deepseek.com
-  api_key: "{{env.DEEPSEEK_API_KEY}}"
-```
-
-`models.yaml`：
-
-```yaml
-deepseek-flash:
-  provider: deepseek
-  model: deepseek-v4-flash
-```
-
-`model-tags.yaml`：
-
-```yaml
-tags:
-  default: deepseek-flash
 ```
 
 `root.fya`（完整声明、system prompt 与钩子代码）：
@@ -174,13 +146,11 @@ $system_prompt:
 $script:
 from flowing import Intercepted, on
 
-
 @on("after_turn")
 def _(self, turn):
     self.ask_count += 1
     print(f"[hook] after_turn: ask_count={self.ask_count} aborted={turn.aborted}")
     return turn
-
 
 async def setup(self, user_name: str):
     self.user_name = user_name
@@ -220,7 +190,7 @@ async def setup(self, user_name: str):
 运行命令：
 
 ```console
-$ uv run flowing repl . --user_name 小明
+$ DEEPSEEK_API_KEY="<your API key>" uv run flowing repl . --user_name 小明
 ```
 
 预期可观察结果：第一次 `bash` 调用返回带有“不允许删除”原因的

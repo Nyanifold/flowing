@@ -4,7 +4,7 @@
 
 [0-2 使用内置工具](0-2-use-builtin-tools.md)（`tools:` 声明、注册 ≠ 可见）、
 [1-4 钩子基础](1-4-hooks-basics.md)（`setup()` 内做装配）。本篇的示例工程
-使用本地 stdio 服务端和两个服务端工具。完整声明、服务端代码、模型配置、
+使用本地 stdio 服务端和两个服务端工具。完整声明、服务端代码、
 提示词、输入与预期输出都列在下文。
 
 ## 本篇名词表
@@ -80,7 +80,7 @@ tools:
 **演示 1：Agent 调用 MCP 工具**（示意会话）：
 
 ```console
-$ uv run flowing repl .
+$ DEEPSEEK_API_KEY="<your API key>" uv run flowing repl .
 (agent-main)>>> 现在有哪些 PR？然后帮我创建一个标题为“演示 Issue”的 Issue。
 [tool_call] demo--list-prs {"state": "open"}
 [tool_call] demo--create-issue {"title": "演示 Issue"}
@@ -109,8 +109,8 @@ $ uv run python demo_env_failfast.py
 
 ## 完整示例材料
 
-在已安装 Flowing 的项目中按相对文件名创建以下内容，环境变量设置
-`DEEPSEEK_API_KEY`，并安装兼容的官方 MCP Python SDK：
+在已安装 Flowing 的项目中按相对文件名创建以下内容，并安装兼容的官方
+MCP Python SDK：
 
 ```console
 $ uv add 'mcp<2'
@@ -124,38 +124,10 @@ $ uv add 'mcp<2'
 ```python
 from flowing import Runtime
 
-
 async def main() -> Runtime:
-    runtime = Runtime(persist_dir="@/.flowing")
-    # runtime.set_providers("@/providers.yaml")
-    # runtime.set_models("@/models.yaml")
-    runtime.set_model_tags("@/model-tags.yaml")
+    runtime = Runtime()
     await runtime.mount("@/root.fya", agent_id="agent-main")
     return runtime
-```
-
-`providers.yaml`：
-
-```yaml
-deepseek:
-  adapter: deepseek
-  base_url: https://api.deepseek.com
-  api_key: "{{env.DEEPSEEK_API_KEY}}"
-```
-
-`models.yaml`：
-
-```yaml
-deepseek-flash:
-  provider: deepseek
-  model: deepseek-v4-flash
-```
-
-`model-tags.yaml`：
-
-```yaml
-tags:
-  default: deepseek-flash
 ```
 
 `root.fya`：
@@ -194,7 +166,6 @@ from mcp.server.mcpserver import MCPServer
 port = int(sys.argv[2]) if len(sys.argv) > 2 else 0
 mcp = MCPServer("demo-github")
 
-
 @mcp.tool(name="create-issue")
 def create_issue(title: str, body: str = "") -> dict:
     return {
@@ -204,14 +175,12 @@ def create_issue(title: str, body: str = "") -> dict:
         "url": "https://example.test/issues/42",
     }
 
-
 @mcp.tool(name="list-prs")
 def list_prs(state: str = "open") -> list[dict]:
     return [
         {"number": 1, "title": "fix typo", "state": state},
         {"number": 2, "title": "add feature", "state": state},
     ]
-
 
 if __name__ == "__main__":
     mode = sys.argv[1] if len(sys.argv) > 1 else "stdio"
@@ -225,7 +194,7 @@ if __name__ == "__main__":
 运行并输入：
 
 ```console
-$ uv run flowing repl .
+$ DEEPSEEK_API_KEY="<your API key>" uv run flowing repl .
 (agent-main)>>> 现在有哪些 PR？然后帮我创建一个标题为“演示 Issue”的 Issue。
 ```
 
@@ -252,7 +221,6 @@ env:
   API_KEY: \"{{ env.NO_SUCH_VAR }}\"
 """
 
-
 async def main() -> None:
     temp_dir = pathlib.Path(tempfile.mkdtemp())
     (temp_dir / "bogus").mkdir()
@@ -262,7 +230,6 @@ async def main() -> None:
         registry.get("./bogus", source_dir=temp_dir)
     except FormatError as exc:
         print(f"凭证缺失在装配期 fail fast → FormatError: {exc}")
-
 
 asyncio.run(main())
 ```

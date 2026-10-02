@@ -4,7 +4,7 @@
 
 [0-2 使用内置工具](0-2-use-builtin-tools.md)（工具声明与使用）、[1-6 MCP
 工具](1-6-mcp-tools.md)（`type:` 声明的组代理形态）。本篇组合本地 REST API
-与 CLI 工具。完整声明、服务端、测试数据、模型配置、提示词、输入和预期输出
+与 CLI 工具。完整声明、服务端、测试数据、提示词、输入和预期输出
 都列在下文。
 
 ## 本篇名词表
@@ -93,7 +93,7 @@ cli / request 声明放在 `tools/<名>/TOOL.fya`（目录形态），Agent 的
 **演示 1：request 工具调本地 REST API**（先按下方完整材料启动服务端）：
 
 ```console
-$ uv run flowing repl .
+$ DEEPSEEK_API_KEY="<your API key>" uv run flowing repl .
 (agent-main)>>> 先查服务器状态（verbose），然后下单 2 件“演示商品”，如实报告两次工具的返回。
 [tool_call] status-get {"verbose": true}
 [tool_call] order-create {"item": "演示商品", "count": 2}
@@ -111,7 +111,7 @@ $ uv run flowing repl .
 **演示 2：cli 工具与非零退出码**（完整测试用例见下文）：
 
 ```console
-$ uv run flowing repl .
+$ DEEPSEEK_API_KEY="<your API key>" uv run flowing repl .
 (agent-main)>>> 用 run-tests 跑测试（默认路径即可），如实报告结果（包括失败数与退出码）。
 [tool_call] run-tests {"working_dir": ".", "test_path": "sample/"}
 [tool:completed] run-tests ->
@@ -124,8 +124,7 @@ pytest 摘要：1 failed, 1 passed。退出码：1。失败项为 `sample/test_s
 
 ## 完整示例材料
 
-在已安装 Flowing 的项目中按相对文件名创建以下文件，并在环境中设置
-`DEEPSEEK_API_KEY`。安装 pytest 以运行 CLI 示例：
+在已安装 Flowing 的项目中按相对文件名创建以下文件。安装 pytest 以运行 CLI 示例：
 
 ```console
 $ uv add --dev pytest
@@ -139,38 +138,10 @@ REST 服务端只监听本机回环地址。CLI 工具使用
 ```python
 from flowing import Runtime
 
-
 async def main() -> Runtime:
-    runtime = Runtime(persist_dir="@/.flowing")
-    # runtime.set_providers("@/providers.yaml")
-    # runtime.set_models("@/models.yaml")
-    runtime.set_model_tags("@/model-tags.yaml")
+    runtime = Runtime()
     await runtime.mount("@/root.fya", agent_id="agent-main")
     return runtime
-```
-
-`providers.yaml`：
-
-```yaml
-deepseek:
-  adapter: deepseek
-  base_url: https://api.deepseek.com
-  api_key: "{{env.DEEPSEEK_API_KEY}}"
-```
-
-`models.yaml`：
-
-```yaml
-deepseek-flash:
-  provider: deepseek
-  model: deepseek-v4-flash
-```
-
-`model-tags.yaml`：
-
-```yaml
-tags:
-  default: deepseek-flash
 ```
 
 `root.fya`：
@@ -239,7 +210,6 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 started = time.time()
 orders: dict[str, dict] = {}
 
-
 class Handler(BaseHTTPRequestHandler):
     def _send(self, payload: dict, code: int = 200) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode()
@@ -280,7 +250,6 @@ class Handler(BaseHTTPRequestHandler):
         }
         self._send(orders[order_id], 201)
 
-
 port = int(sys.argv[1]) if len(sys.argv) > 1 else 8641
 ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
 ```
@@ -290,7 +259,6 @@ ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
 ```python
 def test_ok():
     assert 1 + 1 == 2
-
 
 def test_fail():
     assert "演示" == "非演示", "刻意失败：演示非零退出码不是 error"
