@@ -378,8 +378,11 @@ class FileRecordStore:
     def _atomic_rewrite(self, records: list[dict]) -> None:
         """Atomically rewrite through a same-directory ``.tmp`` file, fsync,
         and ``os.replace``. The input excludes metadata; the current-version
-        header is written automatically. Close the old file handle, reopen it
-        lazily, and reset last-line tracking after replacement. Internal API.
+        header is written automatically. Close the resident write handle
+        before ``os.replace`` (Windows ``MoveFileEx`` refuses to rename a
+        target that still has an open handle; POSIX has no such restriction),
+        then reopen it lazily in the original mode, and reset last-line
+        tracking after replacement. Internal API.
         """
         ...
     def _maybe_compact_tombstones(self) -> None:

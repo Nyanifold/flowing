@@ -107,7 +107,7 @@ class OpenAIResponsesProvider(Provider):
     映射——把 :class:`flowing.context.Context` 的三个字段映射为
     ``/responses`` 请求体（system 消息、input item 序列、扁平
     function 声明），把响应 ``output[]`` item 序列映射为
-    :class:`ProviderResponse`，并把原始用量归一为 :class:`Usage`
+    :class:`ProviderResponse`，并把原始用量归一为 :class:`flowing.providers.Usage`
     （``input_tokens`` → ``input``，
     ``fresh_input = input_tokens - cached_tokens``）。子类只覆写差异：
     默认端点（``default_base_url``）、凭证来源、厂商特有字段。
@@ -479,7 +479,7 @@ class OpenAIResponsesProvider(Provider):
         return self._map_response(resp)
 
     def _usage_from_raw(self, raw_usage: dict) -> "Usage | None":
-        """原始 usage dict → 归一 :class:`Usage`（流 / 非流共用，口径一致）。
+        """原始 usage dict → 归一 :class:`flowing.providers.Usage`（流 / 非流共用，口径一致）。
 
         ``input_tokens`` 含 cache 读（毛输入），``cached_tokens`` 取
         ``input_tokens_details.cached_tokens``；推理 token 取

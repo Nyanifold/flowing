@@ -11,7 +11,7 @@ configuration are included below.
 
 | Term | One-line definition |
 |---|---|
-| `_dequeue` override point | The dequeue extension point: it builds the consumption batch for one logical turn (default = the leading urgent run at the queue head + the first non-urgent message) — the landing point for scheduling policies such as drain merge or grouping by source |
+| `_dequeue` override point | The dequeue extension point: it builds the consumption batch for one logical turn (default = the leading urgent run at the queue head + the first non-urgent message) — the landing point for scheduling policies such as drain merge or grouping by source; single-message dequeues go through `_dequeue_message` (which fires `on_dequeue` per message), and overrides should dequeue through it per message to preserve hook coverage |
 | `_run_turn` inner layer | The turn execution body: checkpoint sequence → provider_gen → parallel tool batch → final assembly of `TurnResult` |
 | watch channel | The observation mechanism in which `Agent.__setattr__` intercepts assignments and notifies with a `FieldUpdate(new, old)` snapshot on a fire-and-forget basis (observation only; rewriting is ineffective) |
 | side channel (side_query) | An independent call that bypasses the queue, the tree, and persistence — context is assembled on the spot, and the result goes only to the caller |
@@ -27,9 +27,16 @@ implementer's perspective.
 ### The work loop and the dequeue extension point
 
 Each iteration of the resident work loop: `msgs = await self._dequeue()` →
-`_run_turn(msgs, waiters)`. `_dequeue` is an **explicit extension point**
-(overriding handles "multiple / policy", while the `on_dequeue` hook handles
-"observation / transformation"). Note the override semantics: the loop reads
+`_run_turn(msgs, waiters)`. Dequeuing has two layers: **`_dequeue_message(match)`**
+is the core's sole dequeue entry point — when the queue head matches, it pops
+one message and fires `on_dequeue` (message-level: may rewrite; `raise
+Intercepted` drops, resolving the message's waiter as cancelled); **`_dequeue`**
+is the batch extension point (overriding handles "multiple / policy"; the
+default builds the "urgent run + first non-urgent" batch; overrides should
+dequeue through `_dequeue_message` per message to preserve hook coverage — a
+recommendation, not a mechanism guarantee). Batch reshaping (merging /
+grouping / filtering) happens in `before_turn` by rewriting
+`pending_messages`. Note the override semantics: the loop reads
 the attribute once per iteration — a patch takes effect from the next
 dequeue; **restore does not recall a dequeue call already in flight** (the
 loop is still blocked in the old method's `wait_not_empty`; the "batch of 1"
@@ -37,8 +44,11 @@ in demo ② is the empirical evidence of this phenomenon).
 
 ### The _run_turn inner layer (order is the invariant)
 
-Create `TurnContext` → set `current_turn` → `before_turn` (if intercepted, the
-batch is discarded without entering the tree) → append each message of the
+Create `TurnContext` → set `current_turn` → `before_turn` (may rewrite
+`pending_messages`: append-style injection, or remove / replace — a removed
+message is not appended, and its waiter receives the turn's `TurnResult` at
+completion; if intercepted, the whole batch is discarded without entering
+the tree) → append each message of the
 batch to the tree → inner loop (checkpoints: pause gate → urgent absorption →
 abort determination → `provider_gen` → **all tool_calls within the same
 response execute in parallel** (asyncio.gather; results are appended to the

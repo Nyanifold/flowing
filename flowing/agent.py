@@ -331,9 +331,12 @@ class TurnContext:
       对象副本；``message_ids[0]`` 是本 Turn 首条消息的 id——本对象没有
       独立标识字段，需要逻辑标识时用它。
     - ``pending_messages`` 只在 ``before_turn`` 钩子执行期间可读写：
-      追加即附加式注入（排在触发消息之后），清空即空 Turn；批次挂树
-      完成后清空，此后读写没有意义。``before_turn`` 被 ``Intercepted``
-      阻断时整个批次丢弃——不落盘、不留痕（显式丢失语义）。
+      追加即附加式注入（排在触发消息之后），亦可移除或替换其中的
+      消息——被移除 / 替换的消息不挂树、不落盘，其等待者仍随本回合
+      收尾收到本回合的 ``TurnResult``（与消息实际去向的善后由钩子
+      作者负责）；清空即空 Turn；批次挂树完成后清空，此后读写没有
+      意义。``before_turn`` 被 ``Intercepted`` 阻断时整个批次丢弃——
+      不落盘、不留痕（显式丢失语义）。
     - ``aborted`` 由 abort 标记路径置位（``abort_turn()`` / 取消 / 亲节点级联
       / 钩子内直接置位走同一路径）；置位幂等，``on_turn_abort`` 随之
       每回合至多触发一次。``after_turn`` 钩子读 ``aborted`` 区分正常结束
@@ -2093,8 +2096,9 @@ class Agent:
         - 吸收语义：STEER 消息的两个消费路径——随出队批次进入回合
           （队首 INTERRUPT/STEER 连续段并入下一逻辑回合的消费批次，
           见 :meth:`_dequeue`），或回合内层循环每轮 ``provider_gen``
-          前被 drain 挂树、当轮 context 即可见；两条路径都不打断当前
-          回合（对比 ``INTERRUPT`` 的 abort 语义）。
+          前被 drain 挂树、当轮 context 即可见；两条路径都逐条经
+          :meth:`_dequeue_message` 出队（触发 ``on_dequeue``），
+          也都不打断当前回合（对比 ``INTERRUPT`` 的 abort 语义）。
         - fire-and-forget：不注册 ``_pending_turns``、不等待回合产物。
         - 不保证被哪个回合消费：若当前回合已收尾，由下一回合消费。
 
@@ -2174,7 +2178,8 @@ class Agent:
     def _pop_pending_cancelled(self, message_id: str) -> None:
         """摘除 ``_pending_turns`` 条目并联动 resolve cancelled（框架合成空
         ``TurnContext``；内部 API）——:meth:`cancel_queued` 与
-        :meth:`_dequeue` 的“已出队但未消费”处理共用同一填充规则。"""
+        :meth:`_dequeue_message` 的丢弃处理（``on_dequeue`` 的
+        ``Intercepted`` / 异常 / 改写换 id）共用同一填充规则。"""
         fut = self._pending_turns.pop(message_id, None)
         if fut is not None and not fut.done():
             fut.set_result(TurnResult(   # 联动 resolve cancelled（框架合成空 TurnContext）
@@ -2431,6 +2436,39 @@ class Agent:
             estimated=estimated,
             anchor_message_id=anchor.id if anchor is not None else None,
             context_window=window)
+
+    def count_context_messages(self) -> int:
+        """统计下一次 LLM 调用将看到的上下文消息数（纯观测，不装配）。
+
+        .. rubric:: 功能介绍
+
+        沿 ``current_head_id`` 经 :meth:`MessageChain.walk` 上溯到根计数，
+        与 :meth:`_assemble_context` 的消息路径严格同口径（孤儿链断点
+        容忍——上溯到断点即终止；半截 turn 的已落盘消息照常计入）。
+        只计数，不拼接消息、不求值 prompt 段、不收集工具定义、不做
+        配对断言（``UnpairedToolCallError`` 是装配时的不变量校验，
+        计数不需要）。空路径（head 为 ``None``）返回 ``0``。
+
+        .. rubric:: 使用示例
+
+        .. code-block:: python
+
+            if agent.count_context_messages() >= 200:   # 策略层阈值判断
+                use_compact(agent, ...)
+
+        .. rubric:: 行为要点
+
+        - 每次调用现场扫描，无缓存：O(路径长)，结果随挂树 / fork /
+          树手术即时变化。
+        - 统计单位是消息条数，不是 token 数；token 口径见
+          :meth:`estimate_context_tokens`。
+        - 与 :meth:`estimate_context_tokens` 同样是纯观测：不设阈值、
+          不触发压缩、不告警（策略归应用层与 Composable）。
+
+        .. seealso:: :meth:`estimate_context_tokens`、
+            :meth:`_assemble_context`
+        """
+        return sum(1 for _ in self.chain.walk(self.current_head_id))
 
     # ────────────────────────── 模型调用与副线 ────────────────────────────
 
@@ -4551,56 +4589,98 @@ class Agent:
 
         循环：等待工作循环 gate → 出队（:meth:`_dequeue`，可覆写）→ 把
         出队消息的等待者从 ``_pending_turns`` 摘出 → 执行一个逻辑回合
-        （:meth:`_run_turn`）。回合异常记录日志后继续循环（waiters 已由
-        回合收尾喂饱）。启动时机：``after_create`` / ``after_recover``
-        完成即启动；``destroy()`` 时取消。串行：同一时刻一个逻辑回合，
-        活跃回合中入队的消息自然排队。
+        （:meth:`_run_turn`）。出队与回合异常均记录日志后继续循环
+        （waiters 已由回合收尾或丢弃联动喂饱）。启动时机：``after_create`` /
+        ``after_recover`` 完成即启动；``destroy()`` 时取消。串行：同一时刻
+        一个逻辑回合，活跃回合中入队的消息自然排队。
         """
         while True:
             await self._pause_gate.wait()      # 检查点 ①：dequeue 前（仅 pause）
-            msgs = await self._dequeue()       # list[Message]（可覆写 drain/合并策略）
-            waiters = [self._pending_turns.pop(m.id, None) for m in msgs]
             try:
+                msgs = await self._dequeue()       # list[Message]（可覆写 drain/合并策略）
+                waiters = [self._pending_turns.pop(m.id, None) for m in msgs]
                 await self._run_turn(msgs, waiters)
             except Exception:
-                # 回合级异常的兜底闸（“钩子抛异常不再楔死 agent”的收口点）：
+                # 出队与回合级异常的兜底闸（“钩子抛异常不再楔死 agent”的收口点）：
                 # _run_turn 的 except 帧保留异常上抛以保逐层审计，工作循环在
                 # 此记录后继续消费——waiters 已由 _run_turn 的 finally 喂饱
-                # （destroy 的第 1 步另有兜底），此处只保证循环存活
+                # （destroy 的第 1 步另有兜底）；_dequeue 内的 on_dequeue 异常
+                # 已由 _dequeue_message 就地消化，此处覆盖其整体失败路径
                 _logger.exception("agent %s: turn crashed", self.node_id)
 
     async def _dequeue(self) -> list[Message]:
         """出队扩展点：构造一个逻辑回合的消费批次，可覆写实现 drain /
         合并策略（内部 API）。
 
-        默认批次语义：阻塞到队列非空 → 取队首 INTERRUPT/STEER 连续段
-        （``take_while(priority <= STEER)``）→ 再取其后的第一条非紧急
-        消息（若有；队首即非紧急时批次为单条）→ dispatch ``on_dequeue``
-        （可变换返回的消息列表）。已出队但未进入最终批次的消息不塞回
-        队列——其 ``_pending_turns`` 等待者联动 resolve cancelled
-        （同 :meth:`cancel_queued` 填充规则）；``on_dequeue`` 把批次
-        变换为空 = 丢弃本批，工作循环重新等待下一批。
+        默认批次语义：阻塞到队列非空 → 逐条经 :meth:`_dequeue_message`
+        取队首 INTERRUPT/STEER 连续段（每条出队即触发 ``on_dequeue``）
+        → 再逐条经 :meth:`_dequeue_message` 取其后的第一条非紧急消息
+        （若有；队首即非紧急时批次为单条）。本批全部被丢弃时返回空
+        列表——调用方（工作循环）重新等待下一批。批次构造是增量的：
+        构造期间 ``on_dequeue`` handler 入队的紧急消息可并入本批，其
+        入队的非紧急消息可被本批“首条非紧急”位置提前消费。
 
         覆写管“多条 / 策略”（``drain_all()`` 合并、批量、按来源分组），
-        钩子管“观察 / 变换”——分工不混。批次内各消息的等待者随回合
-        收尾共享同一 ``TurnResult`` 并全部 resolve。
+        单条出队与 ``on_dequeue`` 归 :meth:`_dequeue_message`——覆写时
+        建议逐条经 :meth:`_dequeue_message` 出队以保持钩子覆盖（建议
+        而非机制保证）。批次内各消息的等待者随回合收尾共享同一
+        ``TurnResult`` 并全部 resolve。
         """
-        while True:   # on_dequeue 空批（丢弃本批）→ 重新等待
+        while True:   # 本批全部被丢弃 → 重新等待
             await self._message_queue.wait_not_empty()   # 阻塞到非空
-            taken = self._message_queue.take_while(   # 队首 INTERRUPT/STEER 连续段
-                lambda m: m.priority <= MessagePriority.STEER)
-            nxt = self._message_queue.dequeue_nowait()   # 其后第一条非紧急消息（若有）
+            batch: list[Message] = []
+            while (m := await self._dequeue_message(
+                    lambda m: m.priority <= MessagePriority.STEER)) is not None:
+                batch.append(m)   # 队首 INTERRUPT/STEER 连续段
+            nxt = await self._dequeue_message(lambda m: True)
             if nxt is not None:
-                taken.append(nxt)
-            if not taken:
-                continue   # 防御：wait_not_empty 与取批之间无 await 窗口，理论不可达
-            msgs = await self.hooks.on_dequeue.dispatch(self, taken)   # 可变换批次
-            consumed = {m.id for m in msgs}
-            for dropped in taken:   # 已出队但未进入最终批次：联动 resolve cancelled，不塞回队列
-                if dropped.id not in consumed:
-                    self._pop_pending_cancelled(dropped.id)
-            if msgs:
-                return msgs
+                batch.append(nxt)   # 其后第一条非紧急消息（若有）
+            if batch:
+                return batch
+
+    async def _dequeue_message(
+            self, match: Callable[[Message], bool]) -> "Message | None":
+        """单条出队：核心出队的唯一入口（内部 API）。
+
+        队首消息满足 ``match`` 则弹出单条并 dispatch ``on_dequeue``
+        （value 为该条消息，可改写），内部循环直至拿到一条存活消息
+        （被丢弃者逐条联动 resolve cancelled）或队首不满足 / 队空返回
+        ``None``。不阻塞——等待归 :meth:`_dequeue` 的
+        ``wait_not_empty``；不摘等待者——pop 仍在工作循环与回合内
+        urgent 吸收两处调用点。
+
+        ``on_dequeue`` 的出口：
+
+        - 返回消息：作为存活消息返回；返回消息的 ``id`` 与出队消息
+          不同时，出队消息视同丢弃（等待者 cancelled），返回消息
+          为存活消息。
+        - ``raise Intercepted``：丢弃——消息不挂树不落盘，等待者
+          联动 resolve cancelled（与 :meth:`cancel_queued` 同一填充
+          规则），循环继续取下一条。
+        - 普通异常：捕获并记录日志，该消息按丢弃处理（等待者
+          cancelled），循环继续——钩子异常不影响工作循环存活。
+
+        覆写 :meth:`_dequeue` 实现 drain / 合并策略时，建议逐条经
+        本方法出队以保持 ``on_dequeue`` 覆盖（建议而非机制保证）。
+        """
+        while True:
+            head = self._message_queue.peek()
+            if head is None or not match(head):
+                return None
+            original = self._message_queue.dequeue_nowait()
+            try:
+                msg = await self.hooks.on_dequeue.dispatch(self, original)
+            except Intercepted:
+                self._pop_pending_cancelled(original.id)   # 丢弃：联动 cancelled
+                continue
+            except Exception:
+                _logger.exception("agent %s: on_dequeue hook failed; message dropped",
+                                  self.node_id)
+                self._pop_pending_cancelled(original.id)   # 按丢弃处理：联动 cancelled
+                continue
+            if msg.id != original.id:
+                self._pop_pending_cancelled(original.id)   # 改写换 id：出队消息视同丢弃
+            return msg
 
     async def _run_turn(
         self,
@@ -4613,12 +4693,16 @@ class Agent:
         ``current_turn`` 置为本回合载体 → 新建回合退出信号 →
         ``turn.pending_messages = msgs`` （出队
         批次暂存，未挂树）→ dispatch ``before_turn`` （可改写
-        ``pending_messages``——追加为附加式注入；``raise Intercepted``
+        ``pending_messages``——追加为附加式注入，亦可移除 / 替换：
+        被移除消息不挂树、不落盘，其等待者随回合收尾收到本回合的
+        ``TurnResult``，善后由钩子作者负责；``raise Intercepted``
         硬阻断则批次全部丢弃、不落盘）→ 批次逐条经 :meth:`_append_message`
         挂树 → 内层循环：检查点（pause 在前、abort 判定在后）→ urgent
-        吸收（``INTERRUPT`` 在队首则连 drain ``INTERRUPT`` + ``STEER``
-        两带挂树并 ``abort_turn()``；仅 ``STEER`` 在队首则只 drain STEER
-        挂树、不 abort，当轮 context 可见）→ ``_assemble_context`` →
+        吸收（逐条经 :meth:`_dequeue_message` 出队，``INTERRUPT`` 在
+        队首则连 drain ``INTERRUPT`` + ``STEER`` 两带挂树，仅当有
+        存活的 ``INTERRUPT`` 被吸收才 ``abort_turn()``；仅 ``STEER``
+        在队首则只 drain STEER 挂树、不 abort，当轮 context 可见）→
+        ``_assemble_context`` →
         ``provider_gen`` （异常 → 构造 ``ProviderErrorContext`` → dispatch
         ``on_provider_error`` → ``can_continue=False`` 则 break，``True``
         则 continue）→ 响应返回后将 ``response.finish`` 同步到
@@ -4660,16 +4744,22 @@ class Agent:
                 await self._pause_gate.wait()
                 # 检查点 ②.5：urgent 吸收（interrupt / steer）
                 if self._message_queue.peek(MessagePriority.INTERRUPT) is not None:
-                    # interrupt：连 drain INTERRUPT+STEER（队首连续段），挂树后 abort
-                    for m in self._message_queue.take_while(
-                            lambda m: m.priority <= MessagePriority.STEER):
+                    # interrupt：连 drain INTERRUPT+STEER（队首连续段），
+                    # 仅当有存活的 INTERRUPT 被吸收才 abort——被 on_dequeue
+                    # 丢弃的 INTERRUPT 不触发 abort（同段 STEER 照常挂树）
+                    absorbed_interrupt = False
+                    while (m := await self._dequeue_message(
+                            lambda m: m.priority <= MessagePriority.STEER)) is not None:
                         waiters.append(self._pending_turns.pop(m.id, None))   # 等待者并入本回合
                         await self._append_message(m, turn)
-                    self.abort_turn()   # 置 Event，由紧随的 abort 判定统一收口
+                        if m.priority == MessagePriority.INTERRUPT:
+                            absorbed_interrupt = True
+                    if absorbed_interrupt:
+                        self.abort_turn()   # 置 Event，由紧随的 abort 判定统一收口
                 elif self._message_queue.peek(MessagePriority.STEER) is not None:
                     # steer：仅 drain STEER，挂树不 abort——当轮 provider_gen 的 context 即可见
-                    for m in self._message_queue.take_while(
-                            lambda m: m.priority == MessagePriority.STEER):
+                    while (m := await self._dequeue_message(
+                            lambda m: m.priority == MessagePriority.STEER)) is not None:
                         waiters.append(self._pending_turns.pop(m.id, None))
                         await self._append_message(m, turn)
                 if self._turn_abort.is_set():

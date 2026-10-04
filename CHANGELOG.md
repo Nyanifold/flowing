@@ -10,6 +10,65 @@ Change-by-change details for each version are in [`changelogs/`](changelogs/); t
 每个发布版本使用一个 `changelogs/vX.Y.Z.md` 文件；改动逐项成章并同步中英文，每项写明用法。只有存在不兼容性时才补充迁移方法。
 Each release has one `changelogs/vX.Y.Z.md` file. Give every change its own bilingual section and describe how to use it; include migration guidance only when a change is incompatible.
 
+## [0.1.2] - 2026-10-04
+
+### 中文
+
+`on_dequeue` 钩子消息级化（不兼容，批级变换迁移至 `before_turn` 或
+覆写 `_dequeue`）；新增唯一出队接口 `Agent._dequeue_message()` 与
+`Agent.count_context_messages()`；修复 `on_dequeue` 异常终止消息工作循环、
+Windows 上 record store 退出时被 poison 及关联的 `close()` 挂死。
+
+- **`on_dequeue` 消息级化（不兼容）**：value 由 `list[Message]` 改为单条
+  `Message`，覆盖全部消费路径（回合启动批次与回合内 INTERRUPT/STEER
+  吸收）；可改写、可 `raise Intercepted` 丢弃（等待者联动 cancelled）；
+  丢弃 INTERRUPT 不再 abort 回合；批重塑（删除/替换/合并批次消息）迁移到
+  `before_turn` 的 `pending_messages`，或覆写 `Agent._dequeue`；
+- 新增 `Agent._dequeue_message(match)`：核心唯一出队接口（内部 API），
+  覆写 `_dequeue` 时建议逐条经它出队以保持钩子覆盖；
+- 新增 `Agent.count_context_messages()`：统计下一次 LLM 调用将看到的
+  上下文消息数（与 `_assemble_context` 消息路径同口径，纯观测无缓存），
+  供应用层与 Composable 做策略判据；
+- 修复 `on_dequeue` handler 异常终止常驻消息工作循环的问题（钩子异常
+  捕获记录、该消息等待者 cancelled、工作循环兜底同时覆盖 `_dequeue`）；
+- 修复 Windows 上退出 REPL 时 record store 被 poison（`[WinError 5]`）——
+  原子重写现在替换前关闭常驻写句柄；并修复墓碑压缩失败时 `close()`
+  的 drain 屏障不被唤醒导致的永久挂死。
+
+详细变更和用法见 [v0.1.2 详情](changelogs/v0.1.2.md)。
+
+### English
+
+The `on_dequeue` hook is now message-level (incompatible; move batch
+transformation to `before_turn` or an `_dequeue` override); add the sole
+dequeue entry point `Agent._dequeue_message()` and
+`Agent.count_context_messages()`; fix `on_dequeue` exceptions killing the
+message work loop, record store poisoning on exit on Windows, and the
+related `close()` hang.
+
+- **`on_dequeue` is now message-level (incompatible)**: its value changed
+  from `list[Message]` to a single `Message`, dispatched across all
+  consumption paths (turn-start batches and mid-turn INTERRUPT/STEER
+  absorption); handlers may rewrite the message or drop it with
+  `raise Intercepted` (waiter resolved as cancelled); dropping an INTERRUPT
+  no longer aborts the turn; batch reshaping (remove/replace/merge) moves to
+  `before_turn`'s `pending_messages` or an `Agent._dequeue` override;
+- Add `Agent._dequeue_message(match)`: the sole core dequeue entry point
+  (internal API); overrides of `_dequeue` should dequeue through it per
+  message to preserve hook coverage;
+- Add `Agent.count_context_messages()`: counts the messages the next LLM
+  call would see (same path as `_assemble_context`; pure observation, no
+  caching), for policy decisions in the application layer and Composables;
+- Fix `on_dequeue` handler exceptions terminating the resident message work
+  loop (hook exceptions are caught and logged, the message's waiter resolves
+  as cancelled, and the loop guard covers `_dequeue` as a whole);
+- Fix record store being poisoned on REPL exit on Windows (`[WinError 5]`) —
+  the atomic rewrite now closes the resident write handle before replacement;
+  also fix the permanent `close()` hang when tombstone compaction failed
+  without waking the drain barrier.
+
+See [v0.1.2 details](changelogs/v0.1.2.md) for the detailed changes and usage.
+
 ## [0.1.1] - 2026-10-01
 
 ### 中文
@@ -95,5 +154,6 @@ First public release.
 
 See [v0.1.0 details](changelogs/v0.1.0.md) for the detailed changes and usage.
 
+[0.1.2]: https://github.com/Nyanifold/flowing/releases/tag/v0.1.2
 [0.1.1]: https://github.com/Nyanifold/flowing/releases/tag/v0.1.1
 [0.1.0]: https://github.com/Nyanifold/flowing/releases/tag/v0.1.0

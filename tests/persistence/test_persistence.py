@@ -251,6 +251,46 @@ async def test_s13_sync_atomic_rewrite(tmp_path):
     await store.close()
 
 
+async def test_s13b_rewrite_closes_handle_before_replace(tmp_path, monkeypatch):
+    """S13b：os.replace 执行时常驻写句柄必须已关闭。
+
+    Windows 的 MoveFileEx 拒绝 rename 仍有未共享删除句柄打开的目标文件；
+    该不变量在 Linux CI 上可平台无关地断言（见 TODO「Windows 原子重写」条）。"""
+    import os
+
+    import flowing.persistence as persistence
+
+    store = FileRecordStore(tmp_path / "s.jsonl")
+    store.submit({"op": "set", "key": "a", "value": 1})
+    await store.drain()
+    assert store._file is not None   # drain 后常驻写句柄已建立
+    seen: dict = {}
+    real_replace = os.replace
+
+    def _spy_replace(src, dst):
+        seen["handle_closed"] = store._file is None
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(persistence.os, "replace", _spy_replace)
+    store.sync([{"op": "set", "key": "a", "value": 2}])
+    await store.drain()
+    assert seen.get("handle_closed") is True
+    await store.close()
+
+
+async def test_s13c_barrier_set_when_compaction_fails(tmp_path, monkeypatch):
+    """S13c：barrier 分支的墓碑压缩失败（poison 路径）也必须唤醒已取出的
+    barrier——否则 close() 的 drain 等待永久挂起。"""
+    store = FileRecordStore(tmp_path / "s.jsonl")
+    store.submit({"op": "set", "key": "a", "value": 1})
+    await store.drain()   # 正常 barrier：drain 任务存活并停在队列见底处
+    boom = RuntimeError("compaction failed")
+    monkeypatch.setattr(store, "_maybe_compact_tombstones",
+                        lambda: (_ for _ in ()).throw(boom))
+    await asyncio.wait_for(store.close(), 2)   # 修复前：barrier 永不 set，此处挂起
+    assert store._poisoned is boom   # 异常仍走 poison 语义
+
+
 async def test_s14_orphan_tmp_swept_on_open(tmp_path):
     """S14：打开存储时清扫孤儿 .tmp。"""
     path = tmp_path / "s.jsonl"

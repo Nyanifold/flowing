@@ -38,7 +38,7 @@
 - 挂载的钩子：按等级向各钩子点挂纯观察 handler，统一 ``by="logging"``
   （整组可经 ``remove_by_owner("logging")`` 移除）：
 
-  - INFO 关键节点：``use_logging`` 立即挂钩（21 点清单见“等级语义”）；
+  - INFO 关键节点：``use_logging`` 立即挂钩（20 点清单见“等级语义”）；
   - DEBUG 全集与扩展钩子点：延迟到内部 ``after_create`` /
     ``after_recover`` handler 中挂（此时其它 ``use_*()`` 已声明完各自
     钩子点，枚举才能覆盖全集；recover 由 ``after_recover`` 兜底重挂，

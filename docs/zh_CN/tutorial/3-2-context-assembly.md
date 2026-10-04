@@ -49,7 +49,8 @@ adapter 的映射是机械逐字段转换（不得合并后再拆）。**现场�
   **模式切换的正规手法是注册两套块并按 tag 启停**（主线示例）；
 - 动态内容放进 Parsable 模板引用（如 `{{ current_mode }}`），随组装
   现场求值——**反模式**：每 Turn 增删块（破坏前缀缓存）；高频值（当前
-  时间）应走消息通道（`before_turn` 附加式注入，1-9 的 reminder 即此）。
+  时间）应走消息通道（`before_turn` 向 `pending_messages` 注入，1-9 的
+  reminder 即此）。
 
 ### `cache` 只是意图通道
 

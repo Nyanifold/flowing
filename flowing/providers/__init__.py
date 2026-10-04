@@ -7,7 +7,7 @@ adapter 继承树（:mod:`flowing.providers.openai_completions` /
 :mod:`flowing.providers.openai_responses` /
 :mod:`flowing.providers.anthropic_messages` 三个格式家族）、调用产物
 :class:`ProviderResponse` / :class:`ProviderDelta` / 一次调用的 token
-:class:`Usage`、条目配置 :class:`ProviderConfig`、配置字段说明
+:class:`flowing.providers.Usage`、条目配置 :class:`ProviderConfig`、配置字段说明
 :class:`ProviderConfigField` / 模型参数说明 :class:`ModelConfigField`、adapter 注册装饰器
 :func:`register_provider` 与只读枚举 :func:`provider_adapters`、Runtime 级懒实例化表
 :class:`ProviderRegistry`、内置测试替身 :class:`FakeProvider`。模型侧

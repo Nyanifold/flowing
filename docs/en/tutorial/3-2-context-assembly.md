@@ -57,8 +57,9 @@ latest values.
 - Dynamic content goes into Parsable template references (e.g.
   `{{ current_mode }}`) and is evaluated at assembly time. **Anti-patterns**:
   adding or removing blocks every turn (breaks prefix caching); high-frequency
-  values (the current time) should go through the message channel (append-style
-  injection in `before_turn` — the reminder in 1-9 does exactly this).
+  values (the current time) should go through the message channel (injected
+  into `pending_messages` in `before_turn` — the reminder in 1-9 does exactly
+  this).
 
 ### `cache` is only an intent channel
 

@@ -18,7 +18,10 @@ async def main() -> None:
 
     async def drain_all(self):
         await self._message_queue.wait_not_empty()
-        batch = await self._message_queue.drain_all()
+        batch = []
+        # 逐条经 _dequeue_message 出队：每条触发 on_dequeue（可改写 / 丢弃）
+        while (m := await self._dequeue_message(lambda m: True)) is not None:
+            batch.append(m)
         print(f"   [_dequeue] drain 合并：本批 {len(batch)} 条消息进一个回合")
         return batch
 

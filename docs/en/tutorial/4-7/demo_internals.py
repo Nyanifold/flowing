@@ -18,7 +18,11 @@ async def main() -> None:
 
     async def drain_all(self):
         await self._message_queue.wait_not_empty()
-        batch = await self._message_queue.drain_all()
+        batch = []
+        # Dequeue per message through _dequeue_message: each fires on_dequeue
+        # (rewritable / droppable).
+        while (m := await self._dequeue_message(lambda m: True)) is not None:
+            batch.append(m)
         print(f"   [_dequeue] drain merge: batch of {len(batch)} messages into one turn")
         return batch
 

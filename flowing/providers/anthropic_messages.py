@@ -423,7 +423,7 @@ class AnthropicMessagesProvider(Provider):
         return headers
 
     def _usage_from_anthropic(self, raw: dict) -> "Usage | None":
-        """原始 usage → 归一 :class:`Usage`（Anthropic 恒等式组装，同非流式）。"""
+        """原始 usage → 归一 :class:`flowing.providers.Usage`（Anthropic 恒等式组装，同非流式）。"""
         if not raw:
             return None
         fresh = raw.get("input_tokens", 0)

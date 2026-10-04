@@ -10,7 +10,7 @@
 
 | 名词 | 一句话定义 |
 |---|---|
-| `_dequeue` 覆写点 | 出队扩展点：构造一个逻辑回合的消费批次（默认 = 队首紧急连续段 + 第一条非紧急消息）——drain 合并 / 按来源分组等调度策略的落点 |
+| `_dequeue` 覆写点 | 出队扩展点：构造一个逻辑回合的消费批次（默认 = 队首紧急连续段 + 第一条非紧急消息）——drain 合并 / 按来源分组等调度策略的落点；单条出队经 `_dequeue_message`（每条触发 `on_dequeue`），覆写时建议逐条经它出队以保持钩子覆盖 |
 | `_run_turn` 内层 | 回合执行主体：检查点序列 → provider_gen → 工具并行批次 → 收尾组装 `TurnResult` |
 | watch 通道 | `Agent.__setattr__` 拦截赋值、以 `FieldUpdate(new, old)` 快照 fire-and-forget 通知的观测机制（纯观察，改写无效） |
 | 副线（side_query） | 不经队列、不挂树、不落盘的独立调用——上下文现场组装、结果只回调用方 |
@@ -25,16 +25,23 @@ Agent 类的机制全量：标准循环之内，这个类还藏着哪些机制�
 ### 工作循环与出队扩展点
 
 常驻工作循环的每次迭代：`msgs = await self._dequeue()` →
-`_run_turn(msgs, waiters)`。`_dequeue` 是**显式扩展点**（覆写管“多条 /
-策略”，`on_dequeue` 钩子管“观察 / 变换”）。注意覆写语义：循环按次
-查属性——patch 从下一次出队生效；**restore 不撤回已在途的出队调用**
-（循环正阻塞在旧方法的 `wait_not_empty` 里，demo ②的“本批 1 条”即
-此现象的实证）。
+`_run_turn(msgs, waiters)`。出队分两层：**`_dequeue_message(match)`**
+是核心的唯一出队接口——队首满足条件则弹出单条并触发 `on_dequeue`
+（消息级：可改写，`raise Intercepted` 丢弃，被丢弃消息的等待者联动
+resolve cancelled）；**`_dequeue`** 是批次扩展点（覆写管“多条 /
+策略”，默认构造“紧急连续段 + 首条非紧急”批次；覆写时建议逐条经
+`_dequeue_message` 出队以保持钩子覆盖——建议而非机制保证）。批级
+重塑（合并 / 分组 / 过滤）在 `before_turn` 改写 `pending_messages`。
+注意覆写语义：循环按次查属性——patch 从下一次出队生效；**restore
+不撤回已在途的出队调用**（循环正阻塞在旧方法的 `wait_not_empty`
+里，demo ②的“本批 1 条”即此现象的实证）。
 
 ### _run_turn 内层（顺序为不变量）
 
-创建 `TurnContext` → 置 `current_turn` → `before_turn`（拦截则批次
-丢弃不落盘）→ 批次逐条挂树 → 内层循环（检查点：pause gate → urgent
+创建 `TurnContext` → 置 `current_turn` → `before_turn`（可改写
+`pending_messages`：追加注入，亦可移除 / 替换——被移除消息不挂树、
+其等待者随回合收尾收本回合 `TurnResult`；拦截则批次整体丢弃不落
+盘）→ 批次逐条挂树 → 内层循环（检查点：pause gate → urgent
 吸收 → abort 判定 → `provider_gen` → 同一响应内**全部 tool_call 并行
 执行**（asyncio.gather，结果按响应顺序挂树）→ finish 判定）→ `finally`
 ：释放 `current_turn` → `after_turn`（唯一全路径收尾点）→

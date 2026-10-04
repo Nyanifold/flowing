@@ -18,6 +18,22 @@
 ] %}   :members:
 {% endif %}   :show-inheritance:
 
+{% if fullname == "flowing.providers" %}
+包级 re-export 的交叉引用桩（canonical 指向定义模块，内容不重复渲染）：
+
+.. py:class:: Provider
+   :canonical: flowing.providers.provider.Provider
+
+.. py:class:: ProviderResponse
+   :canonical: flowing.providers.provider.ProviderResponse
+
+.. py:class:: ProviderDelta
+   :canonical: flowing.providers.provider.ProviderDelta
+
+.. py:class:: Usage
+   :canonical: flowing.providers.provider.Usage
+
+{% endif %}
 {%- block modules %}
 {%- if modules %}
 .. rubric:: Modules

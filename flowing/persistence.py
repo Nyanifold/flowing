@@ -468,8 +468,12 @@ class FileRecordStore:
                 elif kind == "sync":
                     self._atomic_rewrite(payload)
                 else:  # barrier：排空信号，先收尾维护再唤醒等待方
-                    self._maybe_compact_tombstones()
-                    payload.set()
+                    try:
+                        self._maybe_compact_tombstones()
+                    finally:
+                        # 维护失败（poison 路径）也不悬挂已取出的 barrier：
+                        # close() 的 drain 等待方必须被唤醒
+                        payload.set()
         except asyncio.CancelledError:
             raise  # close() 的正常收尾路径
         except Exception as exc:
@@ -605,8 +609,12 @@ class FileRecordStore:
         """原子重写统一规约：同目录 ``.tmp`` → fsync 临时文件 → ``os.replace``。
 
         调用方传入的终态记录不含 meta；本函数自动写当前版本 meta 首行再写
-        records。重写后旧句柄指向旧 inode——关闭并惰性重开；末行合并跟踪随
-        文件内容变化失效，重置为已知新起点。内部 API。
+        records。``os.replace`` 之前关闭常驻写句柄：Windows 的
+        ``MoveFileEx`` 拒绝 rename 仍有未共享删除句柄打开的目标文件，
+        POSIX 无此限制。重写后旧句柄指向旧 inode——关闭后由
+        :meth:`_ensure_file` 惰性按原模式重建（``sync`` 重写后的续写
+        依赖此）；末行合并跟踪随文件内容变化失效，重置为已知新起点。
+        内部 API。
         """
         tmp = Path(str(self._path) + ".tmp")
         with open(tmp, "wb") as f:
@@ -621,10 +629,10 @@ class FileRecordStore:
                 f.write(json.dumps(record, ensure_ascii=False).encode("utf-8") + b"\n")
             f.flush()
             os.fsync(f.fileno())  # rename 落盘时内容已落盘（否则可留空 inode）
-        os.replace(tmp, self._path)  # POSIX rename 原子：读者只见旧或新
         if self._file is not None:
             self._file.close()
-            self._file = None
+            self._file = None  # 惰性重开：Windows 拒绝 rename 仍有句柄打开的目标
+        os.replace(tmp, self._path)  # POSIX rename 原子：读者只见旧或新
         self._write_offset = 0
         self._last_line = None
         # 重写产物内容已知：终态记录即文件全部记录

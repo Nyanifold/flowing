@@ -102,7 +102,7 @@ class OpenAICompletionsProvider(Provider):
     所有 OpenAI 兼容端点 adapter 的基类：实现请求/响应格式映射——把
     :class:`flowing.context.Context` 的三个字段映射为 chat/completions
     请求体（system 消息、messages 数组、tools 声明），把响应映射为
-    :class:`ProviderResponse`，并把原始用量归一为 :class:`Usage`
+    :class:`ProviderResponse`，并把原始用量归一为 :class:`flowing.providers.Usage`
     （``prompt_tokens`` → ``input``，
     ``fresh_input = prompt_tokens - cached_tokens``）。子类只覆写差异：
     默认端点（``default_base_url``）、
@@ -464,7 +464,7 @@ class OpenAICompletionsProvider(Provider):
         return self._map_response(resp)
 
     def _usage_from_raw(self, raw_usage: dict) -> "Usage | None":
-        """原始 usage dict → 归一 :class:`Usage`（流 / 非流共用，口径一致）。
+        """原始 usage dict → 归一 :class:`flowing.providers.Usage`（流 / 非流共用，口径一致）。
 
         cache 读取按厂商方言取值：OpenAI 系 ``prompt_tokens_details.cached_tokens``，
         无则回退 DeepSeek 的 ``prompt_cache_hit_tokens`` 与 Kimi 顶层

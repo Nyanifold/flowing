@@ -36,8 +36,9 @@ pause / cancel 各作用于循环的哪个环节、在树上留下什么痕迹�
 优先，同优先级 FIFO）；PROVIDER 永不入队（回合内产生），TOOL 结果回合
 内直接挂树。默认出队批次：取队首的 INTERRUPT/STEER 连续段、再取其后的
 第一条非紧急消息——所以一条紧跟 INTERRUPT 的普通消息会搭 INTERRUPT
-的便车进入同一回合。`_dequeue` 可覆写（drain 合并、按来源分组等调度
-策略），4-7 给出实现者视角。
+的便车进入同一回合。每条出队经 `_dequeue_message`（触发 `on_dequeue`）；
+`_dequeue` 可覆写（drain 合并、按来源分组等调度策略，覆写时建议逐条
+经 `_dequeue_message` 出队以保持钩子覆盖），4-7 给出实现者视角。
 
 ### 循环上的四种控制（检查点语义）
 
@@ -61,9 +62,11 @@ provider_gen → 工具批次**。控制机制都在检查点收口：
 
 ### 循环上的钩子点巡礼
 
-`on_enqueue`（入队前，可拒绝/改写）→ `before_turn`（出队批次挂树前，
-附加式注入）→ `on_turn_append`（逐条挂树前）→ `after_turn`（所有路径
-唯一收尾观察点）。1-4 用过其中两个；全集与 pattern 过滤见 4-6。
+`on_enqueue`（入队前，可拒绝/改写）→ `on_dequeue`（每条出队时，可
+改写 / `raise Intercepted` 丢弃）→ `before_turn`（出队批次挂树前，可
+追加 / 移除 / 替换）→ `on_turn_append`（逐条挂树前）→ `after_turn`
+（所有路径唯一收尾观察点）。1-4 用过其中两个；全集与 pattern 过滤见
+4-6。
 
 ## 本篇不覆盖
 

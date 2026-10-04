@@ -1208,9 +1208,11 @@ class MessageQueue:
     每个 Agent 一个独立队列（``Agent._message_queue``），是外部消息进入
     逻辑 turn 循环的唯一通道。工作循环经 ``Agent._dequeue()`` 消费——
     默认批次为“队首 INTERRUPT/STEER 连续段 + 其后第一条非紧急消息”
-    （队首即非紧急时批次为单条），drain / 合并 / 按来源分组等更宽的
-    批量策略由覆写 ``_dequeue()`` 实现，本类提供 ``drain_all`` /
-    ``take_while`` 等批量取出原语支撑默认批次与覆写。
+    （队首即非紧急时批次为单条），逐条经 ``Agent._dequeue_message()``
+    出队（每条触发 ``on_dequeue``）；drain / 合并 / 按来源分组等更宽的
+    批量策略由覆写 ``_dequeue()`` 实现（建议逐条经
+    ``Agent._dequeue_message()`` 出队以保持钩子覆盖），本类提供
+    ``drain_all`` / ``take_while`` 等批量取出原语支撑覆写。
 
     队列只承诺最小调度语义：按 ``MessagePriority`` 数值升序、同级按入队
     顺序 FIFO。防饿死、来源加权等策略不在框架核心。忙时不拒绝：活跃
@@ -1222,9 +1224,14 @@ class MessageQueue:
     .. code-block:: python
 
         # 覆写 _dequeue：drain——批量吸收所有等待消息
+        # （逐条经 _dequeue_message 出队，保持 on_dequeue 覆盖）
         def use_message_drain(agent):
             async def _drain_dequeue():
-                return await agent._message_queue.drain_all()
+                batch = []
+                while (m := await agent._dequeue_message(lambda m: True)) \
+                        is not None:
+                    batch.append(m)
+                return batch
             agent._dequeue = _drain_dequeue
 
         # 覆写 _dequeue：按来源合并
@@ -1296,14 +1303,15 @@ class MessageQueue:
         .. rubric:: 功能介绍
 
         “等消息”与“取消息”的拆分原语：``Agent._dequeue`` 的默认实现
-        用它保证“队列确实非空”才进入取批与 ``on_dequeue`` 派发，消除
-        空转期的无效动作。enqueue 时唤醒等待者。
+        用它保证“队列确实非空”才进入取批，消除空转期的无效动作。
+        enqueue 时唤醒等待者。
 
         .. rubric:: 行为要点
 
         - 队列非空时立即返回；为空时挂起至下一次入队。
-        - 返回后 ``on_dequeue`` 仍可能把批次变换为空（丢弃本批），
-          重试循环由调用方（``_dequeue``）承担。
+        - 返回后 ``Agent._dequeue_message`` 仍可能把本批消息全部丢弃
+          （``on_dequeue`` 丢弃 / 异常），空批的重试循环由调用方
+          （``_dequeue``）承担。
 
         .. seealso:: :meth:`dequeue`、:meth:`dequeue_nowait`
         """
@@ -1313,9 +1321,9 @@ class MessageQueue:
     def dequeue_nowait(self) -> Message | None:
         """非阻塞取出优先级最高的一条消息；队列空返回 ``None``。
 
-        与 :meth:`wait_not_empty` 配套：``Agent._dequeue`` 在
-        ``take_while`` 取完紧急段后用它取“其后第一条非紧急消息”——
-        无紧急前缀的批次就是本方法取出的单条。
+        与 :meth:`wait_not_empty` 配套：``Agent._dequeue_message``
+        以“窥视 + 本方法弹出”的方式逐条取出——默认批次的首条非紧急
+        消息与紧急段都由它弹出（每条出队即触发 ``on_dequeue``）。
         """
         if not self._items:
             return None
@@ -1331,11 +1339,12 @@ class MessageQueue:
 
         队列空时挂起等待，直到有消息入队。本方法是“等消息 + 取消息”合体
         的便捷原语；``Agent._dequeue()`` 的默认实现不使用它——默认批次
-        语义（队首紧急连续段 + 首条非紧急 + ``on_dequeue`` 派发）需要
-        :meth:`wait_not_empty` + :meth:`take_while` /
-        :meth:`dequeue_nowait` 的拆分组合（见
-        :meth:`flowing.agent.Agent._dequeue`）。不需要批次语义的直接
-        消费方（如自定义 ``_dequeue()`` 覆写）可用本方法。
+        语义（队首紧急连续段 + 首条非紧急）由
+        :meth:`wait_not_empty` + :meth:`flowing.agent.Agent._dequeue_message`
+        组合承担（见 :meth:`flowing.agent.Agent._dequeue`）。不需要批次
+        语义的直接消费方可用本方法；自定义 ``_dequeue()`` 覆写建议逐条
+        经 :meth:`flowing.agent.Agent._dequeue_message` 出队，以保持
+        ``on_dequeue`` 钩子覆盖。
 
         .. rubric:: 行为要点
 
@@ -1683,8 +1692,9 @@ class MessageChain:
 
         .. rubric:: 功能介绍
 
-        “活跃分支回放”的正式读路径：``Agent._assemble_context`` 与
-        :meth:`flowing.agent.Agent.estimate_context_tokens` 的消息路径
+        “活跃分支回放”的正式读路径：``Agent._assemble_context``、
+        :meth:`flowing.agent.Agent.estimate_context_tokens` 与
+        :meth:`flowing.agent.Agent.count_context_messages` 的消息路径
         收集与本 op 同口径（内部已收敛为调用本方法）。
 
         .. rubric:: 行为要点

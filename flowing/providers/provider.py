@@ -4,7 +4,7 @@
 
 本模块承载 Provider 侧机制层的核心符号：抽象基类 :class:`Provider`、
 一次调用的完整产物 :class:`ProviderResponse` / 流式增量
-:class:`ProviderDelta` / token 用量记录 :class:`Usage`、条目配置
+:class:`ProviderDelta` / token 用量记录 :class:`flowing.providers.Usage`、条目配置
 :class:`ProviderConfig`、配置字段说明 :class:`ProviderConfigField` / 模型参数
 说明 :class:`ModelConfigField`、内置
 测试替身 :class:`FakeProvider`、adapter 注册装饰器
@@ -453,7 +453,7 @@ class Usage:
     """provider 返回的全部原始用量字段原样保留（未文档化字段不稳定）。
     行为边界：框架核心不依赖其内容；turn 聚合时不求和（聚合体为空
     dict——逐次原始字段的消费方走 ``after_provider_gen``）。参见
-    :class:`Usage`。
+    :class:`flowing.providers.Usage`。
     """
 
 

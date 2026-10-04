@@ -83,8 +83,10 @@ dispatch 点为准）：
    * - ``before_turn``
      - 逻辑 turn 开始、出队批次挂树之前
      - :class:`flowing.agent.TurnContext`
-     - 可改写 ``pending_messages`` （把消息附加进本回合待挂树批次）；
-       ``raise Intercepted`` 阻断则整个批次丢弃、不落盘
+     - 可改写 ``pending_messages``（追加为附加式注入，亦可移除 /
+       替换：被移除消息不挂树不落盘，其等待者随回合收尾收到本回合
+       ``TurnResult``，善后由钩子作者负责）；``raise Intercepted``
+       阻断则整个批次丢弃、不落盘
    * - ``on_turn_append``
      - 消息挂树与落盘之前
      - :class:`flowing.message.Message`
@@ -165,10 +167,13 @@ dispatch 点为准）：
      - :class:`flowing.message.Message`
      - 可改写消息；``raise Intercepted`` 则拦截入队（队列不变）
    * - ``on_dequeue``
-     - 出队之后、回合开始之前
-     - ``list[Message]``
-     - 可改写（变换本逻辑 turn 消费的消息列表）；已出队但未进入
-       最终批次的消息联动 resolve cancelled，空批 = 丢弃本批重等
+     - 每条消息出队时（全部消费路径：回合启动批次与回合内
+       INTERRUPT/STEER 吸收；撤回与 destroy 不触发）
+     - :class:`flowing.message.Message`
+     - 可改写消息（返回消息 id 与出队消息不同时，出队消息视同
+       丢弃）；``raise Intercepted`` 则丢弃该条——不挂树不落盘，
+       等待者联动 resolve cancelled；handler 普通异常按丢弃处理
+       （捕获记录、等待者 cancelled、出队继续）
    * - ``on_fork``
      - ``fork()`` 合法性检查与切换 head 之前
      - :class:`flowing.agent.ForkContext`

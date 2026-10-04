@@ -1179,6 +1179,37 @@ async def test_t82_anchor_migration_on_remove(agent):
 
 
 # ---------------------------------------------------------------------------
+# count_context_messages：与 _assemble_context 消息路径同口径的纯计数
+# ---------------------------------------------------------------------------
+
+
+async def test_count_context_messages_matches_path(agent):
+    """空树 → 0；逐条 push 后计数 = 路径消息数；remove/fork 后随路径变化。"""
+    assert agent.count_context_messages() == 0
+    agent.push(Message(kind=MessageKind.USER, content=[TextBlock(text="问")]))
+    p1 = Message(kind=MessageKind.PROVIDER, content=[TextBlock(text="答")])
+    agent.push(p1)
+    t1 = Message(kind=MessageKind.TOOL, tool_call_id="c1",
+                 tool_status="completed", content=[TextBlock(text="结果")])
+    agent.push(t1)
+    assert agent.count_context_messages() == 3
+    assert agent.count_context_messages() == len(
+        list(agent.chain.walk(agent.current_head_id)))   # 与 walk 同口径
+
+    agent.remove(t1.id)   # 删 head 回退
+    assert agent.count_context_messages() == 2
+
+
+async def test_count_context_messages_turn_integration(agent, provider):
+    """回合后计数 = 挂树消息数（query 消息 + provider 响应）。"""
+    before = agent.count_context_messages()
+    script_provider(provider, text_response("ok"))
+    result = await agent.query("问题")
+    assert result.status == "completed"
+    assert agent.count_context_messages() == before + 2
+
+
+# ---------------------------------------------------------------------------
 # T83：树手术的 head 语义
 # ---------------------------------------------------------------------------
 
@@ -1246,17 +1277,17 @@ async def test_t84_hook_exception_not_wedged(agent, provider, caplog):
 
 
 async def test_dequeue_hook_discard_retries(agent, provider):
-    """on_dequeue 把批次变换为空 = 丢弃本批（已出队不塞回，等待者联动
-    resolve cancelled）→ 工作循环重等；后续批次正常消费。"""
-    dequeue_calls: list[int] = []
+    """on_dequeue raise Intercepted = 丢弃该条（已出队不塞回，等待者联动
+    resolve cancelled）→ 本批空 → 工作循环重等；后续批次正常消费。"""
+    seen: list[str] = []
     dropped = {"done": False}
 
-    async def _drop_first(a, msgs):
-        dequeue_calls.append(len(msgs))
+    async def _drop_first(a, msg):
+        seen.append(msg.id)
         if not dropped["done"]:
             dropped["done"] = True
-            return []   # 丢弃本批（已出队消息不塞回队列）
-        return msgs
+            raise Intercepted("drop")   # 丢弃本条（已出队消息不塞回队列）
+        return msg
 
     agent.hooks.on_dequeue(_drop_first)
     script_provider(provider, text_response("ok"))
@@ -1267,7 +1298,7 @@ async def test_dequeue_hook_discard_retries(agent, provider):
     assert r1.status == "cancelled"   # 被丢消息的等待者联动 resolve cancelled
     result = await agent.query("正常消费")
     assert result.status == "completed"
-    assert dequeue_calls == [1, 1]   # 首批被丢 + 次批正常消费，各派发一次
+    assert len(seen) == 2   # 首批被丢 + 次批正常消费，各派发一次
     assert len(provider.received) == 1   # 被丢批次未发起 LLM 调用
 
 
@@ -1416,3 +1447,230 @@ async def test_dequeue_batch_single_when_no_urgent(agent, provider):
     r1, r2 = await asyncio.gather(q1, q2)
     assert batches == [["问题一"], ["问题二"]]
     assert r1.status == r2.status == "completed"
+
+
+# ---------------------------------------------------------------------------
+# on_dequeue 消息级语义（逐条触发 / 丢弃 / 改写 / 条件 abort / 异常容错）
+# ---------------------------------------------------------------------------
+
+
+async def test_on_dequeue_fires_per_message_in_batch_order(agent, provider):
+    """回合启动批次：每条消息触发一次 on_dequeue，顺序 = 批次顺序。"""
+    seen: list[str] = []
+
+    async def _record(a, msg):
+        seen.append(getattr(msg.content[0], "text", ""))
+        return msg
+
+    agent.hooks.on_dequeue(_record)
+    script_provider(provider, text_response("ok"))
+    await agent.steer("导向")
+    result = await agent.query("问题")
+    assert result.status == "completed"
+    assert seen == ["导向", "问题"]   # 紧急段在前，非紧急随后
+
+
+async def test_on_dequeue_fires_on_midturn_steer_absorption(agent, provider):
+    """回合内 STEER 吸收路径逐条触发 on_dequeue。"""
+    gate = asyncio.Event()
+    wait_tool = WaitTool(gate)
+    agent.runtime.register_tool(wait_tool)
+    agent.add_tool("wait")
+    step1, _ = tool_call_response(("wait", {}))
+    script_provider(provider, step1, text_response("收尾"))
+    seen: list[str] = []
+
+    async def _record(a, msg):
+        seen.append(getattr(msg.content[0], "text", ""))
+        return msg
+
+    agent.hooks.on_dequeue(_record)
+    t1 = asyncio.create_task(agent.query("开始"))
+    await _yield(6)   # 回合进入工具执行
+    await agent.steer("中途导向")
+    await _yield(2)
+    gate.set()
+    r1 = await asyncio.wait_for(t1, 2)
+    assert r1.status == "completed"
+    assert "中途导向" in seen   # 回合内吸收的消息过了钩子
+
+
+async def test_on_dequeue_dropped_interrupt_does_not_abort(agent, provider):
+    """丢弃 INTERRUPT：回合不 abort、正常跑完；同段 STEER 照常挂树。"""
+    gate = asyncio.Event()
+    wait_tool = WaitTool(gate)
+    agent.runtime.register_tool(wait_tool)
+    agent.add_tool("wait")
+    step1, _ = tool_call_response(("wait", {}))
+    script_provider(provider, step1, text_response("正常收尾"))
+    abort_calls: list = []
+
+    async def _drop_interrupt(a, msg):
+        if msg.priority == MessagePriority.INTERRUPT:
+            raise Intercepted("吞掉中断")
+        return msg
+
+    agent.hooks.on_dequeue(_drop_interrupt)
+    agent.hooks.on_turn_abort(lambda a, t: abort_calls.append(1) or t)
+    t1 = asyncio.create_task(agent.query("开始"))
+    await _yield(6)
+    t2 = asyncio.create_task(agent.query("打断", priority=MessagePriority.INTERRUPT))
+    await agent.steer("同段导向")
+    await _yield(2)
+    gate.set()
+    r1, r2 = await asyncio.wait_for(asyncio.gather(t1, t2), 2)
+    assert r1.status == "completed"   # 健康回合未被误杀
+    assert r2.status == "cancelled"   # 被丢 INTERRUPT 的等待者联动 cancelled
+    assert abort_calls == []          # 条件 abort：无存活 INTERRUPT 不置位
+    texts = [getattr(b, "text", "")
+             for m in agent._messages.values() for b in m.content]
+    assert "同段导向" in texts   # 同段 STEER 照常挂树
+
+
+async def test_on_dequeue_dropped_interrupt_query_waiter_cancelled(agent, provider):
+    """吸收路径被丢弃的 query(INTERRUPT) 消息：等待者收 cancelled
+    （_pop_pending_cancelled 在吸收路径的复用）。"""
+    gate = asyncio.Event()
+    wait_tool = WaitTool(gate)
+    agent.runtime.register_tool(wait_tool)
+    agent.add_tool("wait")
+    step1, _ = tool_call_response(("wait", {}))
+    script_provider(provider, step1, text_response("收尾"))
+
+    async def _drop_interrupt(a, msg):
+        if msg.priority == MessagePriority.INTERRUPT:
+            raise Intercepted("吞掉中断")
+        return msg
+
+    agent.hooks.on_dequeue(_drop_interrupt)
+    t1 = asyncio.create_task(agent.query("开始"))
+    await _yield(6)
+    t2 = asyncio.create_task(agent.query("打断", priority=MessagePriority.INTERRUPT))
+    await _yield(2)
+    gate.set()
+    r1, r2 = await asyncio.wait_for(asyncio.gather(t1, t2), 2)
+    assert r1.status == "completed"
+    assert r2.status == "cancelled"
+
+
+async def test_on_dequeue_handler_error_keeps_loop_alive(agent, provider):
+    """on_dequeue 抛普通异常：工作循环存活、该消息等待者 cancelled、
+    后续批次正常消费。"""
+    failed = {"done": False}
+
+    async def _boom(a, msg):
+        if not failed["done"]:
+            failed["done"] = True
+            raise RuntimeError("handler bug")
+        return msg
+
+    agent.hooks.on_dequeue(_boom)
+    script_provider(provider, text_response("ok"))
+    q1 = asyncio.create_task(agent.query("会被扔掉"))
+    r1 = await asyncio.wait_for(q1, 2)
+    assert r1.status == "cancelled"   # 异常消息按丢弃处理：等待者 cancelled
+    result = await agent.query("正常消费")
+    assert result.status == "completed"   # 工作循环存活
+
+
+async def test_before_turn_removed_message_outcome(agent, provider):
+    """before_turn 从 pending_messages 移除消息：不挂树；其等待者随回合
+    收尾收本回合 TurnResult（框架不做 cancelled 联动）。"""
+    removed = {"done": False}
+
+    async def _remove(a, turn):
+        if not removed["done"]:
+            removed["done"] = True
+            turn.pending_messages = []   # 移除本批唯一消息
+        return turn
+
+    agent.hooks.before_turn(_remove)
+    script_provider(provider, text_response("ok"))
+    q1 = asyncio.create_task(agent.query("会被移除"))
+    r1 = await asyncio.wait_for(q1, 2)
+    assert r1.status == "completed"   # 等待者收本回合共享 TurnResult
+    texts = [getattr(b, "text", "")
+             for m in agent._messages.values() for b in m.content]
+    assert "会被移除" not in texts   # 消息未挂树
+
+
+async def test_on_dequeue_rewrite_replaces_content(agent, provider):
+    """on_dequeue 改写消息内容：挂树的是改写后内容。"""
+    async def _rewrite(a, msg):
+        msg.content = [TextBlock(text="改写后")]
+        return msg
+
+    agent.hooks.on_dequeue(_rewrite)
+    script_provider(provider, text_response("ok"))
+    result = await agent.query("原始内容")
+    assert result.status == "completed"
+    texts = [getattr(b, "text", "")
+             for m in agent._messages.values() for b in m.content]
+    assert "改写后" in texts
+    assert "原始内容" not in texts
+
+
+async def test_on_dequeue_enqueue_during_batch_joins_batch(runtime, provider):
+    """增量构造：on_dequeue handler 入队的 STEER 并入正在构造的批次。"""
+    batches: list[list[str]] = []
+    agent = await runtime.create_agent(SimpleAgent, start_loop=False)
+    fed = {"done": False}
+
+    async def _record(a, turn):
+        batches.append([getattr(m.content[0], "text", "")
+                        for m in turn.pending_messages])
+        return turn
+
+    async def _feed(a, msg):
+        if not fed["done"]:
+            fed["done"] = True
+            await a.steer("构造期间插入")   # 构造窗口内入队
+        return msg
+
+    agent.hooks.before_turn(_record)
+    agent.hooks.on_dequeue(_feed)
+    script_provider(provider, text_response("ok"))
+    await agent.steer("原始导向")
+    q1 = asyncio.create_task(agent.query("问题"))
+    for _ in range(100):   # 等 query 完成打包入队
+        if len(agent._message_queue) == 2:
+            break
+        await asyncio.sleep(0)
+    assert len(agent._message_queue) == 2
+    agent._loop_task = asyncio.create_task(agent._work_loop())   # 批次候选就位后启动
+    r1 = await asyncio.wait_for(q1, 2)
+    assert r1.status == "completed"
+    assert batches == [["原始导向", "构造期间插入", "问题"]]
+
+
+async def test_on_dequeue_rewrite_new_id_cancels_original(agent, provider):
+    """改写返回不同 id 的消息：原消息视同丢弃（等待者 cancelled），
+    返回消息为消费消息。"""
+    async def _replace(a, msg):
+        new = Message(kind=msg.kind, content=[TextBlock(text="替身")],
+                      priority=msg.priority)
+        new.id = a._next_message_id()
+        return new
+
+    agent.hooks.on_dequeue(_replace)
+    script_provider(provider, text_response("ok"))
+    q1 = asyncio.create_task(agent.query("原话"))
+    r1 = await asyncio.wait_for(q1, 2)
+    assert r1.status == "cancelled"   # 原消息等待者联动 cancelled
+    texts = [getattr(b, "text", "")
+             for m in agent._messages.values() for b in m.content]
+    assert "替身" in texts   # 返回消息照常消费
+
+
+async def test_before_turn_remove_all_still_runs_turn(agent, provider):
+    """before_turn 移除全部消息：空回合仍执行（清空即空 Turn）。"""
+    async def _clear(a, turn):
+        turn.pending_messages = []
+        return turn
+
+    agent.hooks.before_turn(_clear)
+    script_provider(provider, text_response("ok"))
+    q1 = asyncio.create_task(agent.query("会被清空"))
+    r1 = await asyncio.wait_for(q1, 2)
+    assert r1.status == "completed"
+    assert len(provider.received) == 1   # 空回合仍发起 provider 调用

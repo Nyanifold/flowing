@@ -57,7 +57,7 @@ type and handler capability are specific to each hook.
      - Runs during destruction cleanup; sync and async handlers are accepted.
    * - ``before_turn``
      - At turn start, before the dequeued batch is attached to the tree; the value is ``TurnContext``.
-     - May edit ``pending_messages``. Raising ``Intercepted`` discards the batch without persisting it.
+     - May edit ``pending_messages`` (append-style injection, or remove/replace: a removed message is not appended or persisted, and its waiter receives the turn's ``TurnResult`` at completion — downstream cleanup is the hook author's responsibility). Raising ``Intercepted`` discards the batch without persisting it.
    * - ``on_turn_append``
      - Before a message is attached to the tree and persisted; the value is ``Message``.
      - May modify the message. Raising ``Intercepted`` blocks the append.
@@ -98,8 +98,8 @@ type and handler capability are specific to each hook.
      - Before a message enters the queue; the value is ``Message``.
      - May modify the message. Raising ``Intercepted`` rejects it without changing the queue.
    * - ``on_dequeue``
-     - After dequeue and before turn start; the value is ``list[Message]``.
-     - May transform the batch. Messages removed from the final batch are resolved as cancelled; an empty batch is discarded and the caller waits again.
+     - At each message's dequeue time, across all consumption paths (turn-start batches and mid-turn INTERRUPT/STEER absorption; retraction and destroy do not fire it); the value is ``Message``.
+     - May rewrite the message (if the returned id differs from the dequeued message, the dequeued one is treated as dropped). Raising ``Intercepted`` drops the message — it is not appended or persisted, and its waiter is resolved as cancelled. An ordinary handler exception is treated as a drop (logged, waiter resolved cancelled, dequeuing continues).
    * - ``on_fork``
      - After fork validation and before the active head changes; the value is ``ForkContext``.
      - May change ``target_message_id``. Raising ``Intercepted`` prevents the switch.

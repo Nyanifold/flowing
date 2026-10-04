@@ -175,9 +175,12 @@ class TurnContext:
       first message of the turn; use it as a logical turn identifier when
       needed because this object has no separate ID.
     - ``pending_messages`` is intended for use while ``before_turn`` handlers
-      run. Appending injects messages after the triggering message. Clearing
-      the list leaves an empty turn. The list is cleared after the batch is
-      attached to the tree; changes made later have no effect. If
+      run. Appending injects messages after the triggering message; entries may
+      also be removed or replaced — a removed message is not appended or
+      persisted, and its waiter receives the turn's ``TurnResult`` at turn
+      completion (downstream cleanup is the hook author's responsibility).
+      Clearing the list leaves an empty turn. The list is cleared after the
+      batch is attached to the tree; changes made later have no effect. If
       ``before_turn`` is blocked by ``Intercepted``, the pending batch is
       discarded without being persisted.
     - ``aborted`` is set by the abort path, including ``abort_turn``,
@@ -1388,6 +1391,38 @@ class Agent:
         .. seealso:: ``flowing.context.ContextUsageEstimate``,
             ``flowing.message.estimate_message_tokens``, and
             ``flowing.providers.Usage``
+        """
+        ...
+
+    def count_context_messages(self) -> int:
+        """Count the messages the next LLM call would see, without assembling
+        the context.
+
+        Walks from ``current_head_id`` to the root via
+        ``MessageChain.walk`` — the exact same message path as
+        ``Agent._assemble_context`` (orphan breakpoints tolerated: the walk
+        stops at the breakpoint; messages of a half-finished turn are
+        counted the same way). This is a pure count: it does not assemble
+        messages, evaluate prompt blocks, collect tool definitions, or run
+        the pairing assertion (``UnpairedToolCallError`` is an assembly-time
+        invariant check that counting does not need). An empty path
+        (``None`` head) returns ``0``.
+
+        .. code-block:: python
+
+            if agent.count_context_messages() >= 200:   # strategy threshold
+                use_compact(agent, ...)
+
+        The scan is performed on demand with no caching: O(path length), and
+        the result changes immediately with appends, forks, and tree edits.
+        The unit is message count, not tokens; for the token view see
+        ``estimate_context_tokens``. Like ``estimate_context_tokens``, this
+        is read-only: it sets no threshold, triggers no compaction, and
+        emits no warnings (policy belongs to the application layer and
+        Composables).
+
+        .. seealso:: ``Agent.estimate_context_tokens``,
+            ``Agent._assemble_context``
         """
         ...
 

@@ -176,7 +176,8 @@ CORE_HOOK_POINTS = [
     "before_create", "after_create", "before_recover", "after_recover",
     "before_destroy", "after_destroy", "before_turn", "on_turn_append",
     "before_provider_gen", "after_provider_gen",
-    "on_provider_delta", "before_tool_call", "after_tool_call",
+    "on_provider_delta", "before_tool_call", "on_tool_yields",
+    "after_tool_call",
     "on_subagent_invoke", "on_subagent_returns", "on_turn_abort",
     "after_turn", "on_provider_error", "on_enqueue", "on_dequeue", "on_fork",
     "before_cancel", "after_cancel",
@@ -188,7 +189,7 @@ def test_t55_core_hook_points_prefilled():
     for name in CORE_HOOK_POINTS:
         hl = getattr(hooks, name)
         assert isinstance(hl, HookList) and hl.by == "core" and len(hl._items) == 0
-    assert len(CORE_HOOK_POINTS) == 23
+    assert len(CORE_HOOK_POINTS) == 24
     assert hooks.after_provider_gen.match_on == "by"
     assert hooks.on_provider_delta.match_on == "by"
     assert hooks.before_turn.by == "core"

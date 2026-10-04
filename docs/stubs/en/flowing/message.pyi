@@ -794,9 +794,15 @@ class MessageQueue:
     .. code-block:: python
 
         # Override _dequeue to drain and absorb all pending messages.
+        # (Dequeue per message through _dequeue_message to preserve
+        # on_dequeue coverage.)
         def use_message_drain(agent):
             async def _drain_dequeue():
-                return await agent._message_queue.drain_all()
+                batch = []
+                while (message := await agent._dequeue_message(
+                        lambda message: True)) is not None:
+                    batch.append(message)
+                return batch
             agent._dequeue = _drain_dequeue
 
         # Override _dequeue to coalesce messages from the same source.

@@ -27,7 +27,7 @@ Each agent holds a message-level tree (a forest): nodes are messages, and the pa
 
 ### Queue and scheduling
 
-Five priority levels: `INTERRUPT > STEER > HIGH > NORMAL > LOW` (the smaller the number, the higher the priority; FIFO within the same priority). PROVIDER messages never enter the queue (they are produced inside a turn); TOOL results attach to the tree directly within the turn. The default dequeue batch takes the leading INTERRUPT/STEER run at the queue head plus the first non-urgent message after it — so a normal message right behind an INTERRUPT rides its coattails into the same turn. `_dequeue` can be overridden (drain merging, grouping by source, and other scheduling policies); Chapter 4-7 gives the implementer's view.
+Five priority levels: `INTERRUPT > STEER > HIGH > NORMAL > LOW` (the smaller the number, the higher the priority; FIFO within the same priority). PROVIDER messages never enter the queue (they are produced inside a turn); TOOL results attach to the tree directly within the turn. The default dequeue batch takes the leading INTERRUPT/STEER run at the queue head plus the first non-urgent message after it — so a normal message right behind an INTERRUPT rides its coattails into the same turn. Every dequeue goes through `_dequeue_message` (firing `on_dequeue`); `_dequeue` can be overridden (drain merging, grouping by source, and other scheduling policies — overrides should dequeue through `_dequeue_message` per message to preserve hook coverage); Chapter 4-7 gives the implementer's view.
 
 ### Four controls on the loop (checkpoint semantics)
 
@@ -47,7 +47,7 @@ Two precise semantics (proven by the main example):
 
 ### Tour of hook points on the loop
 
-`on_enqueue` (before enqueue, may reject/rewrite) → `before_turn` (before the dequeued batch attaches, additive injection) → `on_turn_append` (before each message attaches) → `after_turn` (the single closing observation point on all paths). Chapter 1-4 used two of them; the full set and pattern filtering are in Chapter 4-6.
+`on_enqueue` (before enqueue, may reject/rewrite) → `on_dequeue` (at each message's dequeue, may rewrite / `raise Intercepted` to drop) → `before_turn` (before the dequeued batch attaches, may append / remove / replace) → `on_turn_append` (before each message attaches) → `after_turn` (the single closing observation point on all paths). Chapter 1-4 used two of them; the full set and pattern filtering are in Chapter 4-6.
 
 ## Out of scope
 
