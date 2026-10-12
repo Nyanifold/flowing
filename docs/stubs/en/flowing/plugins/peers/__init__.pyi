@@ -24,7 +24,9 @@ recovered on demand.
 The ``peers`` mapping must be non-empty, use non-empty string IDs and
 descriptions, and exclude the caller's own ID. Its descriptions are inserted
 into a dynamic prompt block as literal text, without Parsable template
-evaluation. ``use_peers()`` does not bind or modify tools.
+evaluation; the injected prompt is an ``Available peer agents:`` catalog
+plus the closing sentence ``You can contact the agents listed above by
+their exact IDs.`` ``use_peers()`` does not bind or modify tools.
 
 .. rubric:: Example
 

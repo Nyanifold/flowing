@@ -5,9 +5,14 @@ the default tool namespace and provides a stateless router to the Runtime.
 Each Agent supplies its own allowlist as a non-empty ``peers`` mapping whose
 keys are exact Agent IDs and whose values are non-empty descriptions.
 
-The catalog is rendered as a dynamic system-prompt block. Descriptions are
-inserted as literal configuration text and are not parsed as Parsable
-templates. The Composable neither binds tools nor changes tool entries.
+The catalog is rendered as a dynamic system-prompt block. The injected text
+is fixed: an ``Available peer agents:`` heading, one
+``- <peer_id>: <description>`` line per entry, and the closing sentence
+``You can contact the agents listed above by their exact IDs.`` Tool
+discovery and usage are carried by the tool declarations themselves and are
+not repeated in the prompt. Descriptions are inserted as literal
+configuration text and are not parsed as Parsable templates. The Composable
+neither binds tools nor changes tool entries.
 
 ``use_peers()`` first injects the router, so a Runtime without
 ``PeersPlugin`` raises ``MissingProvideError``. It then validates the mapping
@@ -84,8 +89,13 @@ def use_peers(agent: Agent) -> None:
 
     Call this from ``setup()``. The mapping must be non-empty, contain
     non-empty string IDs and descriptions, and exclude the caller's own ID.
-    This function does not check whether targets are mounted or change tool
-    entries.
+    The injected prompt is fixed: an ``Available peer agents:`` heading, one
+    ``- <peer_id>: <description>`` line per entry, and the closing sentence
+    ``You can contact the agents listed above by their exact IDs.``
+    Descriptions are inserted literally, without Parsable evaluation. Tool
+    discovery and usage are carried by the tool declarations themselves and
+    are not repeated in the prompt. This function does not bind or modify
+    tools.
 
     :raises flowing.errors.MissingProvideError: ``PeersPlugin`` is not installed.
     :raises ValueError: The peer catalog is invalid.
@@ -94,7 +104,8 @@ def use_peers(agent: Agent) -> None:
 
 
 class _PeerCatalogPrompt:
-    """Render the declared peer catalog and currently visible Peers tools."""
+    """Render the declared peer catalog as literal prompt text, avoiding
+    Parsable interpretation of peer descriptions."""
 
     def resolve(self, agent: Agent) -> str:
         """Render the current peer catalog as literal prompt text."""

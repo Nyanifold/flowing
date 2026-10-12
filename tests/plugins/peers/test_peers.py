@@ -54,10 +54,11 @@ async def test_use_peers_injects_literal_dynamic_catalog_without_changing_tools(
         catalog = next(segment.content for segment in context.system_prompt
                        if segment.name == "peers-catalog")
         assert "peer-a: Literal {{ 2 + 2 }} description." in catalog
-        assert "`send-to-peer`" in catalog
+        # 工具发现与用法不在目录提示中复述（由工具声明自身承载）
+        assert "`send-to-peer`" not in catalog
         assert "hidden-steer" not in catalog
         assert "query-peer" not in catalog
-        assert "continue to follow your own system instructions" in catalog
+        assert "You can contact the agents listed above by their exact IDs." in catalog
     finally:
         await runtime.shutdown()
 
