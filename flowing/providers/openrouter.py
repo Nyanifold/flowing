@@ -54,6 +54,11 @@ class OpenRouterProvider(OpenAICompletionsProvider):
       ``provider_data``。
     - 模型路由是 OpenRouter 服务端行为，本 adapter 不做本地路由 /
       fallback 链。
+    - Responses 系模型（如 ``openai/gpt-6-luna``）的思考经
+      ``reasoning_details`` 列表回传（``reasoning.summary`` 逐 token +
+      ``reasoning.encrypted`` item）：summary 拼为可读思考文本，encrypted
+      item JSON 存 ``ThinkingBlock.signature``，多轮回放原样还原（机制
+      见 :mod:`flowing.providers.openai_completions` 响应侧事实）。
     - 所有请求携带 ``X-OpenRouter-Metadata: enabled``，响应中的
       ``openrouter_metadata`` 映射保存在 ``provider_data``。
     - models.yaml 可为单个模型声明 ``reasoning.effort``；该字符串按

@@ -25,6 +25,19 @@ replaying multi-turn history. ``tool_calls[].function.arguments`` is a JSON
 string; if it cannot be parsed, the adapter raises
 :class:`flowing.errors.InvalidRequestError`.
 
+The ``reasoning_details`` variant has two shapes: a string enters the
+thinking block verbatim; a list (the item sequence OpenRouter returns for
+Responses-family models, with elements such as
+``{"type": "reasoning.summary", "summary": ...}`` and
+``{"type": "reasoning.encrypted", "data": ...}``) is parsed item by item —
+the ``summary`` fields join in order into the readable thinking text, and
+the full JSON of the first ``reasoning.encrypted`` element is stored in
+:attr:`ThinkingBlock.signature` (same mechanism as the Responses family, so
+it can be replayed verbatim across turns). On replay the thinking text is
+wrapped back into a summary element and the signature-restored encrypted
+item is written back unchanged, so neither the readable summary nor the
+encrypted reasoning chain is lost.
+
 .. seealso::
 
     :mod:`flowing.providers.anthropic_messages` is another format family.
@@ -227,6 +240,11 @@ class OpenAICompletionsProvider(Provider):
           select the first non-empty value and yield it as a
           ``kind="thinking"`` delta. Remember the selected variant so the
           same field is used when replaying reasoning on a later request.
+          When ``reasoning_details`` is a list, parse it item by item (see
+          ``_parse_reasoning_details``): summary text is yielded as thinking
+          deltas, and the encrypted item's JSON is carried on an empty-text
+          thinking delta's ``signature`` (the Agent preserves it into
+          ``ThinkingBlock.signature`` while accumulating).
         - Text: a non-empty ``delta.content`` produces a ``kind="text"``
           delta.
         - Tools: accumulate ``delta.tool_calls[]`` by streaming ``index``,

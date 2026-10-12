@@ -358,7 +358,9 @@ class ThinkingBlock(ContentBlock):
     thinking: str
     """Provider-supplied reasoning text."""
     signature: str | None = None
-    """Provider-issued integrity signature, when the provider uses one; otherwise ``None``."""
+    """Opaque data replayed unchanged on later turns (an Anthropic signature
+    or an encrypted reasoning item's JSON); ``None`` when the provider has no
+    such mechanism."""
 @dataclass(kw_only=True)
 class ToolCallBlock(ContentBlock):
     """A tool-call request emitted by a provider.

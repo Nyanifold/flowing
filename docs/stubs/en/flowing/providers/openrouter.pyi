@@ -45,6 +45,13 @@ class OpenRouterProvider(OpenAICompletionsProvider):
       provider remain in ``provider_data``.
     - OpenRouter performs model routing on the server. This adapter does not
       implement local routing or a fallback chain.
+    - Responses-family models (such as ``openai/gpt-6-luna``) return their
+      reasoning as a ``reasoning_details`` list (token-by-token
+      ``reasoning.summary`` items plus a ``reasoning.encrypted`` item): the
+      summaries join into the readable thinking text, the encrypted item's
+      JSON is stored in ``ThinkingBlock.signature``, and replay restores it
+      unchanged on later turns (see the response-side notes in
+      :mod:`flowing.providers.openai_completions`).
 
     .. seealso::
 

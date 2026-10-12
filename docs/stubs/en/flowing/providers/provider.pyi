@@ -310,14 +310,18 @@ class ProviderDelta:
     Like ``by``, this is an Agent-added field; the Provider layer does not
     manage message IDs."""
     signature: str | None
-    """A thinking-block signature carried only by thinking deltas from the
-    Anthropic family; all other deltas use ``None``.
+    """A thinking-block signature carried by thinking deltas from the
+    Anthropic family and from the OpenAI completions family's
+    ``reasoning_details`` replay; all other deltas use ``None``.
 
     Anthropic requires the thinking block's ``signature`` to be replayed
     unchanged in assistant messages on later requests. Otherwise, the API
-    rejects the request. In streaming mode, the signature arrives with the
-    ``kind="thinking"`` delta (the ``content_block_start`` event contains the
-    full value). While accumulating reasoning blocks,
+    rejects the request. The ``reasoning.encrypted`` item JSON OpenRouter
+    returns for Responses-family models is stored the same way (in the
+    signature) and restored on replay. In streaming mode, the signature
+    arrives with the ``kind="thinking"`` delta (Anthropic's
+    ``content_block_start`` event contains the full value; the encrypted
+    item arrives at wrap-up). While accumulating reasoning blocks,
     ``provider_gen()`` preserves the first signature it sees as the final
     ``ThinkingBlock.signature``."""
     usage: 'Usage | None'

@@ -292,7 +292,8 @@ def test_openrouter_nonstream_thinking_response_mapping():
         }],
     })
     assert [block.type for block in response.message.content] == ["thinking", "text"]
-    assert response.message.content[0].thinking == '[{"text": "reason"}]'
+    # 未识别 item 类型逐项 JSON 序列化拼入思考文本（可见、不静默丢弃）
+    assert response.message.content[0].thinking == '{"text": "reason"}'
 
 
 class _FakeResponse:

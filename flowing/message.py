@@ -482,8 +482,9 @@ class ThinkingBlock(ContentBlock):
 
     .. rubric:: 行为要点
 
-    - ``signature``：Provider 签发的完整性签名（校验思考内容未被篡改，
-      如 Anthropic）；不适用此机制的 Provider 为 ``None``。
+    - ``signature``：随思考块带回的 opaque 数据，多轮回放时原样回传
+      （Anthropic 的完整性签名、OpenRouter ``reasoning_details`` 加密
+      item 的 JSON）；无此机制的 Provider 为 ``None``。
     - UI 的折叠 / 淡化是应用层策略，框架不预设渲染方式。
 
     .. seealso::
@@ -498,7 +499,8 @@ class ThinkingBlock(ContentBlock):
     """思考过程文本。
     """
     signature: str | None = None
-    """Provider 签发的完整性签名（如 Anthropic）；无签名机制时为 ``None``。
+    """多轮回放原样带回的 opaque 数据（Anthropic 签名 / 加密 item JSON）；
+    无此机制时为 ``None``。
     """
 
 

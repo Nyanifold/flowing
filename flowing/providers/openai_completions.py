@@ -21,6 +21,16 @@ tool 消息的合成 user 消息（固定措辞提示）。
 ``function.arguments`` 是 JSON 字符串，解析失败抛
 :class:`flowing.errors.InvalidRequestError`。
 
+``reasoning_details`` 方言存在两种形态：字符串按原文进思考块；列表
+（OpenRouter 对 Responses 系模型回传的 item 序列，元素形如
+``{"type": "reasoning.summary", "summary": ...}`` 与
+``{"type": "reasoning.encrypted", "data": ...}``）逐项解析——
+summary 元素的 ``summary`` 字段按序拼接为可读思考文本，首个
+encrypted 元素的完整 JSON 存进 :attr:`ThinkingBlock.signature`
+（与 Responses 家族同机制，供多轮原样回放）；回放时思考文本包装为
+summary 元素、signature 还原的 encrypted item 原样写回，思考内容与
+加密思维链均不丢失。
+
 .. seealso::
 
     :mod:`flowing.providers.anthropic_messages` 另一格式家族。
@@ -311,13 +321,36 @@ class OpenAICompletionsProvider(Provider):
         return {"type": "image_url", "image_url": {
             "url": f"data:{mime};base64,{media.data}"}}
 
+    def _replay_reasoning_details(self, blocks: list[ThinkingBlock]) -> list:
+        """``reasoning_details`` 方言回放：思考文本包装为
+        ``reasoning.summary`` 元素，signature 还原的 encrypted item
+        紧随其后原样带回；无 signature / 解析失败时只带 summary 元素，
+        思考文本不丢失。"""
+        items: list[Any] = []
+        for block in blocks:
+            encrypted: Any = None
+            if block.signature:
+                try:
+                    parsed = json.loads(block.signature)
+                except json.JSONDecodeError:
+                    parsed = None
+                if isinstance(parsed, dict):
+                    encrypted = parsed
+            if block.thinking:
+                items.append({"type": "reasoning.summary",
+                              "summary": block.thinking,
+                              "format": "openai-responses-v1"})
+            if encrypted is not None:
+                items.append(encrypted)
+        return items
+
     def _map_message(self, msg: Message) -> list[dict[str, Any]]:
         """单条消息 → chat/completions messages 数组元素（一对多：媒体转移）。"""
         if msg.kind is MessageKind.PROVIDER:
             out: dict[str, Any] = {"role": "assistant"}
             text_parts: list[str] = []
             tool_calls: list[dict[str, Any]] = []
-            thinking_texts: list[str] = []
+            thinking_blocks: list[ThinkingBlock] = []
             for block in msg.content:
                 if isinstance(block, ToolCallBlock):
                     tool_calls.append({
@@ -326,7 +359,7 @@ class OpenAICompletionsProvider(Provider):
                                      "arguments": json.dumps(block.args, ensure_ascii=False)},
                     })
                 elif isinstance(block, ThinkingBlock):
-                    thinking_texts.append(block.thinking)
+                    thinking_blocks.append(block)
                 elif isinstance(block, StructBlock):
                     text_parts.append(json.dumps(block.data, ensure_ascii=False))
                 elif isinstance(block, TextBlock):
@@ -334,9 +367,14 @@ class OpenAICompletionsProvider(Provider):
             out["content"] = "".join(text_parts) or None
             if tool_calls:
                 out["tool_calls"] = tool_calls
-            if thinking_texts and self._reasoning_dialect:
+            if thinking_blocks and self._reasoning_dialect:
                 # 出站同方言回写：端点实际说的方言 key 原样写回
-                out[self._reasoning_dialect] = "".join(thinking_texts)
+                if self._reasoning_dialect == "reasoning_details":
+                    out["reasoning_details"] = self._replay_reasoning_details(
+                        thinking_blocks)
+                else:
+                    out[self._reasoning_dialect] = "".join(
+                        b.thinking for b in thinking_blocks)
             return [out]
         if msg.kind is MessageKind.TOOL:
             # Chat Completions 的 tool 消息为文本-only → 媒体转移：媒体块
@@ -364,6 +402,29 @@ class OpenAICompletionsProvider(Provider):
         "reasoning_content", "reasoning_details", "reasoning", "reasoning_text")
     """思考无官方字段的线上方言四种——入站扫描顺序（先见者胜出并记住）。"""
 
+    @staticmethod
+    def _parse_reasoning_details(items: list) -> tuple[str, str | None]:
+        """``reasoning_details`` 列表形态逐项解析。
+
+        ``reasoning.summary`` 元素的 ``summary`` 字段按序拼接为思考文本；
+        首个 ``reasoning.encrypted`` 元素的完整 JSON 作为 signature 返回
+        （多轮原样回放用）；其余元素原样 JSON 序列化拼入思考文本（可见、
+        不静默丢弃）。
+        """
+        texts: list[str] = []
+        signature: str | None = None
+        for item in items:
+            if isinstance(item, dict) and item.get("type") == "reasoning.summary":
+                summary = item.get("summary")
+                texts.append(summary if isinstance(summary, str)
+                             else json.dumps(item, ensure_ascii=False))
+            elif isinstance(item, dict) and item.get("type") == "reasoning.encrypted":
+                if signature is None:
+                    signature = json.dumps(item, ensure_ascii=False)
+            else:
+                texts.append(json.dumps(item, ensure_ascii=False))
+        return "".join(texts), signature
+
     def _map_response(self, resp: dict) -> ProviderResponse:
         """录制/真实响应 dict → ``ProviderResponse`` （usage 附着到消息）。"""
         choice = resp["choices"][0]
@@ -374,9 +435,13 @@ class OpenAICompletionsProvider(Provider):
             value = raw_msg.get(key)
             if value:
                 self._reasoning_dialect = key
-                text = value if isinstance(value, str) else json.dumps(
-                    value, ensure_ascii=False)
-                blocks.append(ThinkingBlock(thinking=text))
+                if key == "reasoning_details" and isinstance(value, list):
+                    text, sig = self._parse_reasoning_details(value)
+                    blocks.append(ThinkingBlock(thinking=text, signature=sig))
+                else:
+                    text = value if isinstance(value, str) else json.dumps(
+                        value, ensure_ascii=False)
+                    blocks.append(ThinkingBlock(thinking=text))
                 break
         if raw_msg.get("content"):
             blocks.append(TextBlock(text=raw_msg["content"]))
@@ -573,6 +638,10 @@ class OpenAICompletionsProvider(Provider):
         - 思考：``choices[0].delta.<方言>``（DeepSeek ``reasoning_content``），
           按 :attr:`_REASONING_KEYS` 顺序首个非空者胜出，逐段产出
           ``kind="thinking"`` delta；记住方言供出站同 key 回写。
+          ``reasoning_details`` 为列表时逐项解析（见
+          :meth:`_parse_reasoning_details`）：summary 文本逐段产出
+          thinking delta，encrypted item JSON 以空文本 thinking delta 的
+          ``signature`` 携带（agent 累积时保留进 ``ThinkingBlock.signature``）。
         - 正文：``delta.content`` 非空 → ``kind="text"`` delta。
         - 工具：``delta.tool_calls[]`` 按流式 ``index``（缺省回退 ``id``）
           累积，首现的 ``id``/``name`` 生效、``function.arguments`` 逐段
@@ -675,10 +744,22 @@ class OpenAICompletionsProvider(Provider):
                             self._reasoning_dialect = key
                             if think_idx["v"] is None:
                                 think_idx["v"] = await _alloc()
-                            text = rv if isinstance(rv, str) else json.dumps(
-                                rv, ensure_ascii=False)
-                            yield ProviderDelta(kind="thinking", text=text,
-                                                content_index=think_idx["v"])
+                            if key == "reasoning_details" and isinstance(rv, list):
+                                # 列表形态逐项解析：summary 拼思考文本，
+                                # encrypted item JSON 随 delta 签名携带
+                                text, sig = self._parse_reasoning_details(rv)
+                                if text:
+                                    yield ProviderDelta(kind="thinking", text=text,
+                                                        content_index=think_idx["v"])
+                                if sig is not None:
+                                    yield ProviderDelta(kind="thinking", text="",
+                                                        content_index=think_idx["v"],
+                                                        signature=sig)
+                            else:
+                                text = rv if isinstance(rv, str) else json.dumps(
+                                    rv, ensure_ascii=False)
+                                yield ProviderDelta(kind="thinking", text=text,
+                                                    content_index=think_idx["v"])
                             break
                         content = delta.get("content")
                         if content:

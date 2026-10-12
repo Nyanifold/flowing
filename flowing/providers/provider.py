@@ -340,12 +340,15 @@ class ProviderDelta:
     装饰字段，provider 层不感知消息 id。
     """
     signature: str | None = None
-    """思考块的签名（仅 Anthropic 家族思考 delta 携带，其余恒 ``None``）。
+    """思考块的签名（Anthropic 家族与 OpenAI completions 家族的
+    ``reasoning_details`` 回放携带，其余恒 ``None``）。
 
     Anthropic 多轮回放要求 assistant 消息里的 thinking 块连同
-    ``signature`` 原样带回，否则 API 拒绝。流式时签名随
-    ``kind="thinking"`` delta 携带（content_block_start 即给全量）；
-    ``provider_gen`` 累积思考块时把首见签名保留到最终
+    ``signature`` 原样带回，否则 API 拒绝；OpenRouter 对 Responses
+    系模型回传的 ``reasoning.encrypted`` item JSON 同理（存签名、回放
+    还原）。流式时签名随 ``kind="thinking"`` delta 携带
+    （Anthropic content_block_start 即给全量，encrypted item 收尾时
+    给出）；``provider_gen`` 累积思考块时把首见签名保留到最终
     ``ThinkingBlock.signature``。
     """
     usage: "Usage | None" = None
