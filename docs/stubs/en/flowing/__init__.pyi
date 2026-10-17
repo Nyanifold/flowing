@@ -54,9 +54,10 @@ This keeps the top-level namespace readable and easy to remember.
 
 .. rubric:: Behavior notes
 
-- ``flowing.launch(path, **kwargs)`` is the only supported Runtime creation
-  entry point. Calling ``Runtime()`` directly without an ``@`` context raises
-  ``RuntimeError``.
+- ``flowing.launch(path, **kwargs)`` is the regular entry point for project
+  assembly. Embedding scenarios can construct ``Runtime(project_root=...)``
+  directly without ``launch``; calling ``Runtime()`` with neither an explicit
+  ``project_root`` nor an ``@`` context raises ``RuntimeError``.
 - This module only re-exports symbols; it defines no new ones. The defining
   submodules document each symbol's full contract.
 - Every symbol exported here is part of the cross-version stable contract.

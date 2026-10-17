@@ -248,7 +248,8 @@ placeholder; this program does not use it to make a provider request.
 
 ## Summary
 
-1. `launch` is the single entry point: register @ → await main() →
+1. `launch` is the regular entry point (embedding scenarios can construct
+   `Runtime(project_root=...)` explicitly): register @ → await main() →
    reset; the whole pipeline diagram is one delegation;
 2. `@/` anchors the subproject root and is isolated per Task;
    module-level `resolve()` works only inside the main() stack;

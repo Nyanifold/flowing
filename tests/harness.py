@@ -10,8 +10,8 @@
   ``create_agent`` 承担 create 管线的最小步骤（``__new__`` 预绑
   ``node_id`` / ``runtime`` / ``_parent_id`` / ``_session_dir`` →
   ``__init__`` → ``setup()`` → 池/活体表注册 → 工作循环 Task 启动）。
-- ``make_runtime``：真 ``Runtime`` 的测试级构造（``launch`` 的 contextvar
-  登记机制直连），需要真实装载面（模型解析、插件、持久化）时用它。
+- ``make_runtime``：真 ``Runtime`` 的测试级构造（显式 ``project_root``
+  公共参数，嵌入路径），需要真实装载面（模型解析、插件、持久化）时用它。
 - ``text_response`` / ``tool_call_response`` / ``script_provider``：注入式
   Provider 契约的响应构造与脚本回放助手。
 - ``PluginStub``：不依赖真 Plugin 基类的插件桩。
@@ -35,7 +35,7 @@ from flowing.model import ModelConfig
 from flowing.parsable import Parsable
 from flowing.paths import pascal_to_kebab
 from flowing.providers import FakeProvider, ProviderRegistry, ProviderResponse, Usage
-from flowing.runtime import Runtime, _current_project_root   # contextvar 直连的说明见 make_runtime
+from flowing.runtime import Runtime
 
 from fakes import FakeRuntime
 
@@ -210,25 +210,25 @@ def make_runtime(
     register_default_type: bool = True,
     persist_dir: str | Path | None = None,
 ) -> Runtime:
-    """构造真 ``Runtime``（``launch`` 的 contextvar 登记机制的测试级直连）。
+    """构造真 ``Runtime``（走公共参数 ``Runtime(project_root=...)``）。
 
     ``launch`` 本体（import main.py + kwargs 透传 + reset）由 T93/T94 端到端
-    覆盖；其余测试只需要“``@`` 上下文已登记”这一机制事实，故直接对同一
-    contextvar set/reset。``persist=True`` 时把持久化根指到项目内
-    ``.flowing/``（默认路径是 ``<cwd>/.flowing``，测试不得污染工作目录）；
-    ``persist_dir`` 显式给出时优先使用（构造参数，测试专用通道）。
-    ``models=True`` 时写入最小 ``models.yaml`` / ``model-tags.yaml``
-    （provider 名为 ``"fake"`` 的条目）并登记——创建管线的模型初始解析
-    （``model_tag`` → ``ModelConfig``，fail fast）依赖它们。
+    覆盖；其余测试只需要一个绑定好项目根的 Runtime，故直接显式传
+    ``project_root``（嵌入场景的公共构造路径）。``persist=True`` 时把持久
+    化根指到项目内 ``.flowing/``（默认路径是 ``<cwd>/.flowing``，测试不得
+    污染工作目录）；``persist_dir`` 显式给出时优先使用（构造参数，测试
+    专用通道）。``models=True`` 时写入最小 ``models.yaml`` /
+    ``model-tags.yaml`` （provider 名为 ``"fake"`` 的条目）并登记——创建
+    管线的模型初始解析（``model_tag`` → ``ModelConfig``，fail fast）依赖
+    它们。
     """
     root = Path(project_root).resolve()
-    token = _current_project_root.set(root)
-    try:
-        rt = Runtime(persist_dir=(
+    rt = Runtime(
+        project_root=root,
+        persist_dir=(
             persist_dir if persist_dir is not None
-            else (root / ".flowing" if persist else None)))
-    finally:
-        _current_project_root.reset(token)
+            else (root / ".flowing" if persist else None)),
+    )
     if models:
         (root / "models.yaml").write_text(
             "fake:\n  provider: fake\n  model: fake-model\n"

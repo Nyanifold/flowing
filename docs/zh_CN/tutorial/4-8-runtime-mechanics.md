@@ -222,7 +222,7 @@ asyncio.run(main())
 
 ## 小结
 
-1. `launch` 唯一入口：登记 @ → await main() → 复位；管线全图一条委托；
+1. `launch` 常规入口（嵌入场景可 `Runtime(project_root=...)` 显式构造）：登记 @ → await main() → 复位；管线全图一条委托；
 2. `@/` 锚子项目根、按 Task 隔离；模块级 `resolve()` 仅限 main() 栈内；
 3. 三注册表同构：裸名 `default::` > `builtin::`，文件覆盖注册表；
 4. provide 终点 Runtime、Resource 树外直引、池与 provider 皆惰性；

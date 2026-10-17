@@ -1,4 +1,4 @@
-"""``flowing.runtime`` —— Runtime 对象图根、唯一入口 ``launch``、``@`` 上下文与 provide-inject 链终点。
+"""``flowing.runtime`` —— Runtime 对象图根、常规入口 ``launch``、``@`` 上下文与 provide-inject 链终点。
 
 .. rubric:: 功能介绍
 
@@ -9,18 +9,20 @@
   agent 池，并对外提供扩展注册（``use`` / ``register_tool`` 等）、配置读取
   （``get_config`` 等）、节点管理（``create_agent`` / ``recover_agent`` /
   ``get_agent`` / ``archive_agent``）与观测（``snapshot``）API。
-- :func:`launch`：Runtime 的唯一创建入口，同时登记 ``@`` 项目根上下文。
+- :func:`launch`：Runtime 的常规创建入口，同时登记 ``@`` 项目根上下文。
 - :func:`resolve`：模块级 ``@/`` 路径解析。
 - :class:`flowing.provide.ProvideNode` 协议与 :func:`flowing.provide.inject_from`
   的再导出（定义见 :mod:`flowing.provide`；``__all__`` 同时保留本模块出口）。
 
-``launch(path, **kwargs)`` 是创建 Runtime 的唯一途径：它登记 ``@`` 上下文
+``launch(path, **kwargs)`` 是项目装配的常规入口：它登记 ``@`` 上下文
 （模块级 ``ContextVar``，按 asyncio Task 隔离——一个进程可同时运行多个
 Runtime，并发 ``launch`` 互不串扰）、import 子项目入口 ``main.py`` 并
 ``await main(**kwargs)``。子项目 ``main()`` 在函数体内构造 Runtime（可任意
 子类，``@`` 自动绑定）、``use`` 插件、``provide`` 注入、``mount`` 根节点，
-并返回它。绕过 ``launch`` 直接 ``Runtime()`` 会因 ``@`` 上下文未登记而抛
-``RuntimeError``。
+并返回它。嵌入场景不经 ``launch``：显式传
+``Runtime(project_root=..., persist_dir=...)`` 直接构造（``@/`` 全程锚
+实例根，语义一致）。既未显式传 ``project_root`` 又无 ``@`` 上下文时构造
+抛 ``RuntimeError``。
 
 ``launch`` 只负责把子项目拉起为 Runtime：不解析配置（配置读取经
 :meth:`Runtime.get_config` 与宿主启动层（``flowing.interfaces`` 各入口））、不认识插件（插件经
@@ -212,7 +214,7 @@ async def launch(
     main_file: str | None = None,
     **kwargs: Any,
 ) -> Runtime:
-    """Runtime 的唯一创建入口：登记 ``@`` 上下文，import 子项目入口并返回其 Runtime。
+    """Runtime 的常规创建入口：登记 ``@`` 上下文，import 子项目入口并返回其 Runtime。
 
     .. rubric:: 功能介绍
 
@@ -389,11 +391,12 @@ class Runtime:
     节点管理（``create_agent`` / ``recover_agent`` / ``get_agent`` /
     ``archive_agent``）与观测通道（``snapshot``）。
 
-    实例不直接构造：唯一创建路径是 ``launch(path, **kwargs)`` 内由子项目
-    ``main()`` 构造（可任意子类）；绕过 ``launch`` 直接 ``Runtime()`` 会因
-    ``@`` 上下文未登记而抛 ``RuntimeError``。构造时固化 ``project_root``、
-    注册内置工具与标准子智能体、扫描 provider 候选清单与 agent 池——
-    均不实例化任何 Provider / Agent（懒加载原则）。
+    常规创建路径是 ``launch(path, **kwargs)`` 内由子项目 ``main()`` 构造（可任意
+    子类）；嵌入场景可显式传 ``project_root`` 直接构造，不经 ``launch``。两种
+    方式构造时均固化 ``project_root``、注册内置工具与标准子智能体、扫描
+    provider 候选清单与 agent 池——均不实例化任何 Provider / Agent（懒加载
+    原则）。既未显式传 ``project_root`` 又无 ``@`` 上下文时构造抛
+    ``RuntimeError``。
 
     Runtime 是 provide-inject 链的终点：``Runtime.provide`` 注册的值对全树
     所有节点可见，``Runtime.inject`` 只查根级存储。
@@ -440,8 +443,10 @@ class Runtime:
     真实赋值）。
     """
     project_root: Path
-    """``@`` 上下文的固化值：``__init__`` 时从 ``_current_project_root`` 读取；
-    ``resolve_path("@/...")`` 的解析基准。只读语义，构造后不改。
+    """``@`` 上下文的固化值：``__init__`` 时从 ``project_root`` 参数或
+    ``_current_project_root`` 读取（显式参数优先，归一化为绝对
+    ``Path``）；``resolve_path("@/...")`` 的解析基准。只读语义，构造后
+    不改。
     """
     tool_registry: ToolRegistry
     """全局工具注册表（规范名 → ``Tool``）；``register_tool`` 的写入目标；
@@ -532,16 +537,22 @@ class Runtime:
     引用对象进渲染上下文）。构造期建立，是 ``os.environ`` 的活视图。
     """
 
-    def __init__(self, *, persist_dir: str | Path | None = None) -> None:
-        """构造 Runtime（同步）；``@`` 由 launch 上下文自动绑定到 ``project_root``。
+    def __init__(
+        self,
+        *,
+        project_root: str | Path | None = None,
+        persist_dir: str | Path | None = None,
+    ) -> None:
+        """构造 Runtime（同步）；``project_root`` 显式给定，或由 launch 的 ``@`` 上下文绑定。
 
         .. rubric:: 功能介绍
 
-        必须在 ``flowing.launch`` 登记的 ``@`` 上下文内调用（通常由子项目
-        ``@/main.py`` 的 ``main()`` 调用）。构造时固化 ``project_root``
-        与持久化根（``persist_dir`` 参数）、初始化全部空存储、执行
-        Provider 候选清单与 agent 池的扫描（不实例化——懒加载原则，
-        重量级初始化推迟到首次使用）。
+        两条创建路径共用本构造器：``launch`` 路径由子项目 ``@/main.py``
+        的 ``main()`` 在已登记的 ``@`` 上下文内调用；嵌入路径由宿主进程
+        显式传 ``project_root`` 直接构造（不需要 ``main.py`` 与 ``@``
+        上下文）。构造时固化 ``project_root`` 与持久化根（``persist_dir``
+        参数）、初始化全部空存储、执行 Provider 候选清单与 agent 池的
+        扫描（不实例化——懒加载原则，重量级初始化推迟到首次使用）。
 
         .. rubric:: 使用示例
 
@@ -553,32 +564,57 @@ class Runtime:
                 runtime = MyRuntime()              # @ 自动绑定
                 return runtime
 
+        .. code-block:: python
+
+            # 嵌入宿主进程：不走 launch、不需要 main.py
+            # @ 上下文完全未登记；project_root 显式给定，str / Path 均可
+            runtime = Runtime(project_root="/srv/my-app", persist_dir="@/sessions")
+            runtime.install(SomePlugin())
+            await runtime.mount("@/agents/root.fya", agent_id="agent-main")
+            await runtime            # 阻塞至 shutdown()
+
         .. rubric:: 行为要点
 
-        - 前置条件：``_current_project_root`` 已登记（即在 ``launch`` 的
-          调用栈内）；违反抛 ``RuntimeError``。
+        - 前置条件：``project_root`` 显式给定，或 ``_current_project_root``
+          已登记（即在 ``launch`` 的调用栈内）；两者皆无抛 ``RuntimeError``。
+          显式给定优先于 ``@`` 上下文，归一化为绝对 ``Path`` 后固化。
+        - ``@/`` 是 fya 装配与项目文件引用的正式契约：``@/`` 前缀路径
+          全程锚实例 ``project_root``（显式模式同样成立，
+          ``resolve_path`` / ``persist_dir`` / fya 工具与 skills 引用一致）。
+          对手写 Python 类不做承诺：``source_file`` 推算属定义期尽力而为
+          （类定义早于 Runtime 实例），需要文件上下文时应显式赋值
+          ``source_file``。
         - 构造期副作用仅限：固化 ``project_root`` 与持久化根（``persist_dir``
           显式指定时即建目录）、初始化空存储、核心内置工具注册
           （``subagent-invoke`` / ``finish``）、扫描 providers.yaml 构建
           Provider 候选清单、扫描持久化目录构建 agent 池注册表。不
           实例化任何 Provider 或 Agent。
-        - 一进程可构造多个实例（各自 Task 的 contextvar 隔离），互不
-          共享存储。
+        - 一进程可构造多个实例（显式 ``project_root`` 或各自 Task 的
+          contextvar 隔离），互不共享存储。
         - 不启动工作循环（没有 Agent 时没有 Task）、不打开端口。
 
+        :param project_root: 项目根目录（可选）。``None`` → 读
+            ``_current_project_root`` 上下文（``launch`` 路径，未登记抛
+            ``RuntimeError``）；显式给定 → 归一化为绝对 ``Path`` 后固化，
+            不需要 ``@`` 上下文（嵌入路径）。不接受 ``@/`` 前缀——本参数
+            自身即 ``@/`` 的解析基准。构造后不可更改。
         :param persist_dir: 持久化根目录（可选）。``None`` → 默认
             ``<cwd>/.flowing``，目录推迟到首个持久化动作才建（零持久化
             场景不落盘）；显式指定 → 构造时固化并立即建目录。路径支持
-            ``@/`` 前缀规则（经 :meth:`resolve_path`）。构造后不可更改。
-        :raises RuntimeError: 未经 ``flowing.launch`` 登记 ``@`` 上下文
-            （绕过唯一入口）时抛出。
+            ``@/`` 前缀规则（经 :meth:`resolve_path`，锚实例
+            ``project_root``）。构造后不可更改。
+        :raises RuntimeError: ``project_root`` 与 ``@`` 上下文两者皆无
+            时抛出。
 
         .. seealso:: :func:`flowing.runtime.launch`
         """
-        root = _current_project_root.get()
-        if root is None:
-            raise RuntimeError("must register the @ context via flowing.launch (bypassing the single entry point)")
-        self.project_root = root   # 固化 @ 上下文（构造后不改）
+        if project_root is not None:
+            self.project_root = Path(project_root).resolve()   # 显式给定：归一化后固化（@/ 的解析基准）
+        else:
+            root = _current_project_root.get()
+            if root is None:
+                raise RuntimeError("Runtime() requires an explicit project_root when no @ context is registered via flowing.launch")
+            self.project_root = root   # 固化 @ 上下文（构造后不改）
         self.node_id = "runtime-0"
         self.runtime = self   # ProvideNode 协议成员：链终点的 runtime 自指
             # （仅注解不赋值不会产生实例属性——isinstance(runtime, ProvideNode)

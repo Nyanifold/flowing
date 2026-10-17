@@ -115,7 +115,7 @@ delta 事件）。WebSocket 不引入。
 .. seealso::
 
     :func:`flowing.runtime.launch`
-        Runtime 唯一创建入口，所有子命令的第一步。
+        Runtime 的常规创建入口，所有子命令的第一步。
     :meth:`flowing.runtime.Runtime.shutdown`
         非阻塞优雅关闭，信号处理与 ``/exit`` 的最终汇聚点。
     :mod:`flowing.interfaces.oneshot`

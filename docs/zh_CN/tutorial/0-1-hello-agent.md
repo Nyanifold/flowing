@@ -15,7 +15,7 @@
 | Provider | 模型服务接入配置；一个 Provider 条目对应一组服务连接信息与凭证 |
 | Model | 绑定 Provider 与远端模型 ID 的模型配置条目 |
 | `model_tag` | Agent 声明里用于选择模型的标签；经标签映射解析为 Model 条目 |
-| `launch` | `flowing.launch(path, **kwargs)`：Runtime 的唯一创建入口 |
+| `launch` | `flowing.launch(path, **kwargs)`：项目装配的常规入口（嵌入场景可 `Runtime(project_root=...)` 显式构造，不经 launch） |
 | 逻辑 Turn（回合） | 从消费一条消息到模型给出最终答复的执行过程；“回合”固定译 Turn，结果由 `TurnResult` 表示 |
 
 ## 目标
@@ -90,10 +90,11 @@ tags:
 
 ### launch、Runtime 与“消息驱动回合”
 
-`flowing.launch(path, **kwargs)` 是创建 Runtime 的**唯一入口**。它做的事很薄：
+`flowing.launch(path, **kwargs)` 是项目装配的**常规入口**。它做的事很薄：
 登记 `@` 项目根上下文 → import 子项目
 `main.py` → `await main(**kwargs)` → 复位上下文。不解析配置、不认识插件、
-不开端口——这些都在 `main()` 或更外层。
+不开端口——这些都在 `main()` 或更外层。嵌入宿主进程的场景可显式传
+`Runtime(project_root=...)` 直接构造，不经 `launch`。
 
 Runtime 是**对象图根**：持有全部 Agent 节点、全局工具注册表与智能体池。
 两个常用语义一句话版：`await runtime` 阻塞至 `shutdown()`（CLI/嵌入方用
@@ -199,5 +200,5 @@ Agent 当场以注入的名字“小明”作答——此前对话历史里从�
 
 1. 子项目 = `main.py`（组装策略）+ `root.fya`（Agent 声明）+ 全局模型标签映射；
 2. `model_tag` 经标签映射解析到 Model 条目，不静默降级；
-3. `launch` 唯一入口、Runtime 对象图根；`query` 等 `TurnResult`，四结局不挂起；
+3. `launch` 常规入口（嵌入场景可显式构造）、Runtime 对象图根；`query` 等 `TurnResult`，四结局不挂起；
 4. 同一子项目四种暴露：cli / repl / web / serve，后续各篇示例一律用 repl。

@@ -18,7 +18,7 @@ Set `OPENROUTER_API_KEY` if you want to try the OpenRouter model below.
 | `.fya` file | A `.fya` file is flowing's declarative definition format: its YAML header declares metadata, and named blocks separated by `---` hold prompts or scripts such as `$system_prompt:`. |
 | The three model-access files | `providers.yaml` defines provider entries, `models.yaml` defines concrete models, and `model-tags.yaml` maps tags to model-entry names. |
 | `model_tag` | The `model_tag` field points to a model tag, which resolves to a concrete API call through two lookup steps. |
-| `launch` | `flowing.launch(path, **kwargs)` is the only entry point that creates a Runtime. |
+| `launch` | `flowing.launch(path, **kwargs)` is the regular entry point for project assembly (embedding scenarios can construct `Runtime(project_root=...)` explicitly instead of going through `launch`). |
 | Logical turn | A logical turn runs from message consumption through the model's final reply, and `TurnResult` represents its outcome. |
 
 ## Goals
@@ -206,11 +206,13 @@ files in that directory and apply the same permissions to its `providers.yaml`.
 
 ### launch, Runtime, and the "message-driven turn"
 
-`flowing.launch(path, **kwargs)` is the **only entry point** that creates a Runtime.
-It does very little: register the `@`
+`flowing.launch(path, **kwargs)` is the **regular entry point** for project
+assembly. It does very little: register the `@`
 project-root context → import the subproject `main.py` → `await main(**kwargs)` →
 reset the context. It does not parse configuration, does not know about plugins, and
-does not open any port — all of that lives in `main()` or further out.
+does not open any port — all of that lives in `main()` or further out. Embedding
+hosts can construct `Runtime(project_root=...)` directly without going through
+`launch`.
 
 The Runtime is the **root of the object graph**: it holds all agent nodes, the global
 tool registry, and the agent pool. Two commonly used semantics in one sentence each:
@@ -328,5 +330,5 @@ on-the-spot evaluation of the system prompt.
 
 1. A subproject combines `main.py` for assembly policy, `root.fya` for the agent declaration, and the three model-configuration files.
 2. `model_tag` resolves in two steps from a tag to an entry name and then to `ModelConfig`, with no silent fallback.
-3. `launch` is the only entry point, and Runtime is the root of the object graph; `query` waits for a `TurnResult`, and all four outcomes resolve.
+3. `launch` is the regular entry point (embedding scenarios can construct explicitly), and Runtime is the root of the object graph; `query` waits for a `TurnResult`, and all four outcomes resolve.
 4. One subproject supports `cli`, `repl`, `web`, and `serve`, and this tutorial uses `repl` for its interactive examples.

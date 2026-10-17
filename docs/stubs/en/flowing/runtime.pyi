@@ -1,4 +1,5 @@
-"""The Runtime object-graph root, project entry point, and ``@/`` paths.
+"""The Runtime object-graph root, the regular entry point ``launch``, ``@/``
+paths, and the provide-inject chain endpoint.
 
 .. rubric:: Overview
 
@@ -7,12 +8,15 @@ Flowing project, together with :func:`launch` and :func:`resolve`. It also
 re-exports the ``ProvideNode`` protocol and ``inject_from`` helper defined in
 ``flowing.provide``.
 
-``launch(path, **kwargs)`` is the only supported way to create a Runtime. It
+``launch(path, **kwargs)`` is the regular entry point for project assembly. It
 registers the project root in task-local context, imports the project's
 ``main.py``, and awaits ``main(**kwargs)``. That project entry point constructs
 the Runtime, installs plugins, provides application values, mounts or recovers
-agents, and returns the Runtime. Calling ``Runtime()`` outside a ``launch``
-context raises ``RuntimeError``.
+agents, and returns the Runtime. Embedding scenarios can skip ``launch``
+entirely and construct ``Runtime(project_root=..., persist_dir=...)``
+directly (``@/`` stays anchored to the instance root with identical
+semantics). Constructing a Runtime without an explicit ``project_root`` and
+outside a ``launch`` context raises ``RuntimeError``.
 
 ``launch`` only starts the project entry point. It does not parse project
 configuration, install plugins, choose between creating and recovering an
@@ -201,12 +205,14 @@ class Runtime(ProvideNode):
     also provides extension registration, node management, provide-inject,
     and snapshot APIs.
 
-    A Runtime is constructed by the project's ``main`` function while it is
-    running under ``launch``. Constructing it directly without the registered
-    ``@`` context raises ``RuntimeError``. Construction fixes its project and
-    persistence roots, registers builtin tools and standard subagents, and
-    scans provider candidates and the Agent pool without instantiating
-    Providers or Agents.
+    A Runtime is normally constructed by the project's ``main`` function
+    while it is running under ``launch``; embedding hosts can construct one
+    directly by passing ``project_root`` explicitly, without ``launch``.
+    Constructing it with neither an explicit ``project_root`` nor the
+    registered ``@`` context raises ``RuntimeError``. Construction fixes its
+    project and persistence roots, registers builtin tools and standard
+    subagents, and scans provider candidates and the Agent pool without
+    instantiating Providers or Agents.
 
     Runtime is the endpoint of the provide-inject chain. Values provided here
     are visible to every descendant; ``Runtime.inject`` only reads the
@@ -240,9 +246,10 @@ class Runtime(ProvideNode):
     provide-inject chain.
     """
     project_root: Path
-    """Project root captured from the ``@`` context during ``__init__``. It
-    is the base for ``resolve_path("@/...")`` and cannot be changed after
-    construction.
+    """Project root captured during ``__init__`` from the ``project_root``
+    argument or the ``@`` context (the explicit argument wins, normalized to
+    an absolute ``Path``). It is the base for ``resolve_path("@/...")`` and
+    cannot be changed after construction.
     """
     tool_registry: ToolRegistry
     """Global registry mapping canonical tool names to ``Tool`` objects.
@@ -268,12 +275,21 @@ class Runtime(ProvideNode):
     and reflects the current environment mapping.
     """
 
-    def __init__(self, *, persist_dir: str | Path | None = None) -> None:
-        """Initialize a Runtime inside the project context established by ``launch``.
+    def __init__(
+        self,
+        *,
+        project_root: str | Path | None = None,
+        persist_dir: str | Path | None = None,
+    ) -> None:
+        """Initialize a Runtime with an explicit project root or inside the ``@`` context.
 
-        The constructor fixes ``project_root`` and the persistence root,
-        initializes empty stores, and scans provider candidates and the Agent
-        pool. These scans do not instantiate Providers or Agents.
+        Two creation paths share this constructor: the ``launch`` path, where
+        the project ``main()`` calls it inside the registered ``@`` context,
+        and the embedding path, where a host passes ``project_root``
+        explicitly (no ``main.py`` or ``@`` context needed). The constructor
+        fixes ``project_root`` and the persistence root, initializes empty
+        stores, and scans provider candidates and the Agent pool. These scans
+        do not instantiate Providers or Agents.
 
         .. rubric:: Usage example
 
@@ -283,28 +299,56 @@ class Runtime(ProvideNode):
                 ...
 
             async def main() -> Runtime:
-                return MyRuntime()
+                return MyRuntime()          # @ bound via the launch context
+
+        .. code-block:: python
+
+            # Embedding host: no launch, no main.py required.
+            # The @ context is never registered; project_root may be str or Path.
+            runtime = Runtime(project_root="/srv/my-app", persist_dir="@/sessions")
+            runtime.install(SomePlugin())
+            await runtime.mount("@/agents/root.fya", agent_id="agent-main")
+            await runtime                    # blocks until shutdown()
 
         .. rubric:: Behavior notes
 
-        - The ``@`` project-root context must already be registered by
-          ``flowing.launch``. Otherwise construction raises ``RuntimeError``.
+        - Prerequisite: an explicit ``project_root``, or the ``@``
+          project-root context registered by ``flowing.launch``; having
+          neither raises ``RuntimeError``. An explicit value wins over the
+          ``@`` context and is normalized to an absolute ``Path``.
+        - ``@/`` is the formal contract for fya assembly and project file
+          references: ``@/``-prefixed paths stay anchored to the instance
+          ``project_root`` throughout (explicit mode included — ``resolve_path``,
+          ``persist_dir``, and fya tool/skill references behave identically).
+          No such promise is made for hand-written Python classes: their
+          ``source_file`` inference is best-effort at class-definition time
+          (which precedes any Runtime instance), so assign ``source_file``
+          explicitly when file context is needed.
         - Construction initializes the built-in tools, including
           ``subagent-invoke`` and ``finish``, and scans configuration for
           provider candidates and persisted Agent entries. It does not create
           Provider or Agent instances.
-        - Multiple Runtime instances may be constructed in separate task
-          contexts; they do not share storage.
+        - Multiple Runtime instances may be constructed in one process (each
+          with an explicit ``project_root`` or in its own task context); they
+          do not share storage.
         - The constructor does not start an Agent work loop or open a service
           port.
 
+        :param project_root: Optional project root. ``None`` reads the
+            ``_current_project_root`` context (the ``launch`` path; raises
+            ``RuntimeError`` when it is not registered). An explicit value
+            is normalized to an absolute ``Path`` and fixed without requiring
+            the ``@`` context (the embedding path). An ``@/`` prefix is not
+            accepted — this argument is itself the resolution base for
+            ``@/``. The selected path cannot be changed after construction.
         :param persist_dir: Optional persistence root. ``None`` selects
             ``<cwd>/.flowing`` and defers directory creation until the first
             persistence operation. An explicit value is resolved using
-            ``resolve_path`` and its directory is created immediately. The
-            selected path cannot be changed after construction.
-        :raises RuntimeError: If called without the ``@`` context registered
-            by ``flowing.launch``.
+            ``resolve_path`` (anchored to the instance ``project_root``) and
+            its directory is created immediately. The selected path cannot be
+            changed after construction.
+        :raises RuntimeError: If neither an explicit ``project_root`` nor
+            the ``@`` context is available.
 
         .. seealso:: :func:`launch`
         """

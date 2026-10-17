@@ -47,8 +47,10 @@ Skill）；provide-inject 沿 ``_parent_id`` 链上溯；实例级钩子系统�
 
 .. rubric:: 行为规约
 
-- ``flowing.launch(path, **kwargs)`` 是 Runtime 的**唯一创建入口**；
-  绕过它直接 ``Runtime()`` 因无 ``@`` 上下文抛 ``RuntimeError``。
+- ``flowing.launch(path, **kwargs)`` 是项目装配的常规入口；嵌入场景可
+  显式传 ``project_root`` 直接构造 ``Runtime(project_root=...)``，不经
+  ``launch``。两者皆无时（裸 ``Runtime()``）因无 ``@`` 上下文抛
+  ``RuntimeError``。
 - 本模块只做 re-export，不定义任何新符号；各符号的完整契约见所属
   子模块的规约。
 - 稳定性：本模块导出的全部符号属跨版本稳定契约；``_`` 前缀符号与
