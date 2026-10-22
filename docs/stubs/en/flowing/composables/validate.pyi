@@ -142,9 +142,11 @@ handler, then register your own.
 - The two functions are independent: neither registers the other's handler,
   and both can be mounted on the same Agent. Inbound validation only gates
   enqueued messages; PROVIDER responses produced inside a turn never enter
-  the queue, while async tool results and steer repair messages do pass
-  through ``on_enqueue`` (EVENT kind) and are let through by the default
-  ``kinds=(MessageKind.USER,)`` filter.
+  the queue. With the default filters (all three dimensions unset) every
+  enqueued message is gated — EVENT messages, async tool results, and steer
+  repair messages included. No implicit exclusion is made for other hooks or
+  tools; exemptions are an explicit application-level choice via ``kinds`` /
+  ``source`` / ``match``.
 
 .. seealso::
     :func:`flowing.params.schema_to_model` — compile entry of the validation
@@ -276,7 +278,7 @@ def use_validate_enqueued_message(
     schema: dict[str, dict[str, Any]] | None = None,
     *,
     on_fail: Literal["reject", "warn", "raise"] = "reject",
-    kinds: tuple[MessageKind, ...] = (MessageKind.USER,),
+    kinds: tuple[MessageKind, ...] | None = None,
     source: str | list[str] | None = None,
     match: Callable[[Message], bool] | None = None,
     by: str = "validate-enqueued-message",
@@ -311,9 +313,11 @@ def use_validate_enqueued_message(
         :class:`flowing.errors.Intercepted` so the message is not enqueued),
         ``"warn"`` (English warning, then pass through), or ``"raise"`` (raise
         :class:`flowing.errors.InputValidationError`).
-    :param kinds: Tuple of message kinds subject to validation, default
-        ``(MessageKind.USER,)``; enqueued kinds such as EVENT / SUBAGENT /
-        PEER are gated only when listed explicitly.
+    :param kinds: Kind filter: ``None`` (default) disables this dimension, so
+        messages of every kind are gated — EVENT messages, async tool results,
+        and steer repair messages included. Pass a tuple to validate only
+        those kinds; an explicit empty tuple is a programming error and raises
+        ``ValueError`` at mount time.
     :param source: Source filter: ``None`` (default) disables this dimension;
         a ``str`` or a list of ``str`` is matched against the message's
         ``source`` field with ``fnmatch`` — matching any one pattern is
@@ -334,13 +338,16 @@ def use_validate_enqueued_message(
 
     .. rubric:: Behavior
 
-    - Filtering is an AND conjunction: ``msg.kind in kinds``; when ``source``
-      is given it is normalized to a pattern tuple and the message passes only
-      when ``fnmatch`` matches its ``source`` against any one pattern
-      (``source=""`` matches only messages with an unset ``source`` — the
-      default for externally delivered messages); when ``match`` is given,
-      ``match(msg)`` must be true. Any failed dimension returns the message
-      unchanged, with no validation.
+    - Filtering is an AND conjunction: when ``kinds`` is given, ``msg.kind``
+      must be in the tuple; when ``source`` is given it is normalized to a
+      pattern tuple and the message passes only when ``fnmatch`` matches its
+      ``source`` against any one pattern (``source=""`` matches only messages
+      with an unset ``source`` — the default for externally delivered
+      messages); when ``match`` is given, ``match(msg)`` must be true. Any
+      failed dimension returns the message unchanged, with no validation.
+      With all three dimensions unset (the default), every enqueued message is
+      gated: no implicit exclusion is made for other hooks or tools, and
+      exemptions are an explicit application-level choice.
     - Checked payload: all ``TextBlock`` content joined into text (the same
       measure as ``final_text`` in
       :func:`flowing.agent.build_turn_result`), parsed with ``json.loads``
@@ -372,9 +379,12 @@ def use_validate_enqueued_message(
     - Relationship to framework-internal messages: PROVIDER responses
       produced inside a turn never enter the queue and never pass through
       ``on_enqueue``; async tool results and steer repair messages do pass
-      through ``on_enqueue`` (EVENT kind) and are let through by the default
-      ``kinds=(MessageKind.USER,)`` filter. Gating them requires widening
-      ``kinds`` explicitly and pairing it with a ``source`` filter.
+      through ``on_enqueue`` (EVENT kind) and are therefore gated by default
+      as well. No implicit exclusion is made for other hooks or tools: when
+      ``use_validate_turn_result`` is mounted on the same Agent, its steer
+      repair messages are also subject to this validation, and an exemption
+      must be given explicitly at mount time (a ``kinds`` / ``source`` /
+      ``match`` filter).
 
     .. seealso::
         :func:`flowing.params.schema_to_model` — compile entry of the

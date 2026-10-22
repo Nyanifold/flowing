@@ -550,27 +550,41 @@ async def test_enqueued_on_fail_raise_propagates(tmp_path):
         await agent.destroy()
 
 
-async def test_enqueued_kinds_default_lets_other_kinds_through(tmp_path):
-    """kinds 默认只闸 USER：EVENT / SUBAGENT / PEER 的非法 JSON 照常放行。"""
+async def test_enqueued_no_kind_filter_gates_all_kinds_by_default(tmp_path):
+    """kinds 缺省不过滤：EVENT / SUBAGENT / PEER 的非法 JSON 同样被拒
+    （默认不对其他 kind 做隐式排除）。"""
     runtime, provider = make_composables_harness(tmp_path,
                                                  agent_cls=SimpleAgent)
     agent = await runtime.create_agent("test-agent")
     use_validate_enqueued_message(agent, schema=IN_SCHEMA)
     try:
+        for kind in (MessageKind.EVENT, MessageKind.SUBAGENT,
+                     MessageKind.PEER):
+            with pytest.raises(Intercepted, match="schema validation"):
+                await agent.message("not json", kind=kind)
+        assert len(agent._messages) == 0        # 全部被拒，无一入树
+    finally:
+        await agent.destroy()
+
+
+async def test_enqueued_kinds_tuple_limits_gated_kinds(tmp_path):
+    """kinds=(USER,)：EVENT 非法 JSON 放行、USER 仍被拒（显式过滤）。"""
+    runtime, provider = make_composables_harness(tmp_path,
+                                                 agent_cls=SimpleAgent)
+    agent = await runtime.create_agent("test-agent")
+    use_validate_enqueued_message(agent, schema=IN_SCHEMA,
+                                  kinds=(MessageKind.USER,))
+    try:
         script_provider(provider,
                         text_response("e"),
-                        text_response("s"),
-                        text_response("p"),
                         text_response("u"))
-        await agent.message("not json", kind=MessageKind.EVENT)
-        await agent.message("not json", kind=MessageKind.SUBAGENT)
-        await agent.message("not json", kind=MessageKind.PEER)
+        await agent.message("not json", kind=MessageKind.EVENT)   # 放行
+        with pytest.raises(Intercepted, match="schema validation"):
+            await agent.message("not json")                        # USER 被拒
         result = await agent.query('{"question": "ok"}')
         assert result.status == "completed"
         kinds_in_tree = {m.kind for m in agent._messages.values()}
         assert MessageKind.EVENT in kinds_in_tree
-        assert MessageKind.SUBAGENT in kinds_in_tree
-        assert MessageKind.PEER in kinds_in_tree
     finally:
         await agent.destroy()
 
@@ -646,18 +660,19 @@ async def test_enqueued_source_empty_string_only_gates_unsourced(tmp_path):
 
 
 async def test_enqueued_none_source_and_kinds_and(tmp_path):
-    """source=None 不过滤本维度；source 与 kinds AND 合取——kind 在
-    范围内但 source 未命中（或反之）都放行。"""
+    """source=None 不过滤本维度；source 与 kinds AND 合取——kind 不在
+    元组内或 source 未命中都放行。（kinds=None 缺省维度由默认测试覆盖。）"""
     runtime, provider = make_composables_harness(tmp_path,
                                                  agent_cls=SimpleAgent)
     agent = await runtime.create_agent("test-agent")
     use_validate_enqueued_message(agent, schema=IN_SCHEMA,
-                                  source="peer_*")   # None 维度已由默认测试覆盖
+                                  kinds=(MessageKind.USER,),
+                                  source="peer_*")
     try:
         script_provider(provider,
                         text_response("one"),
                         text_response("two"))
-        # PEER + peer_* 命中：kind 不在范围内 → 放行（AND 之一不满足）
+        # PEER + peer_* 命中：kind 不在元组内 → 放行（AND 之一不满足）
         await agent.message("not json", kind=MessageKind.PEER,
                             source="peer_a")
         # USER + source 未命中 → 放行
@@ -799,15 +814,34 @@ async def test_enqueued_custom_by_owner(tmp_path):
         await agent.destroy()
 
 
-async def test_enqueued_coexists_with_turn_result(tmp_path):
-    """共存回归：同一 Agent 同挂两个校验 Composable——入站闸门只闸
-    USER 入队消息；turn-result 的 steer 修复消息（EVENT kind）照常入队、
-    同回合修复全链路正常。"""
+async def test_enqueued_default_gates_steer_repair_messages(tmp_path):
+    """默认不做隐式排除：同挂 turn-result 时，其 steer 修复消息（EVENT，
+    非 JSON 模板）同样过闸并被拒——steer 入队抛 Intercepted，经回合异常
+    通道收尾，回合以 error 结局，steer 消息从未入树。"""
     runtime, provider = make_composables_harness(tmp_path,
                                                  agent_cls=SimpleAgent)
     agent = await runtime.create_agent("test-agent")
-    use_validate_turn_result(agent, schema=SCHEMA)        # steer 默认
+    use_validate_turn_result(agent, schema=SCHEMA)          # steer 默认
     use_validate_enqueued_message(agent, schema=IN_SCHEMA)  # reject 默认
+    try:
+        script_provider(provider, text_response("not json"))   # 坏回复 → steer
+        result = await agent.query('{"question": "ask"}')
+        assert result.status == "error"
+        assert _steers_in_tree(agent) == []     # 修复消息被入站闸门拦截
+    finally:
+        await agent.destroy()
+
+
+async def test_enqueued_explicit_filter_lets_steer_through(tmp_path):
+    """共存：挂载时显式豁免 STEER 优先级消息后，turn-result 的修复
+    全链路正常，入站闸门仍闸外部消息——兼容是应用层的显式选择。"""
+    runtime, provider = make_composables_harness(tmp_path,
+                                                 agent_cls=SimpleAgent)
+    agent = await runtime.create_agent("test-agent")
+    use_validate_turn_result(agent, schema=SCHEMA)          # steer 默认
+    use_validate_enqueued_message(
+        agent, schema=IN_SCHEMA,
+        match=lambda m: m.priority != MessagePriority.STEER)
     try:
         script_provider(provider,
                         text_response("not json"),              # 坏回复 → steer
@@ -816,7 +850,7 @@ async def test_enqueued_coexists_with_turn_result(tmp_path):
         assert result.status == "completed"
         assert result.final_text == '{"answer": "fixed"}'
         steers = _steers_in_tree(agent)
-        assert len(steers) == 1                  # steer 修复消息未被入站闸门拦截
+        assert len(steers) == 1                 # steer 修复消息经豁免入队
         assert len(_turn_end_messages(agent)) == 1
 
         # 入站闸门仍在工作

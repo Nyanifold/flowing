@@ -55,9 +55,9 @@ declaration of the file, and one call in the `.fya` `$script:` setup block
 mounts it:
 
 ```yaml
-# my-agent.fya — minimal inbound enablement: every USER message is validated
-# before enqueue; non-conforming ones are rejected (the caller gets
-# Intercepted)
+# my-agent.fya — minimal inbound enablement: every enqueued message is gated
+# (framework-internal EVENT traffic included; no implicit exclusion);
+# non-conforming ones are rejected (the caller gets Intercepted)
 input:
   question:
     type: string

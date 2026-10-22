@@ -48,8 +48,8 @@
 声明，`.fya` 的 `$script:` setup 段中调用即挂载：
 
 ```yaml
-# my-agent.fya —— 入站校验最小启用：所有 USER 消息入队前校验，
-# 不合规拒绝入队（调用方拿 Intercepted）
+# my-agent.fya —— 入站校验最小启用：所有入队消息都过闸（含 EVENT 等
+# 框架内部入队流量，不做隐式排除），不合规拒绝入队（调用方拿 Intercepted）
 input:
   question:
     type: string

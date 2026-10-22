@@ -123,8 +123,12 @@
   分发链原样上抛至入队调用方——dispatch 对普通异常不捕获，入队通常
   发生在回合外，无回合异常通道、无 ``on_provider_error`` 兜底。
 - 两函数各自独立：互不注册对方的 handler，可在同一 Agent 上同时
-  挂载；入站校验只闸入队消息，不触碰回合内产生的 PROVIDER 响应与
-  steer 修复消息（EVENT kind 不在 ``kinds`` 默认集内）。
+  挂载；入站校验只闸入队消息，不触碰回合内产生的 PROVIDER 响应
+  （不进队列）。steer 修复消息与异步工具结果经 ``on_enqueue`` 入队，
+  同样过闸——本模块不为其他钩子或工具做隐式排除，同挂
+  ``use_validate_turn_result`` 时其 steer 修复消息会被入站校验审查，
+  需要豁免是应用层的显式选择（挂载时用 ``match`` 谓词或 ``kinds`` /
+  ``source`` 过滤）。
 
 .. seealso::
 
@@ -431,7 +435,7 @@ def use_validate_enqueued_message(
     schema: dict[str, dict[str, Any]] | None = None,
     *,
     on_fail: Literal["reject", "warn", "raise"] = "reject",
-    kinds: "tuple[MessageKind, ...]" = (MessageKind.USER,),
+    kinds: "tuple[MessageKind, ...] | None" = None,
     source: str | list[str] | None = None,
     match: "Callable[[Message], bool] | None" = None,
     by: str = "validate-enqueued-message",
@@ -459,7 +463,7 @@ def use_validate_enqueued_message(
     .. code-block:: yaml
 
         # 1. 最小启用（.fya 声明形态）：schema 读本文件顶层的 input:
-        # 声明，所有 USER 消息入队前校验，不合规拒绝入队
+        # 声明，所有入队消息都过闸，不合规拒绝入队
         input:
           question:
             type: string
@@ -482,7 +486,7 @@ def use_validate_enqueued_message(
                 source="peer_*",
             )
 
-        # 3. 告警策略 + kinds 扩到 PEER + 自定义谓词
+        # 3. 告警策略 + kinds 限定 USER/PEER + 自定义谓词
         async def setup(self) -> None:
             use_validate_enqueued_message(
                 self,
@@ -493,11 +497,13 @@ def use_validate_enqueued_message(
 
     .. rubric:: 行为要点
 
-    - 过滤（AND 合取）：``msg.kind in kinds``；``source`` 缺省不过滤，
-      给了值则归一为模式元组、用 ``fnmatch`` 命中任一模式即通过
-      （``source=""`` 只匹配未填 ``source`` 的消息——外部投递消息
-      ``source`` 默认为空串）；``match`` 非空则须 ``match(msg)`` 为真。
-      任一维度不满足即原样 ``return msg``，不做校验。
+    - 过滤（AND 合取）：``kinds`` 缺省不过滤 kind 维度，给了值则
+      ``msg.kind`` 须在元组内；``source`` 缺省不过滤，给了值则归一为
+      模式元组、用 ``fnmatch`` 命中任一模式即通过（``source=""`` 只匹配
+      未填 ``source`` 的消息——外部投递消息 ``source`` 默认为空串）；
+      ``match`` 非空则须 ``match(msg)`` 为真。任一维度不满足即原样
+      ``return msg``，不做校验。三个维度全部缺省 = 所有入队消息都过闸：
+      本函数不为其他钩子或工具做隐式排除，豁免是应用层的显式选择。
     - 校验口径：全部 ``TextBlock`` 拼接为文本（与
       :func:`flowing.agent.build_turn_result` 的 ``final_text`` 同口径），
       非空则 ``json.loads`` 再 ``model_validate``；每个 ``StructBlock``
@@ -522,9 +528,11 @@ def use_validate_enqueued_message(
     - 重复调用不做幂等去重：每次调用各叠加一个独立 handler（各自持有
       独立的编译模型）；``remove_by_owner(by)`` 整组移除。
     - 与框架内部消息的关系：回合内产生的 PROVIDER 响应不进队列、不经过
-      ``on_enqueue``；异步工具结果与 steer 修复消息虽经 ``on_enqueue``
-      入队（EVENT kind），默认 ``kinds=(USER,)`` 下被过滤维度放行。要让
-      它们也过闸须显式扩 ``kinds`` 并配 ``source`` 过滤。
+      ``on_enqueue``；异步工具结果与 steer 修复消息经 ``on_enqueue`` 入队
+      （EVENT kind），缺省过滤下同样过闸——本函数不为其他钩子或工具做
+      隐式排除，同挂 ``use_validate_turn_result`` 时其 steer 修复消息会被
+      本函数审查，豁免须在挂载时显式给出（``kinds`` / ``source`` /
+      ``match`` 过滤）。
 
     :param agent: 目标 Agent 实例；标准用法是在 ``setup()`` 中传 ``self``。
     :param schema: JSON Schema 的 properties 形态（字段名 → property
@@ -535,8 +543,9 @@ def use_validate_enqueued_message(
         :class:`flowing.errors.Intercepted` 拒绝入队）/ ``"warn"``
         （英文告警后放行）/ ``"raise"`` （抛
         :class:`flowing.errors.InputValidationError`）。
-    :param kinds: 参与校验的消息 kind 元组，默认 ``(MessageKind.USER,)``；
-        EVENT / SUBAGENT / PEER 等入队 kind 须显式列入才被闸。
+    :param kinds: 消息 kind 过滤：``None`` （缺省）不过滤本维度，所有
+        kind 都过闸；给出元组则只校验这些 kind。显式传空元组为编程错误，
+        挂载期抛 ``ValueError``。
     :param source: 来源过滤：``None`` （缺省）不过滤本维度；``str``
         或 ``str`` 列表按 ``fnmatch`` 匹配消息的 ``source`` 字段，命中
         任一模式即通过。
@@ -562,7 +571,7 @@ def use_validate_enqueued_message(
     # 先校验后注册：非法参数抛 ValueError，不产生任何注册副作用
     if on_fail not in ("reject", "warn", "raise"):
         raise ValueError("on_fail must be 'reject', 'warn' or 'raise'")
-    if not kinds:
+    if kinds is not None and not kinds:
         raise ValueError("kinds must not be empty")
 
     # schema 回落链：参数 → agent.input（对象级属性，只读探测）→ 挂载期
@@ -585,7 +594,7 @@ def use_validate_enqueued_message(
         ``InputValidationError``（原样上抛至入队调用方）；handler 必须
         ``return msg``。
         """
-        if msg.kind not in kinds:
+        if kinds is not None and msg.kind not in kinds:
             return msg   # kind 不在闸口范围内：放行
         if source_patterns is not None and not any(
                 fnmatch.fnmatch(msg.source, p) for p in source_patterns):
