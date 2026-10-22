@@ -1,8 +1,9 @@
-"""内置文件 / shell 工具测试：测试清单 66–71。
+"""内置文件 / shell 工具测试：测试清单 66–71、73。
 
-六工具各至少一条正例 + 一条负例（error 结果而非异常）。直接
-``await tool({...})`` 走 ``Tool.__call__`` 真实调度链（注意 ``__call__``
-不填默认值——带 default 的参数显式传全）。
+六工具各至少一条正例 + 一条负例（error 结果而非异常）；73 为 pass
+空动作占位（零参数、多余参数忽略）。直接 ``await tool({...})`` 走
+``Tool.__call__`` 真实调度链（注意 ``__call__`` 不填默认值——带 default
+的参数显式传全）。
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from flowing.builtins.tools import (
     EditTool,
     GlobTool,
     GrepTool,
+    PassTool,
     ReadTool,
     WriteTool,
 )
@@ -204,3 +206,21 @@ async def test_t71_glob_missing_dir_is_error(tmp_path):
     result = await GlobTool()({
         "pattern": "**/*.py", "path": str(tmp_path / "ghost"), "cwd": None})
     assert result.status == "error"
+
+
+# ---------------------------------------------------------------------------
+# 清单 73：pass（形式化空动作占位）
+# ---------------------------------------------------------------------------
+
+async def test_t73_pass_noop_and_extra_args_ignored():
+    """73：pass 恒返回空对象——无参调用 status ok、output == {}；
+    ``output:`` 覆写展开形态的多余参数被接收并忽略，返回仍为空对象。"""
+    tool = PassTool()
+    r1 = await tool({})
+    assert r1.status == "completed"
+    assert r1.output == {}
+    r2 = await tool({"foo": 1})
+    assert r2.status == "completed"
+    assert r2.output == {}
+    assert tool.definition.name == "pass"
+    assert tool._has_caller is False

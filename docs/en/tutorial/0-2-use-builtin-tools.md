@@ -11,7 +11,7 @@ Save these materials in a project directory you create, and run the command ther
 
 | Term | One-sentence definition |
 |---|---|
-| Builtin tools | Builtin tools are factory tools in the `builtin::` namespace, including `read`, `write`, `bash`, `edit`, `grep`, `glob`, `finish`, and `subagent-invoke`. |
+| Builtin tools | Builtin tools are factory tools in the `builtin::` namespace, including `read`, `write`, `bash`, `edit`, `grep`, `glob`, `finish`, `pass`, and `subagent-invoke`. |
 | Namespace omission | Namespace omission means that a bare name resolves in the `builtin::` namespace, so `read` is equivalent to `builtin::read`. |
 | Registration ≠ visibility | The Runtime registers builtins, but an Agent exposes them to the LLM only when it declares them explicitly; dangerous tools are never attached silently. |
 
@@ -26,7 +26,7 @@ the hard rule that registration does not imply visibility.
 
 The `tools:` list at the head of a `.fya` declares which tools this Agent may use.
 Builtin tools include `builtin::read` / `write` / `bash` / `edit` / `grep` / `glob` /
-`finish` / `subagent-invoke`. This chapter uses two read-only tools:
+`finish` / `pass` / `subagent-invoke`. This chapter uses two read-only tools:
 
 ```yaml
 description: "Project Q&A assistant: can list directories, read files, and summarize."

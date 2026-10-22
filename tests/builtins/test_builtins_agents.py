@@ -1,9 +1,9 @@
-"""内置工具与标准子智能体测试：测试清单 72–76。
+"""内置工具与标准子智能体测试：测试清单 72–77。
 
 FinishTool 动态 schema 与置位收尾（72）、SubagentInvokeTool 同步/异步
 两路径（73/74）、ExploreAgent 只读工具集（75）、register_builtins 注册面
-（76）。真 Agent 侧由 harness 的 HarnessRuntime 迷你管线 / ``make_runtime``
-真 Runtime 驱动。
+（76）、PassTool 占位不结束回合（77）。真 Agent 侧由 harness 的
+HarnessRuntime 迷你管线 / ``make_runtime`` 真 Runtime 驱动。
 """
 
 from __future__ import annotations
@@ -340,13 +340,13 @@ async def test_t75_explore_agent_readonly(runtime, provider):
 # ---------------------------------------------------------------------------
 
 async def test_t76_register_builtins(tmp_path):
-    """76：八个工具注册进 ``builtin::``、explore-agent 注册进 ``builtin::``；
+    """76：九个工具注册进 ``builtin::``、explore-agent 注册进 ``builtin::``；
     不产生任何 LLM 可见性（``Context.tools`` 为空直到显式声明）。"""
     runtime = make_runtime(tmp_path)
     try:
         # Runtime.__init__ 已经 register_builtins 调用点
-        for name in ("subagent-invoke", "finish", "read", "write", "bash",
-                     "edit", "grep", "glob"):
+        for name in ("subagent-invoke", "finish", "pass", "read", "write",
+                     "bash", "edit", "grep", "glob"):
             assert f"builtin::{name}" in runtime.tool_registry
             assert name not in runtime.tool_registry   # __contains__ 仅全限定键（P3-07）
         assert runtime.get_agent_class("builtin::explore-agent") is ExploreAgent
@@ -357,3 +357,29 @@ async def test_t76_register_builtins(tmp_path):
         assert context.tools == []
     finally:
         await runtime.shutdown()
+
+# ---------------------------------------------------------------------------
+# 清单 77：PassTool 占位不结束回合
+# ---------------------------------------------------------------------------
+
+async def test_t77_pass_placeholder_turn_continues(runtime, provider):
+    """77（回合级）：pass 调用不结束回合——循环继续、模型随后给出最终
+    文本；单个逻辑回合（全树仅一条 turn_end=True）；TOOL 消息为
+    ``StructBlock(data={})``；``finish_output`` 全程未置位。"""
+    agent = await runtime.create_agent("test-agent")
+    agent.add_tool("pass")
+    step1, calls = tool_call_response(("pass", {}))
+    script_provider(provider, step1, text_response("最终回复"))
+    result = await agent.query("开始")
+    assert result.status == "completed"
+    assert len(provider.received) == 2   # pass 后循环继续，第二次 provider_gen
+    # 单个逻辑回合：全树仅最终 PROVIDER 响应带 turn_end=True
+    assert len([m for m in agent._messages.values() if m.turn_end]) == 1
+    tool_msg = next(agent._messages[mid] for mid in result.turn.message_ids
+                    if agent._messages[mid].kind is MessageKind.TOOL)
+    assert tool_msg.tool_call_id == calls[0].id
+    assert tool_msg.turn_end is False
+    block = next(b for b in tool_msg.content if isinstance(b, StructBlock))
+    assert block.data == {}
+    assert agent.last_result == "最终回复"
+    assert result.turn.finish_output is None

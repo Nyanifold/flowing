@@ -626,9 +626,9 @@ class Runtime:
         self.tool_registry = ToolRegistry(project_root=self.project_root)
         self.agent_registry = AgentRegistry(project_root=self.project_root)   # 须在 register_builtins 之前初始化（ExploreAgent 注册写本表）
         # 框架自带工具与标准子智能体注册（物理实现全部在
-        # flowing.builtins）：核心内置 subagent-invoke / finish + 六个标准
-        # 文件/shell 工具 + ExploreAgent，随 Runtime 天生在场，归属
-        # builtin:: 命名空间（裸名视图的兜底层，可被 default:: 覆盖）；
+        # flowing.builtins）：核心内置 subagent-invoke / finish / pass +
+        # 六个标准文件/shell 工具 + ExploreAgent，随 Runtime 天生在场，
+        # 归属 builtin:: 命名空间（裸名视图的兜底层，可被 default:: 覆盖）；
         # 对 LLM 的可见性仍由 Agent 级 ``.fya`` ``tools:`` 声明或显式
         # ``add_tool`` 控制（注册 ≠ 可见，框架不静默附加）
         register_builtins(self)

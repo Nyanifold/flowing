@@ -2,12 +2,13 @@
 
 .. rubric:: 功能介绍
 
-本模块定义框架出厂内置的八个工具，全部为普通 :class:`flowing.tool.Tool`
+本模块定义框架出厂内置的九个工具，全部为普通 :class:`flowing.tool.Tool`
 子类，经 :func:`flowing.builtins.register_builtins` 注册进 ``builtin::``
 命名空间：
 
 - 核心内置：:class:`SubagentInvokeTool` （``subagent-invoke``，子智能体
   唤起入口）与 :class:`FinishTool` （``finish``，子 Agent 可选交卷）；
+- 形式化占位：:class:`PassTool` （``pass``，空动作占位，不结束回合）；
 - 标准文件 / shell 工具：:class:`ReadTool` / :class:`WriteTool` /
   :class:`BashTool` / :class:`EditTool` / :class:`GrepTool` /
   :class:`GlobTool`。
@@ -651,6 +652,76 @@ class FinishTool(Tool):
         # 本回合 turn_end=True 落在其上（_run_turn 置位转移检测）
         caller.current_turn.finish_output = payload
         return payload
+
+
+
+class PassTool(Tool):
+    """``pass`` —— 形式化空动作占位工具（普通工具，显式绑定）。
+
+    .. rubric:: 功能介绍
+
+    LLM 调用 ``pass`` 什么都不做：不执行任何动作、不置位回合结束信号
+    （``finish`` / ``finish_output`` 均不动），调用后消息循环照常继续。
+    与 ``finish`` 的对照：``finish`` 是结构化交卷——同一载荷置位
+    ``finish_output`` 并请求本回合自然结束；``pass`` 是无任何置位的
+    占位动作，回合继续，模型需要随后给出最终回复。工具返回结构化空
+    对象，适合作为工作流中的形式化步骤占位。
+
+    ``output:`` 覆写声明会展开为额外参数（任意工具通用的
+    :class:`flowing.tool.ToolEntry` 覆写通道，与 ``finish`` 的同一
+    机制），本工具接收并忽略这些字段，返回仍是空对象；本工具不消费
+    Agent 对象级 ``output`` 属性。
+
+    .. rubric:: 使用示例
+
+    .. code-block:: yaml
+
+        # agent.fya —— 显式声明后 LLM 才可见
+        tools:
+          - pass
+
+    .. rubric:: 行为要点
+
+    - 零业务参数：骨架 ``params_schema`` 为空映射，LLM 可见描述固定
+      为英文短句。``output:`` 覆写（与 ``args:`` 平级的通用字段）
+      展开为额外参数，``execute(**kwargs)`` 接收并忽略，返回仍是空
+      对象 ``{}``。
+    - 不结束回合：调用不置位 ``finish`` / ``finish_output``，消息循环
+      按原样继续（模型需随后给出最终回复，或由其它机制结束回合）。
+    - 返回形态：``{}`` 经 ``normalize_output`` 归一 / 塑形为
+      ``StructBlock(data={})`` 进配对 TOOL 消息——空结构化结果，对
+      LLM 投影为 ``{}`` 文本。
+    - 可见性走通用通道：``pass`` 对 LLM 可见只经 ``.fya`` ``tools:``
+      声明或显式 ``add_tool("pass")``。
+
+    .. seealso::
+
+        - :class:`FinishTool` —— 结构化交卷的对照工具（置位
+          ``finish_output`` 并结束回合）。
+        - :class:`flowing.tool.ToolEntry` —— ``output:`` 覆写载体。
+    """
+
+    def __init__(self) -> None:
+        """构造骨架定义并编译内部校验模型（无参数，框架实例化时调用）。"""
+        self.definition = ToolDefinition(
+            name="pass",
+            description="Does nothing and returns an empty object.",
+            params_schema={})
+        self._args_model = schema_to_model(type(self).__name__ + "Args", {})
+
+    async def execute(self, **kwargs: Any) -> dict:
+        """空动作本体：忽略全部入参（含 ``output:`` 覆写展开的动态字段），
+        返回空对象。
+
+        .. rubric:: 行为要点
+
+        - 返回 ``{}`` 经 ``normalize_output`` 归一为
+          ``StructBlock(data={})``。
+        - 无副作用：不读不写 Agent 状态，不置位任何回合结束信号。
+
+        .. seealso:: :class:`FinishTool` —— 置位交卷的对照工具。
+        """
+        return {}
 
 
 

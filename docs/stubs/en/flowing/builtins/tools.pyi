@@ -1,12 +1,14 @@
 """``flowing.builtins.tools`` — the builtin tools registered in ``builtin::``.
 
-This module defines eight builtin tools as ordinary :class:`flowing.tool.Tool`
+This module defines nine builtin tools as ordinary :class:`flowing.tool.Tool`
 subclasses. :func:`flowing.builtins.register_builtins` registers them in
 ``builtin::``:
 
 - The core tools are :class:`SubagentInvokeTool` (``subagent-invoke``), which
   invokes a subagent, and :class:`FinishTool` (``finish``), which a subagent
   can use to return an optional structured result.
+- :class:`PassTool` (``pass``) is a formal no-op placeholder: it does nothing
+  and never ends the turn.
 - The standard file and shell tools are :class:`ReadTool`,
   :class:`WriteTool`, :class:`BashTool`, :class:`EditTool`, :class:`GrepTool`,
   and :class:`GlobTool`.
@@ -363,6 +365,74 @@ class FinishTool(Tool):
 
         .. seealso:: :class:`flowing.agent.TurnContext` for the object that
             exists during a logical turn.
+        """
+        ...
+
+
+class PassTool(Tool):
+    """Formal no-op placeholder tool.
+
+    Calling ``pass`` does nothing: it performs no action, sets no turn-ending
+    signal (neither ``finish`` nor ``finish_output``), and the message loop
+    continues as usual. In contrast to :class:`FinishTool`, which assigns the
+    structured payload to ``finish_output`` and requests natural turn
+    completion, ``pass`` is a placeholder with no side effects; the turn
+    continues and the model is expected to produce a final reply later. The
+    tool returns an empty structured object, suitable as a formal step
+    placeholder in a workflow.
+
+    An ``output:`` override declaration expands into additional parameters
+    through the generic :class:`flowing.tool.ToolEntry` override channel (the
+    same mechanism as ``finish``); this tool receives and ignores those
+    fields and still returns the empty object. It does not consume the
+    Agent-level ``output`` attribute.
+
+    .. rubric:: Example
+
+    .. code-block:: yaml
+
+        # agent.fya — visible to the LLM only after an explicit declaration
+        tools:
+          - pass
+
+    .. rubric:: Behavior
+
+    - Zero business parameters: the base ``params_schema`` is an empty
+      mapping, and the LLM-visible description is a fixed short English
+      sentence. ``output:`` overrides (a generic field alongside ``args:``)
+      expand into extra parameters; ``execute(**kwargs)`` receives and
+      ignores them and still returns the empty object ``{}``.
+    - Never ends the turn: the call sets neither ``finish`` nor
+      ``finish_output``, so the message loop continues as usual (the model
+      produces a final reply later, or another mechanism ends the turn).
+    - Result shape: ``{}`` is normalized by ``normalize_output`` into
+      ``StructBlock(data={})`` on the paired TOOL message — an empty
+      structured result, projected to the LLM as the text ``{}``.
+    - Visibility follows the generic channel: ``pass`` becomes visible to
+      the LLM only via a ``.fya`` ``tools:`` declaration or an explicit
+      ``add_tool("pass")``.
+
+    .. seealso::
+
+        - :class:`FinishTool` — the contrasting structured-hand-in tool
+          (assigns ``finish_output`` and ends the turn).
+        - :class:`flowing.tool.ToolEntry` — the ``output:`` override
+          carrier.
+    """
+
+    async def execute(self, **kwargs: Any) -> dict:
+        """The no-op body: ignore every argument (including dynamic fields
+        expanded from an ``output:`` override) and return the empty object.
+
+        .. rubric:: Behavior
+
+        - Returns ``{}``, normalized by ``normalize_output`` into
+          ``StructBlock(data={})``.
+        - No side effects: it neither reads nor writes Agent state and sets
+          no turn-ending signal.
+
+        .. seealso:: :class:`FinishTool` — the contrasting tool that
+            assigns the hand-in payload.
         """
         ...
 

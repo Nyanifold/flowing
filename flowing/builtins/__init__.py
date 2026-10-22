@@ -7,9 +7,10 @@
 期自动执行，随每个 ``Runtime`` 实例天生在场）：
 
 - :mod:`flowing.builtins.tools` —— 内置工具全集：核心内置
-  ``subagent-invoke`` （子智能体唤起入口）与出厂内置的 ``finish``
-  （子 Agent 可选交卷），加六个标准文件 / shell 工具 ``read`` /
-  ``write`` / ``bash`` / ``edit`` / ``grep`` / ``glob``；
+  ``subagent-invoke`` （子智能体唤起入口）、出厂内置的 ``finish``
+  （子 Agent 可选交卷）与 ``pass`` （空动作占位，不结束回合），加六个
+  标准文件 / shell 工具 ``read`` / ``write`` / ``bash`` / ``edit`` /
+  ``grep`` / ``glob``；
 - :mod:`flowing.builtins.agents` —— 标准子智能体 ``ExploreAgent``
   （只读代码库探索）。
 
@@ -53,6 +54,7 @@ from flowing.builtins.tools import (
     FinishTool,
     GlobTool,
     GrepTool,
+    PassTool,
     ReadTool,
     SubagentInvokeTool,
     WriteTool,
@@ -65,6 +67,7 @@ __all__ = [
     "FinishTool",
     "GlobTool",
     "GrepTool",
+    "PassTool",
     "ReadTool",
     "SubagentInvokeTool",
     "WriteTool",
@@ -77,7 +80,7 @@ def register_builtins(runtime) -> None:
 
     .. rubric:: 功能介绍
 
-    ``Runtime.__init__`` 的唯一调用点：八个内置工具经
+    ``Runtime.__init__`` 的唯一调用点：九个内置工具经
     ``runtime.register_tool(..., namespace="builtin")`` 注册，
     ``ExploreAgent`` 经 ``runtime.register_agent_type(ExploreAgent,
     namespace="builtin")`` 注册（name 缺省 → 类名推断 ``explore-agent``）。
@@ -94,7 +97,7 @@ def register_builtins(runtime) -> None:
         :mod:`flowing.builtins.agents`、
         :meth:`flowing.runtime.Runtime.register_tool`
     """
-    for tool in (SubagentInvokeTool(), FinishTool(), ReadTool(),
+    for tool in (SubagentInvokeTool(), FinishTool(), PassTool(), ReadTool(),
                  WriteTool(), BashTool(), EditTool(), GrepTool(),
                  GlobTool()):
         runtime.register_tool(tool, namespace="builtin")

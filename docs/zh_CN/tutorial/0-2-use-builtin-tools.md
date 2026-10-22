@@ -11,7 +11,7 @@
 
 | 名词 | 一句话定义 |
 |---|---|
-| 内置工具 | `builtin::` 命名空间的出厂工具：`read` / `write` / `bash` / `edit` / `grep` / `glob` / `finish` / `subagent-invoke` |
+| 内置工具 | `builtin::` 命名空间的出厂工具：`read` / `write` / `bash` / `edit` / `grep` / `glob` / `finish` / `pass` / `subagent-invoke` |
 | 命名空间省略 | 裸名查找命中 `builtin::` 命名空间的规则：`read` 与 `builtin::read` 等价 |
 | 注册 ≠ 可见 | builtins 随 Runtime 注册，但必须经 Agent 显式声明才进 LLM 可见面——危险工具不会被静默附加 |
 
@@ -26,7 +26,7 @@
 
 `.fya` 头部的 `tools:` 列表声明这个 Agent 可以使用哪些工具。内置工具包括
 `builtin::read` / `write` / `bash` / `edit` / `grep` / `glob` / `finish` /
-`subagent-invoke`。本篇用两个只读工具：
+`pass` / `subagent-invoke`。本篇用两个只读工具：
 
 ```yaml
 description: 项目问答助手：能查看目录、读取文件并总结。

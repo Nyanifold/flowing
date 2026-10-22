@@ -7,8 +7,9 @@ construction registers them in ``builtin::`` through
 :func:`register_builtins`:
 
 - :mod:`flowing.builtins.tools` provides the core ``subagent-invoke`` entry
-  point and the optional ``finish`` tool, plus the standard file and shell
-  tools ``read``, ``write``, ``bash``, ``edit``, ``grep``, and ``glob``.
+  point, the optional ``finish`` tool, the ``pass`` no-op placeholder, plus
+  the standard file and shell tools ``read``, ``write``, ``bash``, ``edit``,
+  ``grep``, and ``glob``.
 - :mod:`flowing.builtins.agents` provides ``ExploreAgent``, a read-only
   codebase exploration subagent.
 
@@ -56,6 +57,7 @@ from .tools import (
     FinishTool,
     GlobTool,
     GrepTool,
+    PassTool,
     ReadTool,
     SubagentInvokeTool,
     WriteTool,
@@ -66,7 +68,7 @@ def register_builtins(runtime: Any) -> None:
     """Register all shipped builtin tools and the standard subagent.
 
     ``Runtime.__init__`` is the intended call site. This function registers
-    eight tools through ``runtime.register_tool(...,
+    nine tools through ``runtime.register_tool(...,
     namespace="builtin")`` and registers ``ExploreAgent`` through
     ``runtime.register_agent_type(ExploreAgent, namespace="builtin")``. When
     no name is provided, the Agent type name is inferred as ``explore-agent``.
