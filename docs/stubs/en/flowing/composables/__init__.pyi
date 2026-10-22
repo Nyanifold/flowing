@@ -16,6 +16,13 @@ for that Agent alone. The built-in Composables are:
   injects system reminders at the start of turns.
 * :func:`use_prompt_until <flowing.composables.prompt_until.use_prompt_until>`
   steers another run when a turn-end assertion is false.
+* :func:`use_validate_turn_result <flowing.composables.validate.use_validate_turn_result>`
+  validates the final reply against a JSON Schema and steers a same-turn
+  repair, warns, or raises on failure.
+* :func:`use_validate_enqueued_message <flowing.composables.validate.use_validate_enqueued_message>`
+  validates inbound messages against a JSON Schema (filtered by kind /
+  source / a custom predicate) and rejects (Intercepted), warns, or raises
+  on failure.
 
 Scenario-specific Composables such as ``use_logging`` and ``use_guardrail``
 belong to application code; the framework does not reserve symbols for them.
@@ -58,12 +65,12 @@ Combine the policies you need in a hand-written Agent's ``setup()`` method:
   overhead.
 - Whether a Composable function is synchronous or asynchronous depends on
   whether its implementation needs to ``await`` anything. Pure registration
-  functions are synchronous; all five built-in Composables in this package
+  functions are synchronous; all seven built-in Composables in this package
   are synchronous. A handler is asynchronous only when it needs to wait, for
   example for a backoff sleep or a side query.
 - The order in which Composables are called from ``setup()`` determines their
   registration order. A handler registered later runs later in the chain.
-- The five built-in Composables do not deduplicate repeated calls. Each call
+- The seven built-in Composables do not deduplicate repeated calls. Each call
   adds another handler set, allowing different settings to be enabled
   independently. To replace a set, use ``remove_by_owner()`` with the
   ``by`` value documented in that Composable's registration surface, then
@@ -80,5 +87,6 @@ from .compact import DEFAULT_COMPACT_PROMPT, DEFAULT_COMPACT_TEMPLATE, use_auto_
 from .prompt_until import use_prompt_until
 from .reminder import use_system_reminder
 from .retry import MAX_RETRY_DELAY, NON_RETRYABLE_ERRORS, RETRYABLE_ERRORS, use_retry
+from .validate import use_validate_enqueued_message, use_validate_turn_result
 
 __all__: list[str]

@@ -5,12 +5,16 @@
 本模块定义 Flowing 框架的全部具名异常类型，是框架核心层（非扩展、非应用层）
 的公共契约。``FlowingError`` 是统一根，向下按职责分为十一个类别：配置、
 注入、钩子、工具、注册表、资源、Provider、依赖、通信、格式、编译；另有
-四个异常直接挂根、不属任何类别——``EntryNameConflictError`` （Agent 绑定
+六个异常直接挂根、不属任何类别——``EntryNameConflictError`` （Agent 绑定
 层别名冲突）、``UnpairedToolCallError`` （消息树配对不变量）、
 ``FormatVersionError`` 与 ``CorruptionError`` （jsonl 持久化
-文件；与声明式文件格式的 ``FormatError`` 分层，持久化层不专设中间层）。
-外加一个刻意游离于普通错误语义之外的信号类 ``Intercepted`` （钩子 handler
-的有意硬阻断信号，刻意不继承 ``FlowingError``）。
+文件；与声明式文件格式的 ``FormatError`` 分层，持久化层不专设中间层）、
+``OutputValidationError`` （回合最终回复未通过 JSON Schema 校验，
+由内置 Composable ``use_validate_turn_result`` 在 ``on_fail="raise"``
+策略下抛出）与 ``InputValidationError`` （入站消息未通过 JSON Schema 校验，
+由内置 Composable ``use_validate_enqueued_message`` 在 ``on_fail="raise"``
+策略下抛出）。外加一个刻意游离于普通错误语义之外的信号类 ``Intercepted``
+（钩子 handler 的有意硬阻断信号，刻意不继承 ``FlowingError``）。
 
 import 期作者笔误刻意用内置 ``ValueError``，不入本层次——如
 ``register_provider`` 装饰到非 ``Provider`` 子类或缺少非空 ``name`` 类属性
@@ -73,6 +77,8 @@ import 期作者笔误刻意用内置 ``ValueError``，不入本层次——如
         ├── FormatVersionError           # jsonl 持久化文件格式版本不受支持
         ├── CorruptionError              # jsonl 持久化文件中间行损坏
         ├── UnpairedToolCallError        # 消息树配对不变量（装配断言）
+        ├── OutputValidationError        # 回合最终回复未通过 JSON Schema 校验（内置 Composable 抛出）
+        ├── InputValidationError         # 入站消息未通过 JSON Schema 校验（内置 Composable 抛出）
         ├── FormatError                  # 声明式文件格式 / Parsable 求值 / 保留属性
         │   ├── MissingFieldError
         │   ├── MissingContextError
@@ -222,6 +228,8 @@ __all__ = [
     "FormatVersionError",
     "CorruptionError",
     "UnpairedToolCallError",
+    "OutputValidationError",
+    "InputValidationError",
     "Intercepted",
 ]
 # 注：EntryNameConflictError 刻意不列入 __all__；仍可经
@@ -2297,3 +2305,101 @@ class UnpairedToolCallError(FlowingError):
 未配对的调用切进新分支（fork docstring 的“配对断裂”条款）——操作方
 负责随后重新封闭（``MessageChain.insert`` 补结果消息）或弃用该分支。
     """
+
+
+# ---------------------------------------------------------------------------
+# JSON Schema 校验类（内置 Composable 抛出）
+# ---------------------------------------------------------------------------
+
+
+class OutputValidationError(FlowingError):
+    """回合最终回复未通过 JSON Schema 校验（``on_fail="raise"`` 策略下抛出）。
+
+    .. rubric:: 功能介绍
+
+    内置 Composable
+    :func:`flowing.composables.validate.use_validate_turn_result`
+    在 ``on_fail="raise"`` 策略下，主回合终态回复的文本校验不通过时抛出：
+    文本无法解析为 JSON、或解析结果不符合挂载时经
+    :func:`flowing.params.schema_to_model` 编译的 Pydantic 模型，都视为
+    校验不通过。异常从 ``after_provider_gen`` handler 抛出后经回合异常
+    通道上抛（视同本次 LLM 调用期异常）：``on_provider_error`` 照常分发，
+    ``can_continue`` 保持 ``False``，本回合以 ``"error"`` 结局终止
+    （Agent 存活），``query()`` 等待者拿到 ``status == "error"`` 的
+    :class:`flowing.agent.TurnResult`。
+
+    .. rubric:: 行为要点
+
+    - ``error`` 字段为校验错误文本（JSON 解析错误或 Pydantic 校验错误
+      的原文），诊断用途；不回喂 LLM（模板渲染走独立的 ``template``
+      回落链，见 ``use_validate_turn_result``）。
+    - 由应用层策略抛出：框架核心不主动抛本异常；``on_fail`` 取
+      ``"steer"`` 或 ``"warn"`` 时本异常不会被实例化。
+    - 捕获语义：按精确类型捕获本类即可；``except FlowingError`` 亦可
+      一网打尽。
+
+    .. seealso::
+
+        :func:`flowing.composables.validate.use_validate_turn_result`
+        唯一的抛出方与三策略处置入口。
+        :func:`flowing.params.schema_to_model`
+        校验模型的编译入口。
+    """
+
+    error: str
+    """校验错误文本（JSON 解析错误或 Pydantic 校验错误的原文）；诊断用途。"""
+
+    def __init__(self, error: str) -> None:
+        """构造异常实例。
+
+        :param error: 校验错误文本；与 ``error`` 字段一致。
+        """
+        # 消息为自然语言关键提示，结构化字段为权威
+        super().__init__(f"turn output failed schema validation: {error}")
+        self.error = error
+
+
+class InputValidationError(FlowingError):
+    """入站消息未通过 JSON Schema 校验（``on_fail="raise"`` 策略下抛出）。
+
+    .. rubric:: 功能介绍
+
+    内置 Composable
+    :func:`flowing.composables.validate.use_validate_enqueued_message`
+    在 ``on_fail="raise"`` 策略下，入站消息校验不通过时抛出：消息全部
+    ``TextBlock`` 拼接的文本无法解析为 JSON、或解析结果不符合挂载时经
+    :func:`flowing.params.schema_to_model` 编译的 Pydantic 模型，任一
+    ``StructBlock`` 的 ``data`` 不符合模型，都视为校验不通过。异常从
+    ``on_enqueue`` handler 抛出后经分发链原样上抛至入队调用方
+    （dispatch 对普通异常不捕获）：入队通常发生在回合外，无回合异常
+    通道、无 ``on_provider_error`` 兜底——与
+    :class:`OutputValidationError` 的“经回合异常通道上抛”不同向。
+
+    .. rubric:: 行为要点
+
+    - ``error`` 字段为校验错误文本（JSON 解析错误或 Pydantic 校验错误
+      的原文），诊断用途；不回喂 LLM。
+    - 由应用层策略抛出：框架核心不主动抛本异常；``on_fail`` 取
+      ``"reject"`` 或 ``"warn"`` 时本异常不会被实例化。
+    - 捕获语义：按精确类型捕获本类即可；``except FlowingError`` 亦可
+      一网打尽。
+
+    .. seealso::
+
+        :func:`flowing.composables.validate.use_validate_enqueued_message`
+        唯一的抛出方与三策略处置入口。
+        :func:`flowing.params.schema_to_model`
+        校验模型的编译入口。
+    """
+
+    error: str
+    """校验错误文本（JSON 解析错误或 Pydantic 校验错误的原文）；诊断用途。"""
+
+    def __init__(self, error: str) -> None:
+        """构造异常实例。
+
+        :param error: 校验错误文本；与 ``error`` 字段一致。
+        """
+        # 消息为自然语言关键提示，结构化字段为权威
+        super().__init__(f"enqueued message failed schema validation: {error}")
+        self.error = error

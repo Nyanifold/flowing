@@ -84,6 +84,9 @@ _FACTORIES = {
     "FormatVersionError": lambda: errors.FormatVersionError(Path("f.jsonl"), 99, 1),
     "CorruptionError": lambda: errors.CorruptionError(Path("f.jsonl"), 3),
     "UnpairedToolCallError": lambda: errors.UnpairedToolCallError("call-x"),
+    # JSON Schema 校验类（内置 Composable 抛出）
+    "OutputValidationError": lambda: errors.OutputValidationError("bad json"),
+    "InputValidationError": lambda: errors.InputValidationError("bad json"),
     "Intercepted": lambda: Intercepted("r"),
 }
 
@@ -94,7 +97,7 @@ def test_e8_all_names_importable_and_expected():
     注：``EntryNameConflictError`` 按 py-spec 原样不在 ``__all__`` 中（直挂根
     的跨正交类），仍可显式导入；``StateKeyError`` 已退役删除（D6/D8）。
     """
-    assert len(errors.__all__) == 55
+    assert len(errors.__all__) == 57
     excluded = {"EntryNameConflictError"}
     assert set(errors.__all__) == set(_FACTORIES) - excluded
     for name in errors.__all__:
@@ -195,6 +198,9 @@ def test_e6_leaf_fields():
     assert isinstance(errors.AgentTypeConflictError("a"), errors.RegistryConflictError)
     assert isinstance(errors.SkillNotFoundError("s"), errors.RegistryNotFoundError)
     assert isinstance(errors.SkillNameConflictError("s"), errors.RegistryConflictError)
+    # JSON Schema 校验类：error 字段为权威
+    assert errors.OutputValidationError("bad").error == "bad"
+    assert errors.InputValidationError("bad").error == "bad"
 
 
 def test_leaf_messages_carry_natural_language_hints():

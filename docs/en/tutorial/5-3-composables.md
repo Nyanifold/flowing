@@ -43,9 +43,46 @@ themselves.
 | `use_retry` | `on_provider_error` (+ `on_retry` observation) | `max_retries` (default 3) / `base_delay` / whitelist of retryable errors | demonstrated in 4-6 |
 | `use_system_reminder` | `before_turn` (`clean=True` adds `after_turn` cleanup) | `contents` (three states) / `message_interval` / `time_interval` / `clean` | demonstrated in 1-9 |
 | `use_compact` / `use_auto_compact` | `after_provider_gen` / `before_provider_gen` | `threshold` / `head_tokens` / `tail_tokens` / `compact_template` | mechanics foundation in 4-3 |
+| `use_validate_turn_result` | `after_provider_gen["_turn"]` | `schema` (falls back to `agent.output`) / `on_fail` (steer / warn / raise) / `max_retries` / `template` | — |
+| `use_validate_enqueued_message` | `on_enqueue` | `schema` (falls back to `agent.input`) / `on_fail` (reject / warn / raise) / `kinds` / `source` / `match` | — |
 
 The two replaceable parts of `use_prompt_until` — `predicate` and `message` —
 are covered in 1-9.
+
+Minimal enablement of inbound-message validation is isomorphic to the
+outbound direction: the schema is read from the top-level `input:`
+declaration of the file, and one call in the `.fya` `$script:` setup block
+mounts it:
+
+```yaml
+# my-agent.fya — minimal inbound enablement: every USER message is validated
+# before enqueue; non-conforming ones are rejected (the caller gets
+# Intercepted)
+input:
+  question:
+    type: string
+
+---
+$script:
+from flowing.composables import use_validate_enqueued_message
+
+
+async def setup(self):
+    use_validate_enqueued_message(self)
+```
+
+To gate only peer-sourced messages, filter with `source` (fnmatch glob; a
+list gives multiple patterns; the default `None` disables this dimension;
+it is ANDed with `kinds` and the custom `match` predicate):
+
+```python
+async def setup(self) -> None:
+    use_validate_enqueued_message(
+        self,
+        schema={"question": {"type": "string"}},
+        source="peer_*",
+    )
+```
 
 ### A common form for a self-written Composable
 

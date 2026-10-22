@@ -2,10 +2,10 @@
 
 提供：``harness`` 助手转发（HarnessRuntime / make_runtime / FakeProvider
 脚本回放）、``RetryAgent`` / ``CompactAgent`` / ``ReminderAgent`` /
-``PromptUntilAgent``（setup 中调用对应 Composable，类属性透传参数）、
-``make_composables_harness``（注册 test-agent 的 HarnessRuntime +
-FakeProvider 工厂）、``sleep_spy``（替换 ``asyncio.sleep`` 的记录桩——
-延迟公式断言不经真实等待）。
+``PromptUntilAgent`` / ``ValidateAgent``（setup 中调用对应 Composable，
+类属性透传参数）、``make_composables_harness``（注册 test-agent 的
+HarnessRuntime + FakeProvider 工厂）、``sleep_spy``（替换 ``asyncio.sleep``
+的记录桩——延迟公式断言不经真实等待）。
 
 本模块为普通模块而非 conftest：测试文件直接 ``import composables_support``，
 避免顶级模块名 ``conftest`` 遮蔽。
@@ -32,6 +32,7 @@ from flowing.composables import (
     use_prompt_until,
     use_retry,
     use_system_reminder,
+    use_validate_turn_result,
 )
 from flowing.providers import FakeProvider
 
@@ -77,6 +78,19 @@ class PromptUntilAgent(SimpleAgent):
     async def setup(self, **kwargs: Any) -> None:
         await super().setup(**kwargs)
         use_prompt_until(self, *type(self).prompt_until_args)
+
+
+class ValidateAgent(SimpleAgent):
+    """setup 中 ``use_validate_turn_result``（类属性 ``validate_args`` /
+    ``validate_kwargs`` 透传）。"""
+
+    validate_args: ClassVar[list] = []
+    validate_kwargs: ClassVar[dict[str, Any]] = {}
+
+    async def setup(self, **kwargs: Any) -> None:
+        await super().setup(**kwargs)
+        use_validate_turn_result(self, *type(self).validate_args,
+                                 **type(self).validate_kwargs)
 
 
 def make_composables_harness(

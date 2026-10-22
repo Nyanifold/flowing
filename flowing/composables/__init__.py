@@ -4,16 +4,21 @@
 
 Composable 是三层架构中的应用层：普通 Python 函数（命名约定
 ``use_xxx(agent, ...)``），在 Agent 的 ``setup()`` 中被调用，为这一个
-Agent 实例注册钩子 handler 或绑定实例属性。内置五个：
+Agent 实例注册钩子 handler 或绑定实例属性。内置七个：
 :func:`use_retry` （:mod:`flowing.composables.retry`，LLM 调用失败退避
 重试）、:func:`use_compact` 与 :func:`use_auto_compact`
 （:mod:`flowing.composables.compact`，上下文占用超阈值自动压缩——
 前者请求后全量换链，后者请求前头尾保留，二选一）、
 :func:`use_system_reminder`
-（:mod:`flowing.composables.reminder`，每回合注入系统提醒）与
+（:mod:`flowing.composables.reminder`，每回合注入系统提醒）、
 :func:`use_prompt_until`
 （:mod:`flowing.composables.prompt_until`，回合收尾断言不成立时
-steer 导向续跑）。场景类
+steer 导向续跑）、:func:`use_validate_turn_result` 与
+:func:`use_validate_enqueued_message`
+（:mod:`flowing.composables.validate`，出方向回合最终回复 / 入方向
+入站消息的 JSON Schema 校验，不合规时按策略 steer 修复 / 拒绝入队 /
+告警 / 抛错）。
+场景类
 Composable（``use_logging`` / ``use_guardrail`` 等）属应用代码，框架
 不预留符号。
 
@@ -40,6 +45,7 @@ Composable（``use_logging`` / ``use_guardrail`` 等）属应用代码，框架
     from flowing import Agent
     from flowing.composables import (
         use_compact, use_prompt_until, use_retry, use_system_reminder,
+        use_validate_enqueued_message, use_validate_turn_result,
     )
 
     class MyAgent(Agent):
@@ -51,6 +57,10 @@ Composable（``use_logging`` / ``use_guardrail`` 等）属应用代码，框架
             ])                                    # 每回合注入一条系统提醒
             use_prompt_until(self, self._done, "任务未完成，请继续。")
             #                                      # 回合收尾断言不成立时导向续跑
+            use_validate_turn_result(self, {"answer": {"type": "string"}})
+            #                                      # 最终回复须为符合 schema 的 JSON
+            use_validate_enqueued_message(self, source="peer_*")
+            #                                      # peer 入站消息须为符合 schema 的 JSON
 
 .. rubric:: 行为要点
 
@@ -58,13 +68,13 @@ Composable（``use_logging`` / ``use_guardrail`` 等）属应用代码，框架
   需执行。恢复时，新实例会再次执行 ``setup()``；临时状态与钩子按函数和
   注册 API 的语义重新装配，持久化状态由所选的持久化渠道恢复。
 -  未调用的 Composable 不会执行，因此不会由它添加 handler、属性或状态。
-- 同步 / async 形态：由函数本身是否需要 ``await`` 决定。本包五个
+- 同步 / async 形态：由函数本身是否需要 ``await`` 决定。本包七个
   ``use_xxx`` 当前均为同步 ``def``；这只是当前实现形态，不限制自写
   Composable。需要真实等待（退避 sleep、副线查询）的 handler 可以是异步
   函数。
 - 调用顺序：``setup()`` 中 ``use_xxx`` 的调用顺序决定最终结果，后注册的 handler
   排在链尾执行。
-- 本包五个 Composable 均不做幂等去重：同一个 ``use_xxx`` 可以用不同参数
+- 本包七个 Composable 均不做幂等去重：同一个 ``use_xxx`` 可以用不同参数
   多次调用，重复调用按注册语义各自叠加一组 handler。自写 Composable 的
   多次调用如何组合由其实现决定；挂载 handler 时若需整组替换，可用
   ``remove_by_owner()`` （参数取各子模块注册面清单中的 ``by`` 值）
@@ -82,6 +92,10 @@ from flowing.composables.retry import use_retry
 from flowing.composables.compact import use_auto_compact, use_compact
 from flowing.composables.reminder import use_system_reminder
 from flowing.composables.prompt_until import use_prompt_until
+from flowing.composables.validate import (
+    use_validate_enqueued_message,
+    use_validate_turn_result,
+)
 
 __all__ = [
     "use_retry",
@@ -89,4 +103,6 @@ __all__ = [
     "use_auto_compact",
     "use_system_reminder",
     "use_prompt_until",
+    "use_validate_turn_result",
+    "use_validate_enqueued_message",
 ]

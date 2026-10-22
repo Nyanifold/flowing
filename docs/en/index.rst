@@ -227,6 +227,10 @@ Plugins and composables are the two reusable units of extension, both shipped wi
      - Before each logical turn, inject a system reminder (current time, directory, task state) that is persisted with the batch.
    * - ``use_prompt_until``
      - At turn end, run an assertion; if it fails, steer the agent into a further turn.
+   * - ``use_validate_turn_result``
+     - At turn end, validate the final reply as JSON conforming to a JSON Schema; on failure steer a same-turn repair, warn, or raise.
+   * - ``use_validate_enqueued_message``
+     - Before an inbound message is enqueued (filtered by kind / source / predicate), validate it as JSON conforming to a JSON Schema; on failure reject the enqueue, warn, or raise.
 
 Documentation
 -------------

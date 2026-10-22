@@ -39,8 +39,41 @@
 | `use_retry` | `on_provider_error`（+ `on_retry` 观测） | `max_retries`（默认 3）/ `base_delay` / 可重试错误白名单 | 4-6 实证 |
 | `use_system_reminder` | `before_turn`（`clean=True` 加 `after_turn` 清理） | `contents`（三态）/ `message_interval` / `time_interval` / `clean` | 1-9 实证 |
 | `use_compact` / `use_auto_compact` | `after_provider_gen` / `before_provider_gen` | `threshold` / `head_tokens` / `tail_tokens` / `compact_template` | 机制底座 4-3 |
+| `use_validate_turn_result` | `after_provider_gen["_turn"]` | `schema`（缺省读 `agent.output`）/ `on_fail`（steer / warn / raise）/ `max_retries` / `template` | —— |
+| `use_validate_enqueued_message` | `on_enqueue` | `schema`（缺省读 `agent.input`）/ `on_fail`（reject / warn / raise）/ `kinds` / `source` / `match` | —— |
 
 `use_prompt_until` 的 `predicate` / `message` 两大可替换件见 1-9。
+
+入站消息校验的最小启用与出方向同构——schema 读本文件顶层的 `input:`
+声明，`.fya` 的 `$script:` setup 段中调用即挂载：
+
+```yaml
+# my-agent.fya —— 入站校验最小启用：所有 USER 消息入队前校验，
+# 不合规拒绝入队（调用方拿 Intercepted）
+input:
+  question:
+    type: string
+
+---
+$script:
+from flowing.composables import use_validate_enqueued_message
+
+
+async def setup(self):
+    use_validate_enqueued_message(self)
+```
+
+只闸 peer 来源时用 `source` 过滤（`fnmatch` glob，列表给多个模式，
+缺省 `None` 不过滤本维度；与 `kinds`、自定义谓词 `match` AND 合取）：
+
+```python
+async def setup(self) -> None:
+    use_validate_enqueued_message(
+        self,
+        schema={"question": {"type": "string"}},
+        source="peer_*",
+    )
+```
 
 ### 自写示例：一种常见结构
 

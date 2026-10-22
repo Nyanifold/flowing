@@ -1,4 +1,4 @@
-flowing.composables
+﻿flowing.composables
 ===================
 
 .. automodule:: flowing.composables
@@ -15,3 +15,4 @@ flowing.composables
    prompt_until
    reminder
    retry
+   validate

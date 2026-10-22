@@ -11,12 +11,18 @@ compilation. Several types also inherit from a shared registry category:
 Four exceptions attach directly to ``FlowingError`` rather than to a category:
 :class:`EntryNameConflictError` describes an alias collision in one Agent's
 binding layer; :class:`UnpairedToolCallError` reports a message-tree pairing
-invariant violation; and :class:`FormatVersionError` and
-:class:`CorruptionError` describe JSON Lines persistence files. Persistence
-errors have no intermediate base class, which keeps them distinct from
-:class:`FormatError` for declarative files. ``EntryNameConflictError`` is
-available as ``flowing.errors.EntryNameConflictError`` but is intentionally
-not listed in the module's ``__all__``.
+invariant violation; :class:`FormatVersionError` and
+:class:`CorruptionError` describe JSON Lines persistence files;
+:class:`OutputValidationError` reports a turn's final reply failing a JSON
+Schema check, raised by the built-in ``use_validate_turn_result`` composable
+under its ``on_fail="raise"`` policy; and :class:`InputValidationError`
+reports an inbound message failing a JSON Schema check, raised by the
+built-in ``use_validate_enqueued_message`` composable under its
+``on_fail="raise"`` policy. Persistence errors have no intermediate
+base class, which keeps them distinct from :class:`FormatError` for
+declarative files. ``EntryNameConflictError`` is available as
+``flowing.errors.EntryNameConflictError`` but is intentionally not listed in
+the module's ``__all__``.
 
 ``Intercepted`` is a separate control-flow signal. It inherits directly from
 Python's ``Exception``, not ``FlowingError``, so broad handling of framework
@@ -84,6 +90,8 @@ the corresponding shared registry class.
         ├── FormatVersionError
         ├── CorruptionError
         ├── UnpairedToolCallError
+        ├── OutputValidationError
+        ├── InputValidationError
         ├── FormatError
         │   ├── MissingFieldError
         │   ├── MissingContextError
@@ -1487,3 +1495,81 @@ class UnpairedToolCallError(FlowingError):
     must close it later, for example by inserting a result with
     ``MessageChain.insert``, or discard the branch.
     """
+
+
+class OutputValidationError(FlowingError):
+    """A turn's final reply failed the JSON Schema check (``on_fail="raise"`` policy).
+
+    Raised by the built-in composable
+    :func:`flowing.composables.validate.use_validate_turn_result`
+    when the text of a main-turn final reply does not pass validation under
+    its ``on_fail="raise"`` policy: text that is not valid JSON, or JSON that
+    does not conform to the Pydantic model compiled from the schema at mount
+    time, both count as failures. The exception propagates through the turn's
+    error channel (it is treated like a call-time error of the LLM call):
+    ``on_provider_error`` dispatches as usual, ``can_continue`` stays
+    ``False``, and the turn ends with status ``"error"`` (the Agent survives);
+    the ``query()`` waiter receives a
+    :class:`flowing.agent.TurnResult` with ``status == "error"``.
+
+    .. rubric:: Behavior notes
+
+    - The ``error`` field carries the validation error text (the raw JSON
+      parse error or Pydantic validation error), for diagnostics only; it is
+      not fed back to the LLM (template rendering uses a separate template
+      fallback chain, see ``use_validate_turn_result``).
+    - Raised by application-layer policy: framework core never raises this
+      error on its own; under ``on_fail="steer"`` or ``on_fail="warn"`` it is
+      never instantiated.
+    - Catch this class by its exact type; ``except FlowingError`` also
+      covers it.
+
+    .. seealso::
+        :func:`flowing.composables.validate.use_validate_turn_result`
+            The only raiser and the entry point of the three-failure-policy
+            handling.
+        :func:`flowing.params.schema_to_model`
+            The compile entry point of the validation model.
+    """
+    error: str
+    """Validation error text (raw JSON parse error or Pydantic validation error); diagnostics only."""
+    def __init__(self, error: str) -> None: ...
+
+
+class InputValidationError(FlowingError):
+    """An inbound message failed the JSON Schema check (``on_fail="raise"`` policy).
+
+    Raised by the built-in composable
+    :func:`flowing.composables.validate.use_validate_enqueued_message`
+    when an inbound message does not pass validation under its
+    ``on_fail="raise"`` policy: the joined text of the message's ``TextBlock``
+    blocks failing to parse as JSON or not conforming to the Pydantic model
+    compiled from the schema at mount time, or any ``StructBlock``'s ``data``
+    not conforming to the model, all count as failures. The exception
+    propagates verbatim through the ``on_enqueue`` dispatch chain to the
+    enqueueing caller (dispatch does not catch ordinary exceptions):
+    enqueueing usually happens outside a turn, so there is no turn error
+    channel and no ``on_provider_error`` fallback — a different direction
+    from :class:`OutputValidationError`, which travels the turn's error
+    channel.
+
+    .. rubric:: Behavior notes
+
+    - The ``error`` field carries the validation error text (the raw JSON
+      parse error or Pydantic validation error), for diagnostics only; it is
+      not fed back to the LLM.
+    - Raised by application-layer policy: framework core never raises this
+      error on its own; under ``on_fail="reject"`` or ``on_fail="warn"`` it
+      is never instantiated.
+    - Catch this class by its exact type; ``except FlowingError`` also
+      covers it.
+
+    .. seealso::
+        :func:`flowing.composables.validate.use_validate_enqueued_message`
+            The only raiser and the entry point of the three-policy handling.
+        :func:`flowing.params.schema_to_model`
+            The compile entry point of the validation model.
+    """
+    error: str
+    """Validation error text (raw JSON parse error or Pydantic validation error); diagnostics only."""
+    def __init__(self, error: str) -> None: ...

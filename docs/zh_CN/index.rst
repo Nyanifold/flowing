@@ -228,6 +228,10 @@ Provider 配置完成后，再登记引用它的 Model 条目。示例将条目�
      - 每个逻辑回合开始前注入一条系统提醒（当前时间、目录、任务状态等），随批次挂树并持久化。
    * - ``use_prompt_until``
      - 回合收尾运行断言，不成立时以 steer 消息导向下一个回合续跑。
+   * - ``use_validate_turn_result``
+     - 回合收尾校验最终回复是否为符合 JSON Schema 的 JSON，不合规时按策略同回合 steer 修复 / 告警 / 抛错。
+   * - ``use_validate_enqueued_message``
+     - 入站消息（按 kind / source / 谓词过滤）入队前校验是否为符合 JSON Schema 的 JSON，不合规时按策略拒绝入队 / 告警 / 抛错。
 
 文档
 ----
