@@ -2037,8 +2037,13 @@ class Agent:
         - A normal ``ToolResult(status="error")`` is a result, not an
           exception-hook event; business errors from a tool do not use the
           exception channel. LLM-facing validation failures become error
-          results for self-correction. Internal configuration errors in
-          specified values, injection, or defaults instead propagate through
+          results for self-correction. Their diagnostic starts with
+          ``Invalid arguments for tool "<LLM-visible alias>":``; Pydantic
+          failures list each field path, reason, and bounded input value, while
+          undefined parameters appear as ``- <parameter alias>: Unexpected
+          parameter``. Both the title and field paths use the LLM namespace.
+          Internal configuration errors in specified values, injection, or
+          defaults instead propagate through
           the framework error channel and logs; they are not exposed as
           ``ToolResult`` text.
         - If an abort is observed before the tool-call batch starts, the whole

@@ -2330,8 +2330,8 @@ class OutputValidationError(FlowingError):
 
     .. rubric:: 行为要点
 
-    - ``error`` 字段为校验错误文本（JSON 解析错误或 Pydantic 校验错误
-      的原文），诊断用途；不回喂 LLM（模板渲染走独立的 ``template``
+    - ``error`` 字段为格式化校验诊断正文（JSON 为单行位置诊断，Pydantic
+      为逐字段诊断），诊断用途；不回喂 LLM（模板渲染走独立的 ``template``
       回落链，见 ``use_validate_turn_result``）。
     - 由应用层策略抛出：框架核心不主动抛本异常；``on_fail`` 取
       ``"steer"`` 或 ``"warn"`` 时本异常不会被实例化。
@@ -2347,7 +2347,7 @@ class OutputValidationError(FlowingError):
     """
 
     error: str
-    """校验错误文本（JSON 解析错误或 Pydantic 校验错误的原文）；诊断用途。"""
+    """格式化校验诊断正文（单行 JSON 位置诊断或逐字段 Pydantic 诊断）；诊断用途。"""
 
     def __init__(self, error: str) -> None:
         """构造异常实例。
@@ -2377,8 +2377,9 @@ class InputValidationError(FlowingError):
 
     .. rubric:: 行为要点
 
-    - ``error`` 字段为校验错误文本（JSON 解析错误或 Pydantic 校验错误
-      的原文），诊断用途；不回喂 LLM。
+    - ``error`` 字段为格式化校验诊断正文（JSON 为单行位置诊断，Pydantic
+      为逐字段诊断），诊断用途；StructBlock 失败时正文含
+      ``StructBlock <zero-based-ordinal>:`` 定位前缀；不回喂 LLM。
     - 由应用层策略抛出：框架核心不主动抛本异常；``on_fail`` 取
       ``"reject"`` 或 ``"warn"`` 时本异常不会被实例化。
     - 捕获语义：按精确类型捕获本类即可；``except FlowingError`` 亦可
@@ -2393,7 +2394,7 @@ class InputValidationError(FlowingError):
     """
 
     error: str
-    """校验错误文本（JSON 解析错误或 Pydantic 校验错误的原文）；诊断用途。"""
+    """格式化校验诊断正文（单行 JSON 位置诊断或逐字段 Pydantic 诊断）；诊断用途。"""
 
     def __init__(self, error: str) -> None:
         """构造异常实例。

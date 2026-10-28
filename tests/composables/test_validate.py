@@ -106,8 +106,13 @@ async def test_invalid_json_steer_same_turn(tmp_path):
         assert steer.priority == MessagePriority.STEER
         assert steer.tags == ["validate-turn-result"]
         text = "".join(b.text for b in steer.content)
-        assert "Validation error:" in text
-        assert "invalid JSON" in text
+        assert text == (
+            "The final response does not conform to the required output schema.\n"
+            "Validation error:\n"
+            "Invalid JSON at line 1, column 1 (char 0): Expecting value\n"
+            "Please re-emit the final response as a single JSON object "
+            "matching the schema."
+        )
 
         # 树链：user → 坏响应 → 修复消息 → 修复响应
         tree = agent._messages
@@ -123,8 +128,7 @@ async def test_invalid_json_steer_same_turn(tmp_path):
 
 
 async def test_json_schema_mismatch_also_steers(tmp_path):
-    """合法 JSON 但不符合 schema（pydantic ValidationError）→ 同样 steer，
-    修复消息携带 pydantic 校验错误文本。"""
+    """合法 JSON 但不符合 schema → steer 携带逐字段格式化诊断。"""
     ValidateAgent.validate_kwargs = {"schema": SCHEMA}
     runtime, provider = make_composables_harness(tmp_path,
                                                  agent_cls=ValidateAgent)
@@ -138,7 +142,39 @@ async def test_json_schema_mismatch_also_steers(tmp_path):
         steers = _steers_in_tree(agent)
         assert len(steers) == 1
         text = "".join(b.text for b in steers[0].content)
-        assert "1 validation error for ValidatedTurnOutput" in text
+        assert text == (
+            "The final response does not conform to the required output schema.\n"
+            "Validation error:\n"
+            "- answer: Input should be a valid string; received 123\n"
+            "Please re-emit the final response as a single JSON object "
+            "matching the schema."
+        )
+    finally:
+        ValidateAgent.validate_kwargs = {}
+        await agent.destroy()
+
+
+async def test_json_schema_multiple_errors_steer_together(tmp_path):
+    """同一响应的多个字段错误按 Pydantic 顺序进入同一次修复消息。"""
+    ValidateAgent.validate_kwargs = {
+        "schema": {"answer": {"type": "string"},
+                   "detail": {"type": "string"}}
+    }
+    runtime, provider = make_composables_harness(tmp_path,
+                                                 agent_cls=ValidateAgent)
+    agent = await runtime.create_agent("test-agent")
+    try:
+        script_provider(provider,
+                        text_response('{"answer": 123, "detail": 456}'),
+                        text_response('{"answer": "fixed", "detail": "ok"}'))
+        result = await agent.query("提问")
+        assert result.status == "completed"
+        steers = _steers_in_tree(agent)
+        assert len(steers) == 1
+        text = "".join(b.text for b in steers[0].content)
+        assert "Validation error:\n" in text
+        assert ("- answer: Input should be a valid string; received 123\n"
+                "- detail: Input should be a valid string; received 456\n") in text
     finally:
         ValidateAgent.validate_kwargs = {}
         await agent.destroy()
@@ -173,8 +209,11 @@ async def test_exhaustion_gives_up_and_resets_next_turn(tmp_path):
         assert len(steers) == 2
         texts = ["".join(b.text for b in m.content) for m in steers]
         # 两回合各 steer 一次，attempt 都从 1 起（超限放行后计数已复位）
-        assert texts[0].startswith("Attempt 1/1: invalid JSON:")
-        assert texts[1].startswith("Attempt 1/1: invalid JSON:")
+        expected = (
+            "Attempt 1/1: Invalid JSON at line 1, column 1 (char 0): "
+            "Expecting value"
+        )
+        assert texts == [expected, expected]
         assert len(_turn_end_messages(agent)) == 2   # 两个逻辑回合各一条
     finally:
         ValidateAgent.validate_kwargs = {}
@@ -239,7 +278,8 @@ async def test_on_fail_raise_turn_ends_error(tmp_path):
         with pytest.raises(OutputValidationError) as exc_info:
             await agent.hooks.after_provider_gen.dispatch(agent, resp)
         assert isinstance(exc_info.value, FlowingError)
-        assert "invalid JSON" in exc_info.value.error
+        assert exc_info.value.error == (
+            "Invalid JSON at line 1, column 1 (char 0): Expecting value")
     finally:
         ValidateAgent.validate_kwargs = {}
         await agent.destroy()
@@ -264,7 +304,10 @@ async def test_template_jinja_context_rendering(tmp_path):
         steers = _steers_in_tree(agent)
         assert len(steers) == 1
         text = "".join(b.text for b in steers[0].content)
-        assert text.startswith("A1/3:invalid JSON:")
+        assert text == (
+            "A1/3:Invalid JSON at line 1, column 2 (char 1): "
+            "Expecting property name enclosed in double quotes"
+        )
     finally:
         ValidateAgent.validate_kwargs = {}
         await agent.destroy()
@@ -537,15 +580,20 @@ async def test_enqueued_on_fail_raise_propagates(tmp_path):
         with pytest.raises(InputValidationError) as exc_info:
             await agent.query("bad")
         assert isinstance(exc_info.value, FlowingError)
-        assert "invalid JSON" in exc_info.value.error
+        assert exc_info.value.error == (
+            "Invalid JSON at line 1, column 1 (char 0): Expecting value")
+        assert str(exc_info.value) == (
+            "enqueued message failed schema validation: "
+            "Invalid JSON at line 1, column 1 (char 0): Expecting value"
+        )
         assert agent._pending_turns == {}
         assert len(agent._messages) == 0
 
-        # schema 不符同理：pydantic 错误文本进 error 字段
+        # schema 不符同理：格式化诊断正文进 error 字段
         with pytest.raises(InputValidationError) as exc_info2:
             await agent.message('{"question": 123}')
-        assert "1 validation error for ValidatedEnqueuedInput" in \
-            exc_info2.value.error
+        assert exc_info2.value.error == (
+            "- question: Input should be a valid string; received 123")
     finally:
         await agent.destroy()
 
@@ -720,8 +768,12 @@ async def test_enqueued_mixed_blocks_any_failure_rejects(tmp_path):
             TextBlock(text='{"question": "ok"}'),
             StructBlock(data={"wrong": "shape"}),
         ])
-        with pytest.raises(Intercepted):
+        with pytest.raises(Intercepted) as exc_info:
             await agent.enqueue_message(msg)
+        assert str(exc_info.value) == (
+            "enqueued message failed schema validation: StructBlock 0:\n"
+            "- question: Field required"
+        )
         assert len(agent._messages) == 0
     finally:
         await agent.destroy()
@@ -856,5 +908,160 @@ async def test_enqueued_explicit_filter_lets_steer_through(tmp_path):
         # 入站闸门仍在工作
         with pytest.raises(Intercepted):
             await agent.message("bad inbound")
+    finally:
+        await agent.destroy()
+
+
+@pytest.mark.parametrize("on_fail", ["steer", "warn", "raise"])
+async def test_output_policies_share_validation_body(tmp_path, on_fail):
+    """output 三策略复用同一正文，并保留各自处置结果。"""
+    ValidateAgent.validate_kwargs = {"schema": SCHEMA, "on_fail": on_fail}
+    runtime, provider = make_composables_harness(tmp_path,
+                                                 agent_cls=ValidateAgent)
+    agent = await runtime.create_agent("test-agent")
+    body = "- answer: Input should be a valid string; received 123"
+    try:
+        if on_fail == "steer":
+            script_provider(provider,
+                            text_response('{"answer": 123}'),
+                            text_response('{"answer": "fixed"}'))
+            result = await agent.query("提问")
+            assert result.status == "completed"
+            steers = _steers_in_tree(agent)
+            assert len(steers) == 1
+            assert "".join(b.text for b in steers[0].content) == (
+                "The final response does not conform to the required output "
+                "schema.\nValidation error:\n" + body + "\n"
+                "Please re-emit the final response as a single JSON object "
+                "matching the schema."
+            )
+        elif on_fail == "warn":
+            script_provider(provider, text_response('{"answer": 123}'))
+            with pytest.warns(UserWarning) as caught:
+                result = await agent.query("提问")
+            assert result.status == "completed"
+            assert str(caught[0].message) == (
+                "turn output failed schema validation: " + body)
+            assert _steers_in_tree(agent) == []
+        else:
+            script_provider(provider, text_response('{"answer": 123}'))
+            result = await agent.query("提问")
+            assert result.status == "error"
+            response = ProviderResponse(
+                message=Message(
+                    kind=MessageKind.PROVIDER,
+                    content=[TextBlock(text='{"answer": 123}')]),
+                finish=True,
+                by="_turn",
+            )
+            with pytest.raises(OutputValidationError) as exc_info:
+                await agent.hooks.after_provider_gen.dispatch(agent, response)
+            assert exc_info.value.error == body
+            assert str(exc_info.value) == (
+                "turn output failed schema validation: " + body)
+    finally:
+        ValidateAgent.validate_kwargs = {}
+        await agent.destroy()
+
+
+@pytest.mark.parametrize("on_fail", ["reject", "warn", "raise"])
+async def test_input_policies_share_validation_body(tmp_path, on_fail):
+    """input 三策略复用同一正文，并保留放行、拒绝与异常结果。"""
+    runtime, provider = make_composables_harness(tmp_path,
+                                                 agent_cls=SimpleAgent)
+    agent = await runtime.create_agent("test-agent")
+    use_validate_enqueued_message(agent, schema=IN_SCHEMA, on_fail=on_fail)
+    body = "- question: Input should be a valid string; received 123"
+    try:
+        if on_fail == "reject":
+            with pytest.raises(Intercepted) as exc_info:
+                await agent.message('{"question": 123}')
+            assert str(exc_info.value) == (
+                "enqueued message failed schema validation: " + body)
+            assert len(agent._messages) == 0
+        elif on_fail == "warn":
+            script_provider(provider,
+                            text_response("ok"), text_response("done"))
+            with pytest.warns(UserWarning) as caught:
+                msg_id = await agent.message('{"question": 123}')
+            assert str(caught[0].message) == (
+                "enqueued message failed schema validation: " + body)
+            result = await agent.query('{"question": "follow"}')
+            assert result.status == "completed"
+            assert msg_id in agent._messages
+        else:
+            with pytest.raises(InputValidationError) as exc_info:
+                await agent.message('{"question": 123}')
+            assert exc_info.value.error == body
+            assert str(exc_info.value) == (
+                "enqueued message failed schema validation: " + body)
+            assert len(agent._messages) == 0
+    finally:
+        await agent.destroy()
+
+
+@pytest.mark.parametrize("on_fail", ["reject", "warn", "raise"])
+async def test_struct_block_policies_include_ordinal(tmp_path, on_fail):
+    """混合内容中第二个 StructBlock 失败时序号只按 StructBlock 计数。"""
+    runtime, provider = make_composables_harness(tmp_path,
+                                                 agent_cls=SimpleAgent)
+    agent = await runtime.create_agent("test-agent")
+    use_validate_enqueued_message(agent, schema=IN_SCHEMA, on_fail=on_fail)
+    body = (
+        "StructBlock 1:\n"
+        "- question: Input should be a valid string; received 123"
+    )
+    msg = Message(kind=MessageKind.USER, content=[
+        StructBlock(data={"question": "first"}),
+        TextBlock(text='{"question": "text"}'),
+        StructBlock(data={"question": 123}),
+    ])
+    try:
+        if on_fail == "reject":
+            with pytest.raises(Intercepted) as exc_info:
+                await agent.enqueue_message(msg)
+            assert str(exc_info.value) == (
+                "enqueued message failed schema validation: " + body)
+            assert len(agent._messages) == 0
+        elif on_fail == "warn":
+            script_provider(provider,
+                            text_response("ok"), text_response("done"))
+            with pytest.warns(UserWarning) as caught:
+                await agent.enqueue_message(msg)
+            assert str(caught[0].message) == (
+                "enqueued message failed schema validation: " + body)
+            result = await agent.query('{"question": "follow"}')
+            assert result.status == "completed"
+            assert msg.id in agent._messages
+        else:
+            with pytest.raises(InputValidationError) as exc_info:
+                await agent.enqueue_message(msg)
+            assert exc_info.value.error == body
+            assert str(exc_info.value) == (
+                "enqueued message failed schema validation: " + body)
+            assert len(agent._messages) == 0
+    finally:
+        await agent.destroy()
+
+
+async def test_text_failure_stops_before_struct_blocks(tmp_path):
+    """文本负载先失败时不继续校验或追加后续 StructBlock 错误。"""
+    runtime, provider = make_composables_harness(tmp_path,
+                                                 agent_cls=SimpleAgent)
+    agent = await runtime.create_agent("test-agent")
+    use_validate_enqueued_message(agent, schema=IN_SCHEMA)
+    msg = Message(kind=MessageKind.USER, content=[
+        TextBlock(text="bad"),
+        StructBlock(data={"question": 123}),
+    ])
+    try:
+        with pytest.raises(Intercepted) as exc_info:
+            await agent.enqueue_message(msg)
+        assert str(exc_info.value) == (
+            "enqueued message failed schema validation: "
+            "Invalid JSON at line 1, column 1 (char 0): Expecting value"
+        )
+        assert "StructBlock" not in str(exc_info.value)
+        assert len(agent._messages) == 0
     finally:
         await agent.destroy()

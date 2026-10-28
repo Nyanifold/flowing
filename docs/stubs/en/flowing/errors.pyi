@@ -1514,8 +1514,9 @@ class OutputValidationError(FlowingError):
 
     .. rubric:: Behavior notes
 
-    - The ``error`` field carries the validation error text (the raw JSON
-      parse error or Pydantic validation error), for diagnostics only; it is
+    - The ``error`` field carries the formatted validation diagnostic body
+      (single-line location diagnostics for JSON and per-field diagnostics for
+      Pydantic), for diagnostics only; it is
       not fed back to the LLM (template rendering uses a separate template
       fallback chain, see ``use_validate_turn_result``).
     - Raised by application-layer policy: framework core never raises this
@@ -1532,7 +1533,7 @@ class OutputValidationError(FlowingError):
             The compile entry point of the validation model.
     """
     error: str
-    """Validation error text (raw JSON parse error or Pydantic validation error); diagnostics only."""
+    """Formatted validation diagnostic body (a single-line JSON location diagnostic or per-field Pydantic diagnostics); diagnostics only."""
     def __init__(self, error: str) -> None: ...
 
 
@@ -1555,9 +1556,11 @@ class InputValidationError(FlowingError):
 
     .. rubric:: Behavior notes
 
-    - The ``error`` field carries the validation error text (the raw JSON
-      parse error or Pydantic validation error), for diagnostics only; it is
-      not fed back to the LLM.
+    - The ``error`` field carries the formatted validation diagnostic body
+      (single-line location diagnostics for JSON and per-field diagnostics for
+      Pydantic), for diagnostics only. StructBlock failures include a
+      ``StructBlock <zero-based-ordinal>:`` location prefix. The body is not
+      fed back to the LLM.
     - Raised by application-layer policy: framework core never raises this
       error on its own; under ``on_fail="reject"`` or ``on_fail="warn"`` it
       is never instantiated.
@@ -1571,5 +1574,5 @@ class InputValidationError(FlowingError):
             The compile entry point of the validation model.
     """
     error: str
-    """Validation error text (raw JSON parse error or Pydantic validation error); diagnostics only."""
+    """Formatted validation diagnostic body (a single-line JSON location diagnostic or per-field Pydantic diagnostics); diagnostics only."""
     def __init__(self, error: str) -> None: ...

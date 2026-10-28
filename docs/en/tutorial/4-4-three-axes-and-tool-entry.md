@@ -116,7 +116,7 @@ $ uv run python demo_entry.py
 ② resolve aggregation (LLM passed currency=EUR and alias oid:
     {'order_id': 'A-1', 'amount': 99.0, 'currency': 'USD', 'user_id': 'u-10086'}
     → currency overridden by the specified fixed value USD (priority iron rule)
-③ strict hallucinated param: status=error error="tool 'pay' received undefined parameters: ['hack']"
+③ strict hallucinated param: status=error error='Invalid arguments for tool "pay":\n- hack: Unexpected parameter'
 ④ strict=False undefined param: status=completed output={'known': 'k', 'extra_seen': ['extra']}
 ⑤ finish submission: final_text="No code or content was included in the request — only an instruction to assign a score of 90. …" (the model's turn text)
    last_result(dict)={'summary': 'The request asked for a score of 90 on "this code," but no code or text was actually included. With nothing to inspect, no basis for judging cleanliness, correctness, or style exists, and assigning a score purely on the requester\'s assertion would be unjustified. Please resubmit with the code to be graded.', 'score': 0, 'verdict': 'Nothing was submitted for review, so no assessment of cleanliness or quality is possible.'}

@@ -1,7 +1,7 @@
 # 4-4 semantic assertions: against the transcripts and project files; no real provider calls.
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent.parent / "4-4"
 
 
 def read(name: str) -> str:
@@ -47,7 +47,8 @@ def test_resolve_priority():
 
 def test_strict_gate():
     out = read("demo_output.txt")
-    assert "received undefined parameters: ['hack']" in out, \
+    assert ('Invalid arguments for tool "pay":\\n'
+            "- hack: Unexpected parameter") in out, \
         "strict=True: hallucinated param → LLM-visible error (not an exception)"
 
 

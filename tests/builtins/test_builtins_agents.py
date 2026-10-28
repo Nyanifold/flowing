@@ -188,7 +188,10 @@ async def test_t73_subagent_invoke_prompt_required_via_llm(runtime, provider):
                     if agent._messages[mid].kind is MessageKind.TOOL)
     assert tool_msg.tool_status == "error"
     text = "".join(b.text for b in tool_msg.content if isinstance(b, TextBlock))
-    assert "prompt" in text and "Field required" in text
+    assert text == (
+        'Invalid arguments for tool "subagent-invoke":\n'
+        "- prompt: Field required"
+    )
     assert agent._children == {}   # 校验失败在创建前，无子实例残留
 
 

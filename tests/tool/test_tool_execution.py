@@ -298,9 +298,13 @@ class TestInternalValidation:
                 return {"amount": amount}
 
         tool = PayTool()
-        with pytest.raises(ValidationError):
+        with pytest.raises(ValidationError) as exc_info:
             await tool({"amount": "not-a-float"})
+        assert exc_info.type is ValidationError
         assert "failed internal validation" in caplog.text
+        assert "validation error for" in caplog.text
+        assert "input_type=" in caplog.text
+        assert "Traceback (most recent call last)" in caplog.text
 
     async def test_t34b_direct_subclass_lazy_model(self):
         """直接子类化 Tool 的逃生舱写法（无 __init__）：_args_model 就地

@@ -117,7 +117,7 @@ $ uv run python demo_entry.py
 ② resolve 聚合（LLM 传了 currency=EUR、别名 oid：
     {'order_id': 'A-1', 'amount': 99.0, 'currency': 'USD', 'user_id': 'u-10086'}
     → currency 被 specified 固定值 USD 覆盖（优先级铁律）
-③ strict 幻觉参数: status=error error="tool 'pay' received undefined parameters: ['hack']"
+③ strict 幻觉参数: status=error error='Invalid arguments for tool "pay":\n- hack: Unexpected parameter'
 ④ strict=False 未定义参数: status=completed output={'known': 'k', 'extra_seen': ['extra']}
 ⑤ finish 交卷: final_text='这段内容里并没有附上任何代码——…（模型当轮正文）'
    last_result(dict)={'summary': '未收到待评的代码本体，仅收到“打90分”的指令和“它很整洁”的结论性断言，缺乏任何可核查的依据（命名、结构、错误处理、重复度、测试等均无从判断）。因此不能直接采信预设的90分——那只是用户的锚点，而非评分证据。建议：请附上实际代码，我将按可读性、结构清晰度、正确性、可维护性等维度逐项核查后给出有据可依的分数。若仅有该断言本身，则内容为不可验证的主张，得分低。', 'score': 20, 'verdict': '没有代码就无所谓“整洁”——预设 90 分缺乏任何可核查依据，不能照单全收。'}

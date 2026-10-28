@@ -169,7 +169,11 @@ from flowing.message import (
     _text_tokens,
 )
 from flowing.model import ModelConfig, load_model_tags, load_models
-from flowing.params import InjectionKey, schema_to_model
+from flowing.params import (
+    InjectionKey,
+    _format_validation_errors,
+    schema_to_model,
+)
 from flowing.parsable import _UNSET, PENDING, Parsable
 from flowing.parser import EntryRef, normalize_entries, split_as
 from flowing.paths import GLOB_META
@@ -215,12 +219,17 @@ logger 符号）。"""
 
 
 class _LlmViewValidationError(FlowingError):
-    """LLM 视角校验失败时抛出的内部信号（内部 API，不属稳定契约）。
+    """LLM 视角未定义参数校验失败的内部信号（内部 API，不属稳定契约）。
 
-    未知键检查在 ``Agent._normalize`` 内以本异常报出，键名即 LLM 自己提供
-    的参数名；``Agent.tool_call`` 捕获后包装为 ``ToolResult(status="error")``
-    正常产物。``strict=False`` 的工具不施加未知键拒绝。
+    未知键检查在 ``Agent._normalize`` 内以本异常报出；``parameters`` 按
+    排序后的 LLM 参数名保存，``Agent.tool_call`` 据此生成逐参数诊断并包装为
+    ``ToolResult(status="error")`` 正常产物。``strict=False`` 的工具不施加
+    未知键拒绝。
     """
+
+    def __init__(self, parameters: list[str]) -> None:
+        super().__init__(f"undefined parameters: {parameters}")
+        self.parameters = parameters
 
 
 def _estimate_tool_schema_tokens(definition: ToolDefinition) -> int:
@@ -3650,10 +3659,14 @@ class Agent:
         - ``ToolResult(status="error")`` 是正常产物：LLM 可见、不触发
           任何错误钩子（工具业务错误不走异常通道）。
         - LLM 视角校验失败同属正常产物：包装为
-          ``ToolResult(status="error", error=<LLM 命名空间的错误文本>)``，
-          并接线当前 ``ToolCall`` 的 ``name`` 与 ``id``；``after_tool_call``
-          照常触发，按工具名过滤的 handler 可识别该错误调用。结果随后
-          正常返回进消息树——LLM 的自我修正反馈，不是回合异常。内部校验
+          ``ToolResult(status="error", error=<格式化诊断>)``，并接线当前
+          ``ToolCall`` 的 ``name`` 与 ``id``。诊断以
+          ``Invalid arguments for tool "<LLM 可见别名>":`` 开头，Pydantic
+          错误逐字段列出路径、原因与有界输入值，未定义参数列为
+          ``- <参数别名>: Unexpected parameter``；标题与字段路径均使用 LLM
+          命名空间。``after_tool_call`` 照常触发，按工具名过滤的 handler
+          可识别该错误调用。结果随后正常返回进消息树——LLM 的自我修正
+          反馈，不是回合异常。内部校验
           失败（specified / inject /
           默认值的配置错误，在 ``Tool.__call__`` 触发）例外：上抛框架
           错误通道 + 日志，不包成 ToolResult、不进 LLM 可见文本。
@@ -3710,9 +3723,16 @@ class Agent:
             try:
                 resolved_args: dict[str, Any] = self._normalize(entry, tool_call, tool)
             except (ValidationError, _LlmViewValidationError) as exc:
+                if isinstance(exc, ValidationError):
+                    body = _format_validation_errors(exc)
+                else:
+                    body = "\n".join(
+                        f"- {name}: Unexpected parameter"
+                        for name in exc.parameters)
                 result = ToolResult(
                     status="error",
-                    error=str(exc),
+                    error=(f'Invalid arguments for tool "{tool_call.name}":\n'
+                           f"{body}"),
                     name=tool_call.name,
                     tool_call_id=tool_call.id,
                 )
@@ -3765,10 +3785,11 @@ class Agent:
 
         1. LLM 视角校验（先于一切转换）：``tool_call.args`` 按 LLM 可见
            schema 校验（经 ``entry.llm_definition(...).params_schema``
-           桥接；``strict=False`` 的工具不施加未知键拒绝）。校验失败：
-           错误文本以 LLM 命名空间（别名）进入 ``ToolResult.error``；
-           LLM 传出 schema 未定义的参数（幻觉参数）按“未定义参数”校验
-           错误处理。
+           桥接；``strict=False`` 的工具不施加未知键拒绝）。校验失败由
+           ``tool_call`` 格式化为工具标题与逐字段诊断进入
+           ``ToolResult.error``，字段路径保持 LLM 命名空间（别名）；LLM
+           传出 schema 未定义的参数（幻觉参数）按“未定义参数”校验错误
+           处理，参数名排序后逐条列出。
         2. :meth:`flowing.tool.ToolEntry.resolve`——别名映射回规范名 →
            ``specified`` 惰性求值覆盖（固定值 / 注入表达式——注入表达式
            在求值时沿 provide 链上溯）。
@@ -3794,8 +3815,7 @@ class Agent:
             # 错误处理——桥接模型默认忽略多余键，未知键在此显式拒绝；
             # strict=False 工具不施加本拒绝（工具层不限制参数，未知键
             # 原样放行进入下方聚合，由下游自行校验）
-            raise _LlmViewValidationError(
-                f"tool {entry.name_alias!r} received undefined parameters: {unknown}")
+            raise _LlmViewValidationError(unknown)
         # 2. 别名映射 -> specified 求值覆盖（固定值/注入表达式；注入表达式
         #    求值时经 self.inject 沿 provide 链上溯）
         resolved = entry.resolve(self, tool_call.args, tool.definition.params_schema)

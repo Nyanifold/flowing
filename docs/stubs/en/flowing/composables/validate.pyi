@@ -124,6 +124,17 @@ handler, then register your own.
   failures. The inbound direction additionally validates each
   ``StructBlock``'s ``data`` directly (already JSON-compatible; no
   ``json.loads`` round-trip).
+- Validation diagnostics have one stable format. JSON parse failures produce
+  ``Invalid JSON at line <line>, column <column> (char <position>): <reason>``
+  without replaying the input. Pydantic failures produce
+  ``- <field path>: <reason>; received <value>`` lines, using dotted paths,
+  ``[n]`` array indices, and ``root`` for an empty path. Missing fields omit
+  the input value; other values use compact JSON (``repr`` for non-JSON
+  values), capped at 120 characters each. At most the first 5 errors appear,
+  followed by ``... and N more errors`` when needed. Diagnostics contain no
+  dynamic model name, Pydantic URL, or full input replay, and every ``on_fail``
+  policy receives the same body. Inbound StructBlock failures prefix the body
+  with ``StructBlock <zero-based-ordinal>:``, counted only among StructBlocks.
 - Same schema fallback chain: the ``schema`` argument → the Agent attribute
   of the same name (``output`` / ``input``; a top-level declaration in the
   Agent's ``.fya`` lands in the instance's ``_extra`` mapping and resolves
@@ -172,9 +183,10 @@ DEFAULT_VALIDATE_TEMPLATE: str
 """Default repair-prompt template (last fallback of the ``template`` chain; English runtime text).
 
 Rendered with Jinja2 before each steering attempt with the context variables:
-``error`` (validation error text), ``schema`` (the properties dict resolved at
-mount time), ``attempt`` (the 1-based failure count of the current turn), and
-``max_retries``.
+``error`` (formatted validation diagnostic body), ``schema`` (the properties
+dict resolved at mount time), ``attempt`` (the 1-based failure count of the
+current turn), and ``max_retries``. The body starts on a separate line after
+the ``Validation error:`` heading.
 
 This is part of the replaceable policy of ``use_validate_turn_result``: the
 ``template`` argument or the Agent's ``validate_output_error`` attribute takes
@@ -243,6 +255,11 @@ def use_validate_turn_result(
       response message, the same measure as ``final_text`` in
       :func:`flowing.agent.build_turn_result`. ``json.JSONDecodeError`` and
       ``pydantic.ValidationError`` both count as validation failures.
+    - JSON failures produce a single-line location diagnostic, while Pydantic
+      failures produce per-field bullets. The ``steer`` / ``warn`` / ``raise``
+      policies reuse the same body. ``OutputValidationError.error`` stores only
+      the body, and the default template inserts it on a separate line after
+      the ``Validation error:`` heading.
     - Under ``steer``, the failed response gets ``finish = False`` and the
       repair message (``kind=EVENT`` / ``priority=STEER`` / ``source=by`` /
       ``tags=[by]``) is queued via ``Agent.steer``; the inner loop drains it
@@ -355,12 +372,17 @@ def use_validate_enqueued_message(
       via ``model.model_validate`` (already JSON-compatible; no
       ``json.loads`` round-trip). ``json.JSONDecodeError`` and
       ``pydantic.ValidationError`` both count as failures, and the first
-      error text is collected. Messages without ``TextBlock`` /
-      ``StructBlock`` payload (pure media, for example) pass unchecked.
-    - Handling: ``warn`` emits an English ``warnings.warn`` (including the
-      error text) and returns the message unchanged; ``raise`` raises
+      formatted diagnostic body is collected. A text failure stops the check
+      before subsequent StructBlocks. StructBlock failures prefix the body
+      with ``StructBlock <zero-based-ordinal>:``, counted only among
+      StructBlocks. Messages without ``TextBlock`` / ``StructBlock`` payload
+      (pure media, for example) pass unchecked.
+    - Handling: ``reject`` / ``warn`` / ``raise`` reuse the same diagnostic
+      body. ``warn`` emits an English ``warnings.warn`` (including the body)
+      and returns the message unchanged; ``raise`` raises
       :class:`flowing.errors.InputValidationError` (whose ``error`` field
-      carries the validation error text) — the exception propagates verbatim
+      carries the body, including any StructBlock location prefix) — the
+      exception propagates verbatim
       to the enqueueing caller: dispatch does not catch ordinary exceptions,
       enqueueing usually happens outside a turn, and there is no turn error
       channel and no ``on_provider_error`` fallback; ``reject`` (default)

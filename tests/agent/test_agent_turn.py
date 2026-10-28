@@ -990,6 +990,59 @@ async def test_t76_shortcut_and_after_intercepted(runtime, provider):
     assert "结果违规" in (result2.output or "")
 
 
+async def test_llm_view_type_error_uses_stable_diagnostic(runtime, provider):
+    class SpyEchoTool(Tool):
+        definition = EchoTool.definition
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def execute(self, *, text: str) -> str:
+            self.calls += 1
+            return text
+
+    tool = SpyEchoTool()
+    runtime.register_tool(tool)
+    agent = await runtime.create_agent(SimpleAgent)
+    agent.add_tool("echo")
+    after_seen: list = []
+    agent.hooks.after_tool_call(lambda a, r: after_seen.append(r.status) or r)
+
+    result = await agent.tool_call(
+        ToolCall(id="c1", name="echo", args={"text": 123}))
+    assert result.status == "error"
+    assert result.error == (
+        'Invalid arguments for tool "echo":\n'
+        "- text: Input should be a valid string; received 123"
+    )
+    assert tool.calls == 0
+    assert after_seen == ["error"]
+
+
+async def test_llm_view_error_uses_tool_and_param_aliases(runtime, provider):
+    class SecureTool(Tool):
+        definition = ToolDefinition(
+            name="secure", description="",
+            params_schema={"text": {"type": "string"},
+                           "token": {"type": "string"}})
+
+        async def execute(self, *, text: str, token: str) -> str:
+            return text
+
+    runtime.register_tool(SecureTool())
+    agent = await runtime.create_agent(SimpleAgent)
+    agent.add_tool(
+        "secure", alias="say",
+        body={"args": {"text as content": {}, "token": "classified"}})
+
+    result = await agent.tool_call(ToolCall(id="c1", name="say", args={}))
+    assert result.status == "error"
+    assert result.error == (
+        'Invalid arguments for tool "say":\n- content: Field required')
+    for fragment in ("secure", "text", "token", "classified"):
+        assert fragment not in result.error
+
+
 async def test_t77_hallucinated_param(runtime, provider):
     runtime.register_tool(EchoTool())
     agent = await runtime.create_agent(SimpleAgent)
@@ -1004,9 +1057,24 @@ async def test_t77_hallucinated_param(runtime, provider):
                     if agent._messages[mid].kind is MessageKind.TOOL)
     assert tool_msg.tool_status == "error"   # LLM 视角校验失败是正常产物、进消息树
     err_text = "".join(getattr(b, "text", "") for b in tool_msg.content)
-    assert "ghost" in err_text   # 错误文本以 LLM 命名空间（幻觉参数名）
+    assert err_text == (
+        'Invalid arguments for tool "echo":\n- ghost: Unexpected parameter')
     assert after_seen == ["error"]   # after_tool_call 照常触发
     assert result.status == "completed"   # 回合不因此异常终止
+
+
+async def test_t77_multiple_hallucinated_params_are_sorted(runtime, provider):
+    runtime.register_tool(EchoTool())
+    agent = await runtime.create_agent(SimpleAgent)
+    agent.add_tool("echo")
+    result = await agent.tool_call(ToolCall(
+        id="c1", name="echo", args={"text": "x", "zeta": 1, "alpha": 2}))
+    assert result.status == "error"
+    assert result.error == (
+        'Invalid arguments for tool "echo":\n'
+        "- alpha: Unexpected parameter\n"
+        "- zeta: Unexpected parameter"
+    )
 
 
 async def test_t77b_strict_false_tool_receives_undeclared_params(runtime, provider):

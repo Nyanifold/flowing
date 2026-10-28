@@ -1,7 +1,7 @@
 """params.py 测试（T-01 ~ T-21）：schema 桥接与类型安全键。"""
 
 import pytest
-from pydantic import ValidationError
+from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from flowing.errors import FormatError
 from flowing.params import (
@@ -11,6 +11,7 @@ from flowing.params import (
     ConfigKey,
     InjectionKey,
     _coerce,
+    _format_validation_errors,
     _parse_type_expr,
     apply_param_overrides,
     expand_args_schema,
@@ -207,3 +208,102 @@ def test_w03_constants():
     assert ARG_SHORTHAND["str"] == "string" and ARG_SHORTHAND["dict"] == "object"
     assert TYPE_ALIASES["int"] == "integer"
     assert "oneOf" not in SCHEMA_KEYWORDS and "minimum" in SCHEMA_KEYWORDS
+
+
+# ---------------------------------------------------------------------------
+# _format_validation_errors
+# ---------------------------------------------------------------------------
+
+
+def _validation_error(model, value) -> ValidationError:
+    validate = getattr(model, "model_validate", None) or model.validate_python
+    with pytest.raises(ValidationError) as exc_info:
+        validate(value)
+    return exc_info.value
+
+
+def test_format_validation_errors_bullets_and_missing_input():
+    class Options(BaseModel):
+        count: int
+
+    class Payload(BaseModel):
+        answer: str
+        options: Options
+
+    exc = _validation_error(
+        Payload, {"options": {"count": "many"}, "secret": "do not echo"})
+    text = _format_validation_errors(exc)
+    assert text == (
+        "- answer: Field required\n"
+        "- options.count: Input should be a valid integer, "
+        'unable to parse string as an integer; received "many"'
+    )
+    for fragment in (
+            "Payload", "validation error for", "input_type",
+            "https://errors.pydantic.dev", "secret", "do not echo"):
+        assert fragment not in text
+
+
+def test_format_validation_errors_array_path_and_root():
+    class Item(BaseModel):
+        name: str
+
+    class Payload(BaseModel):
+        items: list[Item]
+
+    array_error = _validation_error(Payload, {"items": [{"name": 123}]})
+    assert _format_validation_errors(array_error) == (
+        "- items[0].name: Input should be a valid string; received 123")
+
+    root_error = _validation_error(TypeAdapter(int), "many")
+    assert _format_validation_errors(root_error) == (
+        "- root: Input should be a valid integer, "
+        'unable to parse string as an integer; received "many"')
+
+
+def test_format_validation_errors_compact_non_ascii_received():
+    exc = _validation_error(TypeAdapter(int), {"键": [1, 2], "空白": True})
+    assert _format_validation_errors(exc) == (
+        "- root: Input should be a valid integer; "
+        'received {"键":[1,2],"空白":true}')
+
+
+def test_format_validation_errors_limits_error_count():
+    model = schema_to_model(
+        "ManyFields", {name: {"type": "integer"} for name in "abcdefg"})
+    exc = _validation_error(model, dict.fromkeys("abcdefg", "x"))
+    message = (
+        "Input should be a valid integer, unable to parse string as an integer; "
+        'received "x"'
+    )
+    assert _format_validation_errors(exc) == (
+        "\n".join(f"- {name}: {message}" for name in "abcde")
+        + "\n... and 2 more errors"
+    )
+
+
+def test_format_validation_errors_received_length_boundary():
+    exact = "x" * 118
+    exact_text = _format_validation_errors(
+        _validation_error(TypeAdapter(int), exact))
+    exact_received = exact_text.split("; received ", 1)[1]
+    assert exact_received == f'"{exact}"'
+    assert len(exact_received) == 120
+
+    long = "x" * 119
+    long_text = _format_validation_errors(
+        _validation_error(TypeAdapter(int), long))
+    long_received = long_text.split("; received ", 1)[1]
+    assert long_received == f'"{"x" * 116}...'
+    assert len(long_received) == 120
+    assert long not in long_text
+
+
+def test_format_validation_errors_repr_fallback():
+    class NonJson:
+        def __repr__(self) -> str:
+            return "<non-json 值>"
+
+    exc = _validation_error(TypeAdapter(int), NonJson())
+    assert _format_validation_errors(exc) == (
+        "- root: Input should be a valid integer; received <non-json 值>")

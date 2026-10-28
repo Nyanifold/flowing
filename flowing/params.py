@@ -91,10 +91,11 @@ calling 传给 LLM，因此只接受 JSON 兼容值（``str`` / ``int`` / ``floa
 """
 
 import copy
+import json
 import re
 from typing import Any, Generic, Literal, Mapping, TypeVar
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from flowing.errors import FormatError
 
@@ -402,6 +403,44 @@ def schema_to_model(name: str, properties: Mapping[str, dict[str, Any]]) -> type
             fields[pname] = (py_type, ...)   # 无 default → 必填
     Model: type[BaseModel] = create_model(name, **fields)
     return Model
+
+
+_MAX_VALIDATION_ERRORS = 5
+_MAX_RECEIVED_CHARS = 120
+
+
+def _format_validation_errors(exc: ValidationError) -> str:
+    """把 Pydantic 校验错误格式化为稳定、简洁的公共诊断正文。
+
+    每个错误一行，路径使用点分字段与 ``[n]`` 数组下标；空路径显示为
+    ``root``。除缺失字段外，消息末尾附带对应输入值的紧凑 JSON（最多
+    120 字符），非 JSON 可序列化值使用 ``repr``。最多显示前 5 条错误，
+    其余以计数行概括；不包含模型名、错误总数标题或 Pydantic URL。
+    """
+    errors = exc.errors()
+    lines: list[str] = []
+    for error in errors[:_MAX_VALIDATION_ERRORS]:
+        path = ""
+        for part in error["loc"]:
+            if isinstance(part, int):
+                path += f"[{part}]"
+            else:
+                path = f"{path}.{part}" if path else str(part)
+        message = error["msg"]
+        if error.get("type") != "missing" and "input" in error:
+            try:
+                received = json.dumps(
+                    error["input"], ensure_ascii=False, separators=(",", ":"))
+            except (TypeError, ValueError):
+                received = repr(error["input"])
+            if len(received) > _MAX_RECEIVED_CHARS:
+                received = received[:_MAX_RECEIVED_CHARS - 3] + "..."
+            message += f"; received {received}"
+        lines.append(f"- {path or 'root'}: {message}")
+    remaining = len(errors) - _MAX_VALIDATION_ERRORS
+    if remaining > 0:
+        lines.append(f"... and {remaining} more errors")
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------

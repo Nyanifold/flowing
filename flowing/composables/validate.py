@@ -109,6 +109,16 @@
   ``json.JSONDecodeError`` 与 ``pydantic.ValidationError`` 都视为校验
   不通过。入站方向另对每个 ``StructBlock`` 的 ``data`` 直校（已是
   JSON 兼容结构，无 ``json.loads`` 回解）。
+- 校验诊断格式统一：JSON 解析失败使用
+  ``Invalid JSON at line <行>, column <列> (char <位置>): <原因>`` 单行
+  文本，不回放输入；Pydantic 失败按 ``- <字段路径>: <原因>; received <值>``
+  逐行排列，嵌套字段用点分路径、数组用 ``[n]``、根路径用 ``root``。
+  缺失字段不附输入值，其余输入值以紧凑 JSON 表示（非 JSON 值用 ``repr``），
+  单值最多 120 字符；最多显示前 5 条错误，其余以
+  ``... and N more errors`` 计数。诊断不含动态模型名、Pydantic URL 或完整
+  输入回放，同一失败的正文在各 ``on_fail`` 策略中一致。入站 StructBlock
+  失败在正文前加 ``StructBlock <zero-based-ordinal>:``，序号只在
+  StructBlock 之间计算。
 - schema 回落链同构：函数参数 → Agent 的同名属性（ ``output`` /
   ``input``， ``.fya`` 顶层声明落在实例扩展属性 ``_extra`` 上、经
   ``__getattr__`` 回退解析，与实例属性赋值等价可读；经 ``getattr``
@@ -154,7 +164,7 @@ from pydantic import ValidationError
 from flowing.errors import InputValidationError, Intercepted, OutputValidationError
 from flowing.message import MessageKind, StructBlock, TextBlock, ToolCallBlock
 from flowing.parsable import Parsable
-from flowing.params import schema_to_model
+from flowing.params import _format_validation_errors, schema_to_model
 from flowing.providers import ProviderResponse
 
 if TYPE_CHECKING:
@@ -168,14 +178,15 @@ __all__ = ["use_validate_turn_result", "use_validate_enqueued_message",
 
 DEFAULT_VALIDATE_TEMPLATE: str = (
     "The final response does not conform to the required output schema.\n"
-    "Validation error: {{ error }}\n"
+    "Validation error:\n{{ error }}\n"
     "Please re-emit the final response as a single JSON object matching the schema."
 )
 """默认修复提示模板（``template`` 回落链的末位；英文运行时文本）。
 
-每次 steer 前经 Jinja2 现场渲染，上下文变量：``error`` （校验错误
-文本）、``schema`` （挂载时解析出的 properties dict）、``attempt``
-（本回合内第几次校验失败，从 1 起）、``max_retries``。
+每次 steer 前经 Jinja2 现场渲染，上下文变量：``error`` （格式化校验
+诊断正文）、``schema`` （挂载时解析出的 properties dict）、``attempt``
+（本回合内第几次校验失败，从 1 起）、``max_retries``。``error`` 在
+``Validation error:`` 标题后的独立行开始。
 
 行为边界：这是策略的一部分，随 ``use_validate_turn_result`` 整体可被
 替换（函数参数或 Agent 的 ``validate_output_error`` 属性优先）。
@@ -185,20 +196,22 @@ DEFAULT_VALIDATE_TEMPLATE: str = (
 
 
 def _check(text: str, model: Any) -> "str | None":
-    """校验 JSON 文本：``json.loads`` + Pydantic 模型校验。
+    """校验 JSON 文本并返回格式化诊断：``json.loads`` + Pydantic 模型校验。
 
-    通过返回 ``None``；文本不是合法 JSON（``json.JSONDecodeError``）或
-    解析结果不符合模型（``pydantic.ValidationError``）返回错误文本。
-    两个 ``use_xxx`` 的文本校验共用本助手。
+    通过返回 ``None``；文本不是合法 JSON（``json.JSONDecodeError``）时
+    返回含行列与字符位置的单行诊断，解析结果不符合模型
+    （``pydantic.ValidationError``）时返回逐字段诊断正文。两个 ``use_xxx``
+    的文本校验共用本助手，各处置策略复用同一份返回值。
     """
     try:
         data = json.loads(text)
     except json.JSONDecodeError as exc:
-        return f"invalid JSON: {exc}"
+        return (f"Invalid JSON at line {exc.lineno}, column {exc.colno} "
+                f"(char {exc.pos}): {exc.msg}")
     try:
         model.model_validate(data)
     except ValidationError as exc:
-        return str(exc)
+        return _format_validation_errors(exc)
     return None
 
 
@@ -294,6 +307,10 @@ def use_validate_turn_result(
       ``current_turn.finish_output`` 为 ``None``）；文本为响应消息全部
       ``TextBlock`` 的拼接。``json.JSONDecodeError`` 与
       ``pydantic.ValidationError`` 都视为校验不通过。
+    - 诊断正文：JSON 解析失败生成含行列与字符位置的单行文本，Pydantic
+      失败生成逐字段 bullet；steer / warn / raise 复用同一正文。
+      :class:`flowing.errors.OutputValidationError` 的 ``error`` 字段只存
+      正文，默认模板的 ``Validation error:`` 标题后换行再插入正文。
     - schema 回落链：参数 → Agent 的 ``output`` 属性（ ``.fya`` 顶层
       ``output:`` 声明落在实例扩展属性 ``_extra`` 上、经 ``__getattr__``
       回退解析，与实例属性赋值等价可读）→ 皆无则挂载时抛
@@ -509,12 +526,15 @@ def use_validate_enqueued_message(
       非空则 ``json.loads`` 再 ``model_validate``；每个 ``StructBlock``
       的 ``data`` 直校 ``model.model_validate`` （已是 JSON 兼容结构，
       无 ``json.loads`` 回解）。``json.JSONDecodeError`` 与
-      ``pydantic.ValidationError`` 都视为不通过，收集首个错误文本。
+      ``pydantic.ValidationError`` 都视为不通过，收集首个格式化诊断正文；
+      文本先失败即停止。StructBlock 失败在正文前加
+      ``StructBlock <zero-based-ordinal>:``，序号只在 StructBlock 之间计算。
       消息无 ``TextBlock`` / ``StructBlock`` 负载（纯媒体等）放行。
-    - 处置：``warn`` 路径 ``warnings.warn`` 英文告警（含错误文本）后
-      原样放行；``raise`` 路径抛
-      :class:`flowing.errors.InputValidationError`（``error`` 字段为
-      校验错误文本），异常经 ``on_enqueue`` 分发链原样上抛至入队调用方
+    - 处置：reject / warn / raise 复用同一诊断正文。``warn`` 路径
+      ``warnings.warn`` 英文告警（含诊断正文）后原样放行；``raise`` 路径抛
+      :class:`flowing.errors.InputValidationError`（``error`` 字段为含
+      StructBlock 定位上下文的诊断正文），异常经 ``on_enqueue`` 分发链
+      原样上抛至入队调用方
       ——dispatch 对普通异常不捕获，入队通常发生在回合外，无回合异常
       通道、无 ``on_provider_error`` 兜底；
       ``reject`` （默认）路径抛 :class:`flowing.errors.Intercepted`
@@ -608,13 +628,15 @@ def use_validate_enqueued_message(
             failure = _check(text, model)
         if failure is None:
             # StructBlock 的 data 已是 JSON 兼容结构：直校模型，不回解
-            for block in msg.content:
-                if isinstance(block, StructBlock):
-                    try:
-                        model.model_validate(block.data)
-                    except ValidationError as exc:
-                        failure = str(exc)
-                        break
+            struct_blocks = (
+                block for block in msg.content if isinstance(block, StructBlock))
+            for ordinal, block in enumerate(struct_blocks):
+                try:
+                    model.model_validate(block.data)
+                except ValidationError as exc:
+                    failure = (f"StructBlock {ordinal}:\n"
+                               f"{_format_validation_errors(exc)}")
+                    break
         if failure is None:
             return msg   # 校验通过（或无 TextBlock/StructBlock 负载）：放行
         if on_fail == "warn":
