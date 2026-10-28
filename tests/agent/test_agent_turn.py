@@ -1399,6 +1399,71 @@ async def test_work_loop_survives_dequeue_crash(runtime, provider, caplog):
     assert "dequeue crashed (messages=None, waiters=0)" in caplog.text
 
 
+@pytest.mark.parametrize("hook, expected_first, second_text", [
+    ("before_turn", "error", "first"),
+    ("on_turn_append", "error", "first"),
+    ("before_provider_gen", "error", "first"),
+    ("after_provider_gen", "error", "ok"),
+    ("on_provider_delta", "error", "ok"),
+    ("before_tool_call", "error", "ok"),
+    ("after_tool_call", "error", "ok"),
+    ("on_tool_yields", "error", "ok"),
+    ("on_turn_abort", "cancelled", "first"),
+    ("after_turn", "completed", "ok"),
+    ("on_provider_error", "error", "ok"),
+    ("on_dequeue", "cancelled", "first"),
+])
+async def test_work_loop_hook_exception_recovers(
+        hook, expected_first, second_text, runtime, provider, caplog):
+    """工作循环钩子普通异常按各通道收尾，移除坏钩子后下一回合恢复。"""
+    from flowing.errors import RateLimitedError
+
+    agent = await runtime.create_agent(SimpleAgent)
+    observed_errors = []
+    if hook in {"before_tool_call", "after_tool_call", "on_tool_yields"}:
+        runtime.register_tool(EchoTool())
+        agent.add_tool("echo")
+        step, _ = tool_call_response(("echo", {"text": "x"}))
+        script_provider(provider, step, text_response("ok"))
+    elif hook == "on_provider_error":
+        script_provider(provider, RateLimitedError("rate"), text_response("ok"))
+    else:
+        script_provider(provider, text_response("first"), text_response("ok"))
+
+    if hook in {"before_provider_gen", "after_provider_gen", "on_provider_delta"}:
+        agent.hooks.on_provider_error(
+            lambda a, ctx: observed_errors.append(ctx.error) or ctx)
+
+    async def _boom(a, value):
+        raise RuntimeError(f"fault:{hook}")
+
+    getattr(agent.hooks, hook)(_boom, by="fault")
+    if hook == "on_turn_abort":
+        agent.hooks.before_turn(
+            lambda a, turn: a.abort_turn() or turn, by="abort-driver")
+
+    first = await asyncio.wait_for(agent.query("fault"), timeout=2)
+    getattr(agent.hooks, hook).remove_by_owner("fault")
+    if hook == "on_turn_abort":
+        agent.hooks.before_turn.remove_by_owner("abort-driver")
+    second = await asyncio.wait_for(agent.query("next"), timeout=2)
+
+    assert first.status == expected_first
+    assert second.status == "completed"
+    assert second.final_text == second_text
+    assert agent.current_turn is None
+    if hook in {"before_provider_gen", "after_provider_gen", "on_provider_delta"}:
+        assert len(observed_errors) == 1
+        assert isinstance(observed_errors[0], RuntimeError)
+    if hook == "after_turn":
+        assert first.turn.message_ids == []
+        assert "turn crashed" in caplog.text
+    if hook in {"on_turn_abort", "on_provider_error"}:
+        assert "turn crashed" in caplog.text
+    if hook == "on_dequeue":
+        assert "on_dequeue hook failed" in caplog.text
+
+
 # ---------------------------------------------------------------------------
 # 补充：_dequeue 重试循环（R-13 落地语义）与 enqueue_messages 批量入队
 # ---------------------------------------------------------------------------

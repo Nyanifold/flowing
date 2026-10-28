@@ -195,6 +195,47 @@ async def test_t73_subagent_invoke_prompt_required_via_llm(runtime, provider):
     assert agent._children == {}   # 校验失败在创建前，无子实例残留
 
 
+@pytest.mark.parametrize("hook", ["on_subagent_invoke", "on_subagent_returns"])
+async def test_subagent_hook_exception_becomes_tool_error_and_recovers(
+        hook, runtime, provider):
+    """子 Agent 钩子异常经工具包装为 error 结果，移除后工作循环恢复。"""
+    agent = await runtime.create_agent("test-agent")
+    agent.add_agent("worker")
+    agent.add_tool("subagent-invoke")
+    step, _ = tool_call_response((
+        "subagent-invoke", {"agent_type": "worker", "prompt": "work"}))
+    if hook == "on_subagent_returns":
+        script_provider(provider, step, text_response("worker"),
+                        text_response("handled"), text_response("ok"))
+    else:
+        script_provider(provider, step, text_response("handled"),
+                        text_response("ok"))
+
+    async def _boom(a, value):
+        raise RuntimeError(f"fault:{hook}")
+
+    getattr(agent.hooks, hook)(_boom, by="fault")
+    first = await asyncio.wait_for(agent.query("fault"), timeout=2)
+    tool_messages = [
+        agent._messages[mid] for mid in first.turn.message_ids
+        if agent._messages[mid].kind is MessageKind.TOOL
+    ]
+    assert first.status == "completed"
+    assert len(tool_messages) == 1
+    assert tool_messages[0].tool_status == "error"
+    error_text = "".join(
+        block.text for block in tool_messages[0].content
+        if isinstance(block, TextBlock))
+    assert f"fault:{hook}" in error_text
+    if hook == "on_subagent_invoke":
+        assert agent._children == {}
+
+    getattr(agent.hooks, hook).remove_by_owner("fault")
+    second = await asyncio.wait_for(agent.query("next"), timeout=2)
+    assert second.status == "completed" and second.final_text == "ok"
+    assert agent.current_turn is None
+
+
 async def test_t73_subagent_invoke_prompt_empty_guard(runtime):
     """73：空串 ``prompt`` → execute 守卫抛 ValueError → error 结果
     （LLM 可见）。"""
