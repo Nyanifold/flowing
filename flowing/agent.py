@@ -58,6 +58,11 @@ state.jsonl）与池 key 保留——“有 key 无 value”可现场恢复。
 Turn 只是逻辑执行阶段：``TurnContext`` 不落盘、不进树、进程崩溃后
 不恢复；恢复 = 重放 ``tree.jsonl`` / ``state.jsonl`` 日志现场重建。
 
+工作循环崩溃兜底：出队与回合异常记录分相日志后继续消费；回合已摘出但
+尚未交付的 waiters 由工作循环以 ``cancelled`` 合成结局补喂，
+``current_turn`` 幂等清理。``_dequeue`` 覆写在消息弹出后、返回前崩溃
+导致的消息丢失由覆写方负责。
+
 持久化布局：每 Agent 一个 session 目录（``agent_id`` 命名，亲子
 平级），内含 ``tree.jsonl`` （消息树）/ ``core.jsonl`` （框架私有核心
 状态）/ ``state.jsonl`` （默认状态袋）与 ``meta.json`` （身份四键，
@@ -4609,24 +4614,42 @@ class Agent:
 
         循环：等待工作循环 gate → 出队（:meth:`_dequeue`，可覆写）→ 把
         出队消息的等待者从 ``_pending_turns`` 摘出 → 执行一个逻辑回合
-        （:meth:`_run_turn`）。出队与回合异常均记录日志后继续循环
-        （waiters 已由回合收尾或丢弃联动喂饱）。启动时机：``after_create`` /
-        ``after_recover`` 完成即启动；``destroy()`` 时取消。串行：同一时刻
-        一个逻辑回合，活跃回合中入队的消息自然排队。
+        （:meth:`_run_turn`）。出队与回合异常均记录分相日志后继续循环。
+        回合异常兜底幂等清理 ``current_turn``，并把尚未完成的残余 waiters
+        以 ``cancelled`` 合成结局喂饱；``_run_turn`` 的 ``finally`` 在栈展开
+        时先于本层 ``except`` 执行，因此 ``not fut.done()`` 守卫可避免重复
+        交付，无需追踪交付进度。``msgs is None`` 表示异常发生在出队阶段，
+        此时 waiters 尚未摘出。启动时机：``after_create`` / ``after_recover``
+        完成即启动；``destroy()`` 时取消。串行：同一时刻一个逻辑回合，活跃
+        回合中入队的消息自然排队。
+
+        ``_dequeue`` 覆写在消息弹出后、返回前抛异常时，消息 id 对调用帧不可达，
+        工作循环无法恢复该消息，此责任由覆写方承担；配对封闭与后台异步工具
+        任务不在本兜底帧重试或重建。
         """
         while True:
             await self._pause_gate.wait()      # 检查点 ①：dequeue 前（仅 pause）
+            msgs: list[Message] | None = None
+            waiters: list[asyncio.Future[TurnResult] | None] = []
             try:
                 msgs = await self._dequeue()       # list[Message]（可覆写 drain/合并策略）
                 waiters = [self._pending_turns.pop(m.id, None) for m in msgs]
                 await self._run_turn(msgs, waiters)
             except Exception:
-                # 出队与回合级异常的兜底闸（“钩子抛异常不再楔死 agent”的收口点）：
-                # _run_turn 的 except 帧保留异常上抛以保逐层审计，工作循环在
-                # 此记录后继续消费——waiters 已由 _run_turn 的 finally 喂饱
-                # （destroy 的第 1 步另有兜底）；_dequeue 内的 on_dequeue 异常
-                # 已由 _dequeue_message 就地消化，此处覆盖其整体失败路径
-                _logger.exception("agent %s: turn crashed", self.node_id)
+                # 回合内部异常先经 _run_turn 的 finally 交付；此处只补覆盖入口 /
+                # 收尾早崩留下的残余 waiter。done 守卫保证两条路径幂等。
+                self.current_turn = None
+                for fut in waiters:
+                    if fut is not None and not fut.done():
+                        fut.set_result(TurnResult(
+                            turn=TurnContext(started_at=datetime.now(), message_ids=[]),
+                            final_text="", status="cancelled", token_usage=None,
+                            finish_reason="cancelled"))
+                _logger.exception(
+                    "agent %s: %s crashed (messages=%s, waiters=%d)",
+                    self.node_id, "dequeue" if msgs is None else "turn",
+                    [m.id for m in msgs] if msgs is not None else None,
+                    sum(1 for waiter in waiters if waiter is not None))
 
     async def _dequeue(self) -> list[Message]:
         """出队扩展点：构造一个逻辑回合的消费批次，可覆写实现 drain /

@@ -31,6 +31,11 @@ belong to extensions or application code.
   ``TurnContext`` is not inserted into the message tree or written to disk and
   is not restored after a crash. Recovery replays persisted messages and
   state; it does not resume an interrupted turn.
+- The work loop logs dequeue and turn crashes with distinct phases and then
+  continues consuming messages. Waiters already detached for a turn but not
+  yet resolved receive a synthetic ``cancelled`` result, and ``current_turn``
+  is cleared idempotently. A ``_dequeue`` override is responsible for messages
+  it loses by raising after removing them but before returning them.
 - Each Agent has a session directory containing its persisted message tree,
   core state, application state, and metadata. Persistence uses a
   write-behind store: a successful enqueue for persistence does not mean that

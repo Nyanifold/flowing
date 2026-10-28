@@ -10,12 +10,13 @@ side_query 边界（T55–T57）、fork（T58–T60）、pause/resume/cancel 族
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
 from pathlib import Path
 
 import pytest
 
 from flowing.errors import Intercepted, InvalidRequestError
-from flowing.agent import Execution, ForkContext
+from flowing.agent import Execution, ForkContext, TurnContext
 from flowing.message import (
     Message,
     MessageKind,
@@ -1337,6 +1338,65 @@ async def test_t84_hook_exception_not_wedged(agent, provider, caplog):
     result = await agent.query("第二条")   # 队列后续消息照常消费
     assert result.status == "completed"
     assert result.final_text == "二"
+
+
+class TurnCrashAgent(SimpleAgent):
+    fail_once = False
+
+    async def _run_turn(self, msgs, waiters):
+        self._crash_calls = getattr(self, "_crash_calls", 0) + 1
+        self.current_turn = TurnContext(
+            started_at=datetime.now(), message_ids=[])
+        if self._crash_calls == 1 or not self.fail_once:
+            raise RuntimeError("simulated turn-entry crash")
+        await super()._run_turn(msgs, waiters)
+
+
+async def test_work_loop_turn_crash_feeds_orphaned_waiter(
+        runtime, provider, caplog):
+    agent = await runtime.create_agent(TurnCrashAgent)
+    result = await asyncio.wait_for(agent.query("crash"), timeout=2)
+    assert result.status == "cancelled"
+    assert result.final_text == ""
+    assert result.turn.message_ids == []
+    assert result.token_usage is None
+    assert result.finish_reason == "cancelled"
+    assert "turn crashed (messages=[" in caplog.text
+    assert "waiters=1)" in caplog.text
+
+
+async def test_work_loop_turn_crash_clears_current_turn(runtime, provider):
+    agent = await runtime.create_agent(TurnCrashAgent)
+    result = await asyncio.wait_for(agent.query("crash"), timeout=2)
+    assert result.status == "cancelled"
+    assert agent.current_turn is None
+
+
+async def test_work_loop_survives_turn_crash(runtime, provider):
+    agent = await runtime.create_agent(TurnCrashAgent)
+    agent.fail_once = True
+    script_provider(provider, text_response("ok"))
+    first = await asyncio.wait_for(agent.query("crash"), timeout=2)
+    assert first.status == "cancelled"
+    second = await asyncio.wait_for(agent.query("next"), timeout=2)
+    assert second.status == "completed"
+    assert second.final_text == "ok"
+
+
+async def test_work_loop_survives_dequeue_crash(runtime, provider, caplog):
+    class DequeueCrashAgent(SimpleAgent):
+        async def _dequeue(self):
+            self._dequeue_calls = getattr(self, "_dequeue_calls", 0) + 1
+            if self._dequeue_calls == 1:
+                raise RuntimeError("simulated dequeue crash")
+            return await super()._dequeue()
+
+    agent = await runtime.create_agent(DequeueCrashAgent)
+    script_provider(provider, text_response("ok"))
+    result = await asyncio.wait_for(agent.query("next"), timeout=2)
+    assert result.status == "completed"
+    assert result.final_text == "ok"
+    assert "dequeue crashed (messages=None, waiters=0)" in caplog.text
 
 
 # ---------------------------------------------------------------------------
