@@ -255,8 +255,9 @@ def use_validate_turn_result(
     ``"warn"`` 告警后放行；``"raise"`` 抛
     :class:`flowing.errors.OutputValidationError`。
 
-    校验模型在挂载时编译一次闭包复用；失败计数是闭包内部状态，按回合
-    计数（通过或超限放行时重置）。本函数是双层启用的阶段二入口，只能
+    校验模型在挂载时编译一次闭包复用；失败计数是 Agent 普通实例属性
+    ``_validate_turn_result_failures``，挂载时初始化为 0，校验通过或超限
+    放行时重置，不注册持久化状态。本函数是双层启用的阶段二入口，只能
     在 ``setup()`` （或实例存活期内的任意代码）中对已完成初始化的
     实例调用。
 
@@ -330,8 +331,9 @@ def use_validate_turn_result(
       :class:`flowing.errors.OutputValidationError`，回合以
       ``"error"`` 结局终止（``query()`` 等待者拿到
       ``status == "error"`` 的 :class:`flowing.agent.TurnResult`）。
-    - 重复调用不做幂等去重：每次调用各叠加一个独立 handler（独立闭包
-      计数与编译模型）；``remove_by_owner(by)`` 整组移除。
+    - 重复调用不做幂等去重：每次调用各叠加一个 handler（编译模型独立），
+      每次挂载都会把 Agent 共享的计数属性重置为 0；
+      ``remove_by_owner(by)`` 整组移除。
     - finish 路径自动跳过：``finish_output`` 已置位的回合不做文本校验；
       finish 的 ``.fya`` ``output:`` 声明与 ``agent.output`` 是相互
       独立的声明通道，框架不校验二者一致性，同时声明时需自行保持
@@ -391,10 +393,10 @@ def use_validate_turn_result(
         template = DEFAULT_VALIDATE_TEMPLATE
     render = Parsable(template)
 
-    # 失败计数：本次调用闭包的内部状态（按回合计数：校验通过或超限放行
-    # 时重置为 0）；计数从 1 起：首次失败为第 1 次，attempt <= max_retries
-    # 才 steer，因此 max_retries=0 首次失败即放行
-    state = {"failures": 0}
+    # 失败计数：Agent 普通实例属性，挂载时初始化（不注册持久化状态）；
+    # 校验通过或超限放行时重置为 0。计数从 1 起：首次失败为第 1 次，
+    # attempt <= max_retries 才 steer，因此 max_retries=0 首次失败即放行
+    agent._validate_turn_result_failures = 0
 
     async def _validate_after_provider_gen(
         agent: "Agent", response: ProviderResponse
@@ -417,7 +419,7 @@ def use_validate_turn_result(
                        if isinstance(b, TextBlock))
         failure = _check(text, model)
         if failure is None:
-            state["failures"] = 0   # 校验通过：计数重置（按回合计数）
+            agent._validate_turn_result_failures = 0   # 校验通过：计数重置（按回合计数）
             return response
         if on_fail == "warn":
             warnings.warn(f"turn output failed schema validation: {failure}")
@@ -425,10 +427,10 @@ def use_validate_turn_result(
         if on_fail == "raise":
             raise OutputValidationError(failure)
         # steer：计数加 1，未超 max_retries 置 finish=False 并入队修复消息
-        state["failures"] += 1
-        attempt = state["failures"]
+        agent._validate_turn_result_failures += 1
+        attempt = agent._validate_turn_result_failures
         if attempt > max_retries:
-            state["failures"] = 0   # 超限放行并复位：下一回合再失败重新计数
+            agent._validate_turn_result_failures = 0   # 超限放行并复位：下一回合再失败重新计数
             return response
         response.finish = False   # 回合内层循环续跑：下一轮 drain 修复消息
         rendered = render.resolve({

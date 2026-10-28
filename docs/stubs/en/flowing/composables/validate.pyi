@@ -266,13 +266,14 @@ def use_validate_turn_result(
       before the next ``provider_gen`` call, so the repair request enters the
       same turn's context. The re-emitted response is validated again by the
       same handler until it passes or the budget is exhausted.
-    - The failure counter is internal closure state of the mounting call; it
-      is not persisted and not snapshotted. It counts per turn: a pass or a
-      give-up resets it to 0, so a failure in a later turn counts from 1
-      again.
+    - The failure counter is the Agent's ordinary
+      ``_validate_turn_result_failures`` instance attribute, initialized to 0
+      at mount. It is not registered as persistent state or snapshotted. A
+      pass or a give-up resets it to 0, so a failure in a later turn counts
+      from 1 again.
     - Repeated calls do not deduplicate: each call installs an independent
-      handler (with its own counter closure and compiled model). Remove the
-      whole set with
+      handler with its own compiled model, and every mount resets the shared
+      Agent counter attribute to 0. Remove the whole set with
       ``agent.hooks.after_provider_gen.remove_by_owner(by)``.
     - The finish structured hand-in path is skipped automatically: when
       ``finish_output`` is set, no text validation runs. The finish tool's

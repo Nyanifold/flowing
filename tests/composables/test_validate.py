@@ -192,6 +192,7 @@ async def test_exhaustion_gives_up_and_resets_next_turn(tmp_path):
                                                  agent_cls=ValidateAgent)
     agent = await runtime.create_agent("test-agent")
     try:
+        assert agent._validate_turn_result_failures == 0
         script_provider(provider,
                         text_response("bad one"),
                         text_response("bad two"),
@@ -200,10 +201,12 @@ async def test_exhaustion_gives_up_and_resets_next_turn(tmp_path):
         r1 = await agent.query("第一问")
         assert r1.status == "completed"
         assert r1.final_text == "bad two"   # 超限放行：坏响应自然关闭回合
+        assert agent._validate_turn_result_failures == 0
 
         r2 = await agent.query("第二问")
         assert r2.status == "completed"
         assert r2.final_text == '{"answer": "ok"}'
+        assert agent._validate_turn_result_failures == 0
 
         steers = _steers_in_tree(agent)
         assert len(steers) == 2
@@ -217,6 +220,37 @@ async def test_exhaustion_gives_up_and_resets_next_turn(tmp_path):
         assert len(_turn_end_messages(agent)) == 2   # 两个逻辑回合各一条
     finally:
         ValidateAgent.validate_kwargs = {}
+        await agent.destroy()
+
+
+async def test_failure_counter_member_increment_and_reset(tmp_path):
+    """计数是挂载时初始化的 Agent 普通成员，steer 增加、超限清零。"""
+    runtime, provider = make_composables_harness(tmp_path,
+                                                 agent_cls=SimpleAgent)
+    agent = await runtime.create_agent("test-agent", start_loop=False)
+    use_validate_turn_result(agent, schema=SCHEMA, max_retries=1)
+    try:
+        assert agent._validate_turn_result_failures == 0
+
+        def bad_response() -> ProviderResponse:
+            return ProviderResponse(
+                message=Message(kind=MessageKind.PROVIDER,
+                                content=[TextBlock(text="bad")]),
+                finish=True,
+                by="_turn",
+            )
+
+        first = await agent.hooks.after_provider_gen.dispatch(
+            agent, bad_response())
+        assert first.finish is False
+        assert agent._validate_turn_result_failures == 1
+
+        second = await agent.hooks.after_provider_gen.dispatch(
+            agent, bad_response())
+        assert second.finish is True
+        assert agent._validate_turn_result_failures == 0
+        assert "failures" not in agent.state
+    finally:
         await agent.destroy()
 
 
