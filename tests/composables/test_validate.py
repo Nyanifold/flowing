@@ -180,9 +180,9 @@ async def test_json_schema_multiple_errors_steer_together(tmp_path):
         await agent.destroy()
 
 
-async def test_exhaustion_gives_up_and_resets_next_turn(tmp_path):
-    """超限放行 + 按回合计数复位：max_retries=1 时第 2 次失败放行；下一
-    回合再失败从第 1 次重新 steer（两次 steer 渲染 attempt 均为 1）。"""
+async def test_exhaustion_fails_and_resets_next_turn(tmp_path):
+    """超限失败 + 按回合计数复位：max_retries=1 时第 2 次失败终止回合；
+    下一回合再失败从第 1 次重新 steer（attempt 均为 1）。"""
     ValidateAgent.validate_kwargs = {
         "schema": SCHEMA,
         "max_retries": 1,
@@ -199,8 +199,7 @@ async def test_exhaustion_gives_up_and_resets_next_turn(tmp_path):
                         text_response("bad three"),
                         text_response('{"answer": "ok"}'))
         r1 = await agent.query("第一问")
-        assert r1.status == "completed"
-        assert r1.final_text == "bad two"   # 超限放行：坏响应自然关闭回合
+        assert r1.status == "error"
         assert agent._validate_turn_result_failures == 0
 
         r2 = await agent.query("第二问")
@@ -211,20 +210,42 @@ async def test_exhaustion_gives_up_and_resets_next_turn(tmp_path):
         steers = _steers_in_tree(agent)
         assert len(steers) == 2
         texts = ["".join(b.text for b in m.content) for m in steers]
-        # 两回合各 steer 一次，attempt 都从 1 起（超限放行后计数已复位）
+        # 两回合各 steer 一次，attempt 都从 1 起（超限失败后计数已复位）
         expected = (
             "Attempt 1/1: Invalid JSON at line 1, column 1 (char 0): "
             "Expecting value"
         )
         assert texts == [expected, expected]
-        assert len(_turn_end_messages(agent)) == 2   # 两个逻辑回合各一条
+    finally:
+        ValidateAgent.validate_kwargs = {}
+        await agent.destroy()
+
+
+async def test_default_max_retries_is_unlimited(tmp_path):
+    """默认 max_retries=None 不限修复次数，连续修复超过三次仍可成功。"""
+    ValidateAgent.validate_kwargs = {"schema": SCHEMA}
+    runtime, provider = make_composables_harness(tmp_path,
+                                                 agent_cls=ValidateAgent)
+    agent = await runtime.create_agent("test-agent")
+    try:
+        script_provider(provider,
+                        text_response("bad one"),
+                        text_response("bad two"),
+                        text_response("bad three"),
+                        text_response("bad four"),
+                        text_response('{"answer": "ok"}'))
+        result = await agent.query("提问")
+        assert result.status == "completed"
+        assert result.final_text == '{"answer": "ok"}'
+        assert len(_steers_in_tree(agent)) == 4
+        assert agent._validate_turn_result_failures == 0
     finally:
         ValidateAgent.validate_kwargs = {}
         await agent.destroy()
 
 
 async def test_failure_counter_member_increment_and_reset(tmp_path):
-    """计数是挂载时初始化的 Agent 普通成员，steer 增加、超限清零。"""
+    """计数是挂载时初始化的 Agent 普通成员，steer 增加、超限失败时清零。"""
     runtime, provider = make_composables_harness(tmp_path,
                                                  agent_cls=SimpleAgent)
     agent = await runtime.create_agent("test-agent", start_loop=False)
@@ -245,17 +266,16 @@ async def test_failure_counter_member_increment_and_reset(tmp_path):
         assert first.finish is False
         assert agent._validate_turn_result_failures == 1
 
-        second = await agent.hooks.after_provider_gen.dispatch(
-            agent, bad_response())
-        assert second.finish is True
+        with pytest.raises(OutputValidationError):
+            await agent.hooks.after_provider_gen.dispatch(agent, bad_response())
         assert agent._validate_turn_result_failures == 0
         assert "failures" not in agent.state
     finally:
         await agent.destroy()
 
 
-async def test_max_retries_zero_passes_through_silently(tmp_path):
-    """max_retries=0：首次失败即放行，无 steer 消息。"""
+async def test_max_retries_zero_fails_immediately(tmp_path):
+    """max_retries=0：首次失败即终止回合，无 steer 消息。"""
     ValidateAgent.validate_kwargs = {"schema": SCHEMA, "max_retries": 0}
     runtime, provider = make_composables_harness(tmp_path,
                                                  agent_cls=ValidateAgent)
@@ -263,9 +283,9 @@ async def test_max_retries_zero_passes_through_silently(tmp_path):
     try:
         script_provider(provider, text_response("bad"))
         result = await agent.query("提问")
-        assert result.status == "completed"
+        assert result.status == "error"
         assert _steers_in_tree(agent) == []
-        assert len(_turn_end_messages(agent)) == 1
+        assert agent._validate_turn_result_failures == 0
     finally:
         ValidateAgent.validate_kwargs = {}
         await agent.destroy()
@@ -339,7 +359,7 @@ async def test_template_jinja_context_rendering(tmp_path):
         assert len(steers) == 1
         text = "".join(b.text for b in steers[0].content)
         assert text == (
-            "A1/3:Invalid JSON at line 1, column 2 (char 1): "
+            "A1/None:Invalid JSON at line 1, column 2 (char 1): "
             "Expecting property name enclosed in double quotes"
         )
     finally:

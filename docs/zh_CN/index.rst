@@ -32,102 +32,112 @@ Flowing
 
    pip install flowing-agent
 
-快速上手
---------
+示例
+--
 
-这个示例会搭建一个双智能体猜词游戏：裁判 ``oracle`` 私下保管谜底，猜词者 ``guesser`` 通过定向消息逐步提问并猜出答案。它展示如何在一个 Runtime 中承载多个 Agent、由 ``PeersPlugin`` 注册 Peers 工具，并用声明式工具绑定控制 Agent 的工具可见性。工具按 ``peer_id`` 通过 Runtime 查询目标 Agent。两个 Composable 各司其职：``use_peers()`` 读取 ``peers`` 目录并将其注入系统提示词，``use_retry()`` 为模型调用配置重试，裁判使用默认设置（重试三次）而猜词者最多重试五次。
+这个示例把两个专用决策 Agent 嵌入 Python 应用：每个玩家返回结构化的产量选择，宿主并发查询两者并计算结果。游戏规则刻意保持简单，重点是可复用声明、live Agent 对象、实例级钩子与 Composable，以及由普通 Python 编排的可嵌入 Runtime。
 
-新建一个项目目录，并创建以下四个文件：
+新建一个项目目录，并创建 ``player.fya``、``main.py`` 和 ``model-tags.yaml``。
 
-``main.py`` 安装 Peers 插件，并以稳定 ID 挂载两个 Agent：
+``player.fya`` 定义一个可复用的玩家声明：
 
 .. code-block:: python
 
-   from flowing import Runtime
-   from flowing.plugins.peers import PeersPlugin
+   description: "A player in a two-player Production Competition Game."
+   model_tag: default
+   output:
+     quantity:
+       type: integer
+       enum: [3, 4]
+       description: "The quantity to produce."
+
+   ---
+   $system_prompt:
+   You are Player {{player}} in a two-player Production Competition Game.
+
+   The selling price is 12 minus the combined production:
+   price = 12 - (your quantity + the other player's quantity).
+   Your profit = your quantity * price.
+
+   Choose the quantity that maximizes your own profit.
+   Return only a JSON object such as {"quantity": 3}.
+
+   ---
+   $script:
+   from flowing.composables import use_retry
+   from flowing.composables.validate import use_validate_turn_result
+   from flowing.message import MessageKind
+
+
+   async def setup(self, player: str):
+       use_retry(self)
+       use_validate_turn_result(self, on_fail="steer", max_retries=2)
+
+       self.player = player
+       self.requests = 0
+
+       def log_request(agent, msg):
+           if msg.kind is MessageKind.USER:
+               agent.requests += 1
+               print(
+                   f"[{agent.node_id}] "
+                   f"player={agent.player} requests={agent.requests}"
+               )
+           return msg
+
+       self.hooks.on_enqueue(log_request)
+
+声明将提示词、输出契约、启动逻辑、实例成员、钩子和 Composable 策略收拢在一起。``use_retry()`` 处理可重试的 Provider 异常；``use_validate_turn_result()`` 可以通过 steer 引导无效的结构化响应修正。钩子分别作用于每个挂载实例，只更新该实例自己的 ``requests`` 成员。
+
+``main.py`` 将同一声明挂载两次，并把 Runtime 嵌入普通 Python 宿主：
+
+.. code-block:: python
+
+   import asyncio
+   import json
+   from pathlib import Path
+
+   from flowing import Runtime, launch
+
+
+   def payoff(q_a: int, q_b: int) -> tuple[int, int]:
+       price = 12 - q_a - q_b
+       return q_a * price, q_b * price
+
 
    async def main() -> Runtime:
        runtime = Runtime()
        runtime.set_model_tags("@/model-tags.yaml")
-       # 注册 Peers 相关工具；Agent 是否能调用工具仍由各自的 tools: 声明决定。
-       runtime.install(PeersPlugin())
-       await runtime.mount("@/oracle.fya", agent_id="oracle")
-       await runtime.mount("@/guesser.fya", agent_id="guesser")
+       await runtime.mount("@/player.fya", agent_id="player-a", player="A")
+       await runtime.mount("@/player.fya", agent_id="player-b", player="B")
        return runtime
 
-``oracle.fya`` 描述知道谜底的裁判。它只允许向 ``guesser`` 发送消息：
 
-.. code-block:: python
+   if __name__ == "__main__":
+       async def _run():
+           runtime = await launch(str(Path(__file__).resolve().parent))
+           try:
+               a = await runtime.get_agent("player-a", strict=True)
+               b = await runtime.get_agent("player-b", strict=True)
+               result_a, result_b = await asyncio.gather(
+                   a.query("Choose your production quantity: 3 or 4."),
+                   b.query("Choose your production quantity: 3 or 4."),
+               )
+               q_a = json.loads(result_a.final_text)["quantity"]
+               q_b = json.loads(result_b.final_text)["quantity"]
+               profit_a, profit_b = payoff(q_a, q_b)
 
-   description: "私下保管谜底，并判断猜词者的问题。"
-   model_tag: default
-   tools:
-     - message-peer
-   peers:
-     guesser: "猜词者；通过私聊向你提问。请回复其答案。"
+               a.last_profit = profit_a
+               b.last_profit = profit_b
+               print(f"Player A: quantity={q_a}, profit={a.last_profit}")
+               print(f"Player B: quantity={q_b}, profit={b.last_profit}")
+               print(f"Joint profit: {profit_a + profit_b}")
+           finally:
+               await runtime.shutdown()
 
-   ---
-   $system_prompt:
-   你是猜词游戏的裁判。用户会私下告诉你谜底。记住谜底，但不要向猜词者透露。
-   猜词者发来问题时，根据谜底判断答案是肯定、否定还是无法判断。你必须调用
-   message-peer 工具，将 peer_id 设为 "guesser"，并发送包含原问题及以下三种
-   内容之一的消息：是、否、不确定。不要添加解释或其他文字，也不要直接回复猜词者。
-   用户私下告诉你谜底时，只需简短确认设置完成，不要联系猜词者。
+       asyncio.run(_run())
 
-   ---
-   $script:
-   from flowing.composables import use_retry
-   from flowing.plugins.peers import use_peers
-
-
-   async def setup(self):
-       # 注入 peers 目录提示，并启用默认的 Provider 调用重试策略。
-       use_peers(self)
-       use_retry(self)
-
-       # status == "completed" 表示消息发送成功；本示例随即结束回合，不再请求 LLM 处理该工具结果。
-       def _end_turn(agent, result):
-           if result.status == "completed" and agent.current_turn is not None:
-               agent.current_turn.finish = True
-           return result
-
-       self.hooks.after_tool_call["message-peer"](_end_turn, by="guessing-game")
-
-``guesser.fya`` 描述通过提问推断谜底的猜词者：
-
-.. code-block:: python
-
-   description: "通过向裁判提问来猜出谜底。"
-   model_tag: default
-   tools:
-     - message-peer
-   peers:
-     oracle: "知道谜底并回答是、否或不确定的裁判。请向其询问问题。"
-
-   ---
-   $system_prompt:
-   你正在玩猜词游戏。当用户说明开始后，请每次向 oracle 智能体（裁判）提出一个可以用是或否回答的问题。
-   不要要求裁判直接说出谜底。收到裁判回复后，根据游戏规则继续向该智能体提问；得到最终答案时，向用户
-   给出你的最佳猜测。
-
-   ---
-   $script:
-   from flowing.composables import use_retry
-   from flowing.plugins.peers import use_peers
-
-
-   async def setup(self):
-       # 注入 peers 目录提示，并将单回合重试上限设为五次。
-       use_peers(self)
-       use_retry(self, max_retries=5)
-
-       # status == "completed" 表示消息发送成功；本示例随即结束回合，不再请求 LLM 处理该工具结果。
-       def _end_turn(agent, result):
-           if result.status == "completed" and agent.current_turn is not None:
-               agent.current_turn.finish = True
-           return result
-
-       self.hooks.after_tool_call["message-peer"](_end_turn, by="guessing-game")
+``main()`` 是项目的装配入口：它创建、配置并**返回一个 Runtime**。``launch()`` 导入并等待 ``main()``，随后把这个 Runtime 返回给外部调用方。此后，宿主可以像使用普通 Python 对象一样直接使用它：通过 ``get_agent()`` 取得 live Agent，查询或更新这些对象，并用 ``asyncio`` 和应用逻辑自由编排。两次挂载拥有独立的属性、钩子和历史。这种嵌入模式既能承载产品中的领域专用 Agent，也能搭建可控的多智能体研究实验，无需引入工作流 DSL。
 
 ``model-tags.yaml`` 将查询标签 ``default`` 映射到 Model 条目 ``luna``：
 
@@ -136,48 +146,23 @@ Flowing
    tags:
      default: luna
 
-要让这两个 Agent 调用模型，先添加 OpenRouter Provider 并配置连接信息：
+标签本身不携带 Provider 信息：``default`` 解析到 ``luna``，再由条目分别指定 Provider 和 API 模型 ID。Provider 与 Model 的逐步配置见 `Hello Flowing <https://github.com/Nyanifold/flowing/blob/main/examples/hello-flowing/README.md#configure-the-luna-model>`_ 或 `Guessing Game <https://github.com/Nyanifold/flowing/blob/main/examples/guessing-game/README.md#configure-the-luna-model>`_。
 
-.. code-block:: console
-
-   $ flowing-config providers add
-   # Press Enter at the configuration path prompt to use the Runtime default.
-   Provider entry name (identity): openrouter
-   Provider adapter: openrouter
-   API endpoint (base_url; leave blank to use 'https://openrouter.ai/api/v1'): [Enter]
-   API key (api_key; leave blank to skip): env.OPENROUTER_API_KEY
-
-Provider 配置完成后，再登记引用它的 Model 条目。示例将条目命名为 ``luna``，并指定 API model ID ``openai/gpt-6-luna``：
-
-.. code-block:: console
-
-   $ flowing-config models add
-   # Press Enter at the configuration path prompt to use the Runtime default.
-   Model entry name (identity): luna
-   Known Provider entries: openrouter
-   Provider entry name (identity): openrouter
-   API model ID: openai/gpt-6-luna
-
-``default`` model-tag 是查询标签，不携带 Provider 信息；它映射到 ``luna`` Model 条目，而条目再单独指定 ``openrouter`` Provider 和 API 模型 ID ``openai/gpt-6-luna``。adapter 参数提示依赖 API 模型 ID，不保证远端模型支持对应参数。
-
-这里有两种不同的声明：``tools:`` 显式绑定 Agent 可调用的 ``message-peer`` 工具；``peers:`` 列出可联系 Agent 的 ID 与说明。``PeersPlugin`` 注册 Peers 工具；工具调用时按声明的目标 ID 通过 Runtime 查询目标 Agent。``use_peers(self)`` 这个 Composable 只读取当前 Agent 的 ``peers``，将目录动态注入系统提示词，不负责工具绑定。两个 Agent 都通过 ``use_retry()`` 启用 Provider 调用重试；裁判使用默认设置，猜词者使用 ``max_retries=5``。
-
-运行：
+在项目目录运行：
 
 .. code-block:: console
 
    $ export OPENROUTER_API_KEY='<your key>'
-   $ flowing repl .
-   (new agent)>>> /agent oracle
-   (oracle)>>> 谜底是梨。请记住谜底，不要告诉猜词者。
-   (oracle)>>> /agent guesser
-   (guesser)>>> 开始游戏。谜底是一种水果。你最多可以提出五个是非问题，然后给出你的猜测。
+   $ python main.py
+   [player-a] player=A requests=1
+   [player-b] player=B requests=1
+   Player A: quantity=4, profit=16
+   Player B: quantity=4, profit=16
+   Joint profit: 32
 
-``guesser`` 通过 ``message-peer`` 向 ``oracle`` 发送问题，裁判只返回“是”“否”或“不确定”；谜底留在裁判自己的会话中。两个 Agent 的消息记录都保存在项目目录下的 ``.flowing/`` 中，固定的 ``agent_id`` 让再次启动时可以恢复各自的历史。
+具体选择由模型决定，因此数量与收益可能不同。逐步讲解见 `完整示例 <https://github.com/Nyanifold/flowing/tree/main/examples/product-competition-game>`_。
 
-.. note::
-
-   REPL 的过程显示只处理前台绑定 Agent 由 Provider 产生的消息（流式正文、思考、工具调用与工具结果）和你的输入；运行中动态注入的消息不经此通道渲染——因此 ``message-peer`` 投递的 PEER 消息不会自动显示。输入 ``/messages`` 可查看当前消息链的完整消息列表（``/messages verbose`` 查看完整内容）。
+`examples 目录 <https://github.com/Nyanifold/flowing/tree/main/examples>`_按渐进顺序提供三个项目：`Hello Flowing <https://github.com/Nyanifold/flowing/tree/main/examples/hello-flowing>`_ 介绍项目装配、参数注入、``setup()`` 与持久化；`Guessing Game <https://github.com/Nyanifold/flowing/tree/main/examples/guessing-game>`_ 展示插件、Peer 消息和相互独立的 Agent 历史；`Production Competition Game <https://github.com/Nyanifold/flowing/tree/main/examples/product-competition-game>`_ 展示如何以可复用声明和 live Agent 对象支撑普通 Python 编排，并服务于专用智能体产品与研究项目。
 
 进一步
 ------
@@ -191,7 +176,7 @@ Provider 配置完成后，再登记引用它的 Model 条目。示例将条目�
 内置插件与 Composable
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-插件与 Composable 是两类可复用的扩展单元，均随包发布、按需启用。插件由 ``runtime.install()`` 安装，再由各 Agent 在 ``setup()`` 中调用对应的 ``use_xxx(self)`` 启用；Composable 是普通函数 ``use_xxx(agent, ...)``，在 ``setup()`` 中为单个 Agent 实例注入策略，可叠加，也可照抄改写。
+插件与 Composable 是随包发布的可复用扩展，默认均不启用。插件经 ``runtime.install()`` 注册工具、可注入服务等 Runtime 级能力；插件若提供配套 ``use_xxx(self)``，再在 ``setup()`` 中完成 Agent 级启用，所需工具仍须显式绑定。独立 Composable 是普通函数 ``use_xxx(agent, ...)``，无需 Runtime 安装即可为单个 Agent 挂载行为。Composable 可以叠加，其实现也可复制到应用层改写为所需策略。
 
 .. list-table::
    :header-rows: 1
@@ -208,7 +193,7 @@ Provider 配置完成后，再登记引用它的 Model 条目。示例将条目�
    * - ``cron``
      - 逐 Agent 的定时任务：``schedule`` / ``unschedule`` / ``jobs`` 随 Agent 存续，LLM 经 ``schedule-cron`` / ``manage-cron`` 调度，到点经 ``on_cron_trigger`` 钩子投递。
    * - ``workflow``
-     - 规则性编排：继承 ``Workflow`` 用 Python 显式写出分支、循环与并行/串行步骤，经 ``run-workflow`` 工具按路径拉起。
+     - 规则性编排：继承 ``Workflow`` 用 Python 显式写出分支、循环与并行/串行步骤，绑定 ``run-workflow`` 工具以按路径启动工作流。
    * - ``clipboard``
      - 文件区段的剪切 / 复制 / 粘贴（``clipboard-cut`` / ``clipboard-copy`` / ``clipboard-paste``），用于跨文件搬运代码段。
 
@@ -229,9 +214,9 @@ Provider 配置完成后，再登记引用它的 Model 条目。示例将条目�
    * - ``use_prompt_until``
      - 回合收尾运行断言，不成立时以 steer 消息导向下一个回合续跑。
    * - ``use_validate_turn_result``
-     - 回合收尾校验最终回复是否为符合 JSON Schema 的 JSON，不合规时按策略同回合 steer 修复 / 告警 / 抛错。
+     - 按显式 schema 或 Agent 的 ``output`` 校验最终回复 JSON；同回合 steer 修复（默认不限次数）、告警或抛错；有限修复次数耗尽时回合以 error 结束。
    * - ``use_validate_enqueued_message``
-     - 入站消息（按 kind / source / 谓词过滤）入队前校验是否为符合 JSON Schema 的 JSON，不合规时按策略拒绝入队 / 告警 / 抛错。
+     - 按 kind、source 或谓词过滤入站消息，并按显式 schema 或 Agent 的 ``input`` 校验其文本或结构化数据；不合规时拒绝入队、告警或抛错。
 
 文档
 ----

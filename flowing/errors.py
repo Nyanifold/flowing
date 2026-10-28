@@ -2313,28 +2313,28 @@ class UnpairedToolCallError(FlowingError):
 
 
 class OutputValidationError(FlowingError):
-    """回合最终回复未通过 JSON Schema 校验（``on_fail="raise"`` 策略下抛出）。
+    """回合最终回复未通过 JSON Schema 校验（raise 或 steer 超限）。
 
     .. rubric:: 功能介绍
 
     内置 Composable
     :func:`flowing.composables.validate.use_validate_turn_result`
-    在 ``on_fail="raise"`` 策略下，主回合终态回复的文本校验不通过时抛出：
-    文本无法解析为 JSON、或解析结果不符合挂载时经
-    :func:`flowing.params.schema_to_model` 编译的 Pydantic 模型，都视为
-    校验不通过。异常从 ``after_provider_gen`` handler 抛出后经回合异常
-    通道上抛（视同本次 LLM 调用期异常）：``on_provider_error`` 照常分发，
-    ``can_continue`` 保持 ``False``，本回合以 ``"error"`` 结局终止
-    （Agent 存活），``query()`` 等待者拿到 ``status == "error"`` 的
-    :class:`flowing.agent.TurnResult`。
+    在 ``on_fail="raise"`` 策略下校验失败时抛出，或在 ``on_fail="steer"``
+    策略下用尽有限 ``max_retries`` 修复次数后抛出：文本无法解析为 JSON、
+    或解析结果不符合挂载时经 :func:`flowing.params.schema_to_model` 编译的
+    Pydantic 模型，都视为校验不通过。异常从 ``after_provider_gen`` handler
+    抛出后经回合异常通道上抛（视同本次 LLM 调用期异常）：
+    ``on_provider_error`` 照常分发，``can_continue`` 保持 ``False``，本回合
+    以 ``"error"`` 结局终止（Agent 存活），``query()`` 等待者拿到
+    ``status == "error"`` 的 :class:`flowing.agent.TurnResult`。
 
     .. rubric:: 行为要点
 
     - ``error`` 字段为格式化校验诊断正文（JSON 为单行位置诊断，Pydantic
       为逐字段诊断），诊断用途；不回喂 LLM（模板渲染走独立的 ``template``
       回落链，见 ``use_validate_turn_result``）。
-    - 由应用层策略抛出：框架核心不主动抛本异常；``on_fail`` 取
-      ``"steer"`` 或 ``"warn"`` 时本异常不会被实例化。
+    - 由应用层策略抛出：框架核心不主动抛本异常；``on_fail="warn"`` 或
+      ``on_fail="steer"`` 且 ``max_retries=None`` 时不因校验失败抛本异常。
     - 捕获语义：按精确类型捕获本类即可；``except FlowingError`` 亦可
       一网打尽。
 

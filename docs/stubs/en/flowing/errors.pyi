@@ -1498,18 +1498,18 @@ class UnpairedToolCallError(FlowingError):
 
 
 class OutputValidationError(FlowingError):
-    """A turn's final reply failed the JSON Schema check (``on_fail="raise"`` policy).
+    """A turn's final reply failed JSON Schema validation (raise or steer exhaustion).
 
     Raised by the built-in composable
     :func:`flowing.composables.validate.use_validate_turn_result`
-    when the text of a main-turn final reply does not pass validation under
-    its ``on_fail="raise"`` policy: text that is not valid JSON, or JSON that
-    does not conform to the Pydantic model compiled from the schema at mount
-    time, both count as failures. The exception propagates through the turn's
-    error channel (it is treated like a call-time error of the LLM call):
-    ``on_provider_error`` dispatches as usual, ``can_continue`` stays
-    ``False``, and the turn ends with status ``"error"`` (the Agent survives);
-    the ``query()`` waiter receives a
+    when validation fails under ``on_fail="raise"``, or when the finite
+    ``max_retries`` repair budget is exhausted under ``on_fail="steer"``:
+    text that is not valid JSON, or JSON that does not conform to the Pydantic
+    model compiled from the schema at mount time, both count as failures. The
+    exception propagates through the turn's error channel (it is treated like
+    a call-time error of the LLM call): ``on_provider_error`` dispatches as
+    usual, ``can_continue`` stays ``False``, and the turn ends with status
+    ``"error"`` (the Agent survives); the ``query()`` waiter receives a
     :class:`flowing.agent.TurnResult` with ``status == "error"``.
 
     .. rubric:: Behavior notes
@@ -1520,8 +1520,8 @@ class OutputValidationError(FlowingError):
       not fed back to the LLM (template rendering uses a separate template
       fallback chain, see ``use_validate_turn_result``).
     - Raised by application-layer policy: framework core never raises this
-      error on its own; under ``on_fail="steer"`` or ``on_fail="warn"`` it is
-      never instantiated.
+      error on its own; ``on_fail="warn"``, or ``on_fail="steer"`` with
+      ``max_retries=None``, does not raise it for a validation failure.
     - Catch this class by its exact type; ``except FlowingError`` also
       covers it.
 

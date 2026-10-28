@@ -72,7 +72,7 @@
 .. code-block:: yaml
 
     # my-agent.fya —— 出方向最小启用：schema 读本文件顶层的 output:
-    # 声明，不合规时同回合内 steer 修复（至多 3 次）
+    # 声明，不合规时同回合内 steer 修复（不限次数）
     output:
       answer:
         type: string
@@ -237,7 +237,7 @@ def use_validate_turn_result(
     *,
     template: str | None = None,
     on_fail: Literal["steer", "warn", "raise"] = "steer",
-    max_retries: int = 3,
+    max_retries: int | None = None,
     by: str = "validate-turn-result",
 ) -> None:
     """为单个 Agent 实例启用“回合最终回复 JSON Schema 校验”策略（可选、非默认）。
@@ -257,7 +257,7 @@ def use_validate_turn_result(
 
     校验模型在挂载时编译一次闭包复用；失败计数是 Agent 普通实例属性
     ``_validate_turn_result_failures``，挂载时初始化为 0，校验通过或超限
-    放行时重置，不注册持久化状态。本函数是双层启用的阶段二入口，只能
+    失败时重置，不注册持久化状态。本函数是双层启用的阶段二入口，只能
     在 ``setup()`` （或实例存活期内的任意代码）中对已完成初始化的
     实例调用。
 
@@ -266,7 +266,7 @@ def use_validate_turn_result(
     .. code-block:: yaml
 
         # 1. 最小启用（.fya 声明形态）：schema 读本文件顶层的 output:
-        # 声明，不合规时同回合内 steer 修复（至多 3 次）
+        # 声明，不合规时同回合内 steer 修复（不限次数）
         output:
           answer:
             type: string
@@ -322,11 +322,13 @@ def use_validate_turn_result(
       :data:`DEFAULT_VALIDATE_TEMPLATE`；每次 steer 前以
       ``error`` / ``schema`` / ``attempt`` / ``max_retries`` 为上下文
       现场渲染（``attempt`` 从 1 起）。
-    - steer 与计数：未超 ``max_retries`` 时置 ``response.finish = False``
-      并经 :meth:`flowing.agent.Agent.steer` 入队修复消息
-      （``kind=EVENT`` / ``priority=STEER`` / ``source=by`` /
-      ``tags=[by]``），同一回合内层循环 drain 续跑；超限后放行且计数
-      重置，下一回合再失败从第 1 次重新计数。
+    - steer 与计数：``max_retries=None`` 时不限修复次数；给定整数时，未超
+      ``max_retries`` 则置 ``response.finish = False`` 并经
+      :meth:`flowing.agent.Agent.steer` 入队修复消息（``kind=EVENT`` /
+      ``priority=STEER`` / ``source=by`` / ``tags=[by]``），同一回合内层
+      循环 drain 续跑；超限后抛
+      :class:`flowing.errors.OutputValidationError`，回合以 ``"error"``
+      结局终止，计数重置，下一回合再失败从第 1 次重新计数。
     - warn：``warnings.warn`` 英文告警后放行；raise：抛
       :class:`flowing.errors.OutputValidationError`，回合以
       ``"error"`` 结局终止（``query()`` 等待者拿到
@@ -350,9 +352,10 @@ def use_validate_turn_result(
     :param on_fail: 校验不通过的处置策略：``"steer"`` （默认，同回合
         修复续跑）/ ``"warn"`` （告警后放行）/ ``"raise"`` （抛
         :class:`flowing.errors.OutputValidationError`）。
-    :param max_retries: steer 策略下单个回合内允许的最大修复次数，
-        ``>= 0``，默认 3；计数从 1 起，仅 ``attempt <= max_retries``
-        才 steer，``0`` 表示首次失败即放行。warn / raise 策略下
+    :param max_retries: steer 策略下单个回合内允许的最大修复次数；默认
+        ``None`` 表示不限次数，给定整数时必须 ``>= 0``。计数从 1 起，
+        仅 ``attempt <= max_retries`` 才 steer；``0`` 表示首次失败即抛
+        :class:`flowing.errors.OutputValidationError`。warn / raise 策略下
         该参数不生效。
     :param by: handler 的 owner 标识（短横线小写惯例），默认
         ``"validate-turn-result"``；``remove_by_owner(by)`` 按它整组
@@ -375,8 +378,8 @@ def use_validate_turn_result(
     # 先校验后注册：非法参数抛 ValueError，不产生任何注册副作用
     if on_fail not in ("steer", "warn", "raise"):
         raise ValueError("on_fail must be 'steer', 'warn' or 'raise'")
-    if max_retries < 0:
-        raise ValueError("max_retries must be >= 0")
+    if max_retries is not None and max_retries < 0:
+        raise ValueError("max_retries must be >= 0 or None")
 
     # schema 回落链：参数 → agent.output（对象级属性，只读探测）→ 挂载期
     # fail-fast（内置 ValueError，编程错误）；编译模型同样在挂载期一次
@@ -394,8 +397,8 @@ def use_validate_turn_result(
     render = Parsable(template)
 
     # 失败计数：Agent 普通实例属性，挂载时初始化（不注册持久化状态）；
-    # 校验通过或超限放行时重置为 0。计数从 1 起：首次失败为第 1 次，
-    # attempt <= max_retries 才 steer，因此 max_retries=0 首次失败即放行
+    # 校验通过或超限失败时重置为 0。计数从 1 起：首次失败为第 1 次；
+    # max_retries=None 不限修复次数，max_retries=0 首次失败即终止回合
     agent._validate_turn_result_failures = 0
 
     async def _validate_after_provider_gen(
@@ -405,8 +408,8 @@ def use_validate_turn_result(
 
         只处理主回合终态响应（pattern 注册保证来源；``finish=False`` /
         ``message=None`` / 含 ``ToolCallBlock`` / ``finish_output`` 已置位
-        的响应原样放行）；必须 ``return response``；仅 raise 策略会抛
-        异常（``OutputValidationError``，经回合异常通道上抛）。
+        的响应原样放行）；必须 ``return response``；raise 策略或 steer 超限
+        会抛 ``OutputValidationError``，经回合异常通道上抛。
         """
         if not response.finish or response.message is None:
             return response   # 非终态 / abort 路径：放行
@@ -429,9 +432,9 @@ def use_validate_turn_result(
         # steer：计数加 1，未超 max_retries 置 finish=False 并入队修复消息
         agent._validate_turn_result_failures += 1
         attempt = agent._validate_turn_result_failures
-        if attempt > max_retries:
-            agent._validate_turn_result_failures = 0   # 超限放行并复位：下一回合再失败重新计数
-            return response
+        if max_retries is not None and attempt > max_retries:
+            agent._validate_turn_result_failures = 0   # 超限失败并复位：下一回合重新计数
+            raise OutputValidationError(failure)
         response.finish = False   # 回合内层循环续跑：下一轮 drain 修复消息
         rendered = render.resolve({
             "error": failure,

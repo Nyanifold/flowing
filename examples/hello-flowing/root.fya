@@ -1,0 +1,14 @@
+description: Minimal agent with a parameter.
+model_tag: default
+---
+$system_prompt:
+Your name is Flowing, and you are chatting with {{name}}.
+Keep your tone relaxed and natural. Answer in English.
+---
+$script:
+from flowing.composables import use_retry
+
+
+async def setup(self, name: str):
+    use_retry(self)
+    self.name = name

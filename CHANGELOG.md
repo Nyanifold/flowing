@@ -10,6 +10,30 @@ Change-by-change details for each version are in [`changelogs/`](changelogs/); t
 每个发布版本使用一个 `changelogs/vX.Y.Z.md` 文件；改动逐项成章并同步中英文，每项写明用法。只有存在不兼容性时才补充迁移方法。
 Each release has one `changelogs/vX.Y.Z.md` file. Give every change its own bilingual section and describe how to use it; include migration guidance only when a change is incompatible.
 
+## [0.1.3] - 2026-10-29
+
+### 中文
+
+新增双向 JSON Schema 校验 Composable、空动作占位工具 `builtin::pass` 和显式 Runtime `project_root`；统一工具参数校验诊断，简化 Peers 目录提示；加固工作循环崩溃兜底与 OpenRouter 思考回放。
+
+- 新增 `use_validate_turn_result` 与 `use_validate_enqueued_message`：分别校验最终回复和入站消息，支持 JSON Schema、可配置失败策略及统一诊断；最终回复 steer 修复默认不限次数，有限次数耗尽后回合以 error 结束；
+- 新增 `builtin::pass` 形式化空动作，以及 `Runtime(project_root=...)` 嵌入构造方式；
+- 工具 LLM 视角参数错误改用统一、稳定的字段诊断；Peers 目录提示只保留目录与必要说明；
+- 修复工作循环崩溃时残余 waiter 挂起与回合身份残留，并修复 chat/completions 端点 `reasoning_details` 的解析和多轮回放。
+
+详细变更和用法见 [v0.1.3 详情](changelogs/v0.1.3.md)。
+
+### English
+
+Add bidirectional JSON Schema validation Composables, the no-op `builtin::pass` tool, and explicit Runtime `project_root`; unify tool argument diagnostics and simplify the Peers catalog prompt; harden work-loop crash recovery and OpenRouter reasoning replay.
+
+- Add `use_validate_turn_result` and `use_validate_enqueued_message` for final-reply and inbound-message validation, with JSON Schema, configurable failure policies, and unified diagnostics; final-reply steer repairs are unlimited by default, while exhausting a finite budget ends the turn with an error;
+- Add the formal no-op `builtin::pass` tool and direct embedded construction through `Runtime(project_root=...)`;
+- Use unified, stable field diagnostics for LLM-facing tool argument errors; keep only the catalog and essential guidance in the Peers prompt;
+- Fix hanging residual waiters and stale turn identity on work-loop crashes, and fix `reasoning_details` parsing and multi-turn replay on chat/completions endpoints.
+
+See [v0.1.3 details](changelogs/v0.1.3.md) for the detailed changes and usage.
+
 ## [0.1.2] - 2026-10-04
 
 ### 中文
@@ -154,6 +178,7 @@ First public release.
 
 See [v0.1.0 details](changelogs/v0.1.0.md) for the detailed changes and usage.
 
+[0.1.3]: https://github.com/Nyanifold/flowing/releases/tag/v0.1.3
 [0.1.2]: https://github.com/Nyanifold/flowing/releases/tag/v0.1.2
 [0.1.1]: https://github.com/Nyanifold/flowing/releases/tag/v0.1.1
 [0.1.0]: https://github.com/Nyanifold/flowing/releases/tag/v0.1.0

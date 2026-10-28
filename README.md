@@ -40,100 +40,111 @@ These needs don't point to any single application shape: in Flowing, orchestrati
 pip install flowing-agent
 ```
 
-## Quick start
+## Example
 
-This example builds a two-agent guessing game: the referee `oracle` privately keeps the answer, while the player `guesser` asks directed questions and works it out. It shows how one Runtime can host multiple agents, how `PeersPlugin` registers Peers tools, and how declarative tool bindings control which tools each agent can see. A peer tool looks up its target agent by ID through the Runtime. The two composables have separate roles: `use_peers()` reads the `peers` catalog and injects it into the system prompt, while `use_retry()` configures model-call retries with the default settings (three retries) for the referee and up to five retries for the guesser.
+This example embeds two specialized decision Agents in a Python application. Each player returns a structured production choice; the host queries both concurrently and computes the result. The game rules are deliberately small: the focus is on reusable declarations, live Agent objects, instance-local hooks and composables, and an embeddable Runtime orchestrated with ordinary Python.
 
-Create a project directory with the following four files:
+Create a project directory with `player.fya`, `main.py`, and `model-tags.yaml`.
 
-`main.py` installs the Peers plugin and mounts both agents with stable IDs:
+`player.fya` defines one reusable player declaration:
 
 ```python
-from flowing import Runtime
-from flowing.plugins.peers import PeersPlugin
+description: "A player in a two-player Production Competition Game."
+model_tag: default
+output:
+  quantity:
+    type: integer
+    enum: [3, 4]
+    description: "The quantity to produce."
+
+---
+$system_prompt:
+You are Player {{player}} in a two-player Production Competition Game.
+
+The selling price is 12 minus the combined production:
+price = 12 - (your quantity + the other player's quantity).
+Your profit = your quantity * price.
+
+Choose the quantity that maximizes your own profit.
+Return only a JSON object such as {"quantity": 3}.
+
+---
+$script:
+from flowing.composables import use_retry
+from flowing.composables.validate import use_validate_turn_result
+from flowing.message import MessageKind
+
+
+async def setup(self, player: str):
+    use_retry(self)
+    use_validate_turn_result(self, on_fail="steer", max_retries=2)
+
+    self.player = player
+    self.requests = 0
+
+    def log_request(agent, msg):
+        if msg.kind is MessageKind.USER:
+            agent.requests += 1
+            print(
+                f"[{agent.node_id}] "
+                f"player={agent.player} requests={agent.requests}"
+            )
+        return msg
+
+    self.hooks.on_enqueue(log_request)
+```
+
+The declaration keeps the prompt, output contract, setup logic, instance members, hooks, and composable policies together. `use_retry()` handles retryable Provider failures; `use_validate_turn_result()` can steer an invalid structured response toward repair. The hook runs against each mounted instance and updates its own `requests` member.
+
+`main.py` mounts the declaration twice and embeds the Runtime in a normal Python host:
+
+```python
+import asyncio
+import json
+from pathlib import Path
+
+from flowing import Runtime, launch
+
+
+def payoff(q_a: int, q_b: int) -> tuple[int, int]:
+    price = 12 - q_a - q_b
+    return q_a * price, q_b * price
+
 
 async def main() -> Runtime:
     runtime = Runtime()
     runtime.set_model_tags("@/model-tags.yaml")
-    # Register Peers tools; each agent still declares which tools it can call.
-    runtime.install(PeersPlugin())
-    await runtime.mount("@/oracle.fya", agent_id="oracle")
-    await runtime.mount("@/guesser.fya", agent_id="guesser")
+    await runtime.mount("@/player.fya", agent_id="player-a", player="A")
+    await runtime.mount("@/player.fya", agent_id="player-b", player="B")
     return runtime
+
+
+if __name__ == "__main__":
+    async def _run():
+        runtime = await launch(str(Path(__file__).resolve().parent))
+        try:
+            a = await runtime.get_agent("player-a", strict=True)
+            b = await runtime.get_agent("player-b", strict=True)
+            result_a, result_b = await asyncio.gather(
+                a.query("Choose your production quantity: 3 or 4."),
+                b.query("Choose your production quantity: 3 or 4."),
+            )
+            q_a = json.loads(result_a.final_text)["quantity"]
+            q_b = json.loads(result_b.final_text)["quantity"]
+            profit_a, profit_b = payoff(q_a, q_b)
+
+            a.last_profit = profit_a
+            b.last_profit = profit_b
+            print(f"Player A: quantity={q_a}, profit={a.last_profit}")
+            print(f"Player B: quantity={q_b}, profit={b.last_profit}")
+            print(f"Joint profit: {profit_a + profit_b}")
+        finally:
+            await runtime.shutdown()
+
+    asyncio.run(_run())
 ```
 
-`oracle.fya` defines the referee, who privately knows the answer and can message only `guesser`:
-
-```python
-description: "Keeps the answer private and evaluates the guesser's questions."
-model_tag: default
-tools:
-  - message-peer
-peers:
-  guesser: "The player who asks you questions privately. Reply with your answer."
-
----
-$system_prompt:
-You are the referee in a guessing game. The user will privately tell you the answer. Remember it, but do not reveal it to the guesser.
-When the guesser sends a question, decide whether the answer is yes, no, or uncertain. You must call
-message-peer with peer_id set to "guesser" and send a message containing the original question followed by exactly one of: yes, no, or uncertain.
-Do not add an explanation or other text, and do not reply to the guesser directly. When the user privately tells you the answer, briefly confirm that it is set and do not contact the guesser.
-
----
-$script:
-from flowing.composables import use_retry
-from flowing.plugins.peers import use_peers
-
-
-async def setup(self):
-    # Add the peers catalog prompt and enable retries with the default settings.
-    use_peers(self)
-    use_retry(self)
-
-    # status == "completed" means the send succeeded; this example ends the turn without another LLM request for the result.
-    def _end_turn(agent, result):
-        if result.status == "completed" and agent.current_turn is not None:
-            agent.current_turn.finish = True
-        return result
-
-    self.hooks.after_tool_call["message-peer"](_end_turn, by="guessing-game")
-```
-
-`guesser.fya` defines the player, who infers the answer by asking the referee:
-
-```python
-description: "Guesses the answer by asking the referee questions."
-model_tag: default
-tools:
-  - message-peer
-peers:
-  oracle: "The referee who knows the answer and replies yes, no, or uncertain. Ask it questions."
-
----
-$system_prompt:
-You are playing a guessing game. When the user starts the game, ask the oracle one yes-or-no question at a time.
-Do not ask the referee to reveal the answer directly. After each reply, continue according to the rules; once you know the answer,
-give your best guess to the user.
-
----
-$script:
-from flowing.composables import use_retry
-from flowing.plugins.peers import use_peers
-
-
-async def setup(self):
-    # Add the peers catalog prompt and allow up to five retries per turn.
-    use_peers(self)
-    use_retry(self, max_retries=5)
-
-    # status == "completed" means the send succeeded; this example ends the turn without another LLM request for the result.
-    def _end_turn(agent, result):
-        if result.status == "completed" and agent.current_turn is not None:
-            agent.current_turn.finish = True
-        return result
-
-    self.hooks.after_tool_call["message-peer"](_end_turn, by="guessing-game")
-```
+`main()` is the project assembly entry point: it creates, configures, and **returns a Runtime**. `launch()` imports and awaits `main()`, then returns that Runtime to the external caller. From that point on, the host can use it directly like any other Python object: retrieve live Agents with `get_agent()`, query or update them, and orchestrate them with `asyncio` and application logic. The two mounts have independent attributes, hooks, and histories. This embedding pattern can host domain-specific product Agents or controlled multi-agent research experiments without introducing a workflow DSL.
 
 `model-tags.yaml` maps the lookup tag `default` to the `luna` Model entry:
 
@@ -142,46 +153,23 @@ tags:
   default: luna
 ```
 
-To let both agents call a model, first add an OpenRouter Provider with its connection details:
+The tag carries no Provider information: `default` resolves to `luna`, which separately selects the Provider and API model ID. For step-by-step Provider and Model configuration, see [Hello Flowing](examples/hello-flowing/README.md#configure-the-luna-model) or [Guessing Game](examples/guessing-game/README.md#configure-the-luna-model).
 
-```console
-$ flowing-config providers add
-# Press Enter at the configuration path prompt to use the Runtime default.
-Provider entry name (identity): openrouter
-Provider adapter: openrouter
-API endpoint (base_url; leave blank to use 'https://openrouter.ai/api/v1'): [Enter]
-API key (api_key; leave blank to skip): env.OPENROUTER_API_KEY
-```
-
-Once the Provider is saved, add a Model entry that refers to it. The entry is named `luna`, with API model ID `openai/gpt-6-luna`:
-
-```console
-$ flowing-config models add
-# Press Enter at the configuration path prompt to use the Runtime default.
-Model entry name (identity): luna
-Known Provider entries: openrouter
-Provider entry name (identity): openrouter
-API model ID: openai/gpt-6-luna
-```
-
-The `default` model tag is a lookup label and carries no Provider information. It resolves to the `luna` Model entry, which separately selects the `openrouter` Provider and API model ID `openai/gpt-6-luna`. Adapter parameter suggestions depend on the API model ID and do not guarantee support by the remote model.
-
-These declarations serve different purposes: `tools:` explicitly binds `message-peer` for an agent to call, while `peers:` lists the allowed peer IDs and their descriptions. `PeersPlugin` registers the Peers tools; when called, a peer tool looks up the target agent by ID through the Runtime. The `use_peers(self)` composable only reads the current agent's `peers` field and injects the catalog into its dynamic system prompt; it does not bind tools. Both agents enable Provider call retries with `use_retry()`; the referee uses the default settings, while the guesser sets `max_retries=5`.
-
-Run:
+Run from the project directory:
 
 ```console
 $ export OPENROUTER_API_KEY='<your key>'
-$ flowing repl .
-(new agent)>>> /agent oracle
-(oracle)>>> The answer is pear. Remember it, but do not tell the guesser.
-(oracle)>>> /agent guesser
-(guesser)>>> Start the game. The answer is a fruit. Ask at most five yes-or-no questions, then make your guess.
+$ python main.py
+[player-a] player=A requests=1
+[player-b] player=B requests=1
+Player A: quantity=4, profit=16
+Player B: quantity=4, profit=16
+Joint profit: 32
 ```
 
-The `guesser` sends questions to `oracle` through `message-peer`; the referee replies only yes, no, or uncertain, and keeps the answer in its own conversation. Both agents' messages are persisted under `.flowing/` in the project directory, and their fixed `agent_id` values let a later run restore each history.
+The model determines the choices, so quantities and profits can vary. See the [complete example](examples/product-competition-game/) for a step-by-step walkthrough.
 
-> **Note**: the REPL's progress display only renders messages produced by the bound foreground agent's provider (streaming text, thinking, tool calls, and tool results) plus your own input; messages injected dynamically at run time are not rendered through this channel — so PEER messages delivered by `message-peer` do not appear automatically. Type `/messages` to see the full message list of the current chain (`/messages verbose` for full content).
+The [examples directory](examples/) contains three projects in a progressive order: [Hello Flowing](examples/hello-flowing/) introduces project assembly, parameter injection, `setup()`, and persistence; [Guessing Game](examples/guessing-game/) demonstrates plugins, peer messaging, and independent Agent histories; and [Production Competition Game](examples/product-competition-game/) shows how reusable declarations and live Agent objects support ordinary Python orchestration in specialized products and research projects.
 
 ## Going further
 
@@ -193,7 +181,7 @@ The `guesser` sends questions to `oracle` through `message-peer`; the referee re
 
 ### Built-in plugins and composables
 
-Plugins and composables are the two reusable units of extension, both shipped with the package and enabled on demand. A plugin is installed with `runtime.install()` and then enabled per agent by calling the matching `use_xxx(self)` in `setup()`. A composable is an ordinary function `use_xxx(agent, ...)` that injects one piece of policy into a single agent in `setup()`; composables stack and can be copied and rewritten.
+Plugins and composables are reusable extensions shipped with the package; none are enabled by default. A plugin uses `runtime.install()` to register Runtime-level capabilities such as tools and injectable services. Complete its per-Agent setup in `setup()` with the plugin's `use_xxx(self)` when one is provided, and bind each required tool explicitly. A standalone composable is an ordinary `use_xxx(agent, ...)` function that attaches behavior to one Agent without Runtime installation. Composables can stack, and their implementations can be copied and adapted as application policies.
 
 | Plugin | Purpose |
 | --- | --- |
@@ -201,7 +189,7 @@ Plugins and composables are the two reusable units of extension, both shipped wi
 | `comm` | An in-process communication bus with two channels: point-to-point signals (`send` / `request` / `reply`) and publish-subscribe events (`publish` / `subscribe`), for agents, UI components, and application code. |
 | `peers` | Directed interaction between agents in one Runtime: registers `query-peer` / `message-peer` / `steer-peer` and limits reachable targets by the `peers:` catalog. |
 | `cron` | Per-agent scheduled tasks: `schedule` / `unschedule` / `jobs` live with each agent, the model schedules through `schedule-cron` / `manage-cron`, and delivery arrives on the `on_cron_trigger` hook. |
-| `workflow` | Rule-based orchestration: subclass `Workflow` to write branching, loops, and parallel or sequential steps in Python, then start it by path with the `run-workflow` tool. |
+| `workflow` | Rule-based orchestration: subclass `Workflow` to write branching, loops, and parallel or sequential steps in Python, then bind `run-workflow` to start a workflow by path. |
 | `clipboard` | Cut, copy, and paste file ranges (`clipboard-cut` / `clipboard-copy` / `clipboard-paste`), for moving code sections across files. |
 
 | Composable | Purpose |
@@ -211,6 +199,8 @@ Plugins and composables are the two reusable units of extension, both shipped wi
 | `use_auto_compact` | Before a request: keep the head and tail messages, compress the middle into one message, and send the request with the compacted context. |
 | `use_system_reminder` | Before each logical turn, inject a system reminder (current time, directory, task state) that is persisted with the batch. |
 | `use_prompt_until` | At turn end, run an assertion; if it fails, steer the agent into a further turn. |
+| `use_validate_turn_result` | Validate the final reply as JSON against an explicit schema or the Agent's `output`; steer same-turn repairs (unlimited by default), warn, or raise. A finite exhausted repair budget ends the turn with an error. |
+| `use_validate_enqueued_message` | Filter inbound messages by kind, source, or predicate and validate their text or structured data against an explicit schema or the Agent's `input`; on failure, reject the enqueue, warn, or raise. |
 
 ## Documentation
 

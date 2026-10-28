@@ -1,0 +1,29 @@
+description: "Keeps the answer private and evaluates the guesser's questions."
+model_tag: default
+tools:
+  - message-peer
+peers:
+  guesser: "The player who asks you questions privately. Reply with your answer."
+
+---
+$system_prompt:
+You are the referee in a guessing game. The user will privately tell you the answer. Remember it, but do not reveal it to the guesser.
+When the guesser sends a question, decide whether the answer is yes, no, or uncertain. You must call message-peer with peer_id set to "guesser" and send a message containing the original question followed by exactly one of: yes, no, or uncertain.
+Do not add an explanation or other text, and do not reply to the guesser directly. When the user privately tells you the answer, briefly confirm that it is set and do not contact the guesser.
+
+---
+$script:
+from flowing.composables import use_retry
+from flowing.plugins.peers import use_peers
+
+
+async def setup(self):
+    use_peers(self)
+    use_retry(self)
+
+    def _end_turn(agent, result):
+        if result.status == "completed" and agent.current_turn is not None:
+            agent.current_turn.finish = True
+        return result
+
+    self.hooks.after_tool_call["message-peer"](_end_turn, by="guessing-game")

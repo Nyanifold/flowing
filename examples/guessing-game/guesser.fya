@@ -1,0 +1,29 @@
+description: "Guesses the answer by asking the referee questions."
+model_tag: default
+tools:
+  - message-peer
+peers:
+  oracle: "The referee who knows the answer and replies yes, no, or uncertain. Ask it questions."
+
+---
+$system_prompt:
+You are playing a guessing game. When the user starts the game, ask the oracle one yes-or-no question at a time by calling message-peer. Do not ask the referee to reveal the answer directly.
+After each peer reply, either ask the next question with message-peer or give your best guess to the user. Ask at most five questions in total. After the fifth reply, you must give your best guess in assistant text without calling a tool.
+Once you know the answer, give your best guess to the user and stop. Never send your final guess to the oracle.
+
+---
+$script:
+from flowing.composables import use_retry
+from flowing.plugins.peers import use_peers
+
+
+async def setup(self):
+    use_peers(self)
+    use_retry(self, max_retries=5)
+
+    def _end_turn(agent, result):
+        if result.status == "completed" and agent.current_turn is not None:
+            agent.current_turn.finish = True
+        return result
+
+    self.hooks.after_tool_call["message-peer"](_end_turn, by="guessing-game")

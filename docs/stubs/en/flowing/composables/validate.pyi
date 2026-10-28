@@ -202,7 +202,7 @@ def use_validate_turn_result(
     *,
     template: str | None = None,
     on_fail: Literal["steer", "warn", "raise"] = "steer",
-    max_retries: int = 3,
+    max_retries: int | None = None,
     by: str = "validate-turn-result",
 ) -> None:
     """Install an optional final-reply JSON Schema validation policy on one Agent.
@@ -228,9 +228,11 @@ def use_validate_turn_result(
         same turn), ``"warn"`` (warn and pass through), or ``"raise"`` (raise
         :class:`flowing.errors.OutputValidationError`).
     :param max_retries: Maximum number of same-turn repair attempts under the
-        ``steer`` policy, ``>= 0``, default 3. The count starts at 1: a
-        failure steers only while ``attempt <= max_retries``; ``0`` gives up
-        on the first failure. Unused under ``warn`` / ``raise``.
+        ``steer`` policy. The default ``None`` means unlimited repairs; an
+        integer must be ``>= 0``. The count starts at 1: a failure steers only
+        while ``attempt <= max_retries``; ``0`` raises
+        :class:`flowing.errors.OutputValidationError` on the first failure.
+        Unused under ``warn`` / ``raise``.
     :param by: Owner identifier of the handler (lowercase-with-hyphens
         convention), default ``"validate-turn-result"``. ``remove_by_owner(by)``
         removes the whole set; the repair message's ``source`` and ``tags``
@@ -264,13 +266,15 @@ def use_validate_turn_result(
       repair message (``kind=EVENT`` / ``priority=STEER`` / ``source=by`` /
       ``tags=[by]``) is queued via ``Agent.steer``; the inner loop drains it
       before the next ``provider_gen`` call, so the repair request enters the
-      same turn's context. The re-emitted response is validated again by the
-      same handler until it passes or the budget is exhausted.
+      same turn's context. With ``max_retries=None``, repairs have no numeric
+      limit. With a finite budget, exhaustion raises
+      :class:`flowing.errors.OutputValidationError` and the turn ends with
+      status ``"error"`` instead of passing the invalid reply through.
     - The failure counter is the Agent's ordinary
       ``_validate_turn_result_failures`` instance attribute, initialized to 0
       at mount. It is not registered as persistent state or snapshotted. A
-      pass or a give-up resets it to 0, so a failure in a later turn counts
-      from 1 again.
+      pass or budget-exhaustion failure resets it to 0, so a failure in a
+      later turn counts from 1 again.
     - Repeated calls do not deduplicate: each call installs an independent
       handler with its own compiled model, and every mount resets the shared
       Agent counter attribute to 0. Remove the whole set with

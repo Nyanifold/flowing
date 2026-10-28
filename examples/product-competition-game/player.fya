@@ -1,0 +1,44 @@
+
+description: "A player in a two-player Production Competition Game."
+model_tag: default
+output:
+  quantity:
+    type: integer
+    enum: [3, 4]
+    description: "The quantity to produce."
+
+---
+$system_prompt:
+You are Player {{player}} in a two-player Production Competition Game.
+
+The selling price is 12 minus the combined production:
+price = 12 - (your quantity + the other player's quantity).
+Your profit = your quantity * price.
+
+Choose the quantity that maximizes your own profit.
+Return only a JSON object such as {"quantity": 3}.
+
+---
+$script:
+from flowing.composables import use_retry
+from flowing.composables.validate import use_validate_turn_result
+from flowing.message import MessageKind
+
+
+async def setup(self, player: str):
+    use_retry(self)
+    use_validate_turn_result(self, on_fail="steer", max_retries=2)
+
+    self.player = player
+    self.requests = 0
+
+    def log_request(agent, msg):
+        if msg.kind is MessageKind.USER:
+            agent.requests += 1
+            print(
+                f"[{agent.node_id}] "
+                f"player={agent.player} requests={agent.requests}"
+            )
+        return msg
+
+    self.hooks.on_enqueue(log_request)
